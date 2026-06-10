@@ -154,6 +154,20 @@ pub enum WinState {
     Maximized,
 }
 
+/// Tiling-mode row height unit in px — [`PanelWin::tile_h`] counts these.
+pub const TILE_ROW_PX: f64 = 150.0;
+/// Width span ceiling (quarter-row units).
+const TILE_W_MAX: u8 = 4;
+/// Height span ceiling ([`TILE_ROW_PX`] rows).
+const TILE_H_MAX: u8 = 6;
+
+fn default_tile_w() -> u8 {
+    1
+}
+fn default_tile_h() -> u8 {
+    2
+}
+
 /// One panel's geometry + window state. `z` is the floating-mode stacking order.
 ///
 /// Stored geometry is the user's *intent*: when the browser window shrinks,
@@ -177,6 +191,28 @@ pub struct PanelWin<K> {
     /// Floating-mode stacking order; higher is in front. Mousedown on a
     /// panel raises it to the front.
     pub z: i32,
+    /// Tiling-mode width span in quarter-row units (1–4): 1 ≈ a quarter of
+    /// the row, 4 = the full row. The tiling resize grip snaps this;
+    /// floating geometry (`w`/`h`) is untouched. Layouts saved before this
+    /// field existed deserialize to 1.
+    #[serde(default = "default_tile_w")]
+    pub tile_w: u8,
+    /// Tiling-mode height in [`TILE_ROW_PX`] rows (1–6). Defaults to 2
+    /// (300 px — the pre-resize fixed tile height).
+    #[serde(default = "default_tile_h")]
+    pub tile_h: u8,
+}
+
+impl<K> PanelWin<K> {
+    /// Builder-style override of the tiling spans, clamped to their valid
+    /// ranges (width 1–4 quarter-row units, height 1–6 rows). Chain it off
+    /// [`LayoutBuilder::at`] for panels that should start bigger in tiling
+    /// mode — e.g. a full-width main view: `b.at(...).with_tile(4, 3)`.
+    pub fn with_tile(mut self, w: u8, h: u8) -> Self {
+        self.tile_w = w.clamp(1, TILE_W_MAX);
+        self.tile_h = h.clamp(1, TILE_H_MAX);
+        self
+    }
 }
 
 /// Workspace layout mode, toggled by the red traffic light.
@@ -261,7 +297,17 @@ impl LayoutBuilder {
     /// next z value — so later panels stack in front of earlier ones.
     pub fn at<K>(&mut self, kind: K, x: f64, y: f64, w: f64, h: f64) -> PanelWin<K> {
         self.z += 1;
-        PanelWin { kind, x, y, w, h, state: WinState::Floating, z: self.z }
+        PanelWin {
+            kind,
+            x,
+            y,
+            w,
+            h,
+            state: WinState::Floating,
+            z: self.z,
+            tile_w: default_tile_w(),
+            tile_h: default_tile_h(),
+        }
     }
 }
 
@@ -491,6 +537,33 @@ impl<K: PanelKind> Workspace<K> {
         }));
     }
 
+    /// Start a tiling-mode resize drag from the corner grip. Unlike
+    /// [`begin_drag`](Workspace::begin_drag)'s free-pixel resize, pointer
+    /// deltas snap the panel's tile spans ([`PanelWin::tile_w`] quarter-row
+    /// units / [`PanelWin::tile_h`] rows) so tiles always land on fit sizes.
+    /// `start_w`/`start_h` on the captured [`Drag`] hold the *spans*, not
+    /// pixels; [`handle_mouse_move`](Workspace::handle_mouse_move) branches
+    /// on the effective mode.
+    pub fn begin_tile_resize(&self, idx: usize, e: &MouseEvent) {
+        let c = e.client_coordinates();
+        let (tw, th) = {
+            let ps = self.panels.read();
+            let Some(p) = ps.get(idx) else { return };
+            (p.tile_w as f64, p.tile_h as f64)
+        };
+        let mut drag = self.drag;
+        drag.set(Some(Drag {
+            idx,
+            kind: DragKind::Resize,
+            start_mx: c.x,
+            start_my: c.y,
+            start_x: 0.0,
+            start_y: 0.0,
+            start_w: tw,
+            start_h: th,
+        }));
+    }
+
     /// Attach to the app root's `onmousemove` — applies the in-flight
     /// [`Drag`], if any (move follows the pointer; resize grows/shrinks,
     /// clamped to a minimum panel size).
@@ -504,6 +577,18 @@ impl<K: PanelKind> Workspace<K> {
                     DragKind::Move => {
                         p.x = (d.start_x + (c.x - d.start_mx)).max(0.0);
                         p.y = (d.start_y + (c.y - d.start_my)).max(0.0);
+                    }
+                    // Tiling resize snaps to fit sizes: pointer deltas count
+                    // in quarter-row width steps and TILE_ROW_PX height rows
+                    // against the spans captured at mousedown (start_w/h
+                    // hold spans, not px — see begin_tile_resize).
+                    DragKind::Resize if self.effective_mode() == Mode::Tiling => {
+                        let (vw, _) = *self.viewport.read();
+                        let col = ((vw - 16.0) / TILE_W_MAX as f64).max(80.0);
+                        let dw = ((c.x - d.start_mx) / col).round();
+                        let dh = ((c.y - d.start_my) / TILE_ROW_PX).round();
+                        p.tile_w = (d.start_w + dw).clamp(1.0, TILE_W_MAX as f64) as u8;
+                        p.tile_h = (d.start_h + dh).clamp(1.0, TILE_H_MAX as f64) as u8;
                     }
                     DragKind::Resize => {
                         p.w = (d.start_w + (c.x - d.start_mx)).max(180.0);
@@ -594,6 +679,15 @@ impl<K: PanelKind> Workspace<K> {
                             let (x, y, w, h) = effective_rect(&p, vw, vh);
                             format!("position:absolute; left:{x}px; top:{y}px; width:{w}px; height:{h}px; z-index:{};",
                                 p.z)
+                        } else if tiling && !*ws.is_mobile.read() {
+                            // Snapped spans → flex-basis % of the row + row
+                            // height. Mobile keeps the pure-CSS single-column
+                            // stack (no inline geometry).
+                            format!(
+                                "flex:1 1 calc({}% - 8px); height:{}px;",
+                                p.tile_w as f64 * (100.0 / TILE_W_MAX as f64),
+                                p.tile_h as f64 * TILE_ROW_PX
+                            )
                         } else {
                             String::new()
                         };
@@ -631,11 +725,15 @@ impl<K: PanelKind> Workspace<K> {
                                 div { class: "panel-body",
                                     {body(p.kind, maximized == Some(i))}
                                 }
-                                if floating {
+                                if floating || (tiling && !*ws.is_mobile.read()) {
                                     div {
                                         class: "resize",
                                         onmousedown: move |e: MouseEvent| {
-                                            ws.begin_drag(i, DragKind::Resize, &e);
+                                            if floating {
+                                                ws.begin_drag(i, DragKind::Resize, &e);
+                                            } else {
+                                                ws.begin_tile_resize(i, &e);
+                                            }
                                         },
                                     }
                                 }

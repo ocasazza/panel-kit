@@ -44,7 +44,10 @@ button { font-family:var(--mono); }
 /* Workspace area */
 .ws { position:relative; flex:1; min-height:0; overflow:hidden; }
 .ws.tiling { display:flex; flex-wrap:wrap; align-content:flex-start; gap:8px; padding:8px; overflow:auto; }
-.ws.tiling .panel { position:static !important; flex:1 1 340px; min-width:300px; height:300px; }
+/* relative, not static: the .resize grip anchors to the tile. Inline
+   flex/height from the snapped spans override the fallbacks here. */
+.ws.tiling .panel { position:relative !important; left:auto !important; top:auto !important;
+  flex:1 1 340px; min-width:300px; height:300px; }
 .ws.maxed { padding:0; }
 
 /* Panels */

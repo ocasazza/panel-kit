@@ -1,6 +1,6 @@
 [package]
 name = "panel-kit"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 description = "Generic Dioxus panel-workspace library: floating/tiling panels, traffic lights, drag/resize, tiling drag-reorder, minimize-to-dock, layout persistence"
