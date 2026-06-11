@@ -32,6 +32,12 @@
 
 #![warn(missing_docs)]
 
+pub mod badge;
+pub mod spinner;
+pub mod theme;
+
+pub use theme::Theme;
+
 use std::path::PathBuf;
 
 use panel_kit_core::{
@@ -41,7 +47,7 @@ use panel_kit_core::{
 };
 use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
@@ -75,12 +81,16 @@ pub struct TuiWorkspace<K: PanelKind> {
     pub panels: Vec<PanelWin<K>>,
     /// The current layout [`Mode`].
     pub mode: Mode,
+    /// Chrome palette — defaults to the web shell's dark palette
+    /// ([`Theme::DARK`]); swap presets to retheme.
+    pub theme: Theme,
     drag: Option<Drag>,
     tile_drag: Option<K>,
     store: Option<PathBuf>,
     ws_area: Rect,
     zones: Vec<Zone>,
     dock_chips: Vec<(Rect, usize)>,
+    hover: Option<Position>,
 }
 
 impl<K: PanelKind> TuiWorkspace<K> {
@@ -103,12 +113,14 @@ impl<K: PanelKind> TuiWorkspace<K> {
         Self {
             panels: panels.unwrap_or_else(defaults),
             mode,
+            theme: Theme::default(),
             drag: None,
             tile_drag: None,
             store,
             ws_area: Rect::default(),
             zones: Vec::new(),
             dock_chips: Vec::new(),
+            hover: None,
         }
     }
 
@@ -211,66 +223,80 @@ impl<K: PanelKind> TuiWorkspace<K> {
             }
 
             f.render_widget(Clear, rect);
+            let t = self.theme;
             let focused = maximized == Some(i)
                 || (self.mode == Mode::Floating && p.z == front_z(&self.panels) - 1);
             let border_style = if self.tile_drag == Some(p.kind) {
-                Style::default().fg(Color::Yellow)
+                Style::default().fg(t.yellow)
             } else if focused {
-                Style::default().fg(Color::Cyan)
+                Style::default().fg(t.line2)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(t.line)
             };
-            // Lights live in the top-right of the border row: ⊞/❐ mode,
-            // − minimize, ⤢/⤡ maximize — same glyph language as the web
-            // shell's traffic lights.
+            // Traffic lights sit top-LEFT like the web shell, in its
+            // printer-CMY colors: blue mode, yellow minimize, pink
+            // maximize. They render as ● dots and reveal their action
+            // glyph under the pointer — the hover-glyph behavior of the
+            // web lights.
+            let ly = rect.y;
+            let lx = rect.x + 2;
+            let light_cells = [
+                Rect::new(lx, ly, 1, 1),
+                Rect::new(lx + 2, ly, 1, 1),
+                Rect::new(lx + 4, ly, 1, 1),
+            ];
+            let hovering_lights = self
+                .hover
+                .map(|h| h.y == ly && h.x >= lx && h.x <= lx + 4)
+                .unwrap_or(false);
             let mode_glyph = if self.mode == Mode::Tiling { "❐" } else { "⊞" };
             let max_glyph = if p.state == WinState::Maximized { "⤡" } else { "⤢" };
-            let lights_line = Line::from(vec![
-                Span::styled(mode_glyph, Style::default().fg(Color::Blue)),
+            let light = |glyph: &'static str, color| {
+                Span::styled(
+                    if hovering_lights { glyph } else { "●" },
+                    Style::default().fg(color),
+                )
+            };
+            let title_line = Line::from(vec![
                 Span::raw(" "),
-                Span::styled("−", Style::default().fg(Color::Yellow)),
+                light(mode_glyph, t.blue),
                 Span::raw(" "),
-                Span::styled(max_glyph, Style::default().fg(Color::Magenta)),
-            ])
-            .right_aligned();
+                light("−", t.yellow),
+                Span::raw(" "),
+                light(max_glyph, t.pink),
+                Span::raw("  "),
+                Span::styled(
+                    p.kind.title().to_string(),
+                    Style::default().fg(t.fg).add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+            ]);
             let block = Block::default()
                 .borders(Borders::ALL)
                 .border_style(border_style)
-                .title(Line::from(Span::styled(
-                    format!(" {} ", p.kind.title()),
-                    Style::default().add_modifier(Modifier::BOLD),
-                )))
-                .title(lights_line);
+                .title(title_line);
             let inner = block.inner(rect);
             f.render_widget(block, rect);
             body(f, inner, p.kind, maximized == Some(i));
             // Resize grip: bottom-right corner of the border.
             let grip = Rect::new(rect.right().saturating_sub(2), rect.bottom().saturating_sub(1), 2, 1);
             f.render_widget(
-                Paragraph::new("◢").style(Style::default().fg(Color::DarkGray)),
+                Paragraph::new("◢").style(Style::default().fg(t.dim)),
                 Rect::new(grip.x + 1, grip.y, 1, 1),
             );
 
-            // Light cells sit right-aligned on the top border with a
-            // trailing corner cell: [⊞][ ][−][ ][⤢] ending 2 cells before
-            // the right edge.
-            let ly = rect.y;
-            let lx = rect.right().saturating_sub(7);
             self.zones.push(Zone {
                 idx: i,
                 panel: rect,
                 header: Rect::new(rect.x, rect.y, rect.width, 1),
-                lights: [
-                    Rect::new(lx, ly, 1, 1),
-                    Rect::new(lx + 2, ly, 1, 1),
-                    Rect::new(lx + 4, ly, 1, 1),
-                ],
+                lights: light_cells,
                 grip,
             });
         }
 
         // Dock line.
-        let mut spans = vec![Span::styled("dock:", Style::default().fg(Color::DarkGray))];
+        let t = self.theme;
+        let mut spans = vec![Span::styled("dock:", Style::default().fg(t.dim))];
         let mut x = dock.x + 5;
         let minimized: Vec<usize> = self
             .panels
@@ -282,14 +308,14 @@ impl<K: PanelKind> TuiWorkspace<K> {
         if minimized.is_empty() {
             spans.push(Span::styled(
                 " — nothing minimized —",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(t.dim),
             ));
         }
         for i in minimized {
             let label = format!(" [{}]", self.panels[i].kind.title());
             let w = label.chars().count() as u16;
             self.dock_chips.push((Rect::new(x, dock.y, w, 1), i));
-            spans.push(Span::styled(label, Style::default().fg(Color::Cyan)));
+            spans.push(Span::styled(label, Style::default().fg(t.accent)));
             x += w;
         }
         f.render_widget(Paragraph::new(Line::from(spans)), dock);
@@ -371,6 +397,9 @@ impl<K: PanelKind> TuiWorkspace<K> {
                     self.tile_drag = None;
                     self.save();
                 }
+            }
+            MouseEventKind::Moved => {
+                self.hover = Some(at);
             }
             _ => {}
         }

@@ -22,6 +22,8 @@
 
 #![warn(missing_docs)]
 
+pub mod badge;
+
 use serde::{Deserialize, Serialize};
 
 /// The app's panel identifier — typically a fieldless enum.
