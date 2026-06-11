@@ -15,6 +15,7 @@
   --red:   #ff5f56;
   --yellow:#ffbd2e;
   --green: #27c93f;
+  --blue:  #3b9bff;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
 }
 
@@ -32,6 +33,10 @@ body, html, #main {
 button { font-family:var(--mono); }
 
 .ws-root { display:flex; flex-direction:column; height:100vh; outline:none; }
+/* While a move/resize/reorder drag is in flight the pointer sweeps across
+   other panels' text; without this the browser extends a text selection the
+   whole way ("selects everything"). Applied via Workspace::root_class. */
+.ws-root.dragging, .ws-root.dragging * { -webkit-user-select:none; user-select:none; }
 
 /* Top bar */
 .topbar { display:flex; align-items:center; gap:1rem; height:36px; flex:0 0 36px;
@@ -66,11 +71,20 @@ button { font-family:var(--mono); }
 
 /* Traffic lights */
 .lights { display:flex; gap:6px; }
-.light { width:12px; height:12px; border-radius:50%; border:none; padding:0; cursor:pointer; opacity:.9; }
+.light { width:12px; height:12px; border-radius:50%; border:none; padding:0; cursor:pointer; opacity:.9;
+  display:flex; align-items:center; justify-content:center; }
 .light:hover { opacity:1; }
-.light.red { background:var(--red); }
+/* The workspace-mode toggle is deliberately NOT red: it's a benign, global
+   action (floating⇄tiling), so it gets --blue instead of the macOS close
+   colour. Yellow/green keep their macOS per-panel meanings. */
+.light.mode { background:var(--blue); }
 .light.yellow { background:var(--yellow); }
 .light.green { background:var(--green); }
+/* macOS-style action glyphs: hidden until the pointer is over the light
+   cluster, then all three reveal at once. */
+.light-glyph { opacity:0; font-size:9px; line-height:1; font-weight:700;
+  color:rgba(0,0,0,.62); pointer-events:none; }
+.lights:hover .light-glyph { opacity:1; }
 
 /* Resize handle */
 .resize { position:absolute; right:0; bottom:0; width:14px; height:14px; cursor:nwse-resize;

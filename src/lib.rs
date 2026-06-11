@@ -64,7 +64,7 @@
 //! layer app-specific styles after it. All chrome colours and the monospace
 //! font come from `:root` CSS variables (`--bg`, `--panel`, `--fg`, `--dim`,
 //! `--line`, `--line2`, `--inv-bg`, `--inv-fg`, `--accent`, `--red`,
-//! `--yellow`, `--green`, `--mono`) — override them in a later stylesheet to
+//! `--yellow`, `--green`, `--blue`, `--mono`) — override them in a later stylesheet to
 //! retheme everything: panels, traffic lights, dock, badges, and spinner.
 //!
 //! # Examples
@@ -215,7 +215,7 @@ impl<K> PanelWin<K> {
     }
 }
 
-/// Workspace layout mode, toggled by the red traffic light.
+/// Workspace layout mode, toggled by the blue traffic light.
 ///
 /// A narrow viewport forces tiling regardless of this setting — see
 /// [`Workspace::effective_mode`].
@@ -494,12 +494,16 @@ impl<K: PanelKind> Workspace<K> {
         }
     }
 
-    /// Class for the app root div: `"ws-root"`, or `"ws-root mobile"` below
-    /// the mobile breakpoint. The [`CSS`] stylesheet keys the whole shell
-    /// off these classes.
+    /// Class for the app root div: `"ws-root"`, `"ws-root mobile"` below
+    /// the mobile breakpoint, or `"ws-root dragging"` while a move/resize/
+    /// reorder drag is in flight (suppresses text selection under the
+    /// sweeping pointer). The [`CSS`] stylesheet keys the whole shell off
+    /// these classes.
     pub fn root_class(&self) -> &'static str {
         if *self.is_mobile.read() {
             "ws-root mobile"
+        } else if self.drag.read().is_some() || self.tile_drag.read().is_some() {
+            "ws-root dragging"
         } else {
             "ws-root"
         }
@@ -510,6 +514,10 @@ impl<K: PanelKind> Workspace<K> {
     /// this up for the built-in header and resize handle; call it yourself
     /// only when adding extra drag affordances.
     pub fn begin_drag(&self, idx: usize, kind: DragKind, e: &MouseEvent) {
+        // Stop the browser starting a text selection from this mousedown —
+        // the .ws-root.dragging no-select class only applies from the next
+        // render, after the Drag signal lands.
+        e.prevent_default();
         let c = e.client_coordinates();
         // Normalize-on-grab: what the user grabbed is the *clamped* on-screen
         // rect (effective_rect), which can differ from the stored geometry
@@ -745,15 +753,19 @@ impl<K: PanelKind> Workspace<K> {
         }
     }
 
-    /// Panel chrome: traffic lights (red = floating⇄tiling, yellow = minimize,
-    /// green = maximize⇄restore) + the drag-to-move title strip. In floating
-    /// mode the drag moves the window freely; in tiling mode it starts a
-    /// reorder drag (hover another panel to snap into its slot). Mobile gets
-    /// neither (static stack).
+    /// Panel chrome: traffic lights (blue = floating⇄tiling, yellow =
+    /// minimize, green = maximize⇄restore; each reveals its action glyph on
+    /// hover, macOS-style) + the drag-to-move title strip. In floating mode
+    /// the drag moves the window freely; in tiling mode it starts a reorder
+    /// drag (hover another panel to snap into its slot). Mobile gets neither
+    /// (static stack).
     fn header(&self, idx: usize, kind: K, draggable: bool, tiling: bool) -> Element {
         let ws = *self;
         let title = kind.title();
         let is_max = self.panels.read().get(idx).map(|p| p.state) == Some(WinState::Maximized);
+        // Glyph shows the mode a click switches TO: floating → ⊞ (tile up),
+        // tiling → ❐ (cut the panels loose).
+        let mode_glyph = if *self.mode.read() == Mode::Tiling { "\u{2750}" } else { "\u{229E}" };
         rsx! {
             header {
                 class: "panel-head",
@@ -761,24 +773,29 @@ impl<K: PanelKind> Workspace<K> {
                     if draggable {
                         ws.begin_drag(idx, DragKind::Move, &e);
                     } else if tiling && !*ws.is_mobile.read() {
+                        // Selection has to be suppressed at the source too:
+                        // .ws-root.dragging only kicks in after this event.
+                        e.prevent_default();
                         let mut tile_drag = ws.tile_drag;
                         tile_drag.set(Some(kind));
                     }
                 },
                 div { class: "lights",
-                    button { class: "light red", title: "tiling / floating",
+                    button { class: "light mode", title: "tiling / floating",
                         onmousedown: move |e: MouseEvent| e.stop_propagation(),
                         onclick: move |_| {
                             let mut mode = ws.mode;
                             let next = if *mode.read() == Mode::Tiling { Mode::Floating } else { Mode::Tiling };
                             mode.set(next);
-                        } }
+                        },
+                        span { class: "light-glyph", "{mode_glyph}" } }
                     button { class: "light yellow", title: "minimize",
                         onmousedown: move |e: MouseEvent| e.stop_propagation(),
                         onclick: move |_| {
                             let mut panels = ws.panels;
                             if let Some(p) = panels.write().get_mut(idx) { p.state = WinState::Minimized; };
-                        } }
+                        },
+                        span { class: "light-glyph", "\u{2212}" } }
                     button { class: "light green", title: "maximize / restore",
                         onmousedown: move |e: MouseEvent| e.stop_propagation(),
                         onclick: move |_| {
@@ -786,7 +803,8 @@ impl<K: PanelKind> Workspace<K> {
                             if let Some(p) = panels.write().get_mut(idx) {
                                 p.state = if p.state == WinState::Maximized { WinState::Floating } else { WinState::Maximized };
                             };
-                        } }
+                        },
+                        span { class: "light-glyph", "+" } }
                 }
                 span { class: "panel-title", "{title}" }
                 if is_max { span { class: "max-hint", "maximized" } }
