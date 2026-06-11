@@ -33,6 +33,7 @@
 #![warn(missing_docs)]
 
 pub mod badge;
+pub mod charts;
 pub mod spinner;
 pub mod theme;
 
