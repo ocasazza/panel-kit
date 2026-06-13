@@ -72,22 +72,21 @@ button { font-family:var(--mono); }
 
 /* Traffic lights */
 .lights { display:flex; gap:6px; }
-.light { width:12px; height:12px; border-radius:50%; border:none; padding:0; cursor:pointer; opacity:.9;
-  display:flex; align-items:center; justify-content:center; }
-.light:hover { opacity:1; }
+.light { --light-c: var(--line2); width:12px; height:12px; border-radius:50%; border:0; padding:0;
+  cursor:pointer; opacity:.9; background:var(--light-c); box-shadow:0 0 0 0 transparent;
+  transition:opacity .12s ease, box-shadow .12s ease; }
+.light:hover, .light:focus-visible {
+  opacity:1;
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--light-c) 70%, transparent);
+}
 /* The lights are deliberately NOT the macOS red/yellow/green: none of them
    destroys anything, so the cluster uses a printer-CMY scheme instead —
    blue (mode toggle), yellow (minimize), pink (maximize). Yellow keeps its
    macOS minimize meaning; blue is the workspace-global floating⇄tiling
    toggle; pink maximizes/restores. */
-.light.mode { background:var(--blue); }
-.light.yellow { background:var(--yellow); }
-.light.max { background:var(--pink); }
-/* macOS-style action glyphs: hidden until the pointer is over the light
-   cluster, then all three reveal at once. */
-.light-glyph { opacity:0; font-size:9px; line-height:1; font-weight:700;
-  color:rgba(0,0,0,.62); pointer-events:none; }
-.lights:hover .light-glyph { opacity:1; }
+.light.mode { --light-c: var(--blue); }
+.light.yellow { --light-c: var(--yellow); }
+.light.max { --light-c: var(--pink); }
 
 /* Resize handle */
 .resize { position:absolute; right:0; bottom:0; width:14px; height:14px; cursor:nwse-resize;

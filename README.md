@@ -27,7 +27,7 @@ The repo is a small workspace — one state machine, two renderers:
   the split; existing consumers don't need any changes.
 - **`panel-kit-tui`** (`crates/panel-kit-tui`) — the ratatui shell: the same
   workspace drawn in terminal cells with crossterm mouse drag/resize,
-  traffic-light glyphs, a dock line, and JSON-file persistence. Try it:
+  traffic lights that ring on hover, a dock line, and JSON-file persistence. Try it:
   `cargo run -p panel-kit-tui --example workspace`. Via
   [ratzilla](https://github.com/orhun/ratzilla) this renderer can also
   target the browser DOM — one panel codebase, web and terminal skins.

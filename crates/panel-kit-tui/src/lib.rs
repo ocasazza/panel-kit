@@ -307,8 +307,11 @@ impl<K: PanelKind> TuiWorkspace<K> {
             };
             // Traffic lights sit top-LEFT like the web shell, in its
             // printer-CMY colors: blue mode, yellow minimize, pink
-            // maximize. ASCII keeps the browser WebGL backend from dropping
-            // non-atlas glyphs while preserving the same hit zones.
+            // maximize. The hovered light rings (o → O) and its action is
+            // named in a dim hint at the right edge of the header — no glyph
+            // swap, the lights are the identity. ASCII keeps the browser
+            // WebGL backend from dropping non-atlas glyphs while preserving
+            // the same hit zones.
             let ly = rect.y;
             let lx = rect.x + 2;
             let light_cells = [

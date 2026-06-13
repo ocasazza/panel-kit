@@ -529,21 +529,15 @@ impl<K: PanelKind> Workspace<K> {
     }
 
     /// Panel chrome: traffic lights in printer-CMY (blue = floating⇄tiling,
-    /// yellow = minimize, pink = maximize⇄restore; each reveals its action
-    /// glyph on hover, macOS-style — the pink glyph flips between expand and
-    /// restore with the panel's state) + the drag-to-move title strip. In
-    /// floating mode the drag moves the window freely; in tiling mode it
-    /// starts a reorder drag (hover another panel to snap into its slot).
-    /// Mobile gets neither (static stack).
+    /// yellow = minimize, pink = maximize⇄restore; hover rings the existing
+    /// light rather than swapping in action glyphs) + the drag-to-move title
+    /// strip. In floating mode the drag moves the window freely; in tiling
+    /// mode it starts a reorder drag (hover another panel to snap into its
+    /// slot). Mobile gets neither (static stack).
     fn header(&self, idx: usize, kind: K, draggable: bool, tiling: bool) -> Element {
         let ws = *self;
         let title = kind.title();
         let is_max = self.panels.read().get(idx).map(|p| p.state) == Some(WinState::Maximized);
-        // Glyphs show the state a click switches TO: mode light floating → ⊞
-        // (tile up), tiling → ❐ (cut the panels loose); max light normal → ⤢
-        // (expand), maximized → ⤡ (restore).
-        let mode_glyph = if *self.mode.read() == Mode::Tiling { "\u{2750}" } else { "\u{229E}" };
-        let max_glyph = if is_max { "\u{2921}" } else { "\u{2922}" };
         rsx! {
             header {
                 class: "panel-head",
@@ -566,14 +560,14 @@ impl<K: PanelKind> Workspace<K> {
                             let next = if *mode.read() == Mode::Tiling { Mode::Floating } else { Mode::Tiling };
                             mode.set(next);
                         },
-                        span { class: "light-glyph", "{mode_glyph}" } }
+                    }
                     button { class: "light yellow", title: "minimize",
                         onmousedown: move |e: MouseEvent| e.stop_propagation(),
                         onclick: move |_| {
                             let mut panels = ws.panels;
                             if let Some(p) = panels.write().get_mut(idx) { p.state = WinState::Minimized; };
                         },
-                        span { class: "light-glyph", "\u{2212}" } }
+                    }
                     button { class: "light max", title: "maximize / restore",
                         onmousedown: move |e: MouseEvent| e.stop_propagation(),
                         onclick: move |_| {
@@ -582,7 +576,7 @@ impl<K: PanelKind> Workspace<K> {
                                 p.state = if p.state == WinState::Maximized { WinState::Floating } else { WinState::Maximized };
                             };
                         },
-                        span { class: "light-glyph", "{max_glyph}" } }
+                    }
                 }
                 span { class: "panel-title", "{title}" }
                 if is_max { span { class: "max-hint", "maximized" } }
