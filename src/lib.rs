@@ -229,16 +229,65 @@ pub fn use_workspace<K: PanelKind>(
         use wasm_bindgen::JsCast;
         let mut viewport = viewport;
         let mut is_mobile = is_mobile;
-        let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
-            // Stored panel geometry is never touched on resize — render()
-            // re-projects it through effective_rect from this signal.
-            viewport.set(viewport_size());
+        let mut panels = panels;
+
+        // One re-projection step, shared by both the ResizeObserver and the
+        // window "resize" listener. Stored floating geometry is scaled by the
+        // viewport delta so panels grow/shrink *with* the window — the scale
+        // is a pure ratio, so growing the window back restores prior sizes
+        // (render-time effective_rect still guards against off-screen). The
+        // last-applied size lives in the `viewport` signal, so whichever of
+        // the two sources fires second sees ow == nw and no-ops — no double
+        // scaling.
+        let mut recompute = move || {
+            let (nw, nh) = viewport_size();
+            let (ow, oh) = *viewport.peek();
+            if ow > 1.0 && oh > 1.0 {
+                let (fx, fy) = (nw / ow, nh / oh);
+                if fx.is_finite()
+                    && fy.is_finite()
+                    && (fx - 1.0).abs() + (fy - 1.0).abs() > 1e-3
+                {
+                    let mut ps = panels.write();
+                    for p in ps.iter_mut() {
+                        p.x *= fx;
+                        p.y *= fy;
+                        p.w *= fx;
+                        p.h *= fy;
+                    }
+                }
+            }
+            viewport.set((nw, nh));
             is_mobile.set(viewport_is_mobile());
-        }) as Box<dyn FnMut(web_sys::Event)>);
-        if let Some(w) = web_sys::window() {
-            let _ = w.add_event_listener_with_callback("resize", cb.as_ref().unchecked_ref());
+        };
+
+        // A ResizeObserver on <html> is the reliable signal inside webviews
+        // (Tauri/WKWebView), where the window "resize" event is flaky on
+        // native-window resize. The plain window listener stays as a
+        // belt-and-suspenders for ordinary browser tabs.
+        let obs_cb = Closure::wrap(Box::new({
+            let mut recompute = recompute.clone();
+            move || recompute()
+        }) as Box<dyn FnMut()>);
+        if let Some(el) = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.document_element())
+        {
+            if let Ok(observer) = web_sys::ResizeObserver::new(obs_cb.as_ref().unchecked_ref()) {
+                observer.observe(&el);
+                // Keep the observer alive for the lifetime of the app.
+                std::mem::forget(observer);
+            }
         }
-        cb.forget();
+        obs_cb.forget();
+
+        let win_cb = Closure::wrap(
+            Box::new(move |_e: web_sys::Event| recompute()) as Box<dyn FnMut(web_sys::Event)>
+        );
+        if let Some(w) = web_sys::window() {
+            let _ = w.add_event_listener_with_callback("resize", win_cb.as_ref().unchecked_ref());
+        }
+        win_cb.forget();
     });
 
     use_effect(move || {
