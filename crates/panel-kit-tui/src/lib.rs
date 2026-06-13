@@ -44,18 +44,56 @@ use std::path::PathBuf;
 
 use panel_kit_core::{
     apply_drag, begin_drag, begin_tile_resize, effective_rect, front_z, merge_defaults,
-    reorder_tile, restore, visible_panels, Clamp, Drag, DragKind, Mode, PanelKind, PanelWin,
-    SavedLayout, TileMetrics, WinState, TILE_W_MAX,
+    reorder_tile, restore, visible_panels, workspace_chrome, ChromeMetrics, Clamp, Drag, DragKind,
+    Mode, PanelKind, PanelWin, PointerButton, PointerEvent, PointerEventKind, Region, SavedLayout,
+    TileMetrics, WinState, TILE_W_MAX,
 };
-use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
+use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 /// Height of one tiling row unit in cells (`tile_h` counts these).
-const ROW_CELLS: f64 = 6.0;
+const ROW_CELLS: f64 = 4.0;
+
+/// WebGL-safe chrome glyphs. Ratzilla's WebGL font atlas does not reliably
+/// include box-drawing symbols, so the shared TUI chrome sticks to ASCII.
+const ASCII_BORDER: border::Set<'static> = border::Set {
+    top_left: "+",
+    top_right: "+",
+    bottom_left: "+",
+    bottom_right: "+",
+    vertical_left: "|",
+    vertical_right: "|",
+    horizontal_top: "-",
+    horizontal_bottom: "-",
+};
+
+fn rect_from_region(r: Region) -> Rect {
+    Rect::new(r.x as u16, r.y as u16, r.w as u16, r.h as u16)
+}
+
+fn write_header_text(f: &mut Frame, x: u16, y: u16, max_width: u16, text: &str, style: Style) {
+    let area = f.area();
+    if y >= area.bottom() || x >= area.right() {
+        return;
+    }
+    let max_width = max_width.min(area.right().saturating_sub(x));
+    for (offset, ch) in text.chars().take(max_width as usize).enumerate() {
+        f.buffer_mut()[(x + offset as u16, y)]
+            .set_char(ch)
+            .set_style(style);
+    }
+}
+
+/// Backwards-compatible alias for the shared pointer button type.
+pub type TuiMouseButton = PointerButton;
+/// Backwards-compatible alias for the shared pointer event kind.
+pub type TuiMouseEventKind = PointerEventKind;
+/// Backwards-compatible alias for the shared pointer event type.
+pub type TuiMouseEvent = PointerEvent;
 
 /// Per-panel hit zones recorded at draw time, in screen cells.
 struct Zone {
@@ -108,7 +146,11 @@ impl<K: PanelKind> TuiWorkspace<K> {
                     let mut ps = saved.panels;
                     merge_defaults(&mut ps, &defaults());
                     panels = Some(ps);
-                    mode = if saved.tiling { Mode::Tiling } else { Mode::Floating };
+                    mode = if saved.tiling {
+                        Mode::Tiling
+                    } else {
+                        Mode::Floating
+                    };
                 }
             }
         }
@@ -157,12 +199,40 @@ impl<K: PanelKind> TuiWorkspace<K> {
     ) {
         self.zones.clear();
         self.dock_chips.clear();
-        if area.height < 3 {
+        if area.height < 5 || area.width < 8 {
+            let t = self.theme;
+            f.render_widget(
+                Paragraph::new("resize")
+                    .style(Style::default().fg(t.dim))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_set(ASCII_BORDER)
+                            .border_style(Style::default().fg(t.line2)),
+                    ),
+                area,
+            );
             return;
         }
-        let dock = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
-        let ws = Rect::new(area.x, area.y, area.width, area.height - 1);
+        let t = self.theme;
+        let chrome = workspace_chrome(area.width as f64, area.height as f64, &ChromeMetrics::CELLS);
+        let root = area;
+        let dock = rect_from_region(chrome.dock);
+        let ws = rect_from_region(chrome.workspace);
         self.ws_area = ws;
+
+        let root_block = Block::default()
+            .borders(Borders::ALL)
+            .border_set(ASCII_BORDER)
+            .border_style(Style::default().fg(t.line2));
+        f.render_widget(root_block, root);
+
+        let dock_block = Block::default()
+            .borders(Borders::ALL)
+            .border_set(ASCII_BORDER)
+            .border_style(Style::default().fg(t.line2));
+        let dock_inner = dock_block.inner(dock);
+        f.render_widget(dock_block, dock);
 
         let (visible, maximized) = visible_panels(&self.panels);
 
@@ -237,9 +307,8 @@ impl<K: PanelKind> TuiWorkspace<K> {
             };
             // Traffic lights sit top-LEFT like the web shell, in its
             // printer-CMY colors: blue mode, yellow minimize, pink
-            // maximize. They stay circles: the hovered light swells to ◉
-            // and its action is named in a dim hint at the right edge of
-            // the header (no glyph swap — the circles are the identity).
+            // maximize. ASCII keeps the browser WebGL backend from dropping
+            // non-atlas glyphs while preserving the same hit zones.
             let ly = rect.y;
             let lx = rect.x + 2;
             let light_cells = [
@@ -247,44 +316,32 @@ impl<K: PanelKind> TuiWorkspace<K> {
                 Rect::new(lx + 2, ly, 1, 1),
                 Rect::new(lx + 4, ly, 1, 1),
             ];
-            let hovered_light = self.hover.and_then(|h| {
-                light_cells.iter().position(|c| c.contains(h))
-            });
-            let light = |slot: usize, color| {
-                Span::styled(
-                    if hovered_light == Some(slot) { "◉" } else { "●" },
-                    Style::default().fg(color),
-                )
-            };
-            let title_line = Line::from(vec![
-                Span::raw(" "),
-                light(0, t.blue),
-                Span::raw(" "),
-                light(1, t.yellow),
-                Span::raw(" "),
-                light(2, t.pink),
-                Span::raw("  "),
-                Span::styled(
-                    p.kind.title().to_string(),
-                    Style::default().fg(t.fg).add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" "),
-            ]);
+            let hovered_light = self
+                .hover
+                .and_then(|h| light_cells.iter().position(|c| c.contains(h)));
             let mut block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(border_style)
-                .title(title_line);
-            if let Some(slot) = hovered_light {
-                let hint = match slot {
-                    0 => {
-                        if self.mode == Mode::Tiling { "float" } else { "tile" }
+                .border_set(ASCII_BORDER)
+                .border_style(border_style);
+            let hovered_hint = hovered_light.map(|slot| match slot {
+                0 => {
+                    if self.mode == Mode::Tiling {
+                        "float"
+                    } else {
+                        "tile"
                     }
-                    1 => "minimize",
-                    _ => {
-                        if p.state == WinState::Maximized { "restore" } else { "maximize" }
+                }
+                1 => "minimize",
+                _ => {
+                    if p.state == WinState::Maximized {
+                        "restore"
+                    } else {
+                        "maximize"
                     }
-                };
+                }
+            });
+            if hovered_light.is_some() {
+                let hint = hovered_hint.expect("hovered_light is Some");
                 block = block.title(
                     Line::from(Span::styled(
                         format!(" {hint} "),
@@ -295,13 +352,53 @@ impl<K: PanelKind> TuiWorkspace<K> {
             }
             let inner = block.inner(rect);
             f.render_widget(block, rect);
+            for (slot, cell) in light_cells.iter().enumerate() {
+                let color = match slot {
+                    0 => t.blue,
+                    1 => t.yellow,
+                    _ => t.pink,
+                };
+                let ch = if hovered_light == Some(slot) {
+                    'O'
+                } else {
+                    'o'
+                };
+                if cell.x < rect.right() && cell.y < rect.bottom() {
+                    f.buffer_mut()[(cell.x, cell.y)]
+                        .set_char(ch)
+                        .set_style(Style::default().fg(color));
+                }
+            }
+            let title_x = rect.x.saturating_add(9);
+            let title_w = rect.right().saturating_sub(title_x.saturating_add(1));
+            write_header_text(
+                f,
+                title_x,
+                rect.y,
+                title_w,
+                p.kind.title(),
+                Style::default().fg(t.fg),
+            );
+            if let Some(hint) = hovered_hint {
+                let hint = format!(" {hint} ");
+                let hint_w = hint.chars().count() as u16;
+                let hint_x = rect.right().saturating_sub(hint_w.saturating_add(1));
+                if hint_x > title_x {
+                    write_header_text(f, hint_x, rect.y, hint_w, &hint, Style::default().fg(t.dim));
+                }
+            }
             body(f, inner, p.kind, maximized == Some(i));
-            // Resize grip: the rounded bottom-right corner itself — no
-            // extra glyph; it tints accent under the pointer.
-            let grip = Rect::new(rect.right().saturating_sub(2), rect.bottom().saturating_sub(1), 2, 1);
+            // Resize grip: the bottom-right corner itself, tinted accent
+            // under the pointer.
+            let grip = Rect::new(
+                rect.right().saturating_sub(2),
+                rect.bottom().saturating_sub(1),
+                2,
+                1,
+            );
             if self.hover.map(|h| grip.contains(h)).unwrap_or(false) {
                 f.render_widget(
-                    Paragraph::new("╯").style(Style::default().fg(t.accent)),
+                    Paragraph::new("+").style(Style::default().fg(t.accent)),
                     Rect::new(rect.right().saturating_sub(1), grip.y, 1, 1),
                 );
             }
@@ -318,7 +415,7 @@ impl<K: PanelKind> TuiWorkspace<K> {
         // Dock line.
         let t = self.theme;
         let mut spans = vec![Span::styled("dock:", Style::default().fg(t.dim))];
-        let mut x = dock.x + 5;
+        let mut x = dock_inner.x + 5;
         let minimized: Vec<usize> = self
             .panels
             .iter()
@@ -335,21 +432,21 @@ impl<K: PanelKind> TuiWorkspace<K> {
         for i in minimized {
             let label = format!(" [{}]", self.panels[i].kind.title());
             let w = label.chars().count() as u16;
-            self.dock_chips.push((Rect::new(x, dock.y, w, 1), i));
+            self.dock_chips.push((Rect::new(x, dock_inner.y, w, 1), i));
             spans.push(Span::styled(label, Style::default().fg(t.accent)));
             x += w;
         }
-        f.render_widget(Paragraph::new(Line::from(spans)), dock);
+        f.render_widget(Paragraph::new(Line::from(spans)), dock_inner);
     }
 
-    /// Feed a crossterm mouse event: clicks hit traffic lights, dock chips,
+    /// Feed a mouse event in terminal-cell coordinates: clicks hit traffic lights, dock chips,
     /// headers (move/reorder), the grip (resize), and panel bodies (raise);
     /// drags apply through the shared core math; release settles + saves.
-    pub fn handle_mouse(&mut self, m: MouseEvent) {
-        let at = Position::new(m.column, m.row);
-        let (mx, my) = (m.column as f64, m.row as f64);
+    pub fn handle_mouse(&mut self, m: TuiMouseEvent) {
+        let at = Position::new(m.x as u16, m.y as u16);
+        let (mx, my) = (m.x, m.y);
         match m.kind {
-            MouseEventKind::Down(MouseButton::Left) => {
+            TuiMouseEventKind::Down(TuiMouseButton::Primary) => {
                 for (rect, i) in &self.dock_chips {
                     if rect.contains(at) {
                         let kind = self.panels[*i].kind;
@@ -363,7 +460,11 @@ impl<K: PanelKind> TuiWorkspace<K> {
                 let Some(z) = zone else { return };
                 let i = z.idx;
                 if z.lights[0].contains(at) {
-                    self.mode = if self.mode == Mode::Tiling { Mode::Floating } else { Mode::Tiling };
+                    self.mode = if self.mode == Mode::Tiling {
+                        Mode::Floating
+                    } else {
+                        Mode::Tiling
+                    };
                     self.save();
                 } else if z.lights[1].contains(at) {
                     self.panels[i].state = WinState::Minimized;
@@ -381,15 +482,32 @@ impl<K: PanelKind> TuiWorkspace<K> {
                         begin_tile_resize(&self.panels, i, mx, my)
                     } else {
                         let (vw, vh) = (self.ws_area.width as f64, self.ws_area.height as f64);
-                        begin_drag(&mut self.panels, i, DragKind::Resize, mx, my, vw, vh, &Clamp::CELLS)
+                        begin_drag(
+                            &mut self.panels,
+                            i,
+                            DragKind::Resize,
+                            mx,
+                            my,
+                            vw,
+                            vh,
+                            &Clamp::CELLS,
+                        )
                     };
                 } else if z.header.contains(at) {
                     if self.mode == Mode::Tiling {
                         self.tile_drag = Some(self.panels[i].kind);
                     } else {
                         let (vw, vh) = (self.ws_area.width as f64, self.ws_area.height as f64);
-                        self.drag =
-                            begin_drag(&mut self.panels, i, DragKind::Move, mx, my, vw, vh, &Clamp::CELLS);
+                        self.drag = begin_drag(
+                            &mut self.panels,
+                            i,
+                            DragKind::Move,
+                            mx,
+                            my,
+                            vw,
+                            vh,
+                            &Clamp::CELLS,
+                        );
                         let z = front_z(&self.panels);
                         self.panels[i].z = z;
                     }
@@ -398,11 +516,20 @@ impl<K: PanelKind> TuiWorkspace<K> {
                     self.panels[i].z = z;
                 }
             }
-            MouseEventKind::Drag(MouseButton::Left) => {
+            TuiMouseEventKind::Drag(TuiMouseButton::Primary) => {
                 if let Some(d) = self.drag {
                     let tiling = self.mode == Mode::Tiling;
                     let vw = self.ws_area.width as f64;
-                    apply_drag(&mut self.panels, &d, mx, my, tiling, vw, &Clamp::CELLS, &TileMetrics::CELLS);
+                    apply_drag(
+                        &mut self.panels,
+                        &d,
+                        mx,
+                        my,
+                        tiling,
+                        vw,
+                        &Clamp::CELLS,
+                        &TileMetrics::CELLS,
+                    );
                 } else if let Some(dragged) = self.tile_drag {
                     if let Some(z) = self.zones.iter().rev().find(|z| z.panel.contains(at)) {
                         let target = self.panels[z.idx].kind;
@@ -412,17 +539,16 @@ impl<K: PanelKind> TuiWorkspace<K> {
                     }
                 }
             }
-            MouseEventKind::Up(MouseButton::Left) => {
+            TuiMouseEventKind::Up(TuiMouseButton::Primary) => {
                 if self.dragging() {
                     self.drag = None;
                     self.tile_drag = None;
                     self.save();
                 }
             }
-            MouseEventKind::Moved => {
+            TuiMouseEventKind::Moved => {
                 self.hover = Some(at);
             }
-            _ => {}
         }
     }
 

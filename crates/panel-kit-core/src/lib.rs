@@ -72,6 +72,117 @@ pub enum DragKind {
     Resize,
 }
 
+/// Abstract pointer button understood by renderer shells.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerButton {
+    /// The primary/select button: left mouse button, first touch contact, or
+    /// equivalent activation control.
+    Primary,
+}
+
+/// Abstract pointer event kind understood by renderer shells.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerEventKind {
+    /// A pointer button was pressed.
+    Down(PointerButton),
+    /// A pointer button was released.
+    Up(PointerButton),
+    /// A pressed pointer moved.
+    Drag(PointerButton),
+    /// Pointer moved without an active drag.
+    Moved,
+}
+
+/// Renderer-neutral pointer event.
+///
+/// Units are deliberately abstract, matching [`PanelWin`]: CSS pixels for
+/// the web shell, terminal cells for TUI shells, or any other coordinate
+/// space the renderer consistently uses.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PointerEvent {
+    /// Event kind.
+    pub kind: PointerEventKind,
+    /// X coordinate in renderer units.
+    pub x: f64,
+    /// Y coordinate in renderer units.
+    pub y: f64,
+}
+
+/// Generic rectangle in renderer units.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Region {
+    /// Left edge.
+    pub x: f64,
+    /// Top edge.
+    pub y: f64,
+    /// Width.
+    pub w: f64,
+    /// Height.
+    pub h: f64,
+}
+
+impl Region {
+    /// Construct a region.
+    pub const fn new(x: f64, y: f64, w: f64, h: f64) -> Self {
+        Self { x, y, w, h }
+    }
+}
+
+/// Shared workspace chrome regions.
+///
+/// This is the renderer-neutral shape of the panel surface: a top-level
+/// container, an inner panel workspace, and a dock region. Renderers decide
+/// how to draw these regions, but they should not invent different layout
+/// semantics for the same workspace chrome.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorkspaceChrome {
+    /// Full top-level container.
+    pub root: Region,
+    /// Area where panels are laid out.
+    pub workspace: Region,
+    /// Dock area for minimized panels.
+    pub dock: Region,
+}
+
+/// Unit-specific chrome metrics for [`workspace_chrome`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ChromeMetrics {
+    /// Inset between the root border and the content.
+    pub inset: f64,
+    /// Height of the dock region.
+    pub dock_h: f64,
+}
+
+impl ChromeMetrics {
+    /// CSS-pixel defaults for the Dioxus backend.
+    pub const WEB: ChromeMetrics = ChromeMetrics {
+        inset: 0.0,
+        dock_h: 30.0,
+    };
+
+    /// Character-cell defaults for TUI backends.
+    pub const CELLS: ChromeMetrics = ChromeMetrics {
+        inset: 1.0,
+        dock_h: 3.0,
+    };
+}
+
+/// Split a top-level renderer area into shared workspace chrome regions.
+pub fn workspace_chrome(width: f64, height: f64, metrics: &ChromeMetrics) -> WorkspaceChrome {
+    let root = Region::new(0.0, 0.0, width.max(0.0), height.max(0.0));
+    let inset = metrics.inset.max(0.0);
+    let inner_w = (root.w - inset * 2.0).max(0.0);
+    let inner_h = (root.h - inset * 2.0).max(0.0);
+    let dock_h = metrics.dock_h.clamp(0.0, inner_h);
+    let workspace = Region::new(inset, inset, inner_w, (inner_h - dock_h).max(0.0));
+    let dock = Region::new(inset, inset + workspace.h, inner_w, dock_h);
+    WorkspaceChrome {
+        root,
+        workspace,
+        dock,
+    }
+}
+
 /// An in-flight drag: which panel, what kind, and the pointer + panel
 /// geometry captured at pointer-down (deltas are applied against these).
 ///
@@ -322,12 +433,7 @@ pub fn begin_drag<K>(
 /// so tiles always land on fit sizes. `start_w`/`start_h` on the captured
 /// [`Drag`] hold the *spans*, not lengths; [`apply_drag`] branches on
 /// `tiling`.
-pub fn begin_tile_resize<K>(
-    panels: &[PanelWin<K>],
-    idx: usize,
-    mx: f64,
-    my: f64,
-) -> Option<Drag> {
+pub fn begin_tile_resize<K>(panels: &[PanelWin<K>], idx: usize, mx: f64, my: f64) -> Option<Drag> {
     let p = panels.get(idx)?;
     Some(Drag {
         idx,
@@ -394,7 +500,12 @@ pub fn reorder_tile<K: PartialEq + Copy>(panels: &mut Vec<PanelWin<K>>, dragged:
     }
     let p = panels.remove(from);
     let after_removal = if from < to { to - 1 } else { to };
-    let insert_at = (if from < to { after_removal + 1 } else { after_removal }).min(panels.len());
+    let insert_at = (if from < to {
+        after_removal + 1
+    } else {
+        after_removal
+    })
+    .min(panels.len());
     panels.insert(insert_at, p);
 }
 
@@ -441,7 +552,10 @@ pub struct SavedLayout<K> {
 /// Reconcile a loaded layout against the current panel set: panels added to
 /// the app since the layout was saved are appended with their default
 /// placement, so new features still show up for existing users.
-pub fn merge_defaults<K: PartialEq + Copy>(panels: &mut Vec<PanelWin<K>>, defaults: &[PanelWin<K>]) {
+pub fn merge_defaults<K: PartialEq + Copy>(
+    panels: &mut Vec<PanelWin<K>>,
+    defaults: &[PanelWin<K>],
+) {
     for d in defaults {
         if !panels.iter().any(|p| p.kind == d.kind) {
             panels.push(*d);

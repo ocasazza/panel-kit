@@ -49,7 +49,9 @@ impl Badge {
             BadgeKind::Folder => t.dim,
             BadgeKind::Entity { .. } | BadgeKind::Date => t.yellow,
             BadgeKind::Wikilink { resolved: true, .. } => t.badge_info,
-            BadgeKind::Wikilink { resolved: false, .. } => t.red,
+            BadgeKind::Wikilink {
+                resolved: false, ..
+            } => t.red,
             BadgeKind::Url { .. } | BadgeKind::Status => t.green,
             BadgeKind::Generic => t.line2,
         }

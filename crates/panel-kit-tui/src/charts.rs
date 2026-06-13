@@ -4,7 +4,7 @@
 //! rendering, legend.
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::symbols;
 use ratatui::text::Span;
 use ratatui::widgets::{Axis, Chart, Dataset, Gauge, GraphType, LegendPosition};
@@ -132,10 +132,7 @@ pub fn gauges(f: &mut Frame, area: Rect, t: &Theme, items: &[GaugeItem]) {
         f.render_widget(
             Gauge::default()
                 .ratio(ratio)
-                .label(Span::styled(
-                    item.text.clone(),
-                    Style::default().fg(t.fg).add_modifier(Modifier::BOLD),
-                ))
+                .label(Span::styled(item.text.clone(), Style::default().fg(t.fg)))
                 .gauge_style(Style::default().fg(fill).bg(t.line))
                 .use_unicode(true),
             bar,

@@ -1,221 +1,254 @@
-//! Terminal twin of the web examples — all of them in one workspace:
-//! the panel surface (floating/tiling, traffic lights, drag/resize/
-//! reorder, dock, persistence), every `BadgeKind` with a live action log,
-//! the `Spinner`, and the theming override path (dark/paper presets).
+//! Native terminal backend for the shared panel-kit TUI canary.
+//!
+//! The browser/WASM example and this terminal example intentionally render
+//! the same six-panel workspace. Only the backend loop differs.
 //!
 //! Run: `cargo run -p panel-kit-tui --example workspace`
-//! Mouse: drag headers to move (floating) / reorder (tiling), drag the ◢
-//! grip to resize (span-snapped in tiling), hover the lights for their
-//! glyphs — blue ⊞/❐ flips mode, yellow − minimizes, pink ⤢ maximizes.
-//! Click badges to fire their actions; click the Theme panel to swap
-//! presets; dock chips restore. `q` quits.
+//! Mouse: drag headers to move/reorder, drag the corner grip to resize,
+//! click lights, click badges, click Theme to swap presets, dock chips
+//! restore minimized panels. Keys: `t`, `1`-`6`, arrows, `q`.
+
+mod workspace_canary;
 
 use std::time::Duration;
 
-use panel_kit_core::badge::{tag_hue, BadgeClickKind, BadgeKind};
-use panel_kit_core::{LayoutBuilder, PanelKind, PanelWin};
-use panel_kit_tui::badge::{hue_color, Badge};
-use panel_kit_tui::spinner::spinner;
-use panel_kit_tui::{Theme, TuiWorkspace};
-use ratatui::crossterm::event::{
+use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseButton, MouseEventKind,
 };
-use ratatui::crossterm::execute;
+use crossterm::execute;
+use panel_kit_core::badge::BadgeClickKind;
+use panel_kit_core::Mode;
+use panel_kit_tui::badge::Badge;
+use panel_kit_tui::charts::{gauges, time_series, Series};
+use panel_kit_tui::scroll;
+use panel_kit_tui::spinner::spinner;
+use panel_kit_tui::{Theme, TuiMouseButton, TuiMouseEvent, TuiMouseEventKind, TuiWorkspace};
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use serde::{Deserialize, Serialize};
+use workspace_canary::{capacity_items, defaults, demo_badges, Panel, EVAL_SERIES, FRAME_SERIES};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-enum Panel {
-    Workspace,
-    Badges,
-    Spinner,
-    Theme,
+fn to_tui_mouse(m: crossterm::event::MouseEvent) -> Option<TuiMouseEvent> {
+    let kind = match m.kind {
+        MouseEventKind::Down(MouseButton::Left) => TuiMouseEventKind::Down(TuiMouseButton::Primary),
+        MouseEventKind::Up(MouseButton::Left) => TuiMouseEventKind::Up(TuiMouseButton::Primary),
+        MouseEventKind::Drag(MouseButton::Left) => TuiMouseEventKind::Drag(TuiMouseButton::Primary),
+        MouseEventKind::Moved => TuiMouseEventKind::Moved,
+        _ => return None,
+    };
+    Some(TuiMouseEvent {
+        kind,
+        x: m.column as f64,
+        y: m.row as f64,
+    })
 }
 
-impl PanelKind for Panel {
-    fn title(self) -> &'static str {
-        match self {
-            Panel::Workspace => "Workspace",
-            Panel::Badges => "Badges",
-            Panel::Spinner => "Spinner",
-            Panel::Theme => "Theme",
-        }
-    }
-}
-
-fn defaults() -> Vec<PanelWin<Panel>> {
-    let mut b = LayoutBuilder::new();
-    vec![
-        b.at(Panel::Workspace, 1.0, 0.0, 46.0, 11.0),
-        b.at(Panel::Badges, 49.0, 0.0, 56.0, 16.0).with_tile(2, 3),
-        b.at(Panel::Spinner, 1.0, 12.0, 34.0, 7.0),
-        b.at(Panel::Theme, 37.0, 12.0, 40.0, 8.0),
-    ]
-}
-
-fn demo_badges() -> Vec<Badge> {
-    let mut tag = Badge::new(BadgeKind::Tag, "tag", "project/alpha");
-    tag.override_color = Some(hue_color(tag_hue("project/alpha")));
-    let mut active = Badge::new(BadgeKind::Status, "status", "done");
-    active.active = true;
-    vec![
-        tag,
-        Badge::new(BadgeKind::Doctype, "doctype", "meeting"),
-        Badge::new(BadgeKind::Folder, "folder", "notes/2026"),
-        Badge::new(BadgeKind::Author, "author", "olive"),
-        Badge::new(
-            BadgeKind::Entity { ty: Some("org".into()) },
-            "entity",
-            "CERN",
-        ),
-        Badge::new(
-            BadgeKind::Wikilink { resolved: true, target: "pilotmesh".into() },
-            "link",
-            "pilotmesh",
-        ),
-        Badge::new(
-            BadgeKind::Wikilink { resolved: false, target: "missing-note".into() },
-            "link",
-            "missing-note",
-        ),
-        Badge::new(
-            BadgeKind::Url { href: "https://ratatui.rs".into(), host: "ratatui.rs".into() },
-            "url",
-            "https://ratatui.rs",
-        ),
-        Badge::new(BadgeKind::Date, "date", "2026-06-10"),
-        active,
-        Badge::new(BadgeKind::Generic, "misc", "anything"),
-    ]
-}
-
-#[derive(Default)]
 struct Demo {
     badges: Vec<Badge>,
     badge_zones: Vec<(Rect, usize)>,
     theme_zone: Rect,
     actions: Vec<String>,
+    notes_scroll: usize,
     paper: bool,
     tick: u64,
+}
+
+impl Demo {
+    fn new() -> Self {
+        Self {
+            badges: demo_badges(),
+            badge_zones: Vec::new(),
+            theme_zone: Rect::default(),
+            actions: Vec::new(),
+            notes_scroll: 0,
+            paper: false,
+            tick: 0,
+        }
+    }
+
+    fn handle_key(&mut self, ws: &mut TuiWorkspace<Panel>, key: KeyCode) -> bool {
+        match key {
+            KeyCode::Char('q') => return true,
+            KeyCode::Char('t') => self.toggle_theme(ws),
+            KeyCode::Char('1') => ws.restore_panel(Panel::Workspace),
+            KeyCode::Char('2') => ws.restore_panel(Panel::Badges),
+            KeyCode::Char('3') => ws.restore_panel(Panel::Activity),
+            KeyCode::Char('4') => ws.restore_panel(Panel::Capacity),
+            KeyCode::Char('5') => ws.restore_panel(Panel::Notes),
+            KeyCode::Char('6') => ws.restore_panel(Panel::Theme),
+            KeyCode::Up => {
+                self.notes_scroll = self.notes_scroll.saturating_sub(1);
+            }
+            KeyCode::Down => {
+                self.notes_scroll = self.notes_scroll.saturating_add(1);
+            }
+            _ => {}
+        }
+        false
+    }
+
+    fn handle_mouse(&mut self, ws: &mut TuiWorkspace<Panel>, m: crossterm::event::MouseEvent) {
+        let at = Position::new(m.column, m.row);
+        if m.kind == MouseEventKind::Down(MouseButton::Left) {
+            if let Some((_, i)) = self.badge_zones.iter().find(|(r, _)| r.contains(at)) {
+                let action = self.badges[*i].click(BadgeClickKind::Toggle);
+                self.actions.push(format!("{action:?}"));
+                return;
+            }
+            if self.theme_zone.contains(at) {
+                self.toggle_theme(ws);
+                return;
+            }
+        }
+        if let Some(m) = to_tui_mouse(m) {
+            ws.handle_mouse(m);
+        }
+    }
+
+    fn toggle_theme(&mut self, ws: &mut TuiWorkspace<Panel>) {
+        self.paper = !self.paper;
+        ws.theme = if self.paper {
+            Theme::PAPER
+        } else {
+            Theme::DARK
+        };
+    }
+
+    fn draw(&mut self, ws: &mut TuiWorkspace<Panel>, frame: &mut ratatui::Frame) {
+        self.tick += 1;
+        self.badge_zones.clear();
+        let theme = ws.theme;
+        let actions = self.actions.clone();
+        let tick = self.tick;
+        let paper = self.paper;
+        ws.render(frame, frame.area(), &mut |f, rect, kind, _max| match kind {
+            Panel::Workspace => {
+                f.render_widget(
+                    Paragraph::new(vec![
+                        Line::from(vec![Span::styled(
+                            "panel-kit-tui backend canary",
+                            Style::default().fg(theme.fg),
+                        )]),
+                        Line::from(""),
+                        Line::from("The same ratatui workspace renders in terminal and browser."),
+                        Line::from("The state machine is shared with the Dioxus renderer."),
+                        Line::from(""),
+                        Line::from("Mouse: drag headers, drag the corner grip, click lights."),
+                        Line::from("Keys: t swaps theme, 1-6 restore panels, arrows scroll notes."),
+                    ])
+                    .style(Style::default().fg(theme.dim)),
+                    rect,
+                );
+            }
+            Panel::Badges => {
+                for (row, (i, b)) in self.badges.iter().enumerate().enumerate() {
+                    if row as u16 >= rect.height.saturating_sub(4) {
+                        break;
+                    }
+                    let r = Rect::new(rect.x, rect.y + row as u16, b.width().min(rect.width), 1);
+                    self.badge_zones.push((r, i));
+                    f.render_widget(Paragraph::new(Line::from(b.spans(&theme))), r);
+                }
+                let log_y = rect.y + rect.height.saturating_sub(3);
+                let recent: Vec<Line> = actions
+                    .iter()
+                    .rev()
+                    .take(3)
+                    .map(|a| Line::from(Span::styled(a.clone(), Style::default().fg(theme.accent))))
+                    .collect();
+                if log_y > rect.y {
+                    f.render_widget(
+                        Paragraph::new(recent),
+                        Rect::new(rect.x, log_y, rect.width, 3.min(rect.height)),
+                    );
+                }
+            }
+            Panel::Activity => {
+                let series = [
+                    Series {
+                        name: "eval/ms".into(),
+                        points: EVAL_SERIES,
+                    },
+                    Series {
+                        name: "frame/ms".into(),
+                        points: FRAME_SERIES,
+                    },
+                ];
+                time_series(f, rect, &theme, "ms", &series);
+            }
+            Panel::Capacity => {
+                let items = capacity_items();
+                gauges(f, rect, &theme, &items);
+            }
+            Panel::Notes => {
+                let mut lines = vec![
+                    Line::from(Span::styled(
+                        "docs-as-code canary",
+                        Style::default().fg(theme.fg),
+                    )),
+                    Line::from(""),
+                ];
+                for text in [
+                    "This example renders the ratatui workspace through a backend.",
+                    "It exercises workspace panels, traffic lights, drag math, restore hooks, badges, action routing, charts, gauges, spinner frames, theming, and scrollbars.",
+                    "When this native terminal example builds, the TUI path is still terminal-capable.",
+                    "When the browser example builds under Trunk, the same public TUI API is still web-capable.",
+                    "Keeping both examples broad catches drift between core, Dioxus, and TUI renderers.",
+                    "The example is not a screenshot fixture: it is executable documentation.",
+                    "Use t for theme, 1-6 to restore minimized panels, and arrow keys to scroll this panel.",
+                ] {
+                    lines.push(Line::from(text));
+                }
+                lines.push(Line::from(""));
+                lines.push(spinner(tick, "TUI canary running", &theme));
+                self.notes_scroll = scroll::lines(f, rect, &theme, lines, self.notes_scroll);
+            }
+            Panel::Theme => {
+                self.theme_zone = rect;
+                let sw = |c, name: &'static str| {
+                    Line::from(vec![
+                        Span::styled("## ", Style::default().fg(c)),
+                        Span::styled(name, Style::default().fg(theme.dim)),
+                    ])
+                };
+                f.render_widget(
+                    Paragraph::new(vec![
+                        Line::from(Span::styled(
+                            if paper {
+                                "preset: paper (click or press t)"
+                            } else {
+                                "preset: dark (click or press t)"
+                            },
+                            Style::default().fg(theme.fg),
+                        )),
+                        sw(theme.accent, "accent"),
+                        sw(theme.blue, "blue · mode light"),
+                        sw(theme.yellow, "yellow · minimize"),
+                        sw(theme.pink, "pink · maximize"),
+                        spinner(tick / 2, "spinner", &theme),
+                    ]),
+                    rect,
+                );
+            }
+        });
+    }
 }
 
 fn main() -> std::io::Result<()> {
     let store = std::env::temp_dir().join("panel-kit-tui-demo.json");
     let mut ws = TuiWorkspace::new(Some(store), defaults);
-    let mut demo = Demo {
-        badges: demo_badges(),
-        ..Default::default()
-    };
+    ws.mode = Mode::Tiling;
+    let mut demo = Demo::new();
 
     let mut terminal = ratatui::init();
     let _ = execute!(std::io::stdout(), EnableMouseCapture);
     loop {
-        demo.tick += 1;
-        let theme = ws.theme;
-        terminal.draw(|f| {
-            demo.badge_zones.clear();
-            ws.render(f, f.area(), &mut |f, rect, kind, _max| match kind {
-                Panel::Workspace => {
-                    f.render_widget(
-                        Paragraph::new(
-                            "the same panel state machine the web\n\
-                             shell renders to DOM, in terminal cells\n\n\
-                             drag headers · ◢ resizes · hover the\n\
-                             lights: ⊞ mode · − minimize · ⤢ maximize\n\
-                             q quits · layout persists to /tmp",
-                        )
-                        .style(Style::default().fg(theme.dim)),
-                        rect,
-                    );
-                }
-                Panel::Badges => {
-                    for (row, (i, b)) in demo.badges.iter().enumerate().enumerate() {
-                        if row as u16 >= rect.height.saturating_sub(3) {
-                            break;
-                        }
-                        let r = Rect::new(rect.x, rect.y + row as u16, b.width().min(rect.width), 1);
-                        demo.badge_zones.push((r, i));
-                        f.render_widget(Paragraph::new(Line::from(b.spans(&theme))), r);
-                    }
-                    // Live action log, like the web badge example's event list.
-                    let log_y = rect.y + rect.height.saturating_sub(2);
-                    let recent: Vec<Line> = demo
-                        .actions
-                        .iter()
-                        .rev()
-                        .take(2)
-                        .map(|a| {
-                            Line::from(Span::styled(
-                                a.clone(),
-                                Style::default().fg(theme.accent),
-                            ))
-                        })
-                        .collect();
-                    if log_y > rect.y {
-                        f.render_widget(
-                            Paragraph::new(recent),
-                            Rect::new(rect.x, log_y, rect.width, 2.min(rect.height)),
-                        );
-                    }
-                }
-                Panel::Spinner => {
-                    f.render_widget(
-                        Paragraph::new(vec![
-                            spinner(demo.tick, "", &theme),
-                            spinner(demo.tick, "indexing…", &theme),
-                            spinner(demo.tick / 3, "slow lane", &theme),
-                        ]),
-                        rect,
-                    );
-                }
-                Panel::Theme => {
-                    demo.theme_zone = rect;
-                    let sw = |c, name: &'static str| {
-                        Line::from(vec![
-                            Span::styled("██ ", Style::default().fg(c)),
-                            Span::styled(name, Style::default().fg(theme.dim)),
-                        ])
-                    };
-                    f.render_widget(
-                        Paragraph::new(vec![
-                            Line::from(Span::styled(
-                                if demo.paper { "preset: paper (click to swap)" } else { "preset: dark (click to swap)" },
-                                Style::default().fg(theme.fg),
-                            )),
-                            sw(theme.accent, "accent"),
-                            sw(theme.blue, "blue · mode light"),
-                            sw(theme.yellow, "yellow · minimize"),
-                            sw(theme.pink, "pink · maximize"),
-                        ]),
-                        rect,
-                    );
-                }
-            });
-        })?;
+        terminal.draw(|f| demo.draw(&mut ws, f))?;
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {
-                Event::Key(k) if k.code == KeyCode::Char('q') => break,
-                Event::Mouse(m) => {
-                    let at = Position::new(m.column, m.row);
-                    if m.kind == MouseEventKind::Down(MouseButton::Left) {
-                        if let Some((_, i)) =
-                            demo.badge_zones.iter().find(|(r, _)| r.contains(at))
-                        {
-                            let action = demo.badges[*i].click(BadgeClickKind::Toggle);
-                            demo.actions.push(format!("{action:?}"));
-                            continue;
-                        }
-                        if demo.theme_zone.contains(at) {
-                            demo.paper = !demo.paper;
-                            ws.theme = if demo.paper { Theme::PAPER } else { Theme::DARK };
-                            continue;
-                        }
-                    }
-                    ws.handle_mouse(m);
-                }
+                Event::Key(k) if demo.handle_key(&mut ws, k.code) => break,
+                Event::Mouse(m) => demo.handle_mouse(&mut ws, m),
                 _ => {}
             }
         }

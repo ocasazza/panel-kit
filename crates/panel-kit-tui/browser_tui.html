@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <link data-trunk rel="rust" />
+    <title>panel-kit TUI browser canary</title>
+    <style>
+      :root {
+        background: #121e2a;
+        color: #d1d5db;
+        font-family: "Fira Code", "JetBrains Mono", monospace;
+        font-size: 14px;
+        cursor: default;
+      }
+      * {
+        box-sizing: border-box;
+        user-select: none;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+      body {
+        display: block;
+        background: #000;
+        cursor: default;
+      }
+      #panel-kit-tui {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+        cursor: default;
+        user-select: none;
+      }
+      #panel-kit-tui canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        outline: none;
+        cursor: default;
+        user-select: none;
+      }
+      #panel-kit-tui_ratzilla_grid,
+      #grid {
+        width: 100%;
+        height: 100%;
+        cursor: default;
+        user-select: none;
+      }
+      pre {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        font-family: "Fira Code", "JetBrains Mono", monospace;
+        font-size: 1rem;
+        line-height: normal;
+        cursor: default;
+        user-select: none;
+      }
+      span {
+        line-height: normal;
+        cursor: default;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="panel-kit-tui" aria-label="panel-kit TUI browser canary"></main>
+  </body>
+</html>
