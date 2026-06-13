@@ -37,6 +37,12 @@ events, and persistence shape live there. The Dioxus and ratatui crates are
 backends over that same interface; platform events are translated at the
 backend boundary.
 
+Panel chrome is intentionally compact across renderers: panel controls and
+titles are inset into the top border row, following the ratatui `Block::title`
+treatment, instead of using a separate full-width header section. This keeps
+more panel height available for content while preserving the same drag,
+reorder, minimize, maximize, and mode-toggle controls.
+
 ## Usage
 
 The app supplies two things: a `PanelKind` impl (an enum of its panels) and a

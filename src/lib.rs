@@ -11,6 +11,9 @@
 //! and a body-render callback. Everything else — geometry, z-order, drag
 //! state, viewport clamping, the mobile breakpoint, persistence — lives in
 //! the [`Workspace`] handle created by [`use_workspace`].
+//! Panel chrome follows the ratatui renderer's compact treatment: controls
+//! and title are inset into the top border row instead of occupying a
+//! separate full-width header band, preserving vertical space for content.
 //!
 //! This is a wasm-only crate (Dioxus web): it builds for
 //! `wasm32-unknown-unknown` and expects a browser environment at runtime.
@@ -528,12 +531,12 @@ impl<K: PanelKind> Workspace<K> {
         }
     }
 
-    /// Panel chrome: traffic lights in printer-CMY (blue = floating⇄tiling,
+    /// Panel chrome: ratatui-style inline/inset title row on the panel's top
+    /// border, with traffic lights in printer-CMY (blue = floating⇄tiling,
     /// yellow = minimize, pink = maximize⇄restore; hover rings the existing
-    /// light rather than swapping in action glyphs) + the drag-to-move title
-    /// strip. In floating mode the drag moves the window freely; in tiling
-    /// mode it starts a reorder drag (hover another panel to snap into its
-    /// slot). Mobile gets neither (static stack).
+    /// light rather than swapping in action glyphs). In floating mode the row
+    /// drags the window freely; in tiling mode it starts a reorder drag (hover
+    /// another panel to snap into its slot). Mobile gets neither (static stack).
     fn header(&self, idx: usize, kind: K, draggable: bool, tiling: bool) -> Element {
         let ws = *self;
         let title = kind.title();
@@ -541,6 +544,7 @@ impl<K: PanelKind> Workspace<K> {
         rsx! {
             header {
                 class: "panel-head",
+                title: "{title}",
                 onmousedown: move |e: MouseEvent| {
                     if draggable {
                         ws.begin_drag(idx, DragKind::Move, &e);
@@ -578,7 +582,7 @@ impl<K: PanelKind> Workspace<K> {
                         },
                     }
                 }
-                span { class: "panel-title", "{title}" }
+                span { class: "panel-title", title: "{title}", "{title}" }
                 if is_max { span { class: "max-hint", "maximized" } }
             }
         }

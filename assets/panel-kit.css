@@ -57,18 +57,21 @@ button { font-family:var(--mono); }
 .ws.maxed { padding:0; }
 
 /* Panels */
-.panel { display:flex; flex-direction:column; background:var(--panel);
+.panel { display:flex; flex-direction:column; position:relative; background:var(--panel);
   border:1px solid var(--line2); border-radius:4px; overflow:hidden;
   box-shadow:0 6px 24px #0007; min-width:180px; min-height:110px; }
-.panel-head { display:flex; align-items:center; gap:.5rem; height:26px; flex:0 0 26px;
-  padding:0 .5rem; background:#111; border-bottom:1px solid var(--line); cursor:move; user-select:none; }
+.panel-head {
+  position:absolute; z-index:2; top:-1px; left:8px; right:8px;
+  display:flex; align-items:center; gap:.5rem; height:22px;
+  padding:0 .35rem; background:var(--panel); cursor:move; user-select:none;
+}
 .ws.tiling .panel-head { cursor:grab; }      /* drag to reorder into another slot */
 .ws.tiling .panel-head:active { cursor:grabbing; }
 .panel.tile-dragging { opacity:.55; outline:1px dashed var(--accent); outline-offset:-1px; }
-.panel-title { color:var(--dim); font-size:.72rem; text-transform:uppercase; letter-spacing:.06em;
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.panel-title { color:var(--fg); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+  flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .max-hint { margin-left:auto; color:var(--dim); font-size:.65rem; }
-.panel-body { flex:1; min-height:0; overflow:auto; padding:.55rem; }
+.panel-body { flex:1; min-height:0; overflow:auto; padding:1.75rem .55rem .55rem; }
 
 /* Traffic lights */
 .lights { display:flex; gap:6px; }
