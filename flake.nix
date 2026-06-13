@@ -35,6 +35,7 @@
             ./Cargo.toml
             ./Cargo.lock
             ./src
+            ./crates
             ./assets # panel-kit.css is include_str!'d into the lib
             ./examples # one browser demo per component, clippy'd by checks
           ];
@@ -58,6 +59,10 @@
             inherit cargoArtifacts;
             cargoClippyExtraArgs = "--all-targets -- -D warnings";
           });
+          browser-tui-example = craneLib.buildPackage (commonArgs // {
+            inherit cargoArtifacts;
+            cargoExtraArgs = "-p panel-kit-tui --example browser_tui";
+          });
           # Docs must build clean (missing_docs is warn-level in lib.rs;
           # -D warnings promotes it + broken intra-doc links to errors).
           doc = craneLib.cargoDoc (commonArgs // {
@@ -74,6 +79,7 @@
             # wasm-bindgen-cli on PATH matching Cargo.lock's wasm-bindgen
             # (0.2.121 — kept in lockstep with nixpkgs' wasm-bindgen-cli).
             pkgsDioxus.dioxus-cli
+            pkgs.trunk
             pkgs.wasm-bindgen-cli
             pkgs.lld
           ];

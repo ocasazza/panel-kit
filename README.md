@@ -32,6 +32,11 @@ The repo is a small workspace — one state machine, two renderers:
   [ratzilla](https://github.com/orhun/ratzilla) this renderer can also
   target the browser DOM — one panel codebase, web and terminal skins.
 
+The core crate is the contract: renderer-neutral state, geometry, pointer
+events, and persistence shape live there. The Dioxus and ratatui crates are
+backends over that same interface; platform events are translated at the
+backend boundary.
+
 ## Usage
 
 The app supplies two things: a `PanelKind` impl (an enum of its panels) and a
@@ -92,6 +97,22 @@ dx serve --example workspace --platform web
 
 `dx build --example <name> --platform web` produces the same app
 statically under `target/dx/<name>/debug/web/public`.
+
+### Browser TUI canary
+
+The ratatui backend also has a browser/WASM canary built with Ratzilla:
+
+```sh
+trunk serve crates/panel-kit-tui/browser_tui.html \
+  --example browser_tui \
+  --address 127.0.0.1 \
+  --port 8082
+```
+
+This example is intentionally comprehensive: workspace chrome, floating and
+tiling interactions, dock restore, badges, action log, spinner, theming,
+scrollable content, time-series chart, and gauges. It is executable
+documentation for the shared core interface.
 
 Note: `Cargo.lock` pins `wasm-bindgen` to the exact version of nixpkgs'
 `wasm-bindgen-cli` (dx refuses to bindgen with a mismatched CLI); keep the

@@ -12,15 +12,15 @@
 
 use std::time::Duration;
 
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseButton, MouseEventKind,
+};
+use crossterm::execute;
 use panel_kit_core::badge::{tag_hue, BadgeClickKind, BadgeKind};
 use panel_kit_core::{LayoutBuilder, PanelKind, PanelWin};
 use panel_kit_tui::badge::{hue_color, Badge};
 use panel_kit_tui::spinner::spinner;
-use panel_kit_tui::{Theme, TuiWorkspace};
-use ratatui::crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseButton, MouseEventKind,
-};
-use ratatui::crossterm::execute;
+use panel_kit_tui::{Theme, TuiMouseButton, TuiMouseEvent, TuiMouseEventKind, TuiWorkspace};
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -67,22 +67,33 @@ fn demo_badges() -> Vec<Badge> {
         Badge::new(BadgeKind::Folder, "folder", "notes/2026"),
         Badge::new(BadgeKind::Author, "author", "olive"),
         Badge::new(
-            BadgeKind::Entity { ty: Some("org".into()) },
+            BadgeKind::Entity {
+                ty: Some("org".into()),
+            },
             "entity",
             "CERN",
         ),
         Badge::new(
-            BadgeKind::Wikilink { resolved: true, target: "pilotmesh".into() },
+            BadgeKind::Wikilink {
+                resolved: true,
+                target: "pilotmesh".into(),
+            },
             "link",
             "pilotmesh",
         ),
         Badge::new(
-            BadgeKind::Wikilink { resolved: false, target: "missing-note".into() },
+            BadgeKind::Wikilink {
+                resolved: false,
+                target: "missing-note".into(),
+            },
             "link",
             "missing-note",
         ),
         Badge::new(
-            BadgeKind::Url { href: "https://ratatui.rs".into(), host: "ratatui.rs".into() },
+            BadgeKind::Url {
+                href: "https://ratatui.rs".into(),
+                host: "ratatui.rs".into(),
+            },
             "url",
             "https://ratatui.rs",
         ),
@@ -90,6 +101,21 @@ fn demo_badges() -> Vec<Badge> {
         active,
         Badge::new(BadgeKind::Generic, "misc", "anything"),
     ]
+}
+
+fn to_tui_mouse(m: crossterm::event::MouseEvent) -> Option<TuiMouseEvent> {
+    let kind = match m.kind {
+        MouseEventKind::Down(MouseButton::Left) => TuiMouseEventKind::Down(TuiMouseButton::Primary),
+        MouseEventKind::Up(MouseButton::Left) => TuiMouseEventKind::Up(TuiMouseButton::Primary),
+        MouseEventKind::Drag(MouseButton::Left) => TuiMouseEventKind::Drag(TuiMouseButton::Primary),
+        MouseEventKind::Moved => TuiMouseEventKind::Moved,
+        _ => return None,
+    };
+    Some(TuiMouseEvent {
+        kind,
+        x: m.column as f64,
+        y: m.row as f64,
+    })
 }
 
 #[derive(Default)]
@@ -136,7 +162,8 @@ fn main() -> std::io::Result<()> {
                         if row as u16 >= rect.height.saturating_sub(3) {
                             break;
                         }
-                        let r = Rect::new(rect.x, rect.y + row as u16, b.width().min(rect.width), 1);
+                        let r =
+                            Rect::new(rect.x, rect.y + row as u16, b.width().min(rect.width), 1);
                         demo.badge_zones.push((r, i));
                         f.render_widget(Paragraph::new(Line::from(b.spans(&theme))), r);
                     }
@@ -148,10 +175,7 @@ fn main() -> std::io::Result<()> {
                         .rev()
                         .take(2)
                         .map(|a| {
-                            Line::from(Span::styled(
-                                a.clone(),
-                                Style::default().fg(theme.accent),
-                            ))
+                            Line::from(Span::styled(a.clone(), Style::default().fg(theme.accent)))
                         })
                         .collect();
                     if log_y > rect.y {
@@ -182,7 +206,11 @@ fn main() -> std::io::Result<()> {
                     f.render_widget(
                         Paragraph::new(vec![
                             Line::from(Span::styled(
-                                if demo.paper { "preset: paper (click to swap)" } else { "preset: dark (click to swap)" },
+                                if demo.paper {
+                                    "preset: paper (click to swap)"
+                                } else {
+                                    "preset: dark (click to swap)"
+                                },
                                 Style::default().fg(theme.fg),
                             )),
                             sw(theme.accent, "accent"),
@@ -201,8 +229,7 @@ fn main() -> std::io::Result<()> {
                 Event::Mouse(m) => {
                     let at = Position::new(m.column, m.row);
                     if m.kind == MouseEventKind::Down(MouseButton::Left) {
-                        if let Some((_, i)) =
-                            demo.badge_zones.iter().find(|(r, _)| r.contains(at))
+                        if let Some((_, i)) = demo.badge_zones.iter().find(|(r, _)| r.contains(at))
                         {
                             let action = demo.badges[*i].click(BadgeClickKind::Toggle);
                             demo.actions.push(format!("{action:?}"));
@@ -210,11 +237,17 @@ fn main() -> std::io::Result<()> {
                         }
                         if demo.theme_zone.contains(at) {
                             demo.paper = !demo.paper;
-                            ws.theme = if demo.paper { Theme::PAPER } else { Theme::DARK };
+                            ws.theme = if demo.paper {
+                                Theme::PAPER
+                            } else {
+                                Theme::DARK
+                            };
                             continue;
                         }
                     }
-                    ws.handle_mouse(m);
+                    if let Some(m) = to_tui_mouse(m) {
+                        ws.handle_mouse(m);
+                    }
                 }
                 _ => {}
             }
