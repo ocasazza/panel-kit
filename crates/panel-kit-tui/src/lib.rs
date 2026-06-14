@@ -46,16 +46,18 @@ pub use theme::Theme;
 use std::path::PathBuf;
 
 use panel_kit_core::{
-    apply_drag, begin_drag, begin_tile_resize, effective_rect, front_z, merge_defaults,
-    reorder_tile, restore, visible_panels, workspace_chrome, ChromeMetrics, Clamp, Drag, DragKind,
-    Mode, PanelKind, PanelWin, PointerButton, PointerEvent, PointerEventKind, Region, SavedLayout,
-    TileMetrics, WinState, TILE_W_MAX,
+    apply_drag, begin_drag, begin_tile_resize, clamp_scroll, effective_rect, front_z, max_scroll,
+    merge_defaults, reorder_tile, restore, visible_panels, workspace_chrome, ChromeMetrics, Clamp,
+    Drag, DragKind, Mode, PanelKind, PanelWin, PointerButton, PointerEvent, PointerEventKind,
+    Region, SavedLayout, TileMetrics, WinState, TILE_W_MAX,
 };
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Style;
 use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{
+    Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+};
 use ratatui::Frame;
 
 /// Height of one tiling row unit in cells (`tile_h` counts these).
@@ -168,6 +170,13 @@ pub struct TuiWorkspace<K: PanelKind> {
     dock_chips: Vec<(Rect, usize)>,
     hover: Option<Position>,
     charset: Charset,
+    /// Workspace-level vertical scroll offset in cells. Applied to the whole
+    /// panel surface when its laid-out content overhangs the workspace area;
+    /// clamped to content bounds each render.
+    ws_scroll: u16,
+    /// Total laid-out content height in cells, recorded at draw time so
+    /// scroll input can clamp against [`Self::ws_area`].
+    content_h: u16,
 }
 
 impl<K: PanelKind> TuiWorkspace<K> {
@@ -203,6 +212,8 @@ impl<K: PanelKind> TuiWorkspace<K> {
             dock_chips: Vec::new(),
             hover: None,
             charset: Charset::default(),
+            ws_scroll: 0,
+            content_h: 0,
         }
     }
 
@@ -289,11 +300,18 @@ impl<K: PanelKind> TuiWorkspace<K> {
             order.sort_by_key(|&i| self.panels[i].z);
         }
 
-        // Tiling: flow panels into rows of TILE_W_MAX quarter-units.
+        // Tiling: flow panels into rows of TILE_W_MAX quarter-units. Rows are
+        // laid out at their *unscrolled* y first (relative to a virtual top
+        // of 0); the total content height is the sum of row heights, which
+        // bounds the workspace-level vertical scroll. Then each tile is
+        // shifted up by `ws_scroll` and clipped to the workspace band.
         let mut tile_rects: Vec<(usize, Rect)> = Vec::new();
-        if maximized.is_none() && self.mode == Mode::Tiling {
+        let scrollable = maximized.is_none() && self.mode == Mode::Tiling;
+        if scrollable {
             let col = (ws.width as f64 / TILE_W_MAX as f64).floor().max(1.0);
-            let (mut used, mut row_y, mut row_h) = (0u8, ws.y, 0u16);
+            // Virtual layout (top = 0), independent of scroll/viewport height.
+            let (mut used, mut row_y, mut row_h) = (0u8, 0u16, 0u16);
+            let mut content: Vec<(usize, u16, u16, u16, u16)> = Vec::new(); // (idx, x, vy, w, h)
             for &i in &order {
                 let p = &self.panels[i];
                 let (tw, th) = (p.tile_w.min(TILE_W_MAX), p.tile_h);
@@ -309,13 +327,34 @@ impl<K: PanelKind> TuiWorkspace<K> {
                 } else {
                     (tw as f64 * col) as u16
                 };
-                if row_y < ws.bottom() {
-                    let h = h.min(ws.bottom() - row_y);
-                    tile_rects.push((i, Rect::new(x, row_y, w.max(3), h)));
-                }
+                content.push((i, x, row_y, w.max(3), h));
                 used += tw;
                 row_h = row_h.max(h);
             }
+            let total = row_y + row_h;
+            self.content_h = total;
+            // Clamp the stored scroll offset to the freshly measured content.
+            self.ws_scroll =
+                clamp_scroll(self.ws_scroll as f64, total as f64, ws.height as f64) as u16;
+            let scroll = self.ws_scroll;
+            for (i, x, vy, w, h) in content {
+                // Shift into view; skip rows scrolled entirely above the band,
+                // and clip the bottom row against the workspace floor. A row
+                // whose top is above `ws.y` is skipped rather than top-clipped
+                // (ratatui can't partially clip arbitrary body content).
+                if vy < scroll {
+                    continue;
+                }
+                let screen_y = ws.y + (vy - scroll);
+                if screen_y >= ws.bottom() {
+                    continue;
+                }
+                let h = h.min(ws.bottom() - screen_y);
+                tile_rects.push((i, Rect::new(x, screen_y, w, h)));
+            }
+        } else {
+            self.content_h = ws.height;
+            self.ws_scroll = 0;
         }
 
         for &i in &order {
@@ -483,6 +522,23 @@ impl<K: PanelKind> TuiWorkspace<K> {
             x += w;
         }
         f.render_widget(Paragraph::new(Line::from(spans)), dock_inner);
+
+        // Workspace-level vertical scrollbar: only when the laid-out tiling
+        // content overhangs the workspace band. Drawn on the right edge of the
+        // workspace area, after the panels so it sits on top.
+        if max_scroll(self.content_h as f64, ws.height as f64) > 0.0 && ws.height > 0 {
+            let mut sb_state = ScrollbarState::new(self.content_h.saturating_sub(ws.height) as usize)
+                .position(self.ws_scroll as usize);
+            f.render_stateful_widget(
+                Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                    .begin_symbol(None)
+                    .end_symbol(None)
+                    .track_style(Style::default().fg(t.line2))
+                    .thumb_style(Style::default().fg(t.dim)),
+                ws,
+                &mut sb_state,
+            );
+        }
     }
 
     /// Feed a mouse event in terminal-cell coordinates: clicks hit traffic lights, dock chips,
@@ -595,7 +651,21 @@ impl<K: PanelKind> TuiWorkspace<K> {
             TuiMouseEventKind::Moved => {
                 self.hover = Some(at);
             }
+            TuiMouseEventKind::Scroll { delta_y } => {
+                self.scroll_by(delta_y);
+            }
         }
+    }
+
+    /// Scroll the whole workspace vertically by `delta` cells (positive
+    /// reveals content further down). Clamped to the laid-out content bounds
+    /// measured at the last [`render`](Self::render); a no-op unless the
+    /// content overhangs the workspace area (tiling mode). Hook for wheel
+    /// events and `PgUp`/`PgDn`/arrow key bindings.
+    pub fn scroll_by(&mut self, delta: f64) {
+        let next = self.ws_scroll as f64 + delta;
+        self.ws_scroll =
+            clamp_scroll(next, self.content_h as f64, self.ws_area.height as f64) as u16;
     }
 
     /// Restore and raise the panel of `kind` — hook for key bindings.

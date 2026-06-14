@@ -50,11 +50,57 @@
         panel-kit = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
         });
+
+        # Declarative layout DSL: turns a Nix description of a panel
+        # workspace into JSON matching panel-kit-core's `SavedLayout<K>`
+        # serde schema (see nix/lib/mkLayout.nix). Renderer-agnostic, so the
+        # web (localStorage) and TUI (JSON file) shells can both seed from it.
+        mkLayoutLib = import ./nix/lib/mkLayout.nix { inherit (pkgs) lib; };
+
+        # The canary layout, evaluated from nix/examples/workspace-canary.nix
+        # (a declarative mirror of the TUI canary's `defaults()`).
+        canaryLayout = import ./nix/examples/workspace-canary.nix {
+          inherit (pkgs) lib;
+        };
+
+        # `nix build .#layout-canary` writes this SavedLayout JSON file — the
+        # concrete demonstration of the DSL.
+        layout-canary = pkgs.writeText "panel-kit-layout-canary.json"
+          canaryLayout.json;
       in {
         packages.default = panel-kit;
+        packages.layout-canary = layout-canary;
+
+        # mkLayout for downstream flakes:
+        # `inputs.panel-kit.lib.${system}.mkLayout { ... }`.
+        lib = { inherit (mkLayoutLib) mkLayout winStates tileWMax tileHMax; };
 
         checks = {
           inherit panel-kit;
+          # Schema sanity check: the generated canary JSON must parse and
+          # carry the exact SavedLayout / PanelWin keys the Rust serde
+          # deserializer expects.
+          layout-canary-schema =
+            pkgs.runCommand "panel-kit-layout-canary-schema"
+              { nativeBuildInputs = [ pkgs.jq ]; } ''
+              json=${layout-canary}
+              jq -e '
+                (.tiling | type == "boolean") and
+                (.panels | type == "array") and
+                (.panels | length == 7) and
+                (.panels | all(
+                  (.kind | type == "string") and
+                  (.x | type == "number") and (.y | type == "number") and
+                  (.w | type == "number") and (.h | type == "number") and
+                  (.state | IN("Floating", "Minimized", "Maximized")) and
+                  (.z | type == "number") and
+                  (.tile_w | type == "number" and . >= 1 and . <= 4) and
+                  (.tile_h | type == "number" and . >= 1 and . <= 6) and
+                  ((keys | sort) == ["h","kind","state","tile_h","tile_w","w","x","y","z"])
+                ))
+              ' "$json" > /dev/null
+              touch $out
+            '';
           clippy = craneLib.cargoClippy (commonArgs // {
             inherit cargoArtifacts;
             cargoClippyExtraArgs = "--all-targets -- -D warnings";

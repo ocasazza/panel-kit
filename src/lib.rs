@@ -96,8 +96,9 @@ pub use panel_kit_core::{
 };
 use panel_kit_core::{
     apply_drag, begin_drag as core_begin_drag, begin_tile_resize as core_begin_tile_resize,
-    effective_rect as core_effective_rect, front_z, kind_slug, merge_defaults,
-    reorder_tile as core_reorder_tile, Clamp, SavedLayout, TileMetrics, TILE_W_MAX,
+    clamp_scroll, effective_rect as core_effective_rect, floating_content_height, front_z,
+    kind_slug, max_scroll, merge_defaults, reorder_tile as core_reorder_tile, Clamp, SavedLayout,
+    TileMetrics, TILE_W_MAX,
 };
 
 /// Base stylesheet for the workspace chrome (panels, lights, dock, badges,
@@ -119,9 +120,16 @@ fn viewport_size() -> (f64, f64) {
     (vw, vh)
 }
 
-/// Render-time viewport clamp — core math with the web px metrics.
-fn effective_rect<K>(p: &PanelWin<K>, vw: f64, vh: f64) -> (f64, f64, f64, f64) {
-    core_effective_rect(p, vw, vh, &Clamp::WEB)
+/// Floating placement for a scrollable workspace: x / width / height stay
+/// clamped to the viewport (so panels never grow wider than the window), but
+/// the *vertical* position keeps the panel's stored `y` (only floored at 0)
+/// instead of being pulled up to the bottom edge. Panels placed low can then
+/// extend below the fold and be reached with workspace-level vertical scroll
+/// ([`Workspace::ws_scroll`]); per-panel content scroll and drag math are
+/// untouched.
+fn floating_rect<K>(p: &PanelWin<K>, vw: f64, vh: f64) -> (f64, f64, f64, f64) {
+    let (x, _, w, h) = core_effective_rect(p, vw, vh, &Clamp::WEB);
+    (x, p.y.max(0.0), w, h)
 }
 
 /// Narrow viewport (< 760 px wide) → mobile shell (static stacked tiling
@@ -149,6 +157,49 @@ pub fn is_editing() -> bool {
             tag.eq_ignore_ascii_case("input") || tag.eq_ignore_ascii_case("textarea")
         })
         .unwrap_or(false)
+}
+
+/// Whether a panel body under the pointer can still scroll in the wheel's
+/// direction (`dy` is the vertical wheel delta) — i.e. whether per-panel
+/// content scroll should absorb this wheel instead of the workspace.
+///
+/// Reads the hovered `.panel-body` from the DOM (`:hover`) and compares its
+/// scroll position against its limits. Returns `false` when nothing scrollable
+/// is under the pointer, so the workspace scroll takes over (manual scroll
+/// chaining).
+fn panel_body_absorbs_wheel(dy: f64) -> bool {
+    use wasm_bindgen::JsCast;
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+        return false;
+    };
+    // The last match is the innermost hovered .panel-body.
+    let Ok(hovered) = doc.query_selector_all(".panel-body:hover") else {
+        return false;
+    };
+    let len = hovered.length();
+    if len == 0 {
+        return false;
+    }
+    let Some(node) = hovered.item(len - 1) else {
+        return false;
+    };
+    let Ok(el) = node.dyn_into::<web_sys::Element>() else {
+        return false;
+    };
+    let scroll_top = el.scroll_top();
+    let scroll_h = el.scroll_height();
+    let client_h = el.client_height();
+    let max = scroll_h - client_h;
+    if max <= 0 {
+        return false; // body isn't scrollable at all
+    }
+    if dy > 0.0 {
+        scroll_top < max // room to scroll down
+    } else if dy < 0.0 {
+        scroll_top > 0 // room to scroll up
+    } else {
+        false
+    }
 }
 
 fn save_layout<K: PanelKind>(key: &str, panels: &[PanelWin<K>], mode: Mode) {
@@ -193,6 +244,13 @@ pub struct Workspace<K: PanelKind> {
     /// floating panels re-project through the viewport clamp on every
     /// resize (both directions).
     pub viewport: Signal<(f64, f64)>,
+    /// Workspace-level vertical scroll offset in CSS px, used in floating
+    /// mode when the panels' total height overhangs the workspace area.
+    /// Driven by the wheel via [`handle_wheel`](Workspace::handle_wheel) and
+    /// clamped to the content bounds at render time. (Tiling mode scrolls
+    /// natively through the CSS `overflow` on `.ws.tiling`, so this only
+    /// applies to floating mode.)
+    pub ws_scroll: Signal<f64>,
 }
 
 impl<K: PanelKind> Clone for Workspace<K> {
@@ -226,6 +284,7 @@ pub fn use_workspace<K: PanelKind>(
     let tile_drag = use_signal(|| Option::<K>::None);
     let is_mobile = use_signal(viewport_is_mobile);
     let viewport = use_signal(viewport_size);
+    let ws_scroll = use_signal(|| 0.0_f64);
 
     use_hook(|| {
         use wasm_bindgen::closure::Closure;
@@ -302,7 +361,7 @@ pub fn use_workspace<K: PanelKind>(
         }
     });
 
-    Workspace { panels, mode, drag, tile_drag, is_mobile, viewport }
+    Workspace { panels, mode, drag, tile_drag, is_mobile, viewport, ws_scroll }
 }
 
 impl<K: PanelKind> Workspace<K> {
@@ -349,7 +408,20 @@ impl<K: PanelKind> Workspace<K> {
         // anchored to what's visible — no jump on the first mousemove.
         let (vw, vh) = *self.viewport.read();
         let mut panels = self.panels;
-        let d = core_begin_drag(&mut panels.write(), idx, kind, c.x, c.y, vw, vh, &Clamp::WEB);
+        let mut d = core_begin_drag(&mut panels.write(), idx, kind, c.x, c.y, vw, vh, &Clamp::WEB);
+        // Scroll-aware vertical anchor: render() places floating panels at
+        // their stored `y` (floored at 0) and translates the surface by the
+        // workspace scroll, so the drag must capture that same stored `y` —
+        // not effective_rect's bottom-pulled value — or a scrolled-down panel
+        // jumps on the first mousemove. Re-anchor both the captured Drag and
+        // the panel's stored geometry to floating_rect's y.
+        if let Some(d) = d.as_mut() {
+            if let Some(p) = panels.write().get_mut(idx) {
+                let (_, fy, _, _) = floating_rect(p, vw, vh);
+                p.y = fy;
+                d.start_y = fy;
+            }
+        }
         if d.is_some() {
             let mut drag = self.drag;
             drag.set(d);
@@ -404,6 +476,59 @@ impl<K: PanelKind> Workspace<K> {
         tile_drag.set(None);
     }
 
+    /// Workspace-area height in CSS px: the viewport height minus the top bar
+    /// and dock chrome ([`Clamp::WEB`]'s `outer_h`). This is the viewport the
+    /// floating panels scroll within.
+    fn workspace_height(&self) -> f64 {
+        let (_, vh) = *self.viewport.read();
+        (vh - Clamp::WEB.outer_h).max(Clamp::WEB.floor_h)
+    }
+
+    /// Total floating-content height in CSS px: the lowest edge of any visible
+    /// (non-minimized) floating panel. [`render`](Workspace::render) draws
+    /// floating panels at their stored `y` (floored at 0, see
+    /// [`floating_rect`]), so the drawn lowest edge equals the stored
+    /// `max(y + h)` that [`floating_content_height`] computes. Bounds the
+    /// workspace scroll.
+    fn floating_content_h(&self) -> f64 {
+        let ps = self.panels.read();
+        let visible: Vec<usize> = ps
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.state == WinState::Floating)
+            .map(|(i, _)| i)
+            .collect();
+        floating_content_height(&ps, &visible)
+    }
+
+    /// Attach to the workspace's `onwheel` — scrolls the whole floating
+    /// workspace vertically, clamped to the content bounds (no rubber-band
+    /// past the top or the bottom of the lowest panel). A no-op in tiling
+    /// mode (the browser scrolls `.ws.tiling` natively) and when the content
+    /// fits the workspace area.
+    ///
+    /// Per-panel body scroll wins first: if the wheel lands inside a
+    /// `.panel-body` that can still scroll in the wheel's direction, the
+    /// workspace scroll stands down (manual scroll chaining — the body absorbs
+    /// the wheel until it hits its boundary, then the workspace takes over).
+    pub fn handle_wheel(&self, e: &dioxus::events::WheelEvent) {
+        if self.effective_mode() != Mode::Floating {
+            return;
+        }
+        let dy = e.data().delta().strip_units().y;
+        if panel_body_absorbs_wheel(dy) {
+            return;
+        }
+        let content_h = self.floating_content_h();
+        let view_h = self.workspace_height();
+        if max_scroll(content_h, view_h) <= 0.0 {
+            return;
+        }
+        let mut ws_scroll = self.ws_scroll;
+        let next = *ws_scroll.read() + dy;
+        ws_scroll.set(clamp_scroll(next, content_h, view_h));
+    }
+
     /// Tiling-mode reorder: move `dragged` into `target`'s slot. Moving down
     /// the flow inserts after the target, moving up inserts before — the
     /// classic sortable-list shuffle, so the dragged panel snaps into
@@ -446,9 +571,27 @@ impl<K: PanelKind> Workspace<K> {
             "ws floating"
         };
 
+        // Floating workspace-level scroll: clamp the stored offset to the
+        // freshly measured content, then offset each panel's top by it. When
+        // content fits, this is 0. Tiling/maximized never scroll this way.
+        let floating_now = maximized.is_none() && mode_now == Mode::Floating;
+        let scroll = if floating_now {
+            let content_h = self.floating_content_h();
+            let view_h = self.workspace_height();
+            let clamped = clamp_scroll(*self.ws_scroll.read(), content_h, view_h);
+            if (clamped - *self.ws_scroll.peek()).abs() > f64::EPSILON {
+                let mut s = self.ws_scroll;
+                s.set(clamped);
+            }
+            clamped
+        } else {
+            0.0
+        };
+
         let dragging_tile = *self.tile_drag.read();
         rsx! {
             div { class: "{ws_class}",
+                onwheel: move |e| ws.handle_wheel(&e),
                 for i in visible.iter().copied() {
                     {
                         let p = ps[i];
@@ -458,12 +601,16 @@ impl<K: PanelKind> Workspace<K> {
                         let style = if maximized.is_some() {
                             "position:absolute; inset:0;".to_string()
                         } else if floating {
-                            // Project through the viewport clamp at render
-                            // time — stored geometry stays intact, so panels
-                            // spring back when the window grows again.
+                            // Project x / width / height through the viewport
+                            // clamp, but keep the stored `y` (floored at 0) and
+                            // shift it by the workspace scroll so panels placed
+                            // below the fold can be scrolled into view. Stored
+                            // geometry stays intact, so panels spring back when
+                            // the window grows again.
                             let (vw, vh) = *ws.viewport.read();
-                            let (x, y, w, h) = effective_rect(&p, vw, vh);
-                            format!("position:absolute; left:{x}px; top:{y}px; width:{w}px; height:{h}px; z-index:{};",
+                            let (x, y, w, h) = floating_rect(&p, vw, vh);
+                            let top = y - scroll;
+                            format!("position:absolute; left:{x}px; top:{top}px; width:{w}px; height:{h}px; z-index:{};",
                                 p.z)
                         } else if tiling && !*ws.is_mobile.read() {
                             // Snapped spans → flex-basis % of the row + row

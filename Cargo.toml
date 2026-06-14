@@ -27,7 +27,7 @@ gloo-storage = "0.3"
 # Deliberately loose: consuming apps pin the exact wasm-bindgen their
 # toolchain ships (e.g. =0.2.118 to match nixpkgs' wasm-bindgen-cli).
 wasm-bindgen = "0.2"
-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "Event", "EventTarget", "ResizeObserver", "ResizeObserverEntry"] }
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "Event", "EventTarget", "Node", "NodeList", "ResizeObserver", "ResizeObserverEntry"] }
 
 # Injected by dioxus-cli on first `dx build` — dx builds the example demos
 # under these profiles.

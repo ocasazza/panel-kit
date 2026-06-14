@@ -19,7 +19,7 @@ use crossterm::execute;
 use panel_kit_core::badge::BadgeClickKind;
 use panel_kit_core::Mode;
 use panel_kit_tui::badge::Badge;
-use panel_kit_tui::charts::{gauges, time_series, Series};
+use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
 use panel_kit_tui::scroll;
 use panel_kit_tui::spinner::spinner;
 use panel_kit_tui::{Theme, TuiMouseButton, TuiMouseEvent, TuiMouseEventKind, TuiWorkspace};
@@ -27,9 +27,7 @@ use ratatui::layout::{Position, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use workspace_canary::{
-    capacity_items, defaults, demo_badges, node_rows, Panel, EVAL_SERIES, FRAME_SERIES,
-};
+use workspace_canary::{capacity_items, defaults, demo_badges, node_rows, Metrics, Panel};
 
 fn to_tui_mouse(m: crossterm::event::MouseEvent) -> Option<TuiMouseEvent> {
     let kind = match m.kind {
@@ -37,6 +35,8 @@ fn to_tui_mouse(m: crossterm::event::MouseEvent) -> Option<TuiMouseEvent> {
         MouseEventKind::Up(MouseButton::Left) => TuiMouseEventKind::Up(TuiMouseButton::Primary),
         MouseEventKind::Drag(MouseButton::Left) => TuiMouseEventKind::Drag(TuiMouseButton::Primary),
         MouseEventKind::Moved => TuiMouseEventKind::Moved,
+        MouseEventKind::ScrollDown => TuiMouseEventKind::Scroll { delta_y: 1.0 },
+        MouseEventKind::ScrollUp => TuiMouseEventKind::Scroll { delta_y: -1.0 },
         _ => return None,
     };
     Some(TuiMouseEvent {
@@ -54,6 +54,7 @@ struct Demo {
     notes_scroll: usize,
     paper: bool,
     tick: u64,
+    metrics: Metrics,
 }
 
 impl Demo {
@@ -66,6 +67,7 @@ impl Demo {
             notes_scroll: 0,
             paper: false,
             tick: 0,
+            metrics: Metrics::new(),
         }
     }
 
@@ -80,12 +82,16 @@ impl Demo {
             KeyCode::Char('5') => ws.restore_panel(Panel::Notes),
             KeyCode::Char('6') => ws.restore_panel(Panel::Theme),
             KeyCode::Char('7') => ws.restore_panel(Panel::Nodes),
+            KeyCode::Char('8') => ws.restore_panel(Panel::Flame),
+            KeyCode::Char('9') => ws.restore_panel(Panel::Distribution),
             KeyCode::Up => {
                 self.notes_scroll = self.notes_scroll.saturating_sub(1);
             }
             KeyCode::Down => {
                 self.notes_scroll = self.notes_scroll.saturating_add(1);
             }
+            KeyCode::PageUp => ws.scroll_by(-4.0),
+            KeyCode::PageDown => ws.scroll_by(4.0),
             _ => {}
         }
         false
@@ -120,11 +126,13 @@ impl Demo {
 
     fn draw(&mut self, ws: &mut TuiWorkspace<Panel>, frame: &mut ratatui::Frame) {
         self.tick += 1;
+        self.metrics.tick();
         self.badge_zones.clear();
         let theme = ws.theme;
         let actions = self.actions.clone();
         let tick = self.tick;
         let paper = self.paper;
+        let metrics = &self.metrics;
         ws.render(frame, frame.area(), &mut |f, rect, kind, _max| match kind {
             Panel::Workspace => {
                 f.render_widget(
@@ -138,7 +146,7 @@ impl Demo {
                         Line::from("The state machine is shared with the Dioxus renderer."),
                         Line::from(""),
                         Line::from("Mouse: drag headers, drag the corner grip, click lights."),
-                        Line::from("Keys: t swaps theme, 1-7 restore panels, arrows scroll notes."),
+                        Line::from("Keys: t swaps theme, 1-9 restore panels, arrows scroll notes."),
                     ])
                     .style(Style::default().fg(theme.dim)),
                     rect,
@@ -168,21 +176,17 @@ impl Demo {
                 }
             }
             Panel::Activity => {
-                let series = [
-                    Series {
-                        name: "eval/ms".into(),
-                        points: EVAL_SERIES,
-                    },
-                    Series {
-                        name: "frame/ms".into(),
-                        points: FRAME_SERIES,
-                    },
-                ];
-                time_series(f, rect, &theme, "ms", &series);
+                time_series(f, rect, &theme, "ms", &metrics.series());
             }
             Panel::Capacity => {
                 let items = capacity_items();
                 gauges(f, rect, &theme, &items);
+            }
+            Panel::Flame => {
+                flame(f, rect, &theme, &metrics.flame());
+            }
+            Panel::Distribution => {
+                boxplot(f, rect, &theme, &metrics.boxes());
             }
             Panel::Nodes => {
                 let rows: Vec<ratatui::widgets::Row> = node_rows()
@@ -224,7 +228,7 @@ impl Demo {
                     "When the browser example builds under Trunk, the same public TUI API is still web-capable.",
                     "Keeping both examples broad catches drift between core, Dioxus, and TUI renderers.",
                     "The example is not a screenshot fixture: it is executable documentation.",
-                    "Use t for theme, 1-7 to restore minimized panels, and arrow keys to scroll this panel.",
+                    "Use t for theme, 1-9 to restore minimized panels, and arrow keys to scroll this panel.",
                 ] {
                     lines.push(Line::from(text));
                 }

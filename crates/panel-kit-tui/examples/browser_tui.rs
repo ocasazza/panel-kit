@@ -32,7 +32,7 @@ mod browser {
     use panel_kit_core::badge::BadgeClickKind;
     use panel_kit_core::Mode;
     use panel_kit_tui::badge::Badge;
-    use panel_kit_tui::charts::{gauges, time_series, Series};
+    use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
     use panel_kit_tui::scroll;
     use panel_kit_tui::spinner::spinner;
     use panel_kit_tui::{
@@ -52,7 +52,7 @@ mod browser {
     };
 
     use crate::workspace_canary::{
-        capacity_items, defaults, demo_badges, node_rows, Panel, EVAL_SERIES, FRAME_SERIES,
+        capacity_items, defaults, demo_badges, node_rows, Metrics, Panel,
     };
 
     struct App {
@@ -65,6 +65,7 @@ mod browser {
         paper: bool,
         tick: u64,
         mouse_down: bool,
+        metrics: Metrics,
     }
 
     impl App {
@@ -82,6 +83,7 @@ mod browser {
                 paper: false,
                 tick: 0,
                 mouse_down: false,
+                metrics: Metrics::new(),
             }
         }
 
@@ -102,6 +104,8 @@ mod browser {
                 KeyCode::Char('5') => self.ws.restore_panel(Panel::Notes),
                 KeyCode::Char('6') => self.ws.restore_panel(Panel::Theme),
                 KeyCode::Char('7') => self.ws.restore_panel(Panel::Nodes),
+                KeyCode::Char('8') => self.ws.restore_panel(Panel::Flame),
+                KeyCode::Char('9') => self.ws.restore_panel(Panel::Distribution),
                 KeyCode::Up => {
                     self.notes_scroll = self.notes_scroll.saturating_sub(1);
                 }
@@ -139,6 +143,7 @@ mod browser {
             }
         }
 
+        #[allow(clippy::wrong_self_convention)]
         fn to_tui_mouse(&mut self, event: WebMouseEvent) -> Option<TuiMouseEvent> {
             let kind = match event.kind {
                 WebMouseEventKind::ButtonDown(WebMouseButton::Left) => {
@@ -168,11 +173,13 @@ mod browser {
 
         fn draw(&mut self, frame: &mut ratatui::Frame) {
             self.tick += 1;
+            self.metrics.tick();
             self.badge_zones.clear();
             let theme = self.ws.theme;
             let actions = self.actions.clone();
             let tick = self.tick;
             let paper = self.paper;
+            let metrics = &self.metrics;
             self.ws.render(frame, frame.area(), &mut |f, rect, kind, _max| match kind {
                 Panel::Workspace => {
                     f.render_widget(
@@ -185,7 +192,7 @@ mod browser {
                             Line::from("The state machine is shared with the Dioxus renderer."),
                             Line::from(""),
                             Line::from("Mouse: drag headers, drag the corner grip, click lights."),
-                            Line::from("Keys: t swaps theme, 1-7 restore panels, arrows scroll notes."),
+                            Line::from("Keys: t swaps theme, 1-9 restore panels, arrows scroll notes."),
                         ])
                         .style(Style::default().fg(theme.dim)),
                         rect,
@@ -215,15 +222,17 @@ mod browser {
                     }
                 }
                 Panel::Activity => {
-                    let series = [
-                        Series { name: "eval/ms".into(), points: EVAL_SERIES },
-                        Series { name: "frame/ms".into(), points: FRAME_SERIES },
-                    ];
-                    time_series(f, rect, &theme, "ms", &series);
+                    time_series(f, rect, &theme, "ms", &metrics.series());
                 }
                 Panel::Capacity => {
                     let items = capacity_items();
                     gauges(f, rect, &theme, &items);
+                }
+                Panel::Flame => {
+                    flame(f, rect, &theme, &metrics.flame());
+                }
+                Panel::Distribution => {
+                    boxplot(f, rect, &theme, &metrics.boxes());
                 }
                 Panel::Nodes => {
                     let rows: Vec<ratatui::widgets::Row> = node_rows()
@@ -262,7 +271,7 @@ mod browser {
                         "When the browser example builds under Trunk, the same public TUI API is still web-capable.",
                         "Keeping both examples broad catches drift between core, Dioxus, and TUI renderers.",
                         "The example is not a screenshot fixture: it is executable documentation.",
-                        "Use t for theme, 1-7 to restore minimized panels, and arrow keys to scroll this panel.",
+                        "Use t for theme, 1-9 to restore minimized panels, and arrow keys to scroll this panel.",
                     ] {
                         lines.push(Line::from(text));
                     }
