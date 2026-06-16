@@ -87,9 +87,10 @@
 
 pub mod badge;
 
-use dioxus::events::MouseEvent;
+use dioxus::events::{MouseEvent, PointerEvent};
 use dioxus::prelude::*;
 use gloo_storage::{LocalStorage, Storage};
+use wasm_bindgen::JsCast;
 
 pub use panel_kit_core::{
     Drag, DragKind, LayoutBuilder, Mode, PanelKind, PanelWin, WinState, TILE_ROW_PX,
@@ -130,6 +131,32 @@ fn viewport_size() -> (f64, f64) {
 fn floating_rect<K>(p: &PanelWin<K>, vw: f64, vh: f64) -> (f64, f64, f64, f64) {
     let (x, _, w, h) = core_effective_rect(p, vw, vh, &Clamp::WEB);
     (x, p.y.max(0.0), w, h)
+}
+
+fn capture_pointer(e: &PointerEvent) {
+    let Some(web_event) = e.data.downcast::<web_sys::PointerEvent>() else {
+        return;
+    };
+    let Some(target) = web_event.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) else {
+        return;
+    };
+    let _ = target.set_pointer_capture(web_event.pointer_id());
+}
+
+fn release_pointer(e: &PointerEvent) {
+    let Some(web_event) = e.data.downcast::<web_sys::PointerEvent>() else {
+        return;
+    };
+    let Some(target) = web_event.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) else {
+        return;
+    };
+    let _ = target.release_pointer_capture(web_event.pointer_id());
+}
+
+fn clear_selection() {
+    if let Some(selection) = web_sys::window().and_then(|w| w.get_selection().ok().flatten()) {
+        let _ = selection.remove_all_ranges();
+    }
 }
 
 /// Narrow viewport (< 760 px wide) → mobile shell (static stacked tiling
@@ -288,7 +315,6 @@ pub fn use_workspace<K: PanelKind>(
 
     use_hook(|| {
         use wasm_bindgen::closure::Closure;
-        use wasm_bindgen::JsCast;
         let mut viewport = viewport;
         let mut is_mobile = is_mobile;
         let mut panels = panels;
@@ -352,6 +378,66 @@ pub fn use_workspace<K: PanelKind>(
         win_cb.forget();
     });
 
+    use_hook(|| {
+        use wasm_bindgen::closure::Closure;
+
+        let mut panels_for_move = panels;
+        let drag_for_move = drag;
+        let mode_for_move = mode;
+        let is_mobile_for_move = is_mobile;
+        let viewport_for_move = viewport;
+        let move_cb = Closure::wrap(Box::new(move |e: web_sys::PointerEvent| {
+            if let Some(d) = *drag_for_move.peek() {
+                e.prevent_default();
+                let tiling = if *is_mobile_for_move.peek() {
+                    Mode::Tiling
+                } else {
+                    *mode_for_move.peek()
+                } == Mode::Tiling;
+                let (vw, _) = *viewport_for_move.peek();
+                apply_drag(
+                    &mut *panels_for_move.write(),
+                    &d,
+                    e.client_x() as f64,
+                    e.client_y() as f64,
+                    tiling,
+                    vw,
+                    &Clamp::WEB,
+                    &TileMetrics::WEB,
+                );
+            }
+        }) as Box<dyn FnMut(web_sys::PointerEvent)>);
+
+        let mut drag_for_up = drag;
+        let mut tile_drag_for_up = tile_drag;
+        let up_cb = Closure::wrap(Box::new(move |e: web_sys::PointerEvent| {
+            if drag_for_up.peek().is_some() || tile_drag_for_up.peek().is_some() {
+                e.prevent_default();
+                clear_selection();
+            }
+            drag_for_up.set(None);
+            tile_drag_for_up.set(None);
+        }) as Box<dyn FnMut(web_sys::PointerEvent)>);
+
+        let mut drag_for_cancel = drag;
+        let mut tile_drag_for_cancel = tile_drag;
+        let cancel_cb = Closure::wrap(Box::new(move |_e: web_sys::PointerEvent| {
+            clear_selection();
+            drag_for_cancel.set(None);
+            tile_drag_for_cancel.set(None);
+        }) as Box<dyn FnMut(web_sys::PointerEvent)>);
+
+        if let Some(w) = web_sys::window() {
+            let _ = w.add_event_listener_with_callback("pointermove", move_cb.as_ref().unchecked_ref());
+            let _ = w.add_event_listener_with_callback("pointerup", up_cb.as_ref().unchecked_ref());
+            let _ = w.add_event_listener_with_callback("pointercancel", cancel_cb.as_ref().unchecked_ref());
+        }
+
+        move_cb.forget();
+        up_cb.forget();
+        cancel_cb.forget();
+    });
+
     use_effect(move || {
         let ps = panels.read().clone();
         let md = *mode.read();
@@ -402,13 +488,27 @@ impl<K: PanelKind> Workspace<K> {
         // render, after the Drag signal lands.
         e.prevent_default();
         let c = e.client_coordinates();
+        self.begin_drag_at(idx, kind, c.x, c.y);
+    }
+
+    /// Start a floating-mode move/resize drag from a pointerdown. Pointer
+    /// capture keeps the drag alive when the cursor crosses iframes, canvases,
+    /// or the edge of the grabbed panel.
+    pub fn begin_pointer_drag(&self, idx: usize, kind: DragKind, e: &PointerEvent) {
+        e.prevent_default();
+        capture_pointer(e);
+        let c = e.client_coordinates();
+        self.begin_drag_at(idx, kind, c.x, c.y);
+    }
+
+    fn begin_drag_at(&self, idx: usize, kind: DragKind, mx: f64, my: f64) {
         // Normalize-on-grab: what the user grabbed is the *clamped* on-screen
         // rect (effective_rect), which can differ from the stored geometry
         // after a window shrink. Writing it back on grab keeps the drag math
         // anchored to what's visible — no jump on the first mousemove.
         let (vw, vh) = *self.viewport.read();
         let mut panels = self.panels;
-        let mut d = core_begin_drag(&mut panels.write(), idx, kind, c.x, c.y, vw, vh, &Clamp::WEB);
+        let mut d = core_begin_drag(&mut panels.write(), idx, kind, mx, my, vw, vh, &Clamp::WEB);
         // Scroll-aware vertical anchor: render() places floating panels at
         // their stored `y` (floored at 0) and translates the surface by the
         // workspace scroll, so the drag must capture that same stored `y` —
@@ -437,7 +537,19 @@ impl<K: PanelKind> Workspace<K> {
     /// on the effective mode.
     pub fn begin_tile_resize(&self, idx: usize, e: &MouseEvent) {
         let c = e.client_coordinates();
-        let d = core_begin_tile_resize(&self.panels.read(), idx, c.x, c.y);
+        self.begin_tile_resize_at(idx, c.x, c.y);
+    }
+
+    /// Start a tiling-mode resize drag from a pointerdown.
+    pub fn begin_pointer_tile_resize(&self, idx: usize, e: &PointerEvent) {
+        e.prevent_default();
+        capture_pointer(e);
+        let c = e.client_coordinates();
+        self.begin_tile_resize_at(idx, c.x, c.y);
+    }
+
+    fn begin_tile_resize_at(&self, idx: usize, mx: f64, my: f64) {
+        let d = core_begin_tile_resize(&self.panels.read(), idx, mx, my);
         if d.is_some() {
             let mut drag = self.drag;
             drag.set(d);
@@ -450,20 +562,33 @@ impl<K: PanelKind> Workspace<K> {
     pub fn handle_mouse_move(&self, e: &MouseEvent) {
         if let Some(d) = *self.drag.read() {
             let c = e.client_coordinates();
-            let tiling = self.effective_mode() == Mode::Tiling;
-            let (vw, _) = *self.viewport.read();
-            let mut panels = self.panels;
-            apply_drag(
-                &mut panels.write(),
-                &d,
-                c.x,
-                c.y,
-                tiling,
-                vw,
-                &Clamp::WEB,
-                &TileMetrics::WEB,
-            );
+            self.apply_drag_at(&d, c.x, c.y);
         }
+    }
+
+    /// Attach to pointermove when wiring custom drag affordances.
+    pub fn handle_pointer_move(&self, e: &PointerEvent) {
+        if let Some(d) = *self.drag.read() {
+            e.prevent_default();
+            let c = e.client_coordinates();
+            self.apply_drag_at(&d, c.x, c.y);
+        }
+    }
+
+    fn apply_drag_at(&self, d: &Drag, x: f64, y: f64) {
+        let tiling = self.effective_mode() == Mode::Tiling;
+        let (vw, _) = *self.viewport.read();
+        let mut panels = self.panels;
+        apply_drag(
+            &mut panels.write(),
+            d,
+            x,
+            y,
+            tiling,
+            vw,
+            &Clamp::WEB,
+            &TileMetrics::WEB,
+        );
     }
 
     /// Attach to the app root's `onmouseup` — ends the in-flight drag (both
@@ -474,6 +599,13 @@ impl<K: PanelKind> Workspace<K> {
         drag.set(None);
         let mut tile_drag = self.tile_drag;
         tile_drag.set(None);
+        clear_selection();
+    }
+
+    /// Attach to pointerup/pointercancel when wiring custom drag affordances.
+    pub fn handle_pointer_up(&self, e: &PointerEvent) {
+        release_pointer(e);
+        self.handle_mouse_up();
     }
 
     /// Workspace-area height in CSS px: the viewport height minus the top bar
@@ -661,13 +793,16 @@ impl<K: PanelKind> Workspace<K> {
                                 if floating || (tiling && !*ws.is_mobile.read()) {
                                     div {
                                         class: "resize",
-                                        onmousedown: move |e: MouseEvent| {
+                                        onpointerdown: move |e: PointerEvent| {
                                             if floating {
-                                                ws.begin_drag(i, DragKind::Resize, &e);
+                                                ws.begin_pointer_drag(i, DragKind::Resize, &e);
                                             } else {
-                                                ws.begin_tile_resize(i, &e);
+                                                ws.begin_pointer_tile_resize(i, &e);
                                             }
                                         },
+                                        onpointermove: move |e: PointerEvent| ws.handle_pointer_move(&e),
+                                        onpointerup: move |e: PointerEvent| ws.handle_pointer_up(&e),
+                                        onpointercancel: move |e: PointerEvent| ws.handle_pointer_up(&e),
                                     }
                                 }
                             }
@@ -692,9 +827,9 @@ impl<K: PanelKind> Workspace<K> {
             header {
                 class: "panel-head",
                 title: "{title}",
-                onmousedown: move |e: MouseEvent| {
+                onpointerdown: move |e: PointerEvent| {
                     if draggable {
-                        ws.begin_drag(idx, DragKind::Move, &e);
+                        ws.begin_pointer_drag(idx, DragKind::Move, &e);
                     } else if tiling && !*ws.is_mobile.read() {
                         // Selection has to be suppressed at the source too:
                         // .ws-root.dragging only kicks in after this event.
@@ -703,6 +838,9 @@ impl<K: PanelKind> Workspace<K> {
                         tile_drag.set(Some(kind));
                     }
                 },
+                onpointermove: move |e: PointerEvent| ws.handle_pointer_move(&e),
+                onpointerup: move |e: PointerEvent| ws.handle_pointer_up(&e),
+                onpointercancel: move |e: PointerEvent| ws.handle_pointer_up(&e),
                 div { class: "lights",
                     button { class: "light mode", title: "tiling / floating",
                         onmousedown: move |e: MouseEvent| e.stop_propagation(),
