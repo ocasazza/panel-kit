@@ -1811,7 +1811,7 @@ dependencies = [
 
 [[package]]
 name = "panel-kit"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "dioxus",
  "gloo-storage",
@@ -1823,14 +1823,14 @@ dependencies = [
 
 [[package]]
 name = "panel-kit-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "panel-kit-tui"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "console_error_panic_hook",
  "critical-section",

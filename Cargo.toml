@@ -3,7 +3,7 @@ members = ["crates/panel-kit-core", "crates/panel-kit-tui"]
 
 [package]
 name = "panel-kit"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Generic Dioxus panel-workspace library: floating/tiling panels, traffic lights, drag/resize, tiling drag-reorder, minimize-to-dock, layout persistence"
@@ -20,7 +20,7 @@ targets = ["wasm32-unknown-unknown"]
 default-target = "wasm32-unknown-unknown"
 
 [dependencies]
-panel-kit-core = { version = "0.2.0", path = "crates/panel-kit-core" }
+panel-kit-core = { version = "0.3.0", path = "crates/panel-kit-core" }
 dioxus = { version = "0.6", features = ["web"] }
 serde = { version = "1", features = ["derive"] }
 gloo-storage = "0.3"

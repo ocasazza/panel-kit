@@ -1,6 +1,6 @@
 [package]
 name = "panel-kit-tui"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Ratatui shell for panel-kit-core: floating/tiling panel workspaces with mouse drag/resize, traffic lights, and a dock — in the terminal (and via ratzilla, the browser)"
@@ -13,7 +13,7 @@ categories = ["command-line-interface"]
 autoexamples = false
 
 [dependencies]
-panel-kit-core = { version = "0.2.0", path = "../panel-kit-core" }
+panel-kit-core = { version = "0.3.0", path = "../panel-kit-core" }
 ratatui = { version = "0.30.1", default-features = false, features = ["all-widgets", "layout-cache"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

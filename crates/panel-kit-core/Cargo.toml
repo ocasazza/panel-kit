@@ -1,6 +1,6 @@
 [package]
 name = "panel-kit-core"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Renderer-agnostic panel-workspace state machine: geometry, z-order, drag/resize math, tiling reorder, layout persistence model"
