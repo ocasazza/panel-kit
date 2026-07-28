@@ -396,7 +396,7 @@ pub fn use_workspace<K: PanelKind>(
                 } == Mode::Tiling;
                 let (vw, _) = *viewport_for_move.peek();
                 apply_drag(
-                    &mut *panels_for_move.write(),
+                    &mut panels_for_move.write(),
                     &d,
                     e.client_x() as f64,
                     e.client_y() as f64,
