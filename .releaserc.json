@@ -1,0 +1,40 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    ["@semantic-release/commit-analyzer", {
+      "preset": "angular",
+      "releaseRules": [
+        {"type": "feat", "release": "minor"},
+        {"type": "fix", "release": "patch"},
+        {"type": "perf", "release": "patch"},
+        {"type": "refactor", "release": "patch"},
+        {"breaking": true, "release": "major"}
+      ]
+    }],
+    ["@semantic-release/release-notes-generator", {
+      "preset": "angular",
+      "writerOpts": {
+        "groupBy": "type",
+        "commitGroupsSort": "title",
+        "commitsSort": ["scope", "subject"]
+      }
+    }],
+    ["@semantic-release/changelog", {
+      "changelogFile": "CHANGELOG.md"
+    }],
+    ["@semantic-release/exec", {
+      "prepareCmd": "nix run .#update-version -- ${nextRelease.version}"
+    }],
+    ["@semantic-release/git", {
+      "assets": [
+        "CHANGELOG.md",
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/panel-kit-core/Cargo.toml",
+        "crates/panel-kit-tui/Cargo.toml"
+      ],
+      "message": "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
+    }],
+    "@semantic-release/github"
+  ]
+}

@@ -15,7 +15,21 @@
   };
 
   outputs = { self, nixpkgs, nixpkgs-dioxus, flake-utils, crane, rust-overlay }:
-    flake-utils.lib.eachDefaultSystem (system:
+    let
+      # Systems the Schrodinger Hydra farm can actually build. Deliberately a
+      # subset of eachDefaultSystem: the farm has no x86_64-darwin machine, and
+      # a job with no capable builder is not "pending", it is permanently red
+      # (Hydra reports it as unsupported(9)).
+      #
+      # aarch64-linux is omitted for a different reason — the only builder is a
+      # 1-job GCP VM, and this crate cross-compiles to wasm32 so its output does
+      # not vary by host anyway. x86_64-linux carries the farm's capacity;
+      # aarch64-darwin is kept because that is what developers here build on, so
+      # a toolchain break on macOS should turn CI red rather than surface as a
+      # local surprise.
+      hydraSystems = [ "x86_64-linux" "aarch64-darwin" ];
+
+      perSystem = flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
@@ -70,6 +84,27 @@
       in {
         packages.default = panel-kit;
         packages.layout-canary = layout-canary;
+
+        # Version bumper for semantic-release's @semantic-release/exec step
+        # (`nix run .#update-version -- 1.2.3`), mirroring how nixstation
+        # drives its own lib/version.nix.
+        #
+        # cargo set-version rather than sed: this is a workspace, so a bump has
+        # to touch the root package, both member crates, AND the `version` field
+        # of the path-dependency on panel-kit-core — which a naive
+        # search-and-replace gets wrong as soon as two crates disagree on
+        # version. It rewrites Cargo.lock in the same pass.
+        packages.update-version = pkgs.writeShellApplication {
+          name = "update-version";
+          runtimeInputs = [ pkgs.cargo-edit rustWasm ];
+          text = ''
+            if [ $# -ne 1 ]; then
+              echo "usage: update-version <semver>" >&2
+              exit 1
+            fi
+            cargo set-version --workspace "$1"
+          '';
+        };
 
         # mkLayout for downstream flakes:
         # `inputs.panel-kit.lib.${system}.mkLayout { ... }`.
@@ -131,4 +166,39 @@
           ];
         };
       });
+    in
+    perSystem // {
+      # What Hydra builds. Hydra's flake jobsets evaluate the `hydraJobs`
+      # output specifically — `checks` alone is invisible to it — so this
+      # re-exports the same five checks (the crane build, clippy, rustdoc, the
+      # browser_tui example, and the layout-canary schema check) per buildable
+      # system. Job names come out as `<system>.<check>`.
+      #
+      # Jobsets themselves are declared in hydra-project.json; the project is
+      # registered in schrodinger/hydra .hydra/declarative-projects.json.
+      hydraJobs =
+        let
+          perSys = nixpkgs.lib.genAttrs hydraSystems (system: perSystem.checks.${system});
+        in
+        perSys // {
+          # Single green/red summary over every check on every system.
+          #
+          # This is what the release pipeline hangs off. Hydra's RunCommand
+          # plugin fires once per BUILD, so hooking it to a wildcard job
+          # matcher would trigger a release ten times per commit (five checks
+          # times two systems). An aggregate is one build that succeeds only if
+          # all its constituents did, so `panel-kit:main:release` fires exactly
+          # once — and only when everything is genuinely green.
+          #
+          # releaseTools.aggregate marks the job `_hydraAggregate`, which is
+          # how Hydra knows to wait for the constituents rather than treat this
+          # as an ordinary (and trivially empty) derivation.
+          release =
+            (import nixpkgs { system = "x86_64-linux"; }).releaseTools.aggregate {
+              name = "panel-kit-release";
+              constituents =
+                builtins.concatMap builtins.attrValues (builtins.attrValues perSys);
+            };
+        };
+    };
 }

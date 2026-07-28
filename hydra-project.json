@@ -1,0 +1,14 @@
+{
+  "main": {
+    "enabled": 1,
+    "hidden": false,
+    "description": "main - wasm32 crane build, clippy, rustdoc, browser_tui example, layout DSL schema check",
+    "type": 1,
+    "flake": "git+ssh://git@github.com/ocasazza/panel-kit?ref=main",
+    "checkinterval": 300,
+    "schedulingshares": 100,
+    "enableemail": false,
+    "emailoverride": "",
+    "keepnr": 10
+  }
+}
