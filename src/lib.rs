@@ -22,7 +22,7 @@
 //!
 //! ```no_run
 //! use dioxus::prelude::*;
-//! use panel_kit::{use_workspace, LayoutBuilder, PanelKind, PanelWin};
+//! use panel_kit::{use_workspace, LayoutBuilder, PanelHeaderButton, PanelKind, PanelWin};
 //! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -54,7 +54,16 @@
 //!             onmousemove: move |e| ws.handle_mouse_move(&e),
 //!             onmouseup: move |_| ws.handle_mouse_up(),
 //!             header { class: "topbar" /* app-specific */ }
-//!             {ws.render(|kind, _maximized| rsx! { "body for {kind.title()}" })}
+//!             {ws.render_with_header(
+//!                 |kind, _maximized| rsx! { "body for {kind.title()}" },
+//!                 |_kind, _maximized| rsx! {
+//!                     PanelHeaderButton {
+//!                         label: "refresh",
+//!                         title: "Refresh this panel",
+//!                         on_press: move |_| { /* app-owned action */ },
+//!                     }
+//!                 },
+//!             )}
 //!             {ws.dock()}
 //!         }
 //!     }
@@ -108,6 +117,46 @@ use panel_kit_core::{
 /// it; override the `:root` CSS variables to retheme (see the
 /// [crate-level theming notes](crate#theming)).
 pub const CSS: &str = include_str!("../assets/panel-kit.css");
+
+/// Compact application action rendered inside a panel's header bar.
+///
+/// Use this from the header callback passed to
+/// [`Workspace::render_with_header`]. Pointer-down is stopped at the button
+/// so clicking an action never begins a panel move or tile reorder.
+#[component]
+pub fn PanelHeaderButton(
+    /// Short visible label. Header space is intentionally tight, so prefer a
+    /// compact word or glyph and put the full description in `title`.
+    label: String,
+    /// Full hover and accessible label for the action.
+    title: String,
+    /// Whether to draw the selected/engaged treatment.
+    #[props(default)]
+    active: bool,
+    /// Whether the action is currently unavailable.
+    #[props(default)]
+    disabled: bool,
+    /// Application-owned action handler.
+    on_press: EventHandler<MouseEvent>,
+) -> Element {
+    let class = if active {
+        "panel-head-action active"
+    } else {
+        "panel-head-action"
+    };
+    rsx! {
+        button {
+            class: "{class}",
+            r#type: "button",
+            title: "{title}",
+            aria_label: "{title}",
+            disabled,
+            onmousedown: move |e: MouseEvent| e.stop_propagation(),
+            onclick: move |e| on_press.call(e),
+            "{label}"
+        }
+    }
+}
 
 // The core types (PanelKind, PanelWin, WinState, Mode, Drag, LayoutBuilder)
 // and all geometry/drag math live in panel-kit-core and are re-exported
@@ -682,6 +731,21 @@ impl<K: PanelKind> Workspace<K> {
     /// (slugified from [`PanelKind::title`]) so apps can style individual
     /// panels — e.g. making one full-width in tiling mode.
     pub fn render(&self, body: impl Fn(K, bool) -> Element) -> Element {
+        self.render_with_header(body, |_, _| rsx! {})
+    }
+
+    /// Render the workspace with an application-owned action slot in every
+    /// panel header.
+    ///
+    /// `header_actions` receives the same panel kind and maximized flag as
+    /// `body`. Return an empty `rsx! {}` for panels without actions. Use
+    /// [`PanelHeaderButton`] for the built-in compact styling and drag-safe
+    /// pointer behavior.
+    pub fn render_with_header(
+        &self,
+        body: impl Fn(K, bool) -> Element,
+        header_actions: impl Fn(K, bool) -> Element,
+    ) -> Element {
         let ws = *self;
         let mode_now = self.effective_mode();
         let ps = self.panels.read().clone();
@@ -786,7 +850,13 @@ impl<K: PanelKind> Workspace<K> {
                                         if let Some(pp) = panels.write().get_mut(i) { pp.z = z; };
                                     }
                                 },
-                                {ws.header(i, p.kind, floating, tiling)}
+                                {ws.header(
+                                    i,
+                                    p.kind,
+                                    floating,
+                                    tiling,
+                                    header_actions(p.kind, maximized == Some(i)),
+                                )}
                                 div { class: "panel-body",
                                     {body(p.kind, maximized == Some(i))}
                                 }
@@ -819,7 +889,14 @@ impl<K: PanelKind> Workspace<K> {
     /// light rather than swapping in action glyphs). In floating mode the row
     /// drags the window freely; in tiling mode it starts a reorder drag (hover
     /// another panel to snap into its slot). Mobile gets neither (static stack).
-    fn header(&self, idx: usize, kind: K, draggable: bool, tiling: bool) -> Element {
+    fn header(
+        &self,
+        idx: usize,
+        kind: K,
+        draggable: bool,
+        tiling: bool,
+        actions: Element,
+    ) -> Element {
         let ws = *self;
         let title = kind.title();
         let is_max = self.panels.read().get(idx).map(|p| p.state) == Some(WinState::Maximized);
@@ -869,6 +946,11 @@ impl<K: PanelKind> Workspace<K> {
                 }
                 span { class: "panel-title", title: "{title}", "{title}" }
                 if is_max { span { class: "max-hint", "maximized" } }
+                div {
+                    class: "panel-head-actions",
+                    onmousedown: move |e: MouseEvent| e.stop_propagation(),
+                    {actions}
+                }
             }
         }
     }
