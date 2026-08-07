@@ -151,6 +151,7 @@ pub fn PanelHeaderButton(
             title: "{title}",
             aria_label: "{title}",
             disabled,
+            onpointerdown: move |e: PointerEvent| e.stop_propagation(),
             onmousedown: move |e: MouseEvent| e.stop_propagation(),
             onclick: move |e| on_press.call(e),
             "{label}"
@@ -918,7 +919,9 @@ impl<K: PanelKind> Workspace<K> {
                 onpointermove: move |e: PointerEvent| ws.handle_pointer_move(&e),
                 onpointerup: move |e: PointerEvent| ws.handle_pointer_up(&e),
                 onpointercancel: move |e: PointerEvent| ws.handle_pointer_up(&e),
-                div { class: "lights",
+                div {
+                    class: "lights",
+                    onpointerdown: move |e: PointerEvent| e.stop_propagation(),
                     button { class: "light mode", title: "tiling / floating",
                         onmousedown: move |e: MouseEvent| e.stop_propagation(),
                         onclick: move |_| {
@@ -948,6 +951,7 @@ impl<K: PanelKind> Workspace<K> {
                 if is_max { span { class: "max-hint", "maximized" } }
                 div {
                     class: "panel-head-actions",
+                    onpointerdown: move |e: PointerEvent| e.stop_propagation(),
                     onmousedown: move |e: MouseEvent| e.stop_propagation(),
                     {actions}
                 }
