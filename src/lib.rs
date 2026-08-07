@@ -5,7 +5,9 @@
 //! with floating (free placement) and tiling (auto grid) workspace modes,
 //! macOS-style traffic lights, a minimized-panel dock strip, and layout
 //! persistence to localStorage. The crate also ships two standalone widgets:
-//! the [`badge`] module (a clickable metadata chip) and [`Spinner`].
+//! the [`badge`] module (a clickable metadata chip), [`Spinner`], and a
+//! [`LoadingWorkspace`] whose static HTML/CSS twin can paint before an app's
+//! WASM bundle finishes loading.
 //!
 //! The app supplies two things: a [`PanelKind`] impl (an enum of its panels)
 //! and a body-render callback. Everything else — geometry, z-order, drag
@@ -70,6 +72,17 @@
 //! }
 //! ```
 //!
+//! # Pre-WASM loading shell
+//!
+//! A Dioxus component cannot render until the app WASM has downloaded and
+//! instantiated. Copy [`BOOT_HTML`] into `index.html` as a direct child of the
+//! Dioxus mount element and load or inline [`BOOT_CSS`] in `<head>`. The
+//! fragment is static HTML/CSS with no script or application logic.
+//!
+//! After Rust starts, render [`LoadingWorkspace`] while app-owned data,
+//! workers, or GPU resources continue initializing. It uses the same public
+//! class contract as the static fragment.
+//!
 //! # Theming
 //!
 //! Inject [`CSS`] once at the app root (`style { {panel_kit::CSS} }`), then
@@ -111,12 +124,61 @@ use panel_kit_core::{
     TileMetrics, TILE_W_MAX,
 };
 
+/// Critical stylesheet for the loading-workspace contract.
+///
+/// Trunk apps cannot call Rust before their WASM bundle has instantiated, so
+/// place the markup from [`BOOT_HTML`] inside the Dioxus mount root and inline
+/// this CSS in the document head (or copy the asset into the build). Dioxus'
+/// first commit automatically hides only that static fragment. After WASM is
+/// live, [`LoadingWorkspace`] renders the same app-agnostic contract.
+pub const BOOT_CSS: &str = include_str!("../assets/panel-kit-boot.css");
+
+/// Static, JavaScript-free loading-workspace fragment for pre-WASM first paint.
+///
+/// Consumers should replace the generic application title and status text.
+/// See [`BOOT_CSS`] for wiring details.
+pub const BOOT_HTML: &str = include_str!("../assets/panel-kit-boot.html");
+
 /// Base stylesheet for the workspace chrome (panels, lights, dock, badges,
 /// spinner, tooltip overlay, mobile breakpoint). Inject once at the app root
 /// with `style { {panel_kit::CSS} }`, then layer app-specific styles after
 /// it; override the `:root` CSS variables to retheme (see the
 /// [crate-level theming notes](crate#theming)).
 pub const CSS: &str = include_str!("../assets/panel-kit.css");
+
+/// Panel-shaped loading state for work that continues after WASM has mounted.
+///
+/// For the earlier download/instantiation gap, render the static [`BOOT_HTML`]
+/// contract in the app's HTML and inline [`BOOT_CSS`]. Both surfaces use the
+/// same class names and visual language; the app owns only the phase text.
+#[component]
+pub fn LoadingWorkspace(
+    /// Application name shown in the compact top bar.
+    title: String,
+    /// Current app-owned phase, such as `loading graph…` or `initializing GPU…`.
+    status: String,
+) -> Element {
+    rsx! {
+        style { {BOOT_CSS} }
+        section {
+            class: "panel-kit-boot",
+            role: "status",
+            aria_live: "polite",
+            header { class: "panel-kit-boot-bar",
+                strong { class: "panel-kit-boot-title", "{title}" }
+                span { class: "panel-kit-boot-status", "{status}" }
+            }
+            main { class: "panel-kit-boot-panels", aria_hidden: "true",
+                for i in 0..3 {
+                    div { key: "{i}", class: "panel-kit-boot-panel",
+                        div { class: "panel-kit-boot-line" }
+                        div { class: "panel-kit-boot-line" }
+                    }
+                }
+            }
+        }
+    }
+}
 
 /// Compact application action rendered inside a panel's header bar.
 ///
@@ -1069,4 +1131,41 @@ pub fn tip_pos(cx: f64, cy: f64, tw: f64, th: f64) -> (f64, f64) {
         y = vh - th - 8.0;
     }
     (x.max(8.0), y.max(8.0))
+}
+
+#[cfg(test)]
+mod boot_contract_tests {
+    use super::{BOOT_CSS, BOOT_HTML};
+
+    const CLASSES: [&str; 7] = [
+        "panel-kit-boot",
+        "panel-kit-boot-bar",
+        "panel-kit-boot-title",
+        "panel-kit-boot-status",
+        "panel-kit-boot-panels",
+        "panel-kit-boot-panel",
+        "panel-kit-boot-line",
+    ];
+
+    #[test]
+    fn static_html_and_critical_css_share_the_public_class_contract() {
+        for class in CLASSES {
+            assert!(BOOT_HTML.contains(class), "BOOT_HTML is missing {class}");
+            assert!(
+                BOOT_CSS.contains(&format!(".{class}")),
+                "BOOT_CSS is missing {class}"
+            );
+        }
+    }
+
+    #[test]
+    fn static_boot_contract_is_script_free_and_marked_for_handoff() {
+        let html = BOOT_HTML.to_ascii_lowercase();
+        assert!(!html.contains("<script"));
+        assert!(!html.contains("onclick="));
+        assert!(!html.contains("onload="));
+        assert!(html.contains("data-panel-kit-static-boot"));
+        assert!(html.contains("role=\"status\""));
+        assert!(BOOT_CSS.contains(".panel-kit-boot[data-panel-kit-static-boot]"));
+    }
 }

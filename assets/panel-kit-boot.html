@@ -1,0 +1,14 @@
+<!-- Paint this inside the Dioxus mount root so users see workspace chrome
+     while the application WASM downloads and instantiates. Replace the title
+     and status text for the consuming app. No JavaScript is required. -->
+<section class="panel-kit-boot" data-panel-kit-static-boot role="status" aria-live="polite">
+  <header class="panel-kit-boot-bar">
+    <strong class="panel-kit-boot-title">APPLICATION</strong>
+    <span class="panel-kit-boot-status">loading runtime…</span>
+  </header>
+  <main class="panel-kit-boot-panels" aria-hidden="true">
+    <div class="panel-kit-boot-panel"><div class="panel-kit-boot-line"></div><div class="panel-kit-boot-line"></div></div>
+    <div class="panel-kit-boot-panel"><div class="panel-kit-boot-line"></div><div class="panel-kit-boot-line"></div></div>
+    <div class="panel-kit-boot-panel"><div class="panel-kit-boot-line"></div><div class="panel-kit-boot-line"></div></div>
+  </main>
+</section>

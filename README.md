@@ -4,7 +4,8 @@ Generic Dioxus panel-workspace library. Every view is a panel you can
 move/resize/minimize/maximize, with floating (free placement) and tiling
 (auto grid) workspace modes, macOS-style traffic lights, tiling
 drag-to-reorder, a minimized-panel dock strip, and layout persistence to
-localStorage. Includes a reusable `Badge` chip component and `Spinner`.
+localStorage. Includes reusable `Badge`, `Spinner`, panel-header actions, and
+loading-workspace primitives.
 
 Factored out of [jump-cannon](https://github.com/ocasazza/jump-cannon) and
 apple-notes-ocr-flow, which both consume it as a git dependency:
@@ -72,6 +73,23 @@ rsx! {
 Inject `panel_kit::CSS` once at the app root, then layer app-specific styles
 after it; override the `:root` variables to retheme.
 
+### Loading before WASM
+
+A Rust component cannot render until the browser has downloaded and
+instantiated the application's WASM module. Panel Kit therefore exposes one
+loading-workspace contract at both sides of that boundary:
+
+- `BOOT_CSS` and `BOOT_HTML` are static, JavaScript-free assets for immediate
+  first paint inside the Dioxus mount root. Copy the fragment into the app's
+  `index.html`, replace its application/status text, and inline the critical
+  stylesheet in `<head>`.
+- `LoadingWorkspace` renders the same shell after Dioxus mounts, for app-owned
+  phases such as graph fetches or GPU initialization.
+
+The static fragment carries `data-panel-kit-static-boot`; the stylesheet hides
+only that fragment after Dioxus marks its mount root, so no cleanup JavaScript
+is needed.
+
 ## Documentation
 
 API docs are rustdoc-first — the crate root has a quick start, theming
@@ -99,6 +117,7 @@ dx serve --example workspace --platform web
 | `workspace` | the whole workspace system: `use_workspace` + `PanelKind` + `LayoutBuilder`, floating mode (drag/resize/z-raise/traffic lights), tiling mode (red-light toggle, drag-header reorder, full-width panel via the `panel-<slug>` class), a panel that starts minimized in the dock, viewport clamping vs. stored geometry, localStorage persistence (`panel_kit_example_workspace`), the mobile stack, the `is_editing` shortcut gate, and a `tip_pos` tooltip overlay |
 | `badge` | all ten `BadgeKind`s, every prop (`active`, `with_x`, `with_plus`, `small`, `override_color`, `accent_color`, both `BadgeClickKind`s, `emit_hover`) behind live toggles, an event log proving every `BadgeAction` variant fires, and a `tag_hue` FNV hue-spread row |
 | `spinner` | `Spinner` with and without `label`, plus a live-editable label |
+| `loading_workspace` | the post-mount `LoadingWorkspace` twin of the static pre-WASM boot contract |
 | `theming` | the documented retheme path: `:root` variable overrides layered after `panel_kit::CSS`, with three switchable presets |
 
 `dx build --example <name> --platform web` produces the same app
