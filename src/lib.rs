@@ -75,9 +75,11 @@
 //! # Pre-WASM loading shell
 //!
 //! A Dioxus component cannot render until the app WASM has downloaded and
-//! instantiated. Copy [`BOOT_HTML`] into `index.html` as a direct child of the
-//! Dioxus mount element and load or inline [`BOOT_CSS`] in `<head>`. The
-//! fragment is static HTML/CSS with no script or application logic.
+//! instantiated. Keep the Dioxus mount element empty, place [`BOOT_HTML`] as
+//! its immediately following sibling, and load or inline [`BOOT_CSS`] in
+//! `<head>`. The fragment is static HTML/CSS with no script or application
+//! logic. It must not be placed inside the mount element because Dioxus does
+//! not clear pre-existing children.
 //!
 //! After Rust starts, render [`LoadingWorkspace`] while app-owned data,
 //! workers, or GPU resources continue initializing. It uses the same public
@@ -127,16 +129,18 @@ use panel_kit_core::{
 /// Critical stylesheet for the loading-workspace contract.
 ///
 /// Trunk apps cannot call Rust before their WASM bundle has instantiated, so
-/// place the markup from [`BOOT_HTML`] inside the Dioxus mount root and inline
-/// this CSS in the document head (or copy the asset into the build). Dioxus'
-/// first commit automatically hides only that static fragment. After WASM is
-/// live, [`LoadingWorkspace`] renders the same app-agnostic contract.
+/// keep the Dioxus mount element empty, place [`BOOT_HTML`] as its immediately
+/// following sibling, and inline this CSS in the document head (or copy the
+/// asset into the build). Once Dioxus marks the mount element, the adjacent
+/// sibling selector hides only that static fragment. After WASM is live,
+/// [`LoadingWorkspace`] renders the same app-agnostic contract.
 pub const BOOT_CSS: &str = include_str!("../assets/panel-kit-boot.css");
 
 /// Static, JavaScript-free loading-workspace fragment for pre-WASM first paint.
 ///
-/// Consumers should replace the generic application title and status text.
-/// See [`BOOT_CSS`] for wiring details.
+/// Place this fragment immediately after, never inside, the empty Dioxus mount
+/// element. Consumers should replace the generic application title and status
+/// text. See [`BOOT_CSS`] for wiring details.
 pub const BOOT_HTML: &str = include_str!("../assets/panel-kit-boot.html");
 
 /// Base stylesheet for the workspace chrome (panels, lights, dock, badges,
@@ -1166,6 +1170,12 @@ mod boot_contract_tests {
         assert!(!html.contains("onload="));
         assert!(html.contains("data-panel-kit-static-boot"));
         assert!(html.contains("role=\"status\""));
-        assert!(BOOT_CSS.contains(".panel-kit-boot[data-panel-kit-static-boot]"));
+        assert!(html.contains("immediately after an empty dioxus mount element"));
+        assert!(html.contains("never place it inside the mount element"));
+
+        const HANDOFF_SELECTOR: &str =
+            "[data-dioxus-id] + .panel-kit-boot[data-panel-kit-static-boot]";
+        assert!(BOOT_CSS.contains(HANDOFF_SELECTOR));
+        assert!(!BOOT_CSS.contains("[data-dioxus-id] > .panel-kit-boot"));
     }
 }

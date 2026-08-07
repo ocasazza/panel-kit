@@ -80,15 +80,31 @@ instantiated the application's WASM module. Panel Kit therefore exposes one
 loading-workspace contract at both sides of that boundary:
 
 - `BOOT_CSS` and `BOOT_HTML` are static, JavaScript-free assets for immediate
-  first paint inside the Dioxus mount root. Copy the fragment into the app's
-  `index.html`, replace its application/status text, and inline the critical
-  stylesheet in `<head>`.
+  first paint. Keep the Dioxus mount element empty, copy the fragment as its
+  immediately following sibling, replace its application/status text, and
+  inline the critical stylesheet in `<head>`.
 - `LoadingWorkspace` renders the same shell after Dioxus mounts, for app-owned
   phases such as graph fetches or GPU initialization.
 
-The static fragment carries `data-panel-kit-static-boot`; the stylesheet hides
-only that fragment after Dioxus marks its mount root, so no cleanup JavaScript
-is needed.
+The static fragment carries `data-panel-kit-static-boot`; the stylesheet's
+adjacent-sibling selector hides only that fragment after Dioxus marks its mount
+root, so no cleanup JavaScript is needed. Do not put the fragment inside the
+mount element: Dioxus does not clear pre-existing children.
+
+```html
+<head>
+  <style>/* exact contents of panel-kit::BOOT_CSS */</style>
+  <link data-trunk rel="rust" href="Cargo.toml" />
+</head>
+<body>
+  <div id="main"></div>
+  <!-- exact contents of panel-kit::BOOT_HTML, immediately adjacent -->
+  <section class="panel-kit-boot" data-panel-kit-static-boot
+           role="status" aria-live="polite">
+    <!-- panel-kit-boot-bar + panel-kit-boot-panels contract -->
+  </section>
+</body>
+```
 
 ## Documentation
 

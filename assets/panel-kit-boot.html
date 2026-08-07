@@ -1,6 +1,8 @@
-<!-- Paint this inside the Dioxus mount root so users see workspace chrome
-     while the application WASM downloads and instantiates. Replace the title
-     and status text for the consuming app. No JavaScript is required. -->
+<!-- Place this immediately after an empty Dioxus mount element so users see
+     workspace chrome while the application WASM downloads and instantiates.
+     Never place it inside the mount element: Dioxus does not clear existing
+     children. Replace the title and status text for the consuming app. No
+     JavaScript is required. -->
 <section class="panel-kit-boot" data-panel-kit-static-boot role="status" aria-live="polite">
   <header class="panel-kit-boot-bar">
     <strong class="panel-kit-boot-title">APPLICATION</strong>

@@ -74,9 +74,10 @@
   animation-delay: .18s;
 }
 
-/* Dioxus marks the mount root after its first commit. Hide only the static
-   pre-WASM fragment; the Rust LoadingWorkspace component has no marker. */
-[data-dioxus-id] > .panel-kit-boot[data-panel-kit-static-boot] { display: none; }
+/* Contract: the marked static fragment is the immediate sibling after the
+   empty Dioxus mount element. Dioxus marks that mount with data-dioxus-id;
+   the Rust LoadingWorkspace component has no static marker. */
+[data-dioxus-id] + .panel-kit-boot[data-panel-kit-static-boot] { display: none; }
 
 @keyframes panel-kit-boot-pulse {
   from { opacity: .35; }
