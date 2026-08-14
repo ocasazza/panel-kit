@@ -13,7 +13,9 @@
 //! - [`effective_rect`] to project stored geometry through the viewport
 //!   clamp at render time,
 //! - [`SavedLayout`] + [`merge_defaults`] for persistence (the shell
-//!   supplies the actual storage: localStorage, a JSON file, a KV bucket).
+//!   supplies the actual storage: localStorage, a JSON file, a KV bucket),
+//! - [`views`] for named workspace views: the registry shape and the
+//!   storage-key scheme every shell shares.
 //!
 //! Units are deliberately abstract: the web shell feeds CSS pixels, the TUI
 //! shell feeds character cells. All unit-dependent constants live in
@@ -23,6 +25,7 @@
 #![warn(missing_docs)]
 
 pub mod badge;
+pub mod views;
 
 use serde::{Deserialize, Serialize};
 

@@ -10,7 +10,9 @@
 //! The app supplies two things: a [`PanelKind`] impl (an enum of its panels)
 //! and a body-render callback. Everything else — geometry, z-order, drag
 //! state, viewport clamping, the mobile breakpoint, persistence — lives in
-//! the [`Workspace`] handle created by [`use_workspace`].
+//! the [`Workspace`] handle created by [`use_workspace`]. For several named,
+//! switchable layouts inside one workspace, [`use_views`] layers a view
+//! registry and per-view persistence keys over the same machinery.
 //! Panel chrome follows the ratatui renderer's compact treatment: controls
 //! and title are inset into the top border row instead of occupying a
 //! separate full-width header band, preserving vertical space for content.
@@ -78,6 +80,9 @@
 //!
 //! - `workspace` — the full workspace surface: floating/tiling, traffic
 //!   lights, drag/resize/reorder, dock, persistence, mobile stack, tooltips.
+//! - `views` — named views over one workspace: [`use_views`], per-view
+//!   layout persistence keys, switching/creating/renaming/deleting views,
+//!   and the legacy single-layout migration.
 //! - `badge` — every [`badge::BadgeKind`], every prop, and an event log
 //!   proving each [`badge::BadgeAction`] variant fires.
 //! - `spinner` — [`Spinner`] with and without a label.
@@ -86,6 +91,9 @@
 #![warn(missing_docs)]
 
 pub mod badge;
+pub mod views;
+
+pub use views::{use_views, SavedViews, ViewError, Views};
 
 use dioxus::events::{MouseEvent, PointerEvent};
 use dioxus::prelude::*;
@@ -229,14 +237,14 @@ fn panel_body_absorbs_wheel(dy: f64) -> bool {
     }
 }
 
-fn save_layout<K: PanelKind>(key: &str, panels: &[PanelWin<K>], mode: Mode) {
+pub(crate) fn save_layout<K: PanelKind>(key: &str, panels: &[PanelWin<K>], mode: Mode) {
     let _ = LocalStorage::set(key, SavedLayout { panels: panels.to_vec(), tiling: mode == Mode::Tiling });
 }
 
 /// Load the saved layout, reconciling against the current panel set: panels
 /// added since the layout was saved are appended with their default placement,
 /// so new features still show up for existing users.
-fn load_layout<K: PanelKind>(key: &str, defaults: &[PanelWin<K>]) -> Option<(Vec<PanelWin<K>>, Mode)> {
+pub(crate) fn load_layout<K: PanelKind>(key: &str, defaults: &[PanelWin<K>]) -> Option<(Vec<PanelWin<K>>, Mode)> {
     let saved: SavedLayout<K> = LocalStorage::get(key).ok()?;
     let mut panels = saved.panels;
     merge_defaults(&mut panels, defaults);
@@ -299,11 +307,34 @@ impl<K: PanelKind> Copy for Workspace<K> {}
 /// per app (e.g. `"myapp_layout"`). `defaults` produces the initial layout
 /// (see [`LayoutBuilder`]) and is also consulted when a saved layout is
 /// missing panels that were added to the app after it was saved.
+///
+/// For several named layouts inside one workspace (a view switcher), use
+/// [`use_views`] instead — it layers per-view storage keys
+/// over this same machinery.
 pub fn use_workspace<K: PanelKind>(
     storage_key: &'static str,
     defaults: fn() -> Vec<PanelWin<K>>,
 ) -> Workspace<K> {
-    let saved = load_layout(storage_key, &defaults());
+    let ws = use_workspace_state(load_layout(storage_key, &defaults()), defaults);
+    use_effect(move || {
+        let ps = ws.panels.read().clone();
+        let md = *ws.mode.read();
+        // Persist once a drag settles — not on every mousemove/hover-shuffle.
+        if ws.drag.read().is_none() && ws.tile_drag.read().is_none() {
+            save_layout(storage_key, &ps, md);
+        }
+    });
+    ws
+}
+
+/// The persistence-free heart of [`use_workspace`] (and
+/// [`use_views`]): the signal bundle plus the window
+/// resize / global pointer listeners. `saved` is the already-loaded initial
+/// layout, if any; the caller wires its own persistence effect.
+pub(crate) fn use_workspace_state<K: PanelKind>(
+    saved: Option<(Vec<PanelWin<K>>, Mode)>,
+    defaults: fn() -> Vec<PanelWin<K>>,
+) -> Workspace<K> {
     let panels =
         use_signal(|| saved.as_ref().map(|(p, _)| p.clone()).unwrap_or_else(defaults));
     let mode = use_signal(|| saved.as_ref().map(|(_, m)| *m).unwrap_or(Mode::Floating));
@@ -436,15 +467,6 @@ pub fn use_workspace<K: PanelKind>(
         move_cb.forget();
         up_cb.forget();
         cancel_cb.forget();
-    });
-
-    use_effect(move || {
-        let ps = panels.read().clone();
-        let md = *mode.read();
-        // Persist once a drag settles — not on every mousemove/hover-shuffle.
-        if drag.read().is_none() && tile_drag.read().is_none() {
-            save_layout(storage_key, &ps, md);
-        }
     });
 
     Workspace { panels, mode, drag, tile_drag, is_mobile, viewport, ws_scroll }

@@ -72,6 +72,25 @@ rsx! {
 Inject `panel_kit::CSS` once at the app root, then layer app-specific styles
 after it; override the `:root` variables to retheme.
 
+### Named views
+
+For several named, switchable layouts inside one workspace, `use_views`
+layers a view registry over the same machinery — one `Workspace`, one
+`render`/`dock` pair, a storage key per view:
+
+```rust
+let views = panel_kit::use_views("myapp_layout", default_layout, &["User", "Sessions"]);
+let ws = views.workspace;
+// views.names / views.active are signals; views.switch(name),
+// views.create(name), views.rename(old, new), views.delete(name)
+// manage the registry.
+```
+
+The registry persists at `myapp_layout:views`, each view's layout at
+`myapp_layout:view:<name>`; a pre-views layout at the bare base key migrates
+into the first view on first run (copied, never deleted). See the `views`
+example for a full switcher UI — the hook ships no UI of its own.
+
 ## Documentation
 
 API docs are rustdoc-first — the crate root has a quick start, theming
@@ -97,6 +116,7 @@ dx serve --example workspace --platform web
 | example | shows |
 | --- | --- |
 | `workspace` | the whole workspace system: `use_workspace` + `PanelKind` + `LayoutBuilder`, floating mode (drag/resize/z-raise/traffic lights), tiling mode (red-light toggle, drag-header reorder, full-width panel via the `panel-<slug>` class), a panel that starts minimized in the dock, viewport clamping vs. stored geometry, localStorage persistence (`panel_kit_example_workspace`), the mobile stack, the `is_editing` shortcut gate, and a `tip_pos` tooltip overlay |
+| `views` | named views over one workspace: `use_views`, per-view persistence keys (`panel_kit_example_views:view:<name>` + the `:views` registry), a switcher bar with create/rename/delete, per-view reset, and the legacy single-layout migration |
 | `badge` | all ten `BadgeKind`s, every prop (`active`, `with_x`, `with_plus`, `small`, `override_color`, `accent_color`, both `BadgeClickKind`s, `emit_hover`) behind live toggles, an event log proving every `BadgeAction` variant fires, and a `tag_hue` FNV hue-spread row |
 | `spinner` | `Spinner` with and without `label`, plus a live-editable label |
 | `theming` | the documented retheme path: `:root` variable overrides layered after `panel_kit::CSS`, with three switchable presets |
