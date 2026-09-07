@@ -455,7 +455,15 @@ pub fn MonacoEditor(
                             return;
                         }
                         register_languages();
-                        let text = value.map(|v| v.peek().clone()).unwrap_or(initial);
+                        let text = match value {
+                            Some(v) => v.try_peek().map(|g| g.clone()).unwrap_or_else(|_| {
+                                // The consumer is mid-write on this signal (e.g. an
+                                // on_change echo); mount with `initial` and let the
+                                // subscription apply the live value after.
+                                initial.clone()
+                            }),
+                            None => initial,
+                        };
                         let options = editor_options(&text, &language, mount_read_only, &theme);
                         let id = match interop::create(&el, options.as_ref()) {
                             Ok(id) => id,
