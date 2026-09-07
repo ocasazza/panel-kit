@@ -27,7 +27,7 @@
       globalThis.MonacoEnvironment = {
         getWorker: () => new Worker(`${root}/editor.worker.js`),
       };
-      loadPromise = import(`${root}/monaco.esm.js`).then((m) => {
+      loadPromise = import(new URL(`${root}/monaco.esm.js`, document.baseURI).href).then((m) => {
         monaco = m;
       });
     }
