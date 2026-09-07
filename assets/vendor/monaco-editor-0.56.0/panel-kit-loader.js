@@ -22,10 +22,10 @@
       css.rel = 'stylesheet';
       css.href = `${root}/monaco.esm.css`;
       document.head.appendChild(css);
-      // Classic worker, not {type:'module'}: the bundle carries no ESM
-      // syntax, and classic loads in webviews without module-worker support.
+      // Module worker: the esbuild bundle ends in `export{…}` (ESM), which a
+      // classic worker rejects with "Unexpected token 'export'".
       globalThis.MonacoEnvironment = {
-        getWorker: () => new Worker(`${root}/editor.worker.js`),
+        getWorker: () => new Worker(`${root}/editor.worker.js`, { type: 'module' }),
       };
       loadPromise = import(new URL(`${root}/monaco.esm.js`, document.baseURI).href).then((m) => {
         monaco = m;
