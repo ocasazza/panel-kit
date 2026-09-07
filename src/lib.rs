@@ -4,8 +4,10 @@
 //! same shell: every view is a panel you can move/resize/minimize/maximize,
 //! with floating (free placement) and tiling (auto grid) workspace modes,
 //! macOS-style traffic lights, a minimized-panel dock strip, and layout
-//! persistence to localStorage. The crate also ships two standalone widgets:
-//! the [`badge`] module (a clickable metadata chip) and [`Spinner`].
+//! persistence to localStorage. The crate also ships three standalone
+//! widgets: the [`badge`] module (a clickable metadata chip), [`Spinner`],
+//! and the [`editor`] module (a Monaco code editor with a `.pest` grammar
+//! language).
 //!
 //! The app supplies two things: a [`PanelKind`] impl (an enum of its panels)
 //! and a body-render callback. Everything else — geometry, z-order, drag
@@ -87,10 +89,14 @@
 //!   proving each [`badge::BadgeAction`] variant fires.
 //! - `spinner` — [`Spinner`] with and without a label.
 //! - `theming` — the `:root` variable override path with switchable presets.
+//! - `editor` — [`editor::MonacoEditor`]: two-way `Signal<String>` binding,
+//!   `on_change` log, and the imperative [`editor::EditorHandle`] controls.
+//!   Needs the vendored Monaco bundle served (see the example header).
 
 #![warn(missing_docs)]
 
 pub mod badge;
+pub mod editor;
 pub mod views;
 
 pub use views::{use_views, SavedViews, ViewError, Views};

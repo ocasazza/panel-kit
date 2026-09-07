@@ -4,7 +4,9 @@ Generic Dioxus panel-workspace library. Every view is a panel you can
 move/resize/minimize/maximize, with floating (free placement) and tiling
 (auto grid) workspace modes, macOS-style traffic lights, tiling
 drag-to-reorder, a minimized-panel dock strip, and layout persistence to
-localStorage. Includes a reusable `Badge` chip component and `Spinner`.
+localStorage. Includes a reusable `Badge` chip component, `Spinner`, and a
+Monaco-based code editor (`editor::MonacoEditor`) with a `.pest` grammar
+language and a palette-matched dark theme.
 
 Factored out of [jump-cannon](https://github.com/ocasazza/jump-cannon) and
 apple-notes-ocr-flow, which both consume it as a git dependency:
@@ -120,9 +122,22 @@ dx serve --example workspace --platform web
 | `badge` | all ten `BadgeKind`s, every prop (`active`, `with_x`, `with_plus`, `small`, `override_color`, `accent_color`, both `BadgeClickKind`s, `emit_hover`) behind live toggles, an event log proving every `BadgeAction` variant fires, and a `tag_hue` FNV hue-spread row |
 | `spinner` | `Spinner` with and without `label`, plus a live-editable label |
 | `theming` | the documented retheme path: `:root` variable overrides layered after `panel_kit::CSS`, with three switchable presets |
+| `editor` | `editor::MonacoEditor`: two-way `Signal<String>` binding, `on_change` event log, imperative `EditorHandle` (set/read value, language, read-only, layout), reactive `language`/`read_only` props, the `pest` Monarch tokenizer and minimal `toml` language on real samples |
 
 `dx build --example <name> --platform web` produces the same app
 statically under `target/dx/<name>/debug/web/public`.
+
+### Monaco editor assets
+
+`editor::MonacoEditor` vendors a minified ESM build of `monaco-editor`
+under `assets/vendor/monaco-editor-0.56.0/` (MIT; `LICENSE` and
+`ThirdPartyNotices.txt` included). The crate injects a small loader shim
+itself; the consuming app only needs to serve that directory — copy it into
+the app's own `assets/` (for trunk add `<link data-trunk rel="copy-dir"
+href="assets/vendor" />` to `index.html`; for Tauri the same files ride
+along in `frontendDist`), or call `editor::set_monaco_asset_base` before
+first mount to point elsewhere. The wasm binary itself stays small: the
+multi-MB bundle is fetched at runtime, once.
 
 ### Browser TUI canary
 
