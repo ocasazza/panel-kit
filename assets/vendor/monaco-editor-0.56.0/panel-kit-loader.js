@@ -52,8 +52,9 @@
     dispose(id) {
       const e = editors.get(id);
       if (e) {
-        e.getModel()?.dispose();
+        e.changeSub?.dispose();
         e.dispose();
+        e.getModel()?.dispose();
         editors.delete(id);
       }
     },
@@ -100,7 +101,7 @@
 
     onChange(id, callback) {
       const e = editor(id);
-      e.onDidChangeModelContent(() => callback(e.getValue()));
+      e.changeSub = e.onDidChangeModelContent(() => callback(e.getValue()));
     },
 
     registerLanguage(id, monarch, configuration) {
