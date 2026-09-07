@@ -4,10 +4,11 @@
 //! same shell: every view is a panel you can move/resize/minimize/maximize,
 //! with floating (free placement) and tiling (auto grid) workspace modes,
 //! macOS-style traffic lights, a minimized-panel dock strip, and layout
-//! persistence to localStorage. The crate also ships three standalone
-//! widgets: the [`badge`] module (a clickable metadata chip), [`Spinner`],
-//! and the [`editor`] module (a Monaco code editor with a `.pest` grammar
-//! language).
+//! persistence to localStorage. The crate also ships standalone widgets:
+//! the [`badge`] module (a clickable metadata chip), [`Spinner`], the
+//! [`editor`] module (a Monaco code editor with a `.pest` grammar language),
+//! and a [`LoadingWorkspace`] whose static HTML/CSS twin can paint before an
+//! app's WASM bundle finishes loading.
 //!
 //! The app supplies two things: a [`PanelKind`] impl (an enum of its panels)
 //! and a body-render callback. Everything else — geometry, z-order, drag
@@ -26,7 +27,7 @@
 //!
 //! ```no_run
 //! use dioxus::prelude::*;
-//! use panel_kit::{use_workspace, LayoutBuilder, PanelKind, PanelWin};
+//! use panel_kit::{use_workspace, LayoutBuilder, PanelHeaderButton, PanelKind, PanelWin};
 //! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -58,12 +59,34 @@
 //!             onmousemove: move |e| ws.handle_mouse_move(&e),
 //!             onmouseup: move |_| ws.handle_mouse_up(),
 //!             header { class: "topbar" /* app-specific */ }
-//!             {ws.render(|kind, _maximized| rsx! { "body for {kind.title()}" })}
+//!             {ws.render_with_header(
+//!                 |kind, _maximized| rsx! { "body for {kind.title()}" },
+//!                 |_kind, _maximized| rsx! {
+//!                     PanelHeaderButton {
+//!                         label: "refresh",
+//!                         title: "Refresh this panel",
+//!                         on_press: move |_| { /* app-owned action */ },
+//!                     }
+//!                 },
+//!             )}
 //!             {ws.dock()}
 //!         }
 //!     }
 //! }
 //! ```
+//!
+//! # Pre-WASM loading shell
+//!
+//! A Dioxus component cannot render until the app WASM has downloaded and
+//! instantiated. Keep the Dioxus mount element empty, place [`BOOT_HTML`] as
+//! its immediately following sibling, and load or inline [`BOOT_CSS`] in
+//! `<head>`. The fragment is static HTML/CSS with no script or application
+//! logic. It must not be placed inside the mount element because Dioxus does
+//! not clear pre-existing children.
+//!
+//! After Rust starts, render [`LoadingWorkspace`] while app-owned data,
+//! workers, or GPU resources continue initializing. It uses the same public
+//! class contract as the static fragment.
 //!
 //! # Theming
 //!
@@ -116,12 +139,104 @@ use panel_kit_core::{
     TileMetrics, TILE_W_MAX,
 };
 
+/// Critical stylesheet for the loading-workspace contract.
+///
+/// Trunk apps cannot call Rust before their WASM bundle has instantiated, so
+/// keep the Dioxus mount element empty, place [`BOOT_HTML`] as its immediately
+/// following sibling, and inline this CSS in the document head (or copy the
+/// asset into the build). Once Dioxus marks the mount element, the adjacent
+/// sibling selector hides only that static fragment. After WASM is live,
+/// [`LoadingWorkspace`] renders the same app-agnostic contract.
+pub const BOOT_CSS: &str = include_str!("../assets/panel-kit-boot.css");
+
+/// Static, JavaScript-free loading-workspace fragment for pre-WASM first paint.
+///
+/// Place this fragment immediately after, never inside, the empty Dioxus mount
+/// element. Consumers should replace the generic application title and status
+/// text. See [`BOOT_CSS`] for wiring details.
+pub const BOOT_HTML: &str = include_str!("../assets/panel-kit-boot.html");
+
 /// Base stylesheet for the workspace chrome (panels, lights, dock, badges,
 /// spinner, tooltip overlay, mobile breakpoint). Inject once at the app root
 /// with `style { {panel_kit::CSS} }`, then layer app-specific styles after
 /// it; override the `:root` CSS variables to retheme (see the
 /// [crate-level theming notes](crate#theming)).
 pub const CSS: &str = include_str!("../assets/panel-kit.css");
+
+/// Panel-shaped loading state for work that continues after WASM has mounted.
+///
+/// For the earlier download/instantiation gap, render the static [`BOOT_HTML`]
+/// contract in the app's HTML and inline [`BOOT_CSS`]. Both surfaces use the
+/// same class names and visual language; the app owns only the phase text.
+#[component]
+pub fn LoadingWorkspace(
+    /// Application name shown in the compact top bar.
+    title: String,
+    /// Current app-owned phase, such as `loading graph…` or `initializing GPU…`.
+    status: String,
+) -> Element {
+    rsx! {
+        style { {BOOT_CSS} }
+        section {
+            class: "panel-kit-boot",
+            role: "status",
+            aria_live: "polite",
+            header { class: "panel-kit-boot-bar",
+                strong { class: "panel-kit-boot-title", "{title}" }
+                span { class: "panel-kit-boot-status", "{status}" }
+            }
+            main { class: "panel-kit-boot-panels", aria_hidden: "true",
+                for i in 0..3 {
+                    div { key: "{i}", class: "panel-kit-boot-panel",
+                        div { class: "panel-kit-boot-line" }
+                        div { class: "panel-kit-boot-line" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Compact application action rendered inside a panel's header bar.
+///
+/// Use this from the header callback passed to
+/// [`Workspace::render_with_header`]. Pointer-down is stopped at the button
+/// so clicking an action never begins a panel move or tile reorder.
+#[component]
+pub fn PanelHeaderButton(
+    /// Short visible label. Header space is intentionally tight, so prefer a
+    /// compact word or glyph and put the full description in `title`.
+    label: String,
+    /// Full hover and accessible label for the action.
+    title: String,
+    /// Whether to draw the selected/engaged treatment.
+    #[props(default)]
+    active: bool,
+    /// Whether the action is currently unavailable.
+    #[props(default)]
+    disabled: bool,
+    /// Application-owned action handler.
+    on_press: EventHandler<MouseEvent>,
+) -> Element {
+    let class = if active {
+        "panel-head-action active"
+    } else {
+        "panel-head-action"
+    };
+    rsx! {
+        button {
+            class: "{class}",
+            r#type: "button",
+            title: "{title}",
+            aria_label: "{title}",
+            disabled,
+            onpointerdown: move |e: PointerEvent| e.stop_propagation(),
+            onmousedown: move |e: MouseEvent| e.stop_propagation(),
+            onclick: move |e| on_press.call(e),
+            "{label}"
+        }
+    }
+}
 
 // The core types (PanelKind, PanelWin, WinState, Mode, Drag, LayoutBuilder)
 // and all geometry/drag math live in panel-kit-core and are re-exported
@@ -710,6 +825,21 @@ impl<K: PanelKind> Workspace<K> {
     /// (slugified from [`PanelKind::title`]) so apps can style individual
     /// panels — e.g. making one full-width in tiling mode.
     pub fn render(&self, body: impl Fn(K, bool) -> Element) -> Element {
+        self.render_with_header(body, |_, _| rsx! {})
+    }
+
+    /// Render the workspace with an application-owned action slot in every
+    /// panel header.
+    ///
+    /// `header_actions` receives the same panel kind and maximized flag as
+    /// `body`. Return an empty `rsx! {}` for panels without actions. Use
+    /// [`PanelHeaderButton`] for the built-in compact styling and drag-safe
+    /// pointer behavior.
+    pub fn render_with_header(
+        &self,
+        body: impl Fn(K, bool) -> Element,
+        header_actions: impl Fn(K, bool) -> Element,
+    ) -> Element {
         let ws = *self;
         let mode_now = self.effective_mode();
         let ps = self.panels.read().clone();
@@ -814,7 +944,13 @@ impl<K: PanelKind> Workspace<K> {
                                         if let Some(pp) = panels.write().get_mut(i) { pp.z = z; };
                                     }
                                 },
-                                {ws.header(i, p.kind, floating, tiling)}
+                                {ws.header(
+                                    i,
+                                    p.kind,
+                                    floating,
+                                    tiling,
+                                    header_actions(p.kind, maximized == Some(i)),
+                                )}
                                 div { class: "panel-body",
                                     {body(p.kind, maximized == Some(i))}
                                 }
@@ -847,7 +983,14 @@ impl<K: PanelKind> Workspace<K> {
     /// light rather than swapping in action glyphs). In floating mode the row
     /// drags the window freely; in tiling mode it starts a reorder drag (hover
     /// another panel to snap into its slot). Mobile gets neither (static stack).
-    fn header(&self, idx: usize, kind: K, draggable: bool, tiling: bool) -> Element {
+    fn header(
+        &self,
+        idx: usize,
+        kind: K,
+        draggable: bool,
+        tiling: bool,
+        actions: Element,
+    ) -> Element {
         let ws = *self;
         let title = kind.title();
         let is_max = self.panels.read().get(idx).map(|p| p.state) == Some(WinState::Maximized);
@@ -869,7 +1012,9 @@ impl<K: PanelKind> Workspace<K> {
                 onpointermove: move |e: PointerEvent| ws.handle_pointer_move(&e),
                 onpointerup: move |e: PointerEvent| ws.handle_pointer_up(&e),
                 onpointercancel: move |e: PointerEvent| ws.handle_pointer_up(&e),
-                div { class: "lights",
+                div {
+                    class: "lights",
+                    onpointerdown: move |e: PointerEvent| e.stop_propagation(),
                     button { class: "light mode", title: "tiling / floating",
                         onmousedown: move |e: MouseEvent| e.stop_propagation(),
                         onclick: move |_| {
@@ -897,6 +1042,12 @@ impl<K: PanelKind> Workspace<K> {
                 }
                 span { class: "panel-title", title: "{title}", "{title}" }
                 if is_max { span { class: "max-hint", "maximized" } }
+                div {
+                    class: "panel-head-actions",
+                    onpointerdown: move |e: PointerEvent| e.stop_propagation(),
+                    onmousedown: move |e: MouseEvent| e.stop_propagation(),
+                    {actions}
+                }
             }
         }
     }
@@ -1011,4 +1162,47 @@ pub fn tip_pos(cx: f64, cy: f64, tw: f64, th: f64) -> (f64, f64) {
         y = vh - th - 8.0;
     }
     (x.max(8.0), y.max(8.0))
+}
+
+#[cfg(test)]
+mod boot_contract_tests {
+    use super::{BOOT_CSS, BOOT_HTML};
+
+    const CLASSES: [&str; 7] = [
+        "panel-kit-boot",
+        "panel-kit-boot-bar",
+        "panel-kit-boot-title",
+        "panel-kit-boot-status",
+        "panel-kit-boot-panels",
+        "panel-kit-boot-panel",
+        "panel-kit-boot-line",
+    ];
+
+    #[test]
+    fn static_html_and_critical_css_share_the_public_class_contract() {
+        for class in CLASSES {
+            assert!(BOOT_HTML.contains(class), "BOOT_HTML is missing {class}");
+            assert!(
+                BOOT_CSS.contains(&format!(".{class}")),
+                "BOOT_CSS is missing {class}"
+            );
+        }
+    }
+
+    #[test]
+    fn static_boot_contract_is_script_free_and_marked_for_handoff() {
+        let html = BOOT_HTML.to_ascii_lowercase();
+        assert!(!html.contains("<script"));
+        assert!(!html.contains("onclick="));
+        assert!(!html.contains("onload="));
+        assert!(html.contains("data-panel-kit-static-boot"));
+        assert!(html.contains("role=\"status\""));
+        assert!(html.contains("immediately after an empty dioxus mount element"));
+        assert!(html.contains("never place it inside the mount element"));
+
+        const HANDOFF_SELECTOR: &str =
+            "[data-dioxus-id] + .panel-kit-boot[data-panel-kit-static-boot]";
+        assert!(BOOT_CSS.contains(HANDOFF_SELECTOR));
+        assert!(!BOOT_CSS.contains("[data-dioxus-id] > .panel-kit-boot"));
+    }
 }

@@ -76,6 +76,14 @@ button { font-family:var(--mono); }
 .panel-title { color:var(--fg); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
   flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .max-hint { margin-left:auto; color:var(--dim); font-size:.65rem; }
+.panel-head-actions { display:flex; align-items:center; gap:3px; flex:0 0 auto; min-width:0; }
+.panel-head-actions:empty { display:none; }
+.panel-head-action { height:17px; min-width:20px; padding:0 4px; border:1px solid var(--line2);
+  border-radius:3px; background:var(--bg); color:var(--dim); font-size:.62rem; line-height:15px;
+  cursor:pointer; white-space:nowrap; }
+.panel-head-action:hover, .panel-head-action:focus-visible { border-color:var(--fg); color:var(--fg); }
+.panel-head-action.active { border-color:var(--accent); color:var(--accent); }
+.panel-head-action:disabled { opacity:.4; cursor:not-allowed; }
 .panel-body { flex:1; min-height:0; overflow:auto; padding:1.75rem .55rem .55rem; }
 
 /* Traffic lights */

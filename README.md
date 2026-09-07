@@ -4,9 +4,10 @@ Generic Dioxus panel-workspace library. Every view is a panel you can
 move/resize/minimize/maximize, with floating (free placement) and tiling
 (auto grid) workspace modes, macOS-style traffic lights, tiling
 drag-to-reorder, a minimized-panel dock strip, and layout persistence to
-localStorage. Includes a reusable `Badge` chip component, `Spinner`, and a
-Monaco-based code editor (`editor::MonacoEditor`) with a `.pest` grammar
-language and a palette-matched dark theme.
+localStorage. Includes a reusable `Badge` chip component, `Spinner`,
+panel-header actions, loading-workspace primitives, and a Monaco-based code
+editor (`editor::MonacoEditor`) with a `.pest` grammar language and a
+palette-matched dark theme.
 
 Factored out of [jump-cannon](https://github.com/ocasazza/jump-cannon) and
 apple-notes-ocr-flow, which both consume it as a git dependency:
@@ -93,6 +94,39 @@ The registry persists at `myapp_layout:views`, each view's layout at
 into the first view on first run (copied, never deleted). See the `views`
 example for a full switcher UI — the hook ships no UI of its own.
 
+### Loading before WASM
+
+A Rust component cannot render until the browser has downloaded and
+instantiated the application's WASM module. Panel Kit therefore exposes one
+loading-workspace contract at both sides of that boundary:
+
+- `BOOT_CSS` and `BOOT_HTML` are static, JavaScript-free assets for immediate
+  first paint. Keep the Dioxus mount element empty, copy the fragment as its
+  immediately following sibling, replace its application/status text, and
+  inline the critical stylesheet in `<head>`.
+- `LoadingWorkspace` renders the same shell after Dioxus mounts, for app-owned
+  phases such as graph fetches or GPU initialization.
+
+The static fragment carries `data-panel-kit-static-boot`; the stylesheet's
+adjacent-sibling selector hides only that fragment after Dioxus marks its mount
+root, so no cleanup JavaScript is needed. Do not put the fragment inside the
+mount element: Dioxus does not clear pre-existing children.
+
+```html
+<head>
+  <style>/* exact contents of panel-kit::BOOT_CSS */</style>
+  <link data-trunk rel="rust" href="Cargo.toml" />
+</head>
+<body>
+  <div id="main"></div>
+  <!-- exact contents of panel-kit::BOOT_HTML, immediately adjacent -->
+  <section class="panel-kit-boot" data-panel-kit-static-boot
+           role="status" aria-live="polite">
+    <!-- panel-kit-boot-bar + panel-kit-boot-panels contract -->
+  </section>
+</body>
+```
+
 ## Documentation
 
 API docs are rustdoc-first — the crate root has a quick start, theming
@@ -121,6 +155,7 @@ dx serve --example workspace --platform web
 | `views` | named views over one workspace: `use_views`, per-view persistence keys (`panel_kit_example_views:view:<name>` + the `:views` registry), a switcher bar with create/rename/delete, per-view reset, and the legacy single-layout migration |
 | `badge` | all ten `BadgeKind`s, every prop (`active`, `with_x`, `with_plus`, `small`, `override_color`, `accent_color`, both `BadgeClickKind`s, `emit_hover`) behind live toggles, an event log proving every `BadgeAction` variant fires, and a `tag_hue` FNV hue-spread row |
 | `spinner` | `Spinner` with and without `label`, plus a live-editable label |
+| `loading_workspace` | the post-mount `LoadingWorkspace` twin of the static pre-WASM boot contract |
 | `theming` | the documented retheme path: `:root` variable overrides layered after `panel_kit::CSS`, with three switchable presets |
 | `editor` | `editor::MonacoEditor`: two-way `Signal<String>` binding, `on_change` event log, imperative `EditorHandle` (set/read value, language, read-only, layout), reactive `language`/`read_only` props, the `pest` Monarch tokenizer and minimal `toml` language on real samples |
 

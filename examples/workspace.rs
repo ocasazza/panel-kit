@@ -10,8 +10,9 @@
 //! - A demo `PanelKind` enum (`Panel`) with four panels; the Help panel
 //!   starts `WinState::Minimized`, i.e. as a dock chip.
 //! - `LayoutBuilder` for the default floating layout.
-//! - `ws.render(body)` with a per-panel body closure receiving
-//!   `(kind, maximized)`, `ws.dock()`, `ws.root_class()`, and the root
+//! - `ws.render_with_header(body, header_actions)` with per-panel body and
+//!   header-action closures receiving `(kind, maximized)`, plus `ws.dock()`,
+//!   `ws.root_class()`, and the root
 //!   `onmousemove`/`onmouseup` handlers (`handle_mouse_move`/`handle_mouse_up`).
 //! - Floating mode: drag a panel header to move it, drag the bottom-right
 //!   corner to resize, mousedown raises the panel (z-order), and the
@@ -33,7 +34,7 @@ use dioxus::prelude::*;
 use gloo_storage::Storage;
 use panel_kit::{
     is_editing, tip_pos, use_workspace, viewport_is_mobile, DragKind, LayoutBuilder, Mode,
-    PanelKind, PanelWin, WinState, CSS,
+    PanelHeaderButton, PanelKind, PanelWin, WinState, CSS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -96,6 +97,7 @@ fn main() {
 #[component]
 fn App() -> Element {
     let ws = use_workspace(STORAGE_KEY, default_layout);
+    let mut header_clicks = use_signal(|| 0_u32);
     // Viewport-placed tooltip overlay, positioned through `tip_pos`.
     let mut tip = use_signal(|| Option::<(f64, f64)>::None);
 
@@ -120,6 +122,7 @@ fn App() -> Element {
                     " — press the green light to flip it." }
             },
             Panel::Status => {
+                let header_count = *header_clicks.read();
                 let (vw, vh) = *ws.viewport.read();
                 let drag_txt = match *ws.drag.read() {
                     Some(d) => format!(
@@ -166,6 +169,7 @@ fn App() -> Element {
                         " · viewport_is_mobile(): " b { "{viewport_is_mobile()}" }
                     }
                     p { "drag: " b { "{drag_txt}" } " · tile drag: " b { "{tile_drag_txt}" } }
+                    p { "header action clicks: " b { "{header_count}" } }
                     p { "stored geometry (clamping never rewrites it — shrink the "
                         "window and these numbers hold; grow it back and panels "
                         "spring back):" }
@@ -209,6 +213,20 @@ fn App() -> Element {
         }
     };
 
+    let header_actions = move |kind: Panel, _maximized: bool| -> Element {
+        match kind {
+            Panel::Status => rsx! {
+                PanelHeaderButton {
+                    label: "ping",
+                    title: "Exercise a panel-owned header action",
+                    active: *header_clicks.read() > 0,
+                    on_press: move |_| *header_clicks.write() += 1,
+                }
+            },
+            _ => rsx! {},
+        }
+    };
+
     rsx! {
         style { {CSS} }
         style { {DEMO_CSS} }
@@ -249,7 +267,7 @@ fn App() -> Element {
                     "reset layout"
                 }
             }
-            {ws.render(body)}
+            {ws.render_with_header(body, header_actions)}
             {ws.dock()}
             if let Some((x, y)) = tip() {
                 div { class: "tip-overlay", style: "left:{x}px; top:{y}px;",
