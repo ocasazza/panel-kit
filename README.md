@@ -136,10 +136,10 @@ immediately, then let every async data source load lazily behind one shared
 state vocabulary.
 
 ```rust,no_run
-use panel_kit::loading::{use_loading_store, LoadingGate, GlobalLoadingBar};
+use panel_kit::loading::{loading_store, LoadingGate, GlobalLoadingBar};
 
 // One store per data source; same id, same store, from any component.
-let store = use_loading_store("branches", "loading branches…");
+let store = loading_store("branches", "loading branches…");
 use_future(move || async move {
     store.begin_with("connecting");
     // …fetch, reporting store.update(Some(fraction), Some(stage))…

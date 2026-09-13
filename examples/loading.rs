@@ -7,7 +7,7 @@
 //! Run with `dx serve --example loading --platform web`.
 
 use dioxus::prelude::*;
-use panel_kit::loading::{use_loading_store, GlobalLoadingBar, LoadingGate};
+use panel_kit::loading::{loading_store, GlobalLoadingBar, LoadingGate};
 use panel_kit::{LayoutBuilder, LoadingWorkspace, PanelKind, PanelWin};
 use serde::{Deserialize, Serialize};
 
@@ -65,8 +65,8 @@ fn App() -> Element {
 
     // Phase 2: chrome first, data lazily. Each panel's store feeds both its
     // gate and the global bar — the page is interactive while data streams.
-    let graph = use_loading_store("demo-graph", "loading graph…");
-    let branches = use_loading_store("demo-branches", "loading branches…");
+    let graph = loading_store("demo-graph", "loading graph…");
+    let branches = loading_store("demo-branches", "loading branches…");
     use_future(move || async move {
         graph.begin_with("connecting");
         fake_fetch(graph, 6).await;

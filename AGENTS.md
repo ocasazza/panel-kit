@@ -28,7 +28,7 @@ Page hydration is generic and lives in `src/loading.rs` (web) over
 `panel-kit-core/src/loading.rs` (shared state shape):
 
 - **Chrome first, data lazily.** Render the workspace immediately; every
-  async data source gets a store (`use_loading_store(id, label)`,
+  async data source gets a store (`loading_store(id, label)`,
   pinia-style: same id, same store, actions `begin` / `update` / `succeed` /
   `fail`). Panel bodies mount behind `LoadingGate`, the workspace-level
   aggregate is `GlobalLoadingBar`, and the pre-chrome page state is

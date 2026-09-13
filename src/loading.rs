@@ -2,7 +2,7 @@
 //! components that render it.
 //!
 //! The API follows store-style state management (pinia): one store per
-//! logical data source, created with [`use_loading_store`] and retrievable
+//! logical data source, created with [`loading_store`] and retrievable
 //! from any component by the same id; a small action vocabulary mutates it
 //! ([`LoadingStore::begin`], [`LoadingStore::update`],
 //! [`LoadingStore::succeed`], [`LoadingStore::fail`]); components subscribe
@@ -30,11 +30,11 @@
 //!
 //! ```no_run
 //! use dioxus::prelude::*;
-//! use panel_kit::loading::{use_loading_store, LoadingGate, GlobalLoadingBar};
+//! use panel_kit::loading::{loading_store, LoadingGate, GlobalLoadingBar};
 //!
 //! #[component]
 //! fn Branches() -> Element {
-//!     let store = use_loading_store("branches", "loading branches…");
+//!     let store = loading_store("branches", "loading branches…");
 //!     use_future(move || async move {
 //!         store.begin();
 //!         // … fetch, calling store.update(Some(f), None) as chunks arrive …
@@ -61,14 +61,14 @@ use dioxus::prelude::*;
 pub use panel_kit_core::loading::{aggregate_pending, AggregateLoad, LoadSnapshot, LoadStatus};
 
 /// Process-wide store registry: id → the store's snapshot signal. Same id,
-/// same store — `use_loading_store` from any component returns a handle over
+/// same store — `loading_store` from any component returns a handle over
 /// the one shared signal, so a panel body and the workspace-level
 /// [`GlobalLoadingBar`] always observe identical state.
 static REGISTRY: GlobalSignal<BTreeMap<&'static str, Signal<LoadSnapshot>>> =
     Signal::global(BTreeMap::new);
 
 /// Handle over one data source's loading state. `Copy`; created by
-/// [`use_loading_store`]. All mutation goes through the actions so the
+/// [`loading_store`]. All mutation goes through the actions so the
 /// snapshot invariants (error cleared on begin, detail kept fresh) hold.
 #[derive(Clone, Copy)]
 pub struct LoadingStore {
@@ -143,15 +143,25 @@ impl PartialEq for LoadingStore {
 /// `"loading branches…"`; it applies on creation — later calls with the same
 /// id return the existing store unchanged, so every call site should pass
 /// the same label.
-pub fn use_loading_store(id: &'static str, label: impl Into<String>) -> LoadingStore {
-    let snapshot = use_hook(|| {
-        let mut registry = REGISTRY.write();
-        *registry
-            .entry(id)
-            .or_insert_with(|| Signal::new(LoadSnapshot::idle(label.into())))
-    });
+///
+/// Not a hook despite the call pattern: safe from components, event
+/// handlers, and spawned tasks alike (store signals are app-lifetime, never
+/// scope-disposed). Creation needs any live Dioxus runtime; call it from a
+/// component on first use so headless contexts never race one in.
+pub fn loading_store(id: &'static str, label: impl Into<String>) -> LoadingStore {
+    if let Some(existing) = REGISTRY.peek().get(id) {
+        return LoadingStore {
+            id,
+            snapshot: *existing,
+        };
+    }
+    let snapshot = *REGISTRY
+        .write()
+        .entry(id)
+        .or_insert_with(|| Signal::new(LoadSnapshot::idle(label.into())));
     LoadingStore { id, snapshot }
 }
+
 
 /// Determinate-or-indeterminate loading bar with label and phase detail.
 ///
@@ -331,7 +341,7 @@ mod tests {
     #[test]
     fn store_actions_drive_the_snapshot_lifecycle() {
         let out = drive(|out| {
-            let store = use_loading_store("life", "loading life…");
+            let store = loading_store("life", "loading life…");
             store.begin_with("stage one");
             out.push(store.snapshot());
             store.update(Some(0.5), None);
@@ -352,7 +362,7 @@ mod tests {
     #[test]
     fn update_clamps_out_of_range_fractions() {
         let out = drive(|out| {
-            let store = use_loading_store("clamp", "loading clamp…");
+            let store = loading_store("clamp", "loading clamp…");
             store.update(Some(1.7), None);
             out.push(store.snapshot());
         });
@@ -362,7 +372,7 @@ mod tests {
     #[test]
     fn begin_clears_a_previous_failure() {
         let out = drive(|out| {
-            let store = use_loading_store("retry", "loading retry…");
+            let store = loading_store("retry", "loading retry…");
             store.fail("boom");
             out.push(store.snapshot());
             store.begin();
@@ -377,8 +387,8 @@ mod tests {
     #[test]
     fn same_id_shares_one_store_across_components() {
         let out = drive(|out| {
-            let writer = use_loading_store("shared", "loading shared…");
-            let reader = use_loading_store("shared", "loading shared…");
+            let writer = loading_store("shared", "loading shared…");
+            let reader = loading_store("shared", "loading shared…");
             writer.update(Some(0.25), None);
             out.push(reader.snapshot());
         });
@@ -388,9 +398,9 @@ mod tests {
     #[test]
     fn registry_aggregates_pending_stores_for_the_global_bar() {
         let out = drive(|out| {
-            let a = use_loading_store("agg-a", "loading a…");
-            let b = use_loading_store("agg-b", "loading b…");
-            let c = use_loading_store("agg-c", "loading c…");
+            let a = loading_store("agg-a", "loading a…");
+            let b = loading_store("agg-b", "loading b…");
+            let c = loading_store("agg-c", "loading c…");
             a.update(Some(0.2), None);
             b.update(Some(0.8), None);
             c.succeed();
