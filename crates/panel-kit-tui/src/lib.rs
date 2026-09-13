@@ -527,8 +527,9 @@ impl<K: PanelKind> TuiWorkspace<K> {
         // content overhangs the workspace band. Drawn on the right edge of the
         // workspace area, after the panels so it sits on top.
         if max_scroll(self.content_h as f64, ws.height as f64) > 0.0 && ws.height > 0 {
-            let mut sb_state = ScrollbarState::new(self.content_h.saturating_sub(ws.height) as usize)
-                .position(self.ws_scroll as usize);
+            let mut sb_state =
+                ScrollbarState::new(self.content_h.saturating_sub(ws.height) as usize)
+                    .position(self.ws_scroll as usize);
             f.render_stateful_widget(
                 Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(None)

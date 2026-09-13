@@ -17,8 +17,8 @@ use dioxus::prelude::*;
 // The badge model (kinds, actions, hue derivation) lives in
 // panel-kit-core::badge so the terminal shell shares it; this module is
 // the Dioxus rendering of that model.
-pub use panel_kit_core::badge::{tag_hue, BadgeAction, BadgeClickKind, BadgeKind, Rgb};
 use panel_kit_core::badge::display_label;
+pub use panel_kit_core::badge::{tag_hue, BadgeAction, BadgeClickKind, BadgeKind, Rgb};
 
 /// Rec. 709 luma in [0, 1]. Picks a foreground (light vs dark) that stays
 /// readable across the full categorical palette.
@@ -46,7 +46,9 @@ fn kind_class(kind: &BadgeKind) -> &'static str {
         BadgeKind::Author => "badge-author",
         BadgeKind::Entity { .. } => "badge-entity",
         BadgeKind::Wikilink { resolved: true, .. } => "badge-wikilink",
-        BadgeKind::Wikilink { resolved: false, .. } => "badge-wikilink badge-unresolved",
+        BadgeKind::Wikilink {
+            resolved: false, ..
+        } => "badge-wikilink badge-unresolved",
         BadgeKind::Url { .. } => "badge-url",
         BadgeKind::Date => "badge-date",
         BadgeKind::Status => "badge-status",
@@ -273,15 +275,27 @@ mod tests {
 
     #[test]
     fn wikilink_label_prefixed() {
-        let k = BadgeKind::Wikilink { resolved: true, target: "Page".into() };
+        let k = BadgeKind::Wikilink {
+            resolved: true,
+            target: "Page".into(),
+        };
         assert_eq!(display_label(&k, "Page"), "\u{27F6} Page");
     }
 
     #[test]
     fn url_label_prefers_host() {
-        let k = BadgeKind::Url { href: "https://example.com/x".into(), host: "example.com".into() };
+        let k = BadgeKind::Url {
+            href: "https://example.com/x".into(),
+            host: "example.com".into(),
+        };
         assert_eq!(display_label(&k, "https://example.com/x"), "example.com");
-        let bare = BadgeKind::Url { href: "https://example.com".into(), host: String::new() };
-        assert_eq!(display_label(&bare, "https://example.com"), "https://example.com");
+        let bare = BadgeKind::Url {
+            href: "https://example.com".into(),
+            host: String::new(),
+        };
+        assert_eq!(
+            display_label(&bare, "https://example.com"),
+            "https://example.com"
+        );
     }
 }

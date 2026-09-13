@@ -182,8 +182,14 @@ mod tests {
     #[test]
     fn keys_live_in_disjoint_namespaces() {
         assert_eq!(views_registry_key("app_layout"), "app_layout:views");
-        assert_eq!(view_layout_key("app_layout", "Main"), "app_layout:view:Main");
-        assert_ne!(views_registry_key("app_layout"), view_layout_key("app_layout", "views"));
+        assert_eq!(
+            view_layout_key("app_layout", "Main"),
+            "app_layout:view:Main"
+        );
+        assert_ne!(
+            views_registry_key("app_layout"),
+            view_layout_key("app_layout", "views")
+        );
     }
 
     #[test]
@@ -217,7 +223,11 @@ mod tests {
         assert_eq!(reg.active, "B");
 
         // An entirely empty stored registry still yields one view.
-        let reg = SavedViews { views: vec![], active: String::new() }.sanitize();
+        let reg = SavedViews {
+            views: vec![],
+            active: String::new(),
+        }
+        .sanitize();
         assert_eq!(reg.views, vec!["Default".to_string()]);
     }
 

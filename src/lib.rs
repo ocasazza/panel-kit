@@ -139,14 +139,14 @@ use dioxus::prelude::*;
 use gloo_storage::{LocalStorage, Storage};
 use wasm_bindgen::JsCast;
 
-pub use panel_kit_core::{
-    Drag, DragKind, LayoutBuilder, Mode, PanelKind, PanelWin, WinState, TILE_ROW_PX,
-};
 use panel_kit_core::{
     apply_drag, begin_drag as core_begin_drag, begin_tile_resize as core_begin_tile_resize,
     clamp_scroll, effective_rect as core_effective_rect, floating_content_height, front_z,
     kind_slug, max_scroll, merge_defaults, reorder_tile as core_reorder_tile, Clamp, SavedLayout,
     TileMetrics, TILE_W_MAX,
+};
+pub use panel_kit_core::{
+    Drag, DragKind, LayoutBuilder, Mode, PanelKind, PanelWin, WinState, TILE_ROW_PX,
 };
 
 /// Critical stylesheet for the loading-workspace contract.
@@ -284,8 +284,15 @@ pub fn PanelHeaderButton(
 
 fn viewport_size() -> (f64, f64) {
     let win = web_sys::window();
-    let vw = win.as_ref().and_then(|w| w.inner_width().ok()).and_then(|v| v.as_f64()).unwrap_or(1280.0);
-    let vh = win.and_then(|w| w.inner_height().ok()).and_then(|v| v.as_f64()).unwrap_or(800.0);
+    let vw = win
+        .as_ref()
+        .and_then(|w| w.inner_width().ok())
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1280.0);
+    let vh = win
+        .and_then(|w| w.inner_height().ok())
+        .and_then(|v| v.as_f64())
+        .unwrap_or(800.0);
     (vw, vh)
 }
 
@@ -305,7 +312,10 @@ fn capture_pointer(e: &PointerEvent) {
     let Some(web_event) = e.data.downcast::<web_sys::PointerEvent>() else {
         return;
     };
-    let Some(target) = web_event.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) else {
+    let Some(target) = web_event
+        .target()
+        .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+    else {
         return;
     };
     let _ = target.set_pointer_capture(web_event.pointer_id());
@@ -315,7 +325,10 @@ fn release_pointer(e: &PointerEvent) {
     let Some(web_event) = e.data.downcast::<web_sys::PointerEvent>() else {
         return;
     };
-    let Some(target) = web_event.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) else {
+    let Some(target) = web_event
+        .target()
+        .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+    else {
         return;
     };
     let _ = target.release_pointer_capture(web_event.pointer_id());
@@ -398,17 +411,33 @@ fn panel_body_absorbs_wheel(dy: f64) -> bool {
 }
 
 pub(crate) fn save_layout<K: PanelKind>(key: &str, panels: &[PanelWin<K>], mode: Mode) {
-    let _ = LocalStorage::set(key, SavedLayout { panels: panels.to_vec(), tiling: mode == Mode::Tiling });
+    let _ = LocalStorage::set(
+        key,
+        SavedLayout {
+            panels: panels.to_vec(),
+            tiling: mode == Mode::Tiling,
+        },
+    );
 }
 
 /// Load the saved layout, reconciling against the current panel set: panels
 /// added since the layout was saved are appended with their default placement,
 /// so new features still show up for existing users.
-pub(crate) fn load_layout<K: PanelKind>(key: &str, defaults: &[PanelWin<K>]) -> Option<(Vec<PanelWin<K>>, Mode)> {
+pub(crate) fn load_layout<K: PanelKind>(
+    key: &str,
+    defaults: &[PanelWin<K>],
+) -> Option<(Vec<PanelWin<K>>, Mode)> {
     let saved: SavedLayout<K> = LocalStorage::get(key).ok()?;
     let mut panels = saved.panels;
     merge_defaults(&mut panels, defaults);
-    Some((panels, if saved.tiling { Mode::Tiling } else { Mode::Floating }))
+    Some((
+        panels,
+        if saved.tiling {
+            Mode::Tiling
+        } else {
+            Mode::Floating
+        },
+    ))
 }
 
 /// The workspace handle: a bundle of `Copy` signals, safe to pass around and
@@ -495,8 +524,12 @@ pub(crate) fn use_workspace_state<K: PanelKind>(
     saved: Option<(Vec<PanelWin<K>>, Mode)>,
     defaults: fn() -> Vec<PanelWin<K>>,
 ) -> Workspace<K> {
-    let panels =
-        use_signal(|| saved.as_ref().map(|(p, _)| p.clone()).unwrap_or_else(defaults));
+    let panels = use_signal(|| {
+        saved
+            .as_ref()
+            .map(|(p, _)| p.clone())
+            .unwrap_or_else(defaults)
+    });
     let mode = use_signal(|| saved.as_ref().map(|(_, m)| *m).unwrap_or(Mode::Floating));
     let drag = use_signal(|| Option::<Drag>::None);
     let tile_drag = use_signal(|| Option::<K>::None);
@@ -523,10 +556,7 @@ pub(crate) fn use_workspace_state<K: PanelKind>(
             let (ow, oh) = *viewport.peek();
             if ow > 1.0 && oh > 1.0 {
                 let (fx, fy) = (nw / ow, nh / oh);
-                if fx.is_finite()
-                    && fy.is_finite()
-                    && (fx - 1.0).abs() + (fy - 1.0).abs() > 1e-3
-                {
+                if fx.is_finite() && fy.is_finite() && (fx - 1.0).abs() + (fy - 1.0).abs() > 1e-3 {
                     let mut ps = panels.write();
                     for p in ps.iter_mut() {
                         p.x *= fx;
@@ -619,9 +649,13 @@ pub(crate) fn use_workspace_state<K: PanelKind>(
         }) as Box<dyn FnMut(web_sys::PointerEvent)>);
 
         if let Some(w) = web_sys::window() {
-            let _ = w.add_event_listener_with_callback("pointermove", move_cb.as_ref().unchecked_ref());
+            let _ =
+                w.add_event_listener_with_callback("pointermove", move_cb.as_ref().unchecked_ref());
             let _ = w.add_event_listener_with_callback("pointerup", up_cb.as_ref().unchecked_ref());
-            let _ = w.add_event_listener_with_callback("pointercancel", cancel_cb.as_ref().unchecked_ref());
+            let _ = w.add_event_listener_with_callback(
+                "pointercancel",
+                cancel_cb.as_ref().unchecked_ref(),
+            );
         }
 
         move_cb.forget();
@@ -629,7 +663,15 @@ pub(crate) fn use_workspace_state<K: PanelKind>(
         cancel_cb.forget();
     });
 
-    Workspace { panels, mode, drag, tile_drag, is_mobile, viewport, ws_scroll }
+    Workspace {
+        panels,
+        mode,
+        drag,
+        tile_drag,
+        is_mobile,
+        viewport,
+        ws_scroll,
+    }
 }
 
 impl<K: PanelKind> Workspace<K> {
@@ -1187,8 +1229,15 @@ pub fn Spinner(
 /// ready for `position: fixed; left:{x}px; top:{y}px`.
 pub fn tip_pos(cx: f64, cy: f64, tw: f64, th: f64) -> (f64, f64) {
     let win = web_sys::window();
-    let vw = win.as_ref().and_then(|w| w.inner_width().ok()).and_then(|v| v.as_f64()).unwrap_or(1280.0);
-    let vh = win.and_then(|w| w.inner_height().ok()).and_then(|v| v.as_f64()).unwrap_or(800.0);
+    let vw = win
+        .as_ref()
+        .and_then(|w| w.inner_width().ok())
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1280.0);
+    let vh = win
+        .and_then(|w| w.inner_height().ok())
+        .and_then(|v| v.as_f64())
+        .unwrap_or(800.0);
     let mut x = cx - tw - 14.0;
     if x < 8.0 {
         x = cx + 14.0;
@@ -1252,11 +1301,17 @@ mod boot_contract_tests {
             }
         });
         assert!(determinate.contains("60%"), "{determinate}");
-        assert!(determinate.contains("aria-valuenow=\"60\""), "{determinate}");
+        assert!(
+            determinate.contains("aria-valuenow=\"60\""),
+            "{determinate}"
+        );
         assert!(determinate.contains("width: 60%"), "{determinate}");
         // Class-attribute shape ("fill indeterminate", space-separated) — the
         // embedded BOOT_CSS text also contains the word "indeterminate".
-        assert!(!determinate.contains("panel-kit-boot-fill indeterminate"), "{determinate}");
+        assert!(
+            !determinate.contains("panel-kit-boot-fill indeterminate"),
+            "{determinate}"
+        );
 
         let indeterminate = dioxus_ssr::render_element(rsx! {
             LoadingWorkspace {
@@ -1265,7 +1320,10 @@ mod boot_contract_tests {
                 progress: None,
             }
         });
-        assert!(indeterminate.contains("panel-kit-boot-fill indeterminate"), "{indeterminate}");
+        assert!(
+            indeterminate.contains("panel-kit-boot-fill indeterminate"),
+            "{indeterminate}"
+        );
         assert!(!indeterminate.contains("%</span>"), "{indeterminate}");
     }
 

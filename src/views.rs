@@ -100,11 +100,20 @@ pub fn use_views<K: PanelKind>(
 
     // Registry persistence (view list + active view).
     use_effect(move || {
-        let reg = SavedViews { views: names.read().clone(), active: active.read().clone() };
+        let reg = SavedViews {
+            views: names.read().clone(),
+            active: active.read().clone(),
+        };
         let _ = LocalStorage::set(views_registry_key(base_key), reg);
     });
 
-    Views { workspace, names, active, base_key, defaults }
+    Views {
+        workspace,
+        names,
+        active,
+        base_key,
+        defaults,
+    }
 }
 
 /// Load the registry, or seed + persist it from `initial_views` on first
@@ -129,7 +138,9 @@ fn migrate_legacy_layout(base_key: &'static str, registry: &SavedViews) {
         .first()
         .map(|first| view_layout_key(base_key, first));
     let Some(dest) = seeded else { return };
-    let Ok(Some(raw)) = storage.get_item(base_key) else { return };
+    let Ok(Some(raw)) = storage.get_item(base_key) else {
+        return;
+    };
     if storage.get_item(&dest).ok().flatten().is_none() {
         let _ = storage.set_item(&dest, &raw);
     }
@@ -137,7 +148,10 @@ fn migrate_legacy_layout(base_key: &'static str, registry: &SavedViews) {
 
 impl<K: PanelKind> Views<K> {
     fn registry(&self) -> SavedViews {
-        SavedViews { views: self.names.read().clone(), active: self.active.read().clone() }
+        SavedViews {
+            views: self.names.read().clone(),
+            active: self.active.read().clone(),
+        }
     }
 
     fn write_registry(&self, reg: SavedViews) {

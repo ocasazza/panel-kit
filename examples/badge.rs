@@ -92,7 +92,9 @@ fn App() -> Element {
     use_context_provider(|| controls);
 
     let log = controls.log;
-    let tags = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"];
+    let tags = [
+        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
+    ];
 
     rsx! {
         style { {CSS} }
@@ -204,7 +206,11 @@ fn FlagButton(label: String, flag: Signal<bool>) -> Element {
 #[component]
 fn ClickKindButton(label: String, value: BadgeClickKind) -> Element {
     let c = use_context::<Controls>();
-    let cls = if *c.click_kind.read() == value { "on" } else { "" };
+    let cls = if *c.click_kind.read() == value {
+        "on"
+    } else {
+        ""
+    };
     let mut sig = c.click_kind;
     rsx! {
         button { class: "{cls}", onclick: move |_| sig.set(value), "{label}" }
@@ -214,7 +220,11 @@ fn ClickKindButton(label: String, value: BadgeClickKind) -> Element {
 #[component]
 fn TintButton(label: String, value: Option<Rgb>) -> Element {
     let c = use_context::<Controls>();
-    let cls = if *c.override_color.read() == value { "on" } else { "" };
+    let cls = if *c.override_color.read() == value {
+        "on"
+    } else {
+        ""
+    };
     let mut sig = c.override_color;
     rsx! {
         button { class: "{cls}", onclick: move |_| sig.set(value), "{label}" }
@@ -224,7 +234,11 @@ fn TintButton(label: String, value: Option<Rgb>) -> Element {
 #[component]
 fn AccentButton(label: String, value: Option<String>) -> Element {
     let c = use_context::<Controls>();
-    let cls = if *c.accent_color.read() == value { "on" } else { "" };
+    let cls = if *c.accent_color.read() == value {
+        "on"
+    } else {
+        ""
+    };
     let mut sig = c.accent_color;
     rsx! {
         button { class: "{cls}", onclick: move |_| sig.set(value.clone()), "{label}" }

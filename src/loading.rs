@@ -155,13 +155,14 @@ pub fn loading_store(id: &'static str, label: impl Into<String>) -> LoadingStore
             snapshot: *existing,
         };
     }
-    let snapshot = *REGISTRY
-        .write()
-        .entry(id)
-        .or_insert_with(|| Signal::new(LoadSnapshot::idle(label.into())));
+    // Root-scoped: panels unmount on view switches and spawned tasks drop
+    // their scope on completion; a scope-owned signal would die under the
+    // registry and the next GlobalLoadingBar read would panic.
+    let snapshot = *REGISTRY.write().entry(id).or_insert_with(|| {
+        Signal::new_in_scope(LoadSnapshot::idle(label.into()), dioxus_core::ScopeId::ROOT)
+    });
     LoadingStore { id, snapshot }
 }
-
 
 /// Determinate-or-indeterminate loading bar with label and phase detail.
 ///
@@ -221,7 +222,6 @@ pub fn ProgressBar(
         }
     }
 }
-
 
 /// Panel-level hydration gate: renders a loading surface until `store`
 /// reaches [`LoadStatus::Ready`], then `children`.
@@ -308,10 +308,10 @@ mod tests {
     // `VirtualDom::new` takes a fn pointer (no captures), so the probe and
     // its sink live in thread-locals. Serialized by LOCK: the registry and
     // global signals are process-wide, so parallel doms would interleave.
+    type ProbeFn = Box<dyn Fn(&mut Vec<LoadSnapshot>)>;
     thread_local! {
         static OUT: std::cell::RefCell<Vec<LoadSnapshot>> = const { std::cell::RefCell::new(Vec::new()) };
-        static PROBE: std::cell::RefCell<Option<Box<dyn Fn(&mut Vec<LoadSnapshot>)>>> =
-            const { std::cell::RefCell::new(None) };
+        static PROBE: std::cell::RefCell<Option<ProbeFn>> = const { std::cell::RefCell::new(None) };
     }
 
     fn root() -> Element {
@@ -336,7 +336,6 @@ mod tests {
         PROBE.with(|p| p.borrow_mut().take());
         OUT.with(|o| o.borrow().clone())
     }
-
 
     #[test]
     fn store_actions_drive_the_snapshot_lifecycle() {
@@ -429,6 +428,50 @@ mod tests {
         assert_eq!(out[0].detail.as_deref(), Some("loading a…"));
     }
 
+    #[test]
+    fn store_signals_are_owned_by_the_root_scope() {
+        // Regression for the browser-suite panic at the GlobalLoadingBar
+        // registry read (`ValueDroppedError`): store signals were owned by
+        // whatever scope created them — panels unmount on view switches and
+        // spawned tasks (graph load, importer tracker) drop their scope on
+        // completion — killing the value while the registry still pointed at
+        // it. Stores are app-lifetime, so the ROOT scope must own every
+        // store signal no matter which component or task created it.
+        use std::cell::RefCell;
+        thread_local! {
+            static ORIGINS: RefCell<Vec<dioxus_core::ScopeId>> = const { RefCell::new(Vec::new()) };
+        }
+
+        #[component]
+        fn OwnerProbe() -> Element {
+            let store = loading_store("owned", "loading owned…");
+            ORIGINS.with(|o| o.borrow_mut().push(store.snapshot.origin_scope()));
+            rsx! {}
+        }
+        fn owner_probe_root() -> Element {
+            rsx! {
+                OwnerProbe {}
+            }
+        }
+
+        use std::sync::LazyLock;
+        static LOCK: LazyLock<parking_lot::Mutex<()>> =
+            LazyLock::new(|| parking_lot::Mutex::new(()));
+        let _guard = LOCK.lock();
+        ORIGINS.with(|o| o.borrow_mut().clear());
+        let mut dom = VirtualDom::new(owner_probe_root);
+        dom.rebuild(&mut dioxus_core::NoOpMutations);
+        drop(dom);
+
+        let origins = ORIGINS.with(|o| o.borrow().clone());
+        assert_eq!(origins.len(), 1, "probe component ran");
+        assert_eq!(
+            origins[0],
+            dioxus_core::ScopeId::ROOT,
+            "store signal must be owned by the root scope, not the creating component"
+        );
+    }
+
     // --- component markup contract (via dioxus_ssr) ---------------------------
 
     #[test]
@@ -471,7 +514,12 @@ mod tests {
         let store = match case.as_str() {
             "ready" => fixed_store(LoadStatus::Ready, None),
             "failed" => fixed_store(LoadStatus::Failed, Some("kaboom")),
-            _ => fixed_store(LoadStatus::Pending { fraction: Some(0.5) }, None),
+            _ => fixed_store(
+                LoadStatus::Pending {
+                    fraction: Some(0.5),
+                },
+                None,
+            ),
         };
         rsx! {
             LoadingGate { store, div { "loaded content" } }

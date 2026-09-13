@@ -197,7 +197,12 @@ async fn load_monaco() -> Result<(), EditorError> {
     wasm_bindgen_futures::JsFuture::from(interop::load(&base))
         .await
         .map(|_| ())
-        .map_err(|e| EditorError(format!("monaco bundle failed to load from {base}: {}", js_err(&e))))
+        .map_err(|e| {
+            EditorError(format!(
+                "monaco bundle failed to load from {base}: {}",
+                js_err(&e)
+            ))
+        })
 }
 
 /// Load Monaco (if needed) and register the `pest` grammar language —
@@ -422,7 +427,9 @@ pub fn MonacoEditor(
 
     let mount_initial = initial.clone();
     let mount_language = language.clone();
-    let mount_theme = theme.clone().unwrap_or_else(|| PANEL_KIT_DARK_THEME.to_string());
+    let mount_theme = theme
+        .clone()
+        .unwrap_or_else(|| PANEL_KIT_DARK_THEME.to_string());
     let mount_read_only = read_only;
 
     rsx! {
@@ -533,7 +540,11 @@ fn editor_options(value: &str, language: &str, read_only: bool, theme: &str) -> 
     set("fixedOverflowWidgets", true.into());
     set("renderWhitespace", "selection".into());
     let minimap = js_sys::Object::new();
-    let _ = js_sys::Reflect::set(minimap.as_ref(), &JsValue::from_str("enabled"), &false.into());
+    let _ = js_sys::Reflect::set(
+        minimap.as_ref(),
+        &JsValue::from_str("enabled"),
+        &false.into(),
+    );
     set("minimap", minimap.into());
     options
 }

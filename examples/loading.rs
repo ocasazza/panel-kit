@@ -34,7 +34,10 @@ fn main() {
 async fn fake_fetch(store: panel_kit::loading::LoadingStore, steps: usize) {
     for i in 1..=steps {
         gloo_timers::future::TimeoutFuture::new(400).await;
-        store.update(Some(i as f64 / steps as f64), Some(format!("chunk {i}/{steps}")));
+        store.update(
+            Some(i as f64 / steps as f64),
+            Some(format!("chunk {i}/{steps}")),
+        );
     }
     store.succeed();
 }

@@ -177,8 +177,7 @@ impl Metrics {
         let means = [2.4, 5.1, 3.3, 1.8, 0.9];
         let spreads = [0.8, 2.0, 1.1, 0.6, 0.3];
         for (s, samples) in self.stage_samples.iter_mut().enumerate() {
-            let v =
-                means[s] + spreads[s] * (noise(n ^ (s as u64 * 0x9e3) ^ 0x1234) - 0.5) * 2.0;
+            let v = means[s] + spreads[s] * (noise(n ^ (s as u64 * 0x9e3) ^ 0x1234) - 0.5) * 2.0;
             if samples.len() >= WINDOW {
                 samples.remove(0);
             }
