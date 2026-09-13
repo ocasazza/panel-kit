@@ -27,6 +27,39 @@
 .panel-kit-boot-title { font-weight: 700; }
 .panel-kit-boot-status { color: #77777d; font-size: 10px; }
 
+/* Header progress bar. The static fragment is always indeterminate (no
+   script may measure pre-WASM); LoadingWorkspace fills determinate width +
+   percentage once Rust is live. */
+.panel-kit-boot-progress {
+  flex: 1;
+  max-width: 22rem;
+  height: 6px;
+  margin-left: auto;
+  background: #1a1a1d;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.panel-kit-boot-fill {
+  height: 100%;
+  background: #389cf6;
+  transition: width .4s ease;
+}
+.panel-kit-boot-fill.indeterminate {
+  width: 40%;
+  animation: panel-kit-boot-indet 1.2s linear infinite;
+}
+.panel-kit-boot-pct {
+  color: #389cf6;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.panel-kit-boot-pct:empty { display: none; }
+
+@keyframes panel-kit-boot-indet {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 .panel-kit-boot-panels {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr);
@@ -92,4 +125,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .panel-kit-boot-line { animation: none; opacity: .65; }
+  .panel-kit-boot-fill { transition: none; }
+  .panel-kit-boot-fill.indeterminate { animation: none; width: 100%; opacity: .5; }
 }

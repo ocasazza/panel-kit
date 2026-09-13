@@ -7,8 +7,14 @@
 //! persistence to localStorage. The crate also ships standalone widgets:
 //! the [`badge`] module (a clickable metadata chip), [`Spinner`], the
 //! [`editor`] module (a Monaco code editor with a `.pest` grammar language),
-//! and a [`LoadingWorkspace`] whose static HTML/CSS twin can paint before an
-//! app's WASM bundle finishes loading.
+//! the [`loading`] module (store-shaped async hydration: [`LoadingGate`],
+//! [`ProgressBar`], [`GlobalLoadingBar`]), and a [`LoadingWorkspace`] whose
+//! static HTML/CSS twin can paint before an app's WASM bundle finishes
+//! loading.
+//!
+//! [`LoadingGate`]: loading::LoadingGate
+//! [`ProgressBar`]: loading::ProgressBar
+//! [`GlobalLoadingBar`]: loading::GlobalLoadingBar
 //!
 //! The app supplies two things: a [`PanelKind`] impl (an enum of its panels)
 //! and a body-render callback. Everything else — geometry, z-order, drag
@@ -111,6 +117,9 @@
 //! - `badge` — every [`badge::BadgeKind`], every prop, and an event log
 //!   proving each [`badge::BadgeAction`] variant fires.
 //! - `spinner` — [`Spinner`] with and without a label.
+//! - `loading` — the full hydration arc: staged [`LoadingWorkspace`]
+//!   percentage, per-panel [`loading::LoadingGate`]s behind stores, and the
+//!   [`loading::GlobalLoadingBar`] aggregate.
 //! - `theming` — the `:root` variable override path with switchable presets.
 //! - `editor` — [`editor::MonacoEditor`]: two-way `Signal<String>` binding,
 //!   `on_change` log, and the imperative [`editor::EditorHandle`] controls.
@@ -120,6 +129,7 @@
 
 pub mod badge;
 pub mod editor;
+pub mod loading;
 pub mod views;
 
 pub use views::{use_views, SavedViews, ViewError, Views};
@@ -162,19 +172,29 @@ pub const BOOT_HTML: &str = include_str!("../assets/panel-kit-boot.html");
 /// it; override the `:root` CSS variables to retheme (see the
 /// [crate-level theming notes](crate#theming)).
 pub const CSS: &str = include_str!("../assets/panel-kit.css");
-
 /// Panel-shaped loading state for work that continues after WASM has mounted.
 ///
 /// For the earlier download/instantiation gap, render the static [`BOOT_HTML`]
 /// contract in the app's HTML and inline [`BOOT_CSS`]. Both surfaces use the
 /// same class names and visual language; the app owns only the phase text.
+///
+/// Pass `progress` once the app can measure a phase (download bytes, staged
+/// init steps): the header bar turns determinate and shows the percentage —
+/// the bar, never a spinner, and never a fabricated number. `None` keeps the
+/// honest indeterminate animation the static fragment painted.
 #[component]
 pub fn LoadingWorkspace(
     /// Application name shown in the compact top bar.
     title: String,
     /// Current app-owned phase, such as `loading graph…` or `initializing GPU…`.
     status: String,
+    /// Completion in `0.0..=1.0`, or `None` while indeterminate.
+    #[props(default)]
+    progress: Option<f64>,
 ) -> Element {
+    let pct = progress.map(|f| (f.clamp(0.0, 1.0) * 100.0).round() as u32);
+    // Fill width and the percentage text come from the same rounded integer.
+    let width = pct.map(|p| p.to_string()).unwrap_or_default();
     rsx! {
         style { {BOOT_CSS} }
         section {
@@ -184,6 +204,25 @@ pub fn LoadingWorkspace(
             header { class: "panel-kit-boot-bar",
                 strong { class: "panel-kit-boot-title", "{title}" }
                 span { class: "panel-kit-boot-status", "{status}" }
+                div {
+                    class: "panel-kit-boot-progress",
+                    role: "progressbar",
+                    aria_valuemin: "0",
+                    aria_valuemax: "100",
+                    aria_valuenow: pct.map(|p| p.to_string()),
+                    aria_label: "load progress",
+                    if pct.is_some() {
+                        div {
+                            class: "panel-kit-boot-fill",
+                            style: "width: {width}%",
+                        }
+                    } else {
+                        div { class: "panel-kit-boot-fill indeterminate" }
+                    }
+                }
+                if let Some(pct) = pct {
+                    span { class: "panel-kit-boot-pct", "{pct}%" }
+                }
             }
             main { class: "panel-kit-boot-panels", aria_hidden: "true",
                 for i in 0..3 {
@@ -1166,9 +1205,10 @@ pub fn tip_pos(cx: f64, cy: f64, tw: f64, th: f64) -> (f64, f64) {
 
 #[cfg(test)]
 mod boot_contract_tests {
-    use super::{BOOT_CSS, BOOT_HTML};
+    use super::{LoadingWorkspace, BOOT_CSS, BOOT_HTML};
+    use dioxus::prelude::*;
 
-    const CLASSES: [&str; 7] = [
+    const CLASSES: [&str; 10] = [
         "panel-kit-boot",
         "panel-kit-boot-bar",
         "panel-kit-boot-title",
@@ -1176,6 +1216,9 @@ mod boot_contract_tests {
         "panel-kit-boot-panels",
         "panel-kit-boot-panel",
         "panel-kit-boot-line",
+        "panel-kit-boot-progress",
+        "panel-kit-boot-fill",
+        "panel-kit-boot-pct",
     ];
 
     #[test]
@@ -1187,6 +1230,43 @@ mod boot_contract_tests {
                 "BOOT_CSS is missing {class}"
             );
         }
+    }
+
+    #[test]
+    fn static_boot_bar_is_a_script_free_indeterminate_progressbar() {
+        // Pre-WASM there is no script to measure download progress, so the
+        // static fragment renders the honest indeterminate bar; the Rust
+        // LoadingWorkspace takes over with a real percentage once mounted.
+        assert!(BOOT_HTML.contains("role=\"progressbar\""));
+        assert!(!BOOT_HTML.contains("aria-valuenow"));
+        assert!(!BOOT_HTML.contains("%</span>"));
+    }
+
+    #[test]
+    fn loading_workspace_progress_markup_matches_the_static_contract() {
+        let determinate = dioxus_ssr::render_element(rsx! {
+            LoadingWorkspace {
+                title: "APP".to_string(),
+                status: "loading graph…".to_string(),
+                progress: Some(0.6),
+            }
+        });
+        assert!(determinate.contains("60%"), "{determinate}");
+        assert!(determinate.contains("aria-valuenow=\"60\""), "{determinate}");
+        assert!(determinate.contains("width: 60%"), "{determinate}");
+        // Class-attribute shape ("fill indeterminate", space-separated) — the
+        // embedded BOOT_CSS text also contains the word "indeterminate".
+        assert!(!determinate.contains("panel-kit-boot-fill indeterminate"), "{determinate}");
+
+        let indeterminate = dioxus_ssr::render_element(rsx! {
+            LoadingWorkspace {
+                title: "APP".to_string(),
+                status: "loading graph…".to_string(),
+                progress: None,
+            }
+        });
+        assert!(indeterminate.contains("panel-kit-boot-fill indeterminate"), "{indeterminate}");
+        assert!(!indeterminate.contains("%</span>"), "{indeterminate}");
     }
 
     #[test]

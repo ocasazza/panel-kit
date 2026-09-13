@@ -105,7 +105,9 @@ loading-workspace contract at both sides of that boundary:
   immediately following sibling, replace its application/status text, and
   inline the critical stylesheet in `<head>`.
 - `LoadingWorkspace` renders the same shell after Dioxus mounts, for app-owned
-  phases such as graph fetches or GPU initialization.
+  phases such as graph fetches or GPU initialization. Its `progress` prop
+  turns the header bar determinate with a mandatory percentage once a phase
+  is measurable; `None` keeps the static fragment's honest indeterminate bar.
 
 The static fragment carries `data-panel-kit-static-boot`; the stylesheet's
 adjacent-sibling selector hides only that fragment after Dioxus marks its mount
@@ -126,6 +128,40 @@ mount element: Dioxus does not clear pre-existing children.
   </section>
 </body>
 ```
+
+### Loading after mount: stores, gates, and the global bar
+
+Page hydration is store-shaped (pinia-style): render the workspace chrome
+immediately, then let every async data source load lazily behind one shared
+state vocabulary.
+
+```rust,no_run
+use panel_kit::loading::{use_loading_store, LoadingGate, GlobalLoadingBar};
+
+// One store per data source; same id, same store, from any component.
+let store = use_loading_store("branches", "loading branches…");
+use_future(move || async move {
+    store.begin_with("connecting");
+    // …fetch, reporting store.update(Some(fraction), Some(stage))…
+    store.succeed(); // or store.fail("message")
+});
+
+// Panel level: the gate renders a ProgressBar (with its percentage while
+// determinate) until the store is Ready, then the children.
+rsx! { LoadingGate { store, div { "loaded content" } } }
+
+// Workspace level: one compact bar in the top bar aggregates every pending
+// store (mean of the reported fractions; hidden while nothing is pending).
+rsx! { GlobalLoadingBar {} }
+```
+
+The display contract: a bar beats a spinner (`Spinner` stays for tiny inline
+waits only), and a determinate bar always shows its percentage — `None` is
+the honest indeterminate state, never a fabricated number. Stores are
+ephemeral in-flight status only; rewind/undo of application state belongs to
+the app's own snapshot-timeline framework, and a rewind is just a
+`begin` → `succeed` transition on a store so replays surface on the same
+bars. See `examples/loading.rs` for the full arc.
 
 ## Documentation
 

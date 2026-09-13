@@ -25,6 +25,7 @@
 #![warn(missing_docs)]
 
 pub mod badge;
+pub mod loading;
 pub mod views;
 
 use serde::{Deserialize, Serialize};

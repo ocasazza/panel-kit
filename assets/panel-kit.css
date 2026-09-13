@@ -129,6 +129,47 @@ button { font-family:var(--mono); }
 .spin-label { color:var(--accent); font-size:.78rem; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
+/* Loading surfaces: bars over spinners (Spinner stays for tiny inline waits).
+   A determinate bar always shows its percentage; the indeterminate state
+   animates and shows no fabricated number. */
+.pk-progress { display:flex; flex-direction:column; gap:.3rem; width:100%;
+  max-width:26rem; }
+.pk-progress-head { display:flex; align-items:baseline; gap:.5rem;
+  font-size:.72rem; letter-spacing:.03em; }
+.pk-progress-label { color:var(--fg); }
+.pk-progress-detail { color:var(--dim); font-size:.68rem; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.pk-progress-pct { margin-left:auto; color:var(--accent);
+  font-variant-numeric:tabular-nums; }
+.pk-progress-track { height:.55rem; background:rgba(255,255,255,.06);
+  border:1px solid var(--line2); border-radius:3px; overflow:hidden; }
+.pk-progress-fill { height:100%; background:var(--accent);
+  transition:width .4s ease; }
+.pk-progress-fill.indeterminate { width:40%;
+  animation:pk-indet 1.2s infinite linear; }
+@keyframes pk-indet { 0% { transform:translateX(-100%); }
+  100% { transform:translateX(350%); } }
+.pk-progress.compact { max-width:none; gap:.15rem; }
+.pk-progress.compact .pk-progress-track { height:.3rem; }
+
+/* Panel-level hydration gate (LoadingGate): fills the panel body. */
+.pk-gate { display:grid; place-items:center; align-content:center; gap:.4rem;
+  height:100%; padding:1rem; box-sizing:border-box; }
+.pk-gate-label { color:var(--dim); font-size:.78rem; letter-spacing:.03em; }
+.pk-gate-detail { color:var(--dim); font-size:.68rem; max-width:32rem;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pk-gate-error .pk-gate-label, .pk-gate-error .pk-gate-detail { color:var(--red); }
+
+/* Workspace-level aggregate (GlobalLoadingBar): one compact strip, mounted
+   in the app top bar. */
+.pk-global-load { margin-left:auto; min-width:12rem; max-width:20rem;
+  flex:0 1 20rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-progress-fill { transition:none; }
+  .pk-progress-fill.indeterminate { animation:none; width:100%; opacity:.5; }
+}
+
 /* Fixed info-tooltip overlay (viewport-placed at the app root) */
 .tip-overlay { position:fixed; width:228px; z-index:6000; background:#0d0d0d;
   border:1px solid var(--line2); border-radius:5px; padding:.5rem .6rem;

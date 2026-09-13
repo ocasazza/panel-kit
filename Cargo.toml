@@ -32,6 +32,16 @@ wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "Event", "EventTarget", "HtmlElement", "Node", "NodeList", "PointerEvent", "ResizeObserver", "ResizeObserverEntry", "Selection", "Storage"] }
 
+[dev-dependencies]
+# Headless markup rendering for the loading components' contract tests
+# (src/loading.rs): assertions run against real rendered HTML, not rsx
+# source text.
+dioxus-ssr = "0.6"
+# Poisoning-free test serialization lock (src/loading.rs drive harness).
+parking_lot = "0.12"
+# Fake-async delays in the loading example's hydration arc demo.
+gloo-timers = { version = "0.3", features = ["futures"] }
+
 # Injected by dioxus-cli on first `dx build` — dx builds the example demos
 # under these profiles.
 [profile.wasm-dev]
