@@ -887,7 +887,7 @@ fn command_delta(delta: f64, step: CommandStep) -> f64 {
 /// fine magnitudes produced by [`command_for`] are translated through `step`.
 #[allow(clippy::too_many_arguments)]
 pub fn apply_command<K: PanelKind>(
-    panels: &mut Vec<PanelWin<K>>,
+    panels: &mut [PanelWin<K>],
     mode: &mut Mode,
     focused: &mut Option<K>,
     cmd: PanelCommand,

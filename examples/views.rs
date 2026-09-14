@@ -180,13 +180,14 @@ fn App() -> Element {
                 for name in names.iter().cloned() {
                     {
                         let is_active = name == active;
+                        let click_name = name.clone();
                         rsx! {
                             button {
                                 key: "{name}",
                                 class: if is_active { "active-view" } else { "" },
                                 onclick: move |_| {
                                     err.set(String::new());
-                                    if let Err(error) = views.switch(&name) {
+                                    if let Err(error) = views.switch(&click_name) {
                                         err.set(error.to_string());
                                     }
                                 },
