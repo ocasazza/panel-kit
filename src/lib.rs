@@ -18,10 +18,10 @@
 //!
 //! The app supplies two things: a [`PanelKind`] impl (an enum of its panels)
 //! and a body-render callback. Everything else — geometry, z-order, drag
-//! state, viewport clamping, the mobile breakpoint, persistence — lives in
-//! the [`Workspace`] handle created by [`use_workspace`]. For several named,
-//! switchable layouts inside one workspace, [`use_views`] layers a view
-//! registry and per-view persistence keys over the same machinery.
+//! state, viewport classification, persistence — lives in the [`Workspace`]
+//! handle created by [`use_workspace`]. For several named, switchable layouts
+//! inside one workspace, [`use_views`] layers a view registry and per-view
+//! persistence keys over the same machinery.
 //! Panel chrome follows the ratatui renderer's compact treatment: controls
 //! and title are inset into the top border row instead of occupying a
 //! separate full-width header band, preserving vertical space for content.
@@ -61,9 +61,11 @@
 //!     let ws = use_workspace("myapp_layout", default_layout);
 //!     rsx! {
 //!         style { {panel_kit::CSS} }
-//!         div { class: ws.root_class(),
-//!             onmousemove: move |e| ws.handle_mouse_move(&e),
-//!             onmouseup: move |_| ws.handle_mouse_up(),
+//!         div { class: ws.root_class(), tabindex: "0",
+//!             onpointermove: move |e| ws.handle_pointer_move(&e),
+//!             onpointerup: move |e| ws.handle_pointer_up(&e),
+//!             onpointercancel: move |e| ws.handle_pointer_up(&e),
+//!             onkeydown: move |e| ws.handle_key(&e),
 //!             header { class: "topbar" /* app-specific */ }
 //!             {ws.render_with_header(
 //!                 |kind, _maximized| rsx! { "body for {kind.title()}" },
@@ -110,7 +112,7 @@
 //! by `nix develop`):
 //!
 //! - `workspace` — the full workspace surface: floating/tiling, traffic
-//!   lights, drag/resize/reorder, dock, persistence, mobile stack, tooltips.
+//!   lights, drag/resize/reorder, dock, persistence, compact stack, tooltips.
 //! - `views` — named views over one workspace: [`use_views`], per-view
 //!   layout persistence keys, switching/creating/renaming/deleting views,
 //!   and the legacy single-layout migration.
@@ -134,19 +136,23 @@ pub mod views;
 
 pub use views::{use_views, SavedViews, ViewError, Views};
 
-use dioxus::events::{MouseEvent, PointerEvent};
+use dioxus::events::{Key as DioxusKey, KeyboardEvent, PointerEvent as DioxusPointerEvent};
 use dioxus::prelude::*;
 use gloo_storage::{LocalStorage, Storage};
 use wasm_bindgen::JsCast;
 
+pub use panel_kit_core::{
+    apply_command, command_for, effective_mode, migrate_v1, reconcile_units, Clamp, CommandStep,
+    Drag, DragKind, FocusContext, Key, KeyChord, LayoutBuilder, Mode, PanelCommand, PanelKind,
+    PanelWin, PointerButton, PointerEvent, PointerEventKind, SavedLayout, SavedLayoutV2,
+    StoredLayout, SurfaceCapabilities, SurfaceClass, SurfaceProfile, Units, WinState,
+    CELLS_COMPACT_MAX, CELLS_TABLET_MAX, LAYOUT_SCHEMA_VERSION, TILE_ROW_PX, TILE_W_MAX,
+    WEB_COMPACT_MAX, WEB_TABLET_MAX,
+};
 use panel_kit_core::{
     apply_drag, begin_drag as core_begin_drag, begin_tile_resize as core_begin_tile_resize,
-    clamp_scroll, effective_rect as core_effective_rect, floating_content_height, front_z,
-    kind_slug, max_scroll, merge_defaults, reorder_tile as core_reorder_tile, Clamp, SavedLayout,
-    TileMetrics, TILE_W_MAX,
-};
-pub use panel_kit_core::{
-    Drag, DragKind, LayoutBuilder, Mode, PanelKind, PanelWin, WinState, TILE_ROW_PX,
+    clamp_scroll, effective_rect as core_effective_rect, floating_content_height, kind_slug,
+    max_scroll, merge_defaults, reorder_tile as core_reorder_tile, TileMetrics,
 };
 
 /// Critical stylesheet for the loading-workspace contract.
@@ -157,7 +163,10 @@ pub use panel_kit_core::{
 /// asset into the build). Once Dioxus marks the mount element, the adjacent
 /// sibling selector hides only that static fragment. After WASM is live,
 /// [`LoadingWorkspace`] renders the same app-agnostic contract.
-pub const BOOT_CSS: &str = include_str!("../assets/panel-kit-boot.css");
+/// Generated at build time from [`panel_kit_core::tokens`] (see `build.rs`
+/// and `assets/panel-kit-boot.css.in`), so its palette and font stack cannot
+/// drift from the injected [`CSS`] the way a hand-maintained copy did.
+pub const BOOT_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/panel-kit-boot.css"));
 
 /// Static, JavaScript-free loading-workspace fragment for pre-WASM first paint.
 ///
@@ -167,7 +176,7 @@ pub const BOOT_CSS: &str = include_str!("../assets/panel-kit-boot.css");
 pub const BOOT_HTML: &str = include_str!("../assets/panel-kit-boot.html");
 
 /// Base stylesheet for the workspace chrome (panels, lights, dock, badges,
-/// spinner, tooltip overlay, mobile breakpoint). Inject once at the app root
+/// spinner, tooltip overlay, and surface tiers). Inject once at the app root
 /// with `style { {panel_kit::CSS} }`, then layer app-specific styles after
 /// it; override the `:root` CSS variables to retheme (see the
 /// [crate-level theming notes](crate#theming)).
@@ -269,8 +278,8 @@ pub fn PanelHeaderButton(
             title: "{title}",
             aria_label: "{title}",
             disabled,
-            onpointerdown: move |e: PointerEvent| e.stop_propagation(),
-            onmousedown: move |e: MouseEvent| e.stop_propagation(),
+            onpointerdown: move |e: DioxusPointerEvent| e.stop_propagation(),
+            onkeydown: move |e: KeyboardEvent| e.stop_propagation(),
             onclick: move |e| on_press.call(e),
             "{label}"
         }
@@ -296,6 +305,42 @@ fn viewport_size() -> (f64, f64) {
     (vw, vh)
 }
 
+fn browser_capabilities() -> SurfaceCapabilities {
+    let media_matches = |query: &str| {
+        web_sys::window()
+            .and_then(|window| window.match_media(query).ok().flatten())
+            .map(|media| media.matches())
+            .unwrap_or(false)
+    };
+    SurfaceCapabilities {
+        coarse_pointer: media_matches("(pointer: coarse)"),
+        hover: media_matches("(hover: hover)"),
+        keyboard: true,
+    }
+}
+
+fn surface_profile(width: f64) -> SurfaceProfile {
+    SurfaceProfile::from_logical_width(
+        width,
+        WEB_COMPACT_MAX,
+        WEB_TABLET_MAX,
+        browser_capabilities(),
+    )
+}
+
+fn core_pointer_event(event: &DioxusPointerEvent, kind: PointerEventKind) -> PointerEvent {
+    let coordinates = event.client_coordinates();
+    PointerEvent {
+        kind,
+        x: coordinates.x,
+        y: coordinates.y,
+    }
+}
+
+fn dock_chip_id<K: PanelKind>(kind: K) -> String {
+    format!("panel-kit-dock-{}", kind_slug(kind.title()))
+}
+
 /// Floating placement for a scrollable workspace: x / width / height stay
 /// clamped to the viewport (so panels never grow wider than the window), but
 /// the *vertical* position keeps the panel's stored `y` (only floored at 0)
@@ -308,7 +353,7 @@ fn floating_rect<K>(p: &PanelWin<K>, vw: f64, vh: f64) -> (f64, f64, f64, f64) {
     (x, p.y.max(0.0), w, h)
 }
 
-fn capture_pointer(e: &PointerEvent) {
+fn capture_pointer(e: &DioxusPointerEvent) {
     let Some(web_event) = e.data.downcast::<web_sys::PointerEvent>() else {
         return;
     };
@@ -321,7 +366,7 @@ fn capture_pointer(e: &PointerEvent) {
     let _ = target.set_pointer_capture(web_event.pointer_id());
 }
 
-fn release_pointer(e: &PointerEvent) {
+fn release_pointer(e: &DioxusPointerEvent) {
     let Some(web_event) = e.data.downcast::<web_sys::PointerEvent>() else {
         return;
     };
@@ -340,22 +385,11 @@ fn clear_selection() {
     }
 }
 
-/// Narrow viewport (< 760 px wide) → mobile shell (static stacked tiling
-/// instead of the floating panel workspace).
+/// True while an `<input>` or `<textarea>` has focus.
 ///
-/// [`use_workspace`] re-evaluates this on every window resize and exposes it
-/// as [`Workspace::is_mobile`]; call it directly only outside a workspace.
-pub fn viewport_is_mobile() -> bool {
-    web_sys::window()
-        .and_then(|w| w.inner_width().ok())
-        .and_then(|v| v.as_f64())
-        .map(|w| w < 760.0)
-        .unwrap_or(false)
-}
-
-/// True while an `<input>`/`<textarea>` has focus — apps use this to
-/// suppress single-key shortcuts while the user is typing. Check it at the
-/// top of a global `onkeydown` handler before matching shortcut keys.
+/// [`Workspace::handle_key`] uses this DOM adapter to select
+/// [`FocusContext::TextInput`]; keybinding policy remains in
+/// [`command_for`].
 pub fn is_editing() -> bool {
     web_sys::window()
         .and_then(|w| w.document())
@@ -410,34 +444,44 @@ fn panel_body_absorbs_wheel(dy: f64) -> bool {
     }
 }
 
-pub(crate) fn save_layout<K: PanelKind>(key: &str, panels: &[PanelWin<K>], mode: Mode) {
+pub(crate) fn save_layout<K: PanelKind>(
+    key: &str,
+    panels: &[PanelWin<K>],
+    mode: Mode,
+    viewport: (f64, f64),
+) {
     let _ = LocalStorage::set(
         key,
-        SavedLayout {
+        SavedLayoutV2 {
+            version: LAYOUT_SCHEMA_VERSION,
+            units: Units::CssPx,
+            viewport,
+            mode,
             panels: panels.to_vec(),
-            tiling: mode == Mode::Tiling,
         },
     );
 }
 
-/// Load the saved layout, reconciling against the current panel set: panels
-/// added since the layout was saved are appended with their default placement,
-/// so new features still show up for existing users.
+/// Load either persisted schema, reconcile geometry into current CSS pixels,
+/// and append panel kinds added since the record was written.
+///
+/// `pub(crate)` because [`use_views`] loads each view's layout through the
+/// same reader, so a per-view record gets the same V1 migration and
+/// unit reconciliation as the single-layout case.
 pub(crate) fn load_layout<K: PanelKind>(
     key: &str,
     defaults: &[PanelWin<K>],
+    viewport: (f64, f64),
 ) -> Option<(Vec<PanelWin<K>>, Mode)> {
-    let saved: SavedLayout<K> = LocalStorage::get(key).ok()?;
-    let mut panels = saved.panels;
+    let stored: StoredLayout<K> = LocalStorage::get(key).ok()?;
+    let layout = match stored {
+        StoredLayout::V1(old) => migrate_v1(old, Units::CssPx, viewport),
+        StoredLayout::V2(current) => reconcile_units(current, Units::CssPx, viewport),
+    };
+    let mode = layout.mode;
+    let mut panels = layout.panels;
     merge_defaults(&mut panels, defaults);
-    Some((
-        panels,
-        if saved.tiling {
-            Mode::Tiling
-        } else {
-            Mode::Floating
-        },
-    ))
+    Some((panels, mode))
 }
 
 /// The workspace handle: a bundle of `Copy` signals, safe to pass around and
@@ -453,17 +497,19 @@ pub struct Workspace<K: PanelKind> {
     /// tiling order and persists with the layout.
     pub panels: Signal<Vec<PanelWin<K>>>,
     /// The user-chosen layout [`Mode`]. Prefer
-    /// [`effective_mode`](Workspace::effective_mode) when rendering — a
-    /// mobile viewport overrides this.
+    /// [`effective_mode`](Workspace::effective_mode) when rendering because
+    /// compact surfaces force tiling.
     pub mode: Signal<Mode>,
     /// The in-flight floating-mode move/resize [`Drag`], if any.
     pub drag: Signal<Option<Drag>>,
     /// Tiling-mode reorder drag: the kind being dragged. Hovering another
     /// panel while set live-shuffles the dragged panel into that slot.
     pub tile_drag: Signal<Option<K>>,
-    /// Whether the viewport is below the mobile breakpoint (see
-    /// [`viewport_is_mobile`]); re-evaluated on every window resize.
-    pub is_mobile: Signal<bool>,
+    /// Current width tier and browser input capabilities, re-derived on
+    /// every window resize.
+    pub profile: Signal<SurfaceProfile>,
+    /// Panel that owns window-management keyboard commands, if any.
+    pub focused: Signal<Option<K>>,
     /// Live window size — [`render`](Workspace::render) subscribes so
     /// floating panels re-project through the viewport clamp on every
     /// resize (both directions).
@@ -475,6 +521,7 @@ pub struct Workspace<K: PanelKind> {
     /// natively through the CSS `overflow` on `.ws.tiling`, so this only
     /// applies to floating mode.)
     pub ws_scroll: Signal<f64>,
+    pending_dock_focus: Signal<Option<String>>,
 }
 
 impl<K: PanelKind> Clone for Workspace<K> {
@@ -484,9 +531,9 @@ impl<K: PanelKind> Clone for Workspace<K> {
 }
 impl<K: PanelKind> Copy for Workspace<K> {}
 
-/// Set up workspace state: restores the persisted layout (merging in any new
-/// panel kinds), re-clamps + re-evaluates the mobile breakpoint on window
-/// resize, and persists the layout whenever it settles (not mid-drag).
+/// Set up workspace state: restores either persisted layout schema (merging
+/// in new panel kinds), re-clamps + reclassifies the surface on window
+/// resize, and persists a V2 layout whenever it settles (not mid-drag).
 ///
 /// This is a Dioxus hook — call it unconditionally from one component,
 /// typically the app root, and pass the returned [`Workspace`] (it's `Copy`)
@@ -504,13 +551,18 @@ pub fn use_workspace<K: PanelKind>(
     storage_key: &'static str,
     defaults: fn() -> Vec<PanelWin<K>>,
 ) -> Workspace<K> {
-    let ws = use_workspace_state(load_layout(storage_key, &defaults()), defaults);
+    let initial_viewport = viewport_size();
+    let ws = use_workspace_state(
+        load_layout(storage_key, &defaults(), initial_viewport),
+        defaults,
+    );
     use_effect(move || {
         let ps = ws.panels.read().clone();
         let md = *ws.mode.read();
-        // Persist once a drag settles — not on every mousemove/hover-shuffle.
+        let vp = *ws.viewport.read();
+        // Persist once a drag settles — not on every pointermove/hover-shuffle.
         if ws.drag.read().is_none() && ws.tile_drag.read().is_none() {
-            save_layout(storage_key, &ps, md);
+            save_layout(storage_key, &ps, md, vp);
         }
     });
     ws
@@ -524,6 +576,7 @@ pub(crate) fn use_workspace_state<K: PanelKind>(
     saved: Option<(Vec<PanelWin<K>>, Mode)>,
     defaults: fn() -> Vec<PanelWin<K>>,
 ) -> Workspace<K> {
+    let initial_viewport = viewport_size();
     let panels = use_signal(|| {
         saved
             .as_ref()
@@ -533,14 +586,16 @@ pub(crate) fn use_workspace_state<K: PanelKind>(
     let mode = use_signal(|| saved.as_ref().map(|(_, m)| *m).unwrap_or(Mode::Floating));
     let drag = use_signal(|| Option::<Drag>::None);
     let tile_drag = use_signal(|| Option::<K>::None);
-    let is_mobile = use_signal(viewport_is_mobile);
-    let viewport = use_signal(viewport_size);
+    let profile = use_signal(|| surface_profile(initial_viewport.0));
+    let focused = use_signal(|| Option::<K>::None);
+    let viewport = use_signal(|| initial_viewport);
     let ws_scroll = use_signal(|| 0.0_f64);
+    let pending_dock_focus = use_signal(|| Option::<String>::None);
 
     use_hook(|| {
         use wasm_bindgen::closure::Closure;
         let mut viewport = viewport;
-        let mut is_mobile = is_mobile;
+        let mut profile = profile;
         let mut panels = panels;
 
         // One re-projection step, shared by both the ResizeObserver and the
@@ -567,7 +622,7 @@ pub(crate) fn use_workspace_state<K: PanelKind>(
                 }
             }
             viewport.set((nw, nh));
-            is_mobile.set(viewport_is_mobile());
+            profile.set(surface_profile(nw));
         };
 
         // A ResizeObserver on <html> is the reliable signal inside webviews
@@ -605,16 +660,15 @@ pub(crate) fn use_workspace_state<K: PanelKind>(
         let mut panels_for_move = panels;
         let drag_for_move = drag;
         let mode_for_move = mode;
-        let is_mobile_for_move = is_mobile;
+        let profile_for_move = profile;
         let viewport_for_move = viewport;
         let move_cb = Closure::wrap(Box::new(move |e: web_sys::PointerEvent| {
             if let Some(d) = *drag_for_move.peek() {
                 e.prevent_default();
-                let tiling = if *is_mobile_for_move.peek() {
-                    Mode::Tiling
-                } else {
-                    *mode_for_move.peek()
-                } == Mode::Tiling;
+                // Compact surfaces force tiling, so the drag math has to ask
+                // the surface profile rather than a raw mode signal.
+                let tiling =
+                    effective_mode(*mode_for_move.peek(), &profile_for_move.peek()) == Mode::Tiling;
                 let (vw, _) = *viewport_for_move.peek();
                 apply_drag(
                     &mut panels_for_move.write(),
@@ -663,173 +717,270 @@ pub(crate) fn use_workspace_state<K: PanelKind>(
         cancel_cb.forget();
     });
 
+    use_effect(move || {
+        use wasm_bindgen::JsCast;
+        let target = pending_dock_focus.read().clone();
+        let Some(target) = target else {
+            return;
+        };
+        let Some(element) = web_sys::window()
+            .and_then(|window| window.document())
+            .and_then(|document| document.get_element_by_id(&target))
+        else {
+            return;
+        };
+        let Ok(element) = element.dyn_into::<web_sys::HtmlElement>() else {
+            return;
+        };
+        let _ = element.focus();
+        let mut pending = pending_dock_focus;
+        pending.set(None);
+    });
+
     Workspace {
         panels,
         mode,
         drag,
         tile_drag,
-        is_mobile,
+        profile,
+        focused,
         viewport,
         ws_scroll,
+        pending_dock_focus,
     }
 }
 
 impl<K: PanelKind> Workspace<K> {
-    /// Effective [`Mode`]: a narrow viewport forces the static stacked
-    /// (tiling) layout — the floating workspace metaphor doesn't fit a
-    /// phone. Use this instead of reading [`mode`](Workspace::mode) when
-    /// deciding how to render.
+    /// Effective [`Mode`] after applying the current surface's constraints.
+    /// Compact surfaces force tiling; tablet and regular surfaces preserve
+    /// the user's preferred [`mode`](Workspace::mode).
     pub fn effective_mode(&self) -> Mode {
-        if *self.is_mobile.read() {
-            Mode::Tiling
-        } else {
-            *self.mode.read()
-        }
+        effective_mode(*self.mode.read(), &self.profile.read())
     }
 
-    /// Class for the app root div: `"ws-root"`, `"ws-root mobile"` below
-    /// the mobile breakpoint, or `"ws-root dragging"` while a move/resize/
-    /// reorder drag is in flight (suppresses text selection under the
-    /// sweeping pointer). The [`CSS`] stylesheet keys the whole shell off
-    /// these classes.
+    /// Current surface profile, including its width tier and input
+    /// capabilities.
+    pub fn surface_profile(&self) -> SurfaceProfile {
+        *self.profile.read()
+    }
+
+    /// Panel that currently owns window-management keyboard commands.
+    pub fn focused(&self) -> Option<K> {
+        *self.focused.read()
+    }
+
+    /// Class for the app root: `ws-root`, plus exactly one surface tier
+    /// (`compact`, `tablet`, or `regular`), plus `coarse` when the detected
+    /// [`SurfaceCapabilities::coarse_pointer`] says the primary pointer is
+    /// imprecise, plus `dragging` while a pointer operation is active.
+    ///
+    /// Touch sizing follows the *pointer*, not the width. A 1400px kiosk
+    /// touchscreen is a `regular` surface that still needs 44px targets, and
+    /// a 900px desktop window driven by a mouse does not. Deriving hit size
+    /// from the tier would get both backwards; `--hit-min` keys off `coarse`.
     pub fn root_class(&self) -> &'static str {
-        if *self.is_mobile.read() {
-            "ws-root mobile"
-        } else if self.drag.read().is_some() || self.tile_drag.read().is_some() {
-            "ws-root dragging"
-        } else {
-            "ws-root"
+        let profile = *self.profile.read();
+        let dragging = self.drag.read().is_some() || self.tile_drag.read().is_some();
+        match (profile.class, profile.caps.coarse_pointer, dragging) {
+            (SurfaceClass::Compact, false, false) => "ws-root compact",
+            (SurfaceClass::Compact, false, true) => "ws-root compact dragging",
+            (SurfaceClass::Compact, true, false) => "ws-root compact coarse",
+            (SurfaceClass::Compact, true, true) => "ws-root compact coarse dragging",
+            (SurfaceClass::Tablet, false, false) => "ws-root tablet",
+            (SurfaceClass::Tablet, false, true) => "ws-root tablet dragging",
+            (SurfaceClass::Tablet, true, false) => "ws-root tablet coarse",
+            (SurfaceClass::Tablet, true, true) => "ws-root tablet coarse dragging",
+            (SurfaceClass::Regular, false, false) => "ws-root regular",
+            (SurfaceClass::Regular, false, true) => "ws-root regular dragging",
+            (SurfaceClass::Regular, true, false) => "ws-root regular coarse",
+            (SurfaceClass::Regular, true, true) => "ws-root regular coarse dragging",
         }
     }
 
-    /// Start a floating-mode move/resize drag from a mousedown, capturing
-    /// panel geometry into [`Drag`]. [`render`](Workspace::render) wires
-    /// this up for the built-in header and resize handle; call it yourself
-    /// only when adding extra drag affordances.
-    pub fn begin_drag(&self, idx: usize, kind: DragKind, e: &MouseEvent) {
-        // Stop the browser starting a text selection from this mousedown —
-        // the .ws-root.dragging no-select class only applies from the next
-        // render, after the Drag signal lands.
-        e.prevent_default();
-        let c = e.client_coordinates();
-        self.begin_drag_at(idx, kind, c.x, c.y);
+    fn execute_command(&self, target: Option<K>, command: PanelCommand) {
+        let (vw, vh) = *self.viewport.read();
+        let mut focused = target.or(*self.focused.read());
+        let mut panels = self.panels;
+        let mut mode = self.mode;
+        apply_command(
+            &mut panels.write(),
+            &mut mode.write(),
+            &mut focused,
+            command,
+            Clamp::WEB,
+            CommandStep::WEB,
+            vw,
+            vh,
+        );
+        let mut focused_signal = self.focused;
+        focused_signal.set(focused);
     }
 
-    /// Start a floating-mode move/resize drag from a pointerdown. Pointer
-    /// capture keeps the drag alive when the cursor crosses iframes, canvases,
-    /// or the edge of the grabbed panel.
-    pub fn begin_pointer_drag(&self, idx: usize, kind: DragKind, e: &PointerEvent) {
-        e.prevent_default();
-        capture_pointer(e);
-        let c = e.client_coordinates();
-        self.begin_drag_at(idx, kind, c.x, c.y);
+    fn minimize_to_dock(&self, kind: K) {
+        self.execute_command(Some(kind), PanelCommand::Minimize);
+        let mut focused = self.focused;
+        focused.set(None);
+        let mut pending = self.pending_dock_focus;
+        pending.set(Some(dock_chip_id(kind)));
     }
 
-    fn begin_drag_at(&self, idx: usize, kind: DragKind, mx: f64, my: f64) {
-        // Normalize-on-grab: what the user grabbed is the *clamped* on-screen
-        // rect (effective_rect), which can differ from the stored geometry
-        // after a window shrink. Writing it back on grab keeps the drag math
-        // anchored to what's visible — no jump on the first mousemove.
+    /// Translate a Dioxus keyboard event to the renderer-neutral core key
+    /// contract and apply any resulting window-management command.
+    ///
+    /// The focused panel owns panel commands, the workspace owns commands
+    /// when no panel is focused, and an active text input delegates policy to
+    /// [`FocusContext::TextInput`].
+    pub fn handle_key(&self, event: &KeyboardEvent) {
+        let key = match event.key() {
+            DioxusKey::ArrowLeft => Key::Left,
+            DioxusKey::ArrowRight => Key::Right,
+            DioxusKey::ArrowUp => Key::Up,
+            DioxusKey::ArrowDown => Key::Down,
+            DioxusKey::Enter => Key::Enter,
+            DioxusKey::Escape => Key::Escape,
+            DioxusKey::Tab => Key::Tab,
+            DioxusKey::Character(value) => {
+                let mut characters = value.chars();
+                let Some(character) = characters.next() else {
+                    return;
+                };
+                if characters.next().is_some() {
+                    return;
+                }
+                Key::Char(character)
+            }
+            _ => return,
+        };
+        let modifiers = event.modifiers();
+        let chord = KeyChord {
+            key,
+            shift: modifiers.shift(),
+            alt: modifiers.alt(),
+            ctrl: modifiers.ctrl(),
+            meta: modifiers.meta(),
+        };
+        let current = *self.focused.read();
+        let context = if is_editing() {
+            FocusContext::TextInput
+        } else if let Some(kind) = current {
+            FocusContext::Panel(kind)
+        } else {
+            FocusContext::Workspace
+        };
+        let Some(command) = command_for(chord, &context) else {
+            return;
+        };
+        event.prevent_default();
+        if command == PanelCommand::Minimize {
+            if let Some(kind) = current {
+                self.minimize_to_dock(kind);
+            }
+        } else {
+            self.execute_command(current, command);
+        }
+    }
+
+    /// Start a floating move or resize from a pointer-down, translating the
+    /// Dioxus event into the core pointer contract before capturing
+    /// [`Drag`] geometry.
+    ///
+    /// Pointer capture keeps the drag alive when the cursor crosses an
+    /// iframe, a canvas, or the embedded editor — anything that would
+    /// otherwise swallow the move events.
+    pub fn begin_pointer_drag(&self, idx: usize, kind: DragKind, event: &DioxusPointerEvent) {
+        if kind == DragKind::Move {
+            event.prevent_default();
+        }
+        capture_pointer(event);
+        let pointer = core_pointer_event(event, PointerEventKind::Down(PointerButton::Primary));
         let (vw, vh) = *self.viewport.read();
         let mut panels = self.panels;
-        let mut d = core_begin_drag(&mut panels.write(), idx, kind, mx, my, vw, vh, &Clamp::WEB);
-        // Scroll-aware vertical anchor: render() places floating panels at
-        // their stored `y` (floored at 0) and translates the surface by the
-        // workspace scroll, so the drag must capture that same stored `y` —
-        // not effective_rect's bottom-pulled value — or a scrolled-down panel
-        // jumps on the first mousemove. Re-anchor both the captured Drag and
-        // the panel's stored geometry to floating_rect's y.
-        if let Some(d) = d.as_mut() {
-            if let Some(p) = panels.write().get_mut(idx) {
-                let (_, fy, _, _) = floating_rect(p, vw, vh);
-                p.y = fy;
-                d.start_y = fy;
+        let mut drag = core_begin_drag(
+            &mut panels.write(),
+            idx,
+            kind,
+            pointer.x,
+            pointer.y,
+            vw,
+            vh,
+            &Clamp::WEB,
+        );
+        // The floating surface is translated by workspace scroll; preserve
+        // the visible vertical anchor when normalizing stored geometry.
+        if let Some(drag) = drag.as_mut() {
+            if let Some(panel) = panels.write().get_mut(idx) {
+                let (_, y, _, _) = floating_rect(panel, vw, vh);
+                panel.y = y;
+                drag.start_y = y;
             }
         }
-        if d.is_some() {
+        if drag.is_some() {
+            if let Some(panel) = panels.read().get(idx) {
+                let mut focused = self.focused;
+                focused.set(Some(panel.kind));
+            }
+            let mut drag_signal = self.drag;
+            drag_signal.set(drag);
+        }
+    }
+
+    /// Start a span-snapped tiling resize from a pointer-down on the corner
+    /// control.
+    pub fn begin_pointer_tile_resize(&self, idx: usize, event: &DioxusPointerEvent) {
+        event.prevent_default();
+        capture_pointer(event);
+        let pointer = core_pointer_event(event, PointerEventKind::Down(PointerButton::Primary));
+        let drag = core_begin_tile_resize(&self.panels.read(), idx, pointer.x, pointer.y);
+        if drag.is_some() {
+            if let Some(panel) = self.panels.read().get(idx) {
+                let mut focused = self.focused;
+                focused.set(Some(panel.kind));
+            }
+            let mut drag_signal = self.drag;
+            drag_signal.set(drag);
+        }
+    }
+
+    /// Apply an in-flight drag from an app root's `onpointermove`.
+    pub fn handle_pointer_move(&self, event: &DioxusPointerEvent) {
+        let kind = if self.drag.read().is_some() {
+            PointerEventKind::Drag(PointerButton::Primary)
+        } else {
+            PointerEventKind::Moved
+        };
+        let pointer = core_pointer_event(event, kind);
+        if let Some(drag) = *self.drag.read() {
+            let tiling = self.effective_mode() == Mode::Tiling;
+            let (vw, _) = *self.viewport.read();
+            let mut panels = self.panels;
+            apply_drag(
+                &mut panels.write(),
+                &drag,
+                pointer.x,
+                pointer.y,
+                tiling,
+                vw,
+                &Clamp::WEB,
+                &TileMetrics::WEB,
+            );
+        }
+    }
+
+    /// End floating and tiling drags from an app root's `onpointerup` or
+    /// `onpointercancel`, allowing the settled layout to persist.
+    ///
+    /// Releases pointer capture and clears any text selection the drag swept
+    /// across on the way.
+    pub fn handle_pointer_up(&self, event: &DioxusPointerEvent) {
+        release_pointer(event);
+        let pointer = core_pointer_event(event, PointerEventKind::Up(PointerButton::Primary));
+        if matches!(pointer.kind, PointerEventKind::Up(_)) {
             let mut drag = self.drag;
-            drag.set(d);
+            drag.set(None);
+            let mut tile_drag = self.tile_drag;
+            tile_drag.set(None);
+            clear_selection();
         }
-    }
-
-    /// Start a tiling-mode resize drag from the corner grip. Unlike
-    /// [`begin_drag`](Workspace::begin_drag)'s free-pixel resize, pointer
-    /// deltas snap the panel's tile spans ([`PanelWin::tile_w`] quarter-row
-    /// units / [`PanelWin::tile_h`] rows) so tiles always land on fit sizes.
-    /// `start_w`/`start_h` on the captured [`Drag`] hold the *spans*, not
-    /// pixels; [`handle_mouse_move`](Workspace::handle_mouse_move) branches
-    /// on the effective mode.
-    pub fn begin_tile_resize(&self, idx: usize, e: &MouseEvent) {
-        let c = e.client_coordinates();
-        self.begin_tile_resize_at(idx, c.x, c.y);
-    }
-
-    /// Start a tiling-mode resize drag from a pointerdown.
-    pub fn begin_pointer_tile_resize(&self, idx: usize, e: &PointerEvent) {
-        e.prevent_default();
-        capture_pointer(e);
-        let c = e.client_coordinates();
-        self.begin_tile_resize_at(idx, c.x, c.y);
-    }
-
-    fn begin_tile_resize_at(&self, idx: usize, mx: f64, my: f64) {
-        let d = core_begin_tile_resize(&self.panels.read(), idx, mx, my);
-        if d.is_some() {
-            let mut drag = self.drag;
-            drag.set(d);
-        }
-    }
-
-    /// Attach to the app root's `onmousemove` — applies the in-flight
-    /// [`Drag`], if any (move follows the pointer; resize grows/shrinks,
-    /// clamped to a minimum panel size).
-    pub fn handle_mouse_move(&self, e: &MouseEvent) {
-        if let Some(d) = *self.drag.read() {
-            let c = e.client_coordinates();
-            self.apply_drag_at(&d, c.x, c.y);
-        }
-    }
-
-    /// Attach to pointermove when wiring custom drag affordances.
-    pub fn handle_pointer_move(&self, e: &PointerEvent) {
-        if let Some(d) = *self.drag.read() {
-            e.prevent_default();
-            let c = e.client_coordinates();
-            self.apply_drag_at(&d, c.x, c.y);
-        }
-    }
-
-    fn apply_drag_at(&self, d: &Drag, x: f64, y: f64) {
-        let tiling = self.effective_mode() == Mode::Tiling;
-        let (vw, _) = *self.viewport.read();
-        let mut panels = self.panels;
-        apply_drag(
-            &mut panels.write(),
-            d,
-            x,
-            y,
-            tiling,
-            vw,
-            &Clamp::WEB,
-            &TileMetrics::WEB,
-        );
-    }
-
-    /// Attach to the app root's `onmouseup` — ends the in-flight drag (both
-    /// the floating move/resize [`Drag`] and a tiling reorder drag), which
-    /// also lets the settled layout persist.
-    pub fn handle_mouse_up(&self) {
-        let mut drag = self.drag;
-        drag.set(None);
-        let mut tile_drag = self.tile_drag;
-        tile_drag.set(None);
-        clear_selection();
-    }
-
-    /// Attach to pointerup/pointercancel when wiring custom drag affordances.
-    pub fn handle_pointer_up(&self, e: &PointerEvent) {
-        release_pointer(e);
-        self.handle_mouse_up();
     }
 
     /// Workspace-area height in CSS px: the viewport height minus the top bar
@@ -960,8 +1111,14 @@ impl<K: PanelKind> Workspace<K> {
         };
 
         let dragging_tile = *self.tile_drag.read();
+        let dragging_panel = self.drag.read().as_ref().map(|drag| drag.idx);
+        let focused = *self.focused.read();
+        let window_management = self.profile.read().window_management();
+        // The column count is core surface policy, published to CSS as a
+        // custom property so the stylesheet never re-tabulates the tiers.
+        let tile_cols = self.profile.read().tile_columns();
         rsx! {
-            div { class: "{ws_class}",
+            div { class: "{ws_class}", style: "--tile-cols:{tile_cols};",
                 onwheel: move |e| ws.handle_wheel(&e),
                 for i in visible.iter().copied() {
                     {
@@ -983,46 +1140,56 @@ impl<K: PanelKind> Workspace<K> {
                             let top = y - scroll;
                             format!("position:absolute; left:{x}px; top:{top}px; width:{w}px; height:{h}px; z-index:{};",
                                 p.z)
-                        } else if tiling && !*ws.is_mobile.read() {
-                            // Snapped spans → flex-basis % of the row + row
-                            // height. Mobile keeps the pure-CSS single-column
-                            // stack (no inline geometry).
+                        } else if tiling && window_management {
+                            // `tile_w` / `tile_h` are spans, so they map
+                            // straight onto the tiling grid. The row height
+                            // itself comes from the grid
+                            // (`grid-auto-rows: minmax(--tile-row-min, 1fr)`),
+                            // not from the panel: a tile must be free to be
+                            // shorter than its content so `.panel-body`
+                            // scrolls instead of growing the row. A span wider
+                            // than the tier's column count is clamped by the
+                            // grid, which is what collapses a 4-wide tile to
+                            // full width on tablet.
                             format!(
-                                "flex:1 1 calc({}% - 8px); height:{}px;",
-                                p.tile_w as f64 * (100.0 / TILE_W_MAX as f64),
-                                p.tile_h as f64 * TILE_ROW_PX
+                                "grid-column:span {}; grid-row:span {};",
+                                p.tile_w.min(tile_cols),
+                                p.tile_h
                             )
                         } else {
                             String::new()
                         };
                         let slug = kind_slug(p.kind.title());
-                        let drag_cls = if dragging_tile == Some(kind) { " tile-dragging" } else { "" };
+                        let tile_drag_class =
+                            if dragging_tile == Some(kind) { " tile-dragging" } else { "" };
+                        let pointer_drag_class =
+                            if floating && dragging_panel == Some(i) { " dragging" } else { "" };
+                        let focus_class =
+                            if focused == Some(kind) { " focused" } else { "" };
                         rsx! {
                             section {
                                 // Keyed by kind (stable identity), not index:
                                 // tiling reorders mutate the Vec mid-drag and
                                 // index keys would remount every panel.
                                 key: "{slug}",
-                                class: "panel panel-{slug}{drag_cls}",
+                                class: "panel panel-{slug}{tile_drag_class}{pointer_drag_class}{focus_class}",
                                 style: "{style}",
-                                onmouseenter: move |_| {
+                                onpointerenter: move |_| {
                                     // Snap the dragged panel into this slot.
                                     if tiling {
-                                        if let Some(d) = *ws.tile_drag.read() {
-                                            if d != kind {
-                                                ws.reorder_tile(d, kind);
+                                        if let Some(dragged) = *ws.tile_drag.read() {
+                                            if dragged != kind {
+                                                ws.reorder_tile(dragged, kind);
                                             }
                                         }
                                     }
                                 },
-                                onmousedown: move |_| {
-                                    // z-order only matters when panels can overlap (floating).
-                                    // In tiling, mutating panels here re-renders and can swallow
-                                    // clicks on panel content.
+                                onpointerdown: move |_| {
+                                    let mut focused = ws.focused;
+                                    focused.set(Some(kind));
+                                    // z-order only matters when panels overlap.
                                     if floating {
-                                        let mut panels = ws.panels;
-                                        let z = front_z(&panels.read());
-                                        if let Some(pp) = panels.write().get_mut(i) { pp.z = z; };
+                                        ws.execute_command(Some(kind), PanelCommand::Raise);
                                     }
                                 },
                                 {ws.header(
@@ -1035,19 +1202,30 @@ impl<K: PanelKind> Workspace<K> {
                                 div { class: "panel-body",
                                     {body(p.kind, maximized == Some(i))}
                                 }
-                                if floating || (tiling && !*ws.is_mobile.read()) {
-                                    div {
+                                if window_management && (floating || tiling) {
+                                    button {
+                                        r#type: "button",
                                         class: "resize",
-                                        onpointerdown: move |e: PointerEvent| {
+                                        aria_label: "Resize panel",
+                                        tabindex: "0",
+                                        onfocus: move |_| {
+                                            let mut focused = ws.focused;
+                                            focused.set(Some(kind));
+                                        },
+                                        onkeydown: move |event: KeyboardEvent| {
+                                            event.stop_propagation();
+                                            ws.handle_key(&event);
+                                        },
+                                        onpointerdown: move |event: DioxusPointerEvent| {
                                             if floating {
-                                                ws.begin_pointer_drag(i, DragKind::Resize, &e);
+                                                ws.begin_pointer_drag(i, DragKind::Resize, &event);
                                             } else {
-                                                ws.begin_pointer_tile_resize(i, &e);
+                                                ws.begin_pointer_tile_resize(i, &event);
                                             }
                                         },
-                                        onpointermove: move |e: PointerEvent| ws.handle_pointer_move(&e),
-                                        onpointerup: move |e: PointerEvent| ws.handle_pointer_up(&e),
-                                        onpointercancel: move |e: PointerEvent| ws.handle_pointer_up(&e),
+                                        onpointermove: move |e: DioxusPointerEvent| ws.handle_pointer_move(&e),
+                                        onpointerup: move |e: DioxusPointerEvent| ws.handle_pointer_up(&e),
+                                        onpointercancel: move |e: DioxusPointerEvent| ws.handle_pointer_up(&e),
                                     }
                                 }
                             }
@@ -1060,10 +1238,10 @@ impl<K: PanelKind> Workspace<K> {
 
     /// Panel chrome: ratatui-style inline/inset title row on the panel's top
     /// border, with traffic lights in printer-CMY (blue = floating⇄tiling,
-    /// yellow = minimize, pink = maximize⇄restore; hover rings the existing
-    /// light rather than swapping in action glyphs). In floating mode the row
-    /// drags the window freely; in tiling mode it starts a reorder drag (hover
-    /// another panel to snap into its slot). Mobile gets neither (static stack).
+    /// amber = minimize, magenta = maximize⇄restore). The toolbar starts a
+    /// floating move or tiling reorder where the surface profile permits
+    /// window management, and `actions` renders app-supplied controls inside
+    /// the same inset row.
     fn header(
         &self,
         idx: usize,
@@ -1075,58 +1253,87 @@ impl<K: PanelKind> Workspace<K> {
         let ws = *self;
         let title = kind.title();
         let is_max = self.panels.read().get(idx).map(|p| p.state) == Some(WinState::Maximized);
+        let profile = *self.profile.read();
+        let window_management = profile.window_management();
+        // A tier may withhold the means to enter a window state, never the
+        // means to leave one: a panel maximized on a wider surface arrives
+        // maximized here through persistence, so compact still renders the
+        // magenta restore light (and only that one).
+        let restore_only = profile.must_offer_restore(
+            self.panels
+                .read()
+                .get(idx)
+                .map(|p| p.state)
+                .unwrap_or(WinState::Floating),
+        );
         rsx! {
             header {
                 class: "panel-head",
                 title: "{title}",
-                onpointerdown: move |e: PointerEvent| {
+                tabindex: "0",
+                role: "toolbar",
+                onfocus: move |_| {
+                    let mut focused = ws.focused;
+                    focused.set(Some(kind));
+                },
+                onkeydown: move |event: KeyboardEvent| {
+                    event.stop_propagation();
+                    ws.handle_key(&event);
+                },
+                onpointerdown: move |event: DioxusPointerEvent| {
                     if draggable {
-                        ws.begin_pointer_drag(idx, DragKind::Move, &e);
-                    } else if tiling && !*ws.is_mobile.read() {
-                        // Selection has to be suppressed at the source too:
-                        // .ws-root.dragging only kicks in after this event.
-                        e.prevent_default();
+                        ws.begin_pointer_drag(idx, DragKind::Move, &event);
+                    } else if tiling && window_management {
+                        event.prevent_default();
+                        let mut focused = ws.focused;
+                        focused.set(Some(kind));
                         let mut tile_drag = ws.tile_drag;
                         tile_drag.set(Some(kind));
                     }
                 },
-                onpointermove: move |e: PointerEvent| ws.handle_pointer_move(&e),
-                onpointerup: move |e: PointerEvent| ws.handle_pointer_up(&e),
-                onpointercancel: move |e: PointerEvent| ws.handle_pointer_up(&e),
-                div {
-                    class: "lights",
-                    onpointerdown: move |e: PointerEvent| e.stop_propagation(),
-                    button { class: "light mode", title: "tiling / floating",
-                        onmousedown: move |e: MouseEvent| e.stop_propagation(),
-                        onclick: move |_| {
-                            let mut mode = ws.mode;
-                            let next = if *mode.read() == Mode::Tiling { Mode::Floating } else { Mode::Tiling };
-                            mode.set(next);
-                        },
-                    }
-                    button { class: "light yellow", title: "minimize",
-                        onmousedown: move |e: MouseEvent| e.stop_propagation(),
-                        onclick: move |_| {
-                            let mut panels = ws.panels;
-                            if let Some(p) = panels.write().get_mut(idx) { p.state = WinState::Minimized; };
-                        },
-                    }
-                    button { class: "light max", title: "maximize / restore",
-                        onmousedown: move |e: MouseEvent| e.stop_propagation(),
-                        onclick: move |_| {
-                            let mut panels = ws.panels;
-                            if let Some(p) = panels.write().get_mut(idx) {
-                                p.state = if p.state == WinState::Maximized { WinState::Floating } else { WinState::Maximized };
-                            };
-                        },
+                if window_management || restore_only {
+                    div { class: "lights",
+                        if window_management {
+                        button {
+                            r#type: "button",
+                            class: "light mode",
+                            title: "tiling / floating",
+                            aria_label: "tiling / floating",
+                            onpointerdown: move |event: DioxusPointerEvent| event.stop_propagation(),
+                            onkeydown: move |event: KeyboardEvent| event.stop_propagation(),
+                            onclick: move |_| {
+                                ws.execute_command(Some(kind), PanelCommand::ToggleMode);
+                            },
+                        }
+                        button {
+                            r#type: "button",
+                            class: "light yellow",
+                            title: "minimize",
+                            aria_label: "minimize",
+                            onpointerdown: move |event: DioxusPointerEvent| event.stop_propagation(),
+                            onkeydown: move |event: KeyboardEvent| event.stop_propagation(),
+                            onclick: move |_| ws.minimize_to_dock(kind),
+                        }
+                        }
+                        button {
+                            r#type: "button",
+                            class: "light max",
+                            title: "maximize / restore",
+                            aria_label: "maximize / restore",
+                            onpointerdown: move |event: DioxusPointerEvent| event.stop_propagation(),
+                            onkeydown: move |event: KeyboardEvent| event.stop_propagation(),
+                            onclick: move |_| {
+                                ws.execute_command(Some(kind), PanelCommand::Maximize);
+                            },
+                        }
                     }
                 }
                 span { class: "panel-title", title: "{title}", "{title}" }
                 if is_max { span { class: "max-hint", "maximized" } }
                 div {
                     class: "panel-head-actions",
-                    onpointerdown: move |e: PointerEvent| e.stop_propagation(),
-                    onmousedown: move |e: MouseEvent| e.stop_propagation(),
+                    onpointerdown: move |e: DioxusPointerEvent| e.stop_propagation(),
+                    onkeydown: move |e: KeyboardEvent| e.stop_propagation(),
                     {actions}
                 }
             }
@@ -1136,7 +1343,7 @@ impl<K: PanelKind> Workspace<K> {
     /// Restore and raise the panel of `kind`: un-minimizes it (the
     /// programmatic twin of a dock-chip click) and brings it to the front.
     /// No-op when the layout holds no panel of that kind. Hook for command
-    /// palettes / keyboard shortcuts — the built-in chrome never calls it.
+    /// palettes / keyboard shortcuts.
     ///
     /// ```no_run
     /// # use panel_kit::{PanelKind, Workspace};
@@ -1154,13 +1361,12 @@ impl<K: PanelKind> Workspace<K> {
     /// [`render`](Workspace::render) in the app root.
     pub fn dock(&self) -> Element {
         let ws = *self;
-        let minimized: Vec<(usize, K)> = self
+        let minimized: Vec<K> = self
             .panels
             .read()
             .iter()
-            .enumerate()
-            .filter(|(_, p)| p.state == WinState::Minimized)
-            .map(|(i, p)| (i, p.kind))
+            .filter(|panel| panel.state == WinState::Minimized)
+            .map(|panel| panel.kind)
             .collect();
         rsx! {
             footer { class: "dock",
@@ -1168,16 +1374,29 @@ impl<K: PanelKind> Workspace<K> {
                 if minimized.is_empty() {
                     span { class: "dock-empty", "— nothing minimized —" }
                 }
-                for (i, kind) in minimized.iter().copied() {
-                    button {
-                        key: "{i}",
-                        class: "dock-chip",
-                        onclick: move |_| {
-                            let mut panels = ws.panels;
-                            let z = front_z(&panels.read());
-                            if let Some(p) = panels.write().get_mut(i) { p.state = WinState::Floating; p.z = z; };
-                        },
-                        "{kind.title()}"
+                for kind in minimized.iter().copied() {
+                    {
+                        let chip_id = dock_chip_id(kind);
+                        let label = format!("Restore {}", kind.title());
+                        rsx! {
+                            button {
+                                key: "{chip_id}",
+                                id: "{chip_id}",
+                                r#type: "button",
+                                class: "dock-chip",
+                                aria_label: "{label}",
+                                onfocus: move |_| {
+                                    let mut focused = ws.focused;
+                                    focused.set(None);
+                                },
+                                onclick: move |_| {
+                                    ws.restore(kind);
+                                    let mut focused = ws.focused;
+                                    focused.set(Some(kind));
+                                },
+                                "{kind.title()}"
+                            }
+                        }
                     }
                 }
             }
@@ -1279,6 +1498,79 @@ mod boot_contract_tests {
                 "BOOT_CSS is missing {class}"
             );
         }
+    }
+
+    /// The whole point of `panel_kit_core::tokens`: three copies of the
+    /// palette existed (this stylesheet, the terminal `Theme`, the boot
+    /// shell) and the boot copy had already drifted seven values. The boot
+    /// sheet is now generated, so it cannot drift. This stylesheet is still
+    /// hand-written, so the drift has to be caught instead.
+    #[test]
+    fn injected_stylesheet_declares_every_token_at_its_canonical_value() {
+        use panel_kit_core::tokens;
+
+        // Parse rather than substring-match: the stylesheet aligns values in
+        // a column (`--bg:    #0a0a0a;`) and some declarations carry trailing
+        // comments, so a literal `--bg: #0a0a0a` needle would fail on
+        // formatting instead of on drift — the worst kind of guard, because
+        // the fix would be to loosen the test.
+        for token in tokens::DARK {
+            let needle = format!("--{}:", token.name);
+            let declared = super::CSS
+                .lines()
+                .filter_map(|line| line.trim().strip_prefix(needle.as_str()))
+                .map(|rest| {
+                    rest.split(';')
+                        .next()
+                        .unwrap_or_default()
+                        .split("/*")
+                        .next()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_ascii_lowercase()
+                })
+                .next();
+
+            match declared {
+                Some(value) => assert_eq!(
+                    value, token.hex,
+                    "panel-kit.css declares --{} as {value}, but tokens.rs says \
+                     {} — tokens.rs is the source of truth, so update the \
+                     stylesheet, not the token",
+                    token.name, token.hex
+                ),
+                None => panic!(
+                    "panel-kit.css never declares --{}; every token must reach \
+                     the injected stylesheet",
+                    token.name
+                ),
+            }
+        }
+    }
+
+    /// The generated boot sheet must carry the token values literally — it
+    /// cannot reference `var(--…)`, because it paints before the injected
+    /// stylesheet exists.
+    #[test]
+    fn generated_boot_stylesheet_carries_token_values_not_variables() {
+        use panel_kit_core::tokens;
+
+        for token in [tokens::BG, tokens::PANEL, tokens::FG, tokens::LINE2] {
+            assert!(
+                BOOT_CSS.contains(token.hex),
+                "generated BOOT_CSS is missing {} ({})",
+                token.name,
+                token.hex
+            );
+        }
+        assert!(
+            BOOT_CSS.contains(tokens::MONO),
+            "generated BOOT_CSS does not use the canonical monospace stack"
+        );
+        assert!(
+            !BOOT_CSS.contains("{{"),
+            "generated BOOT_CSS still contains an unsubstituted placeholder"
+        );
     }
 
     #[test]

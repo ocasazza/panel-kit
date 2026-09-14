@@ -3,29 +3,34 @@
 //! Everything here is pure data and math — no DOM, no terminal, no async.
 //! A renderer shell (the Dioxus `panel-kit` crate, the ratatui
 //! `panel-kit-tui` crate, or anything else that can draw rectangles and
-//! deliver pointer coordinates) owns a `Vec<PanelWin<K>>` plus a `Mode` and
-//! an `Option<Drag>`, and calls into these functions:
+//! deliver pointer coordinates) owns shared panel state and calls into these
+//! contracts:
 //!
+//! - [`SurfaceProfile`] / [`effective_mode`] to adapt layout behavior to the
+//!   rendered surface,
+//! - [`command_for`] / [`apply_command`] for keyboard window management,
 //! - [`begin_drag`] / [`begin_tile_resize`] on pointer-down,
 //! - [`apply_drag`] on pointer-move,
 //! - [`reorder_tile`], [`front_z`], [`restore`] for tiling reorder and
 //!   z-order management,
 //! - [`effective_rect`] to project stored geometry through the viewport
 //!   clamp at render time,
-//! - [`SavedLayout`] + [`merge_defaults`] for persistence (the shell
-//!   supplies the actual storage: localStorage, a JSON file, a KV bucket),
+//! - [`StoredLayout`], [`migrate_v1`], [`reconcile_units`], and
+//!   [`merge_defaults`] for persistence (renderers supply the actual storage:
+//!   localStorage, a JSON file, a KV bucket),
 //! - [`views`] for named workspace views: the registry shape and the
-//!   storage-key scheme every shell shares.
+//!   storage-key scheme every shell shares, each view holding one
+//!   [`SavedLayoutV2`].
 //!
 //! Units are deliberately abstract: the web shell feeds CSS pixels, the TUI
-//! shell feeds character cells. All unit-dependent constants live in
-//! [`Clamp`] and [`TileMetrics`]; [`Clamp::WEB`]/[`TileMetrics::WEB`]
-//! preserve the original panel-kit pixel behavior exactly.
+//! shell feeds character cells. Unit-dependent constants live in
+//! [`Clamp`], [`TileMetrics`], and [`CommandStep`].
 
 #![warn(missing_docs)]
 
 pub mod badge;
 pub mod loading;
+pub mod tokens;
 pub mod views;
 
 use serde::{Deserialize, Serialize};
@@ -65,6 +70,284 @@ pub enum Mode {
     /// Auto grid: panels flow in `Vec` order; dragging a panel header over
     /// another panel reorders them.
     Tiling,
+}
+
+/// How much room a rendered surface has for panel management.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SurfaceClass {
+    /// A narrow surface where panels tile without window-management chrome.
+    Compact,
+    /// A medium surface that supports window management.
+    Tablet,
+    /// A full-size surface that supports window management.
+    Regular,
+}
+
+/// Input capabilities available on a rendered surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SurfaceCapabilities {
+    /// Whether the primary pointer has coarse precision, such as touch.
+    pub coarse_pointer: bool,
+    /// Whether the surface can express pointer hover.
+    pub hover: bool,
+    /// Whether the surface has keyboard input.
+    pub keyboard: bool,
+}
+
+/// The space and input capabilities a renderer actually provides.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SurfaceProfile {
+    /// Width-based surface class.
+    pub class: SurfaceClass,
+    /// Input capabilities available on the surface.
+    pub caps: SurfaceCapabilities,
+}
+
+impl SurfaceProfile {
+    /// Classify by logical width in the renderer's own units.
+    ///
+    /// Widths below `compact_max` are compact, widths below `tablet_max` are
+    /// tablet-sized, and all larger widths are regular.
+    pub fn from_logical_width(
+        width: f64,
+        compact_max: f64,
+        tablet_max: f64,
+        caps: SurfaceCapabilities,
+    ) -> Self {
+        let class = if width < compact_max {
+            SurfaceClass::Compact
+        } else if width < tablet_max {
+            SurfaceClass::Tablet
+        } else {
+            SurfaceClass::Regular
+        };
+        Self { class, caps }
+    }
+
+    /// Whether move, resize, minimize, and maximize chrome is offered.
+    pub fn window_management(&self) -> bool {
+        self.class != SurfaceClass::Compact
+    }
+
+    /// Whether free floating placement is available.
+    pub fn allows_floating(&self) -> bool {
+        self.class != SurfaceClass::Compact
+    }
+
+    /// Whether a panel in `state` must expose a restore control even though
+    /// this surface withholds window management.
+    ///
+    /// A tier may withhold the means to *enter* a window state; it must never
+    /// withhold the means to *leave* one. [`SavedLayoutV2`] carries
+    /// [`WinState`] across surfaces by design, so a panel maximized on a
+    /// regular surface arrives maximized on a compact one — and a compact
+    /// surface that also hid restore would strand the operator on a single
+    /// full-bleed panel with every sibling unreachable and no affordance to
+    /// undo it. Minimized panels already have their own escape hatch in the
+    /// dock, so only [`WinState::Maximized`] needs this.
+    pub fn must_offer_restore(&self, state: WinState) -> bool {
+        !self.window_management() && state == WinState::Maximized
+    }
+
+    /// How many tiling columns this surface offers.
+    ///
+    /// This is surface policy, not renderer styling, so it lives here rather
+    /// than being re-tabulated in each backend's stylesheet: a compact
+    /// surface stacks in a single column, a tablet halves the regular grid,
+    /// and a regular surface exposes the full [`TILE_W_MAX`] span range.
+    /// Renderers clamp a panel's `tile_w` to this before placing it — a span
+    /// wider than the grid has no meaning, and a DOM grid answers one by
+    /// silently manufacturing zero-width implicit columns that swallow the
+    /// panel.
+    pub fn tile_columns(&self) -> u8 {
+        match self.class {
+            SurfaceClass::Compact => 1,
+            SurfaceClass::Tablet => 2,
+            SurfaceClass::Regular => TILE_W_MAX,
+        }
+    }
+}
+
+/// Compact-surface upper bound for web renderers, in CSS pixels.
+pub const WEB_COMPACT_MAX: f64 = 760.0;
+/// Tablet-surface upper bound for web renderers, in CSS pixels.
+pub const WEB_TABLET_MAX: f64 = 1180.0;
+/// Compact-surface upper bound for terminal renderers, in cells.
+pub const CELLS_COMPACT_MAX: f64 = 60.0;
+/// Tablet-surface upper bound for terminal renderers, in cells.
+pub const CELLS_TABLET_MAX: f64 = 110.0;
+
+/// Resolve the layout mode that a surface can actually provide.
+pub fn effective_mode(preferred: Mode, profile: &SurfaceProfile) -> Mode {
+    if profile.allows_floating() {
+        preferred
+    } else {
+        Mode::Tiling
+    }
+}
+
+/// Which surface owns the next key press.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FocusContext<K> {
+    /// The workspace itself owns keyboard commands.
+    Workspace,
+    /// A particular panel owns keyboard commands.
+    Panel(K),
+    /// A text-editing control owns bare key presses.
+    TextInput,
+}
+
+/// A renderer-neutral key press.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Key {
+    /// Left arrow.
+    Left,
+    /// Right arrow.
+    Right,
+    /// Up arrow.
+    Up,
+    /// Down arrow.
+    Down,
+    /// Enter or return.
+    Enter,
+    /// Escape.
+    Escape,
+    /// Tab.
+    Tab,
+    /// A printable character.
+    Char(char),
+}
+
+/// A key press plus its modifier state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyChord {
+    /// Pressed key.
+    pub key: Key,
+    /// Whether Shift is held.
+    pub shift: bool,
+    /// Whether Alt or Option is held.
+    pub alt: bool,
+    /// Whether Control is held.
+    pub ctrl: bool,
+    /// Whether Command or Meta is held.
+    pub meta: bool,
+}
+
+/// A window-management intent, independent of how it was expressed.
+///
+/// Geometry commands returned by [`command_for`] carry canonical web
+/// magnitudes: `16.0` marks a coarse step and `1.0` marks a fine step.
+/// [`apply_command`] translates those markers through its [`CommandStep`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PanelCommand {
+    /// Move the focused panel in the given directions.
+    Move {
+        /// Horizontal direction.
+        dx: f64,
+        /// Vertical direction.
+        dy: f64,
+    },
+    /// Resize the focused panel in the given directions.
+    Resize {
+        /// Width direction.
+        dw: f64,
+        /// Height direction.
+        dh: f64,
+    },
+    /// Minimize the focused panel.
+    Minimize,
+    /// Toggle maximization of the focused panel.
+    Maximize,
+    /// Restore the focused panel to its normal state.
+    Restore,
+    /// Toggle between floating and tiling layout.
+    ToggleMode,
+    /// Raise the focused panel above every other panel.
+    Raise,
+    /// Focus the next visible panel.
+    FocusNext,
+    /// Focus the previous visible panel.
+    FocusPrev,
+}
+
+/// Step sizes for keyboard geometry changes, in renderer units.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CommandStep {
+    /// Normal arrow-key step.
+    pub coarse: f64,
+    /// Alt-arrow precision step.
+    pub fine: f64,
+}
+
+impl CommandStep {
+    /// CSS-pixel steps for web renderers.
+    pub const WEB: CommandStep = CommandStep {
+        coarse: 16.0,
+        fine: 1.0,
+    };
+
+    /// Character-cell steps for terminal renderers.
+    pub const CELLS: CommandStep = CommandStep {
+        coarse: 2.0,
+        fine: 1.0,
+    };
+}
+
+/// Map a renderer-neutral key chord to a window-management intent.
+///
+/// Bare keys are left to text inputs. Modified chords continue through the
+/// command table so applications can offer deliberate window-management
+/// shortcuts while an editor has focus.
+pub fn command_for<K>(chord: KeyChord, focus: &FocusContext<K>) -> Option<PanelCommand> {
+    let bare = !chord.shift && !chord.alt && !chord.ctrl && !chord.meta;
+    if matches!(focus, FocusContext::TextInput) && bare {
+        return None;
+    }
+
+    let coarse = CommandStep::WEB.coarse;
+    let fine = CommandStep::WEB.fine;
+    match chord.key {
+        Key::Left if chord.shift => Some(PanelCommand::Resize {
+            dw: -coarse,
+            dh: 0.0,
+        }),
+        Key::Right if chord.shift => Some(PanelCommand::Resize {
+            dw: coarse,
+            dh: 0.0,
+        }),
+        Key::Up if chord.shift => Some(PanelCommand::Resize {
+            dw: 0.0,
+            dh: -coarse,
+        }),
+        Key::Down if chord.shift => Some(PanelCommand::Resize {
+            dw: 0.0,
+            dh: coarse,
+        }),
+        Key::Left => Some(PanelCommand::Move {
+            dx: if chord.alt { -fine } else { -coarse },
+            dy: 0.0,
+        }),
+        Key::Right => Some(PanelCommand::Move {
+            dx: if chord.alt { fine } else { coarse },
+            dy: 0.0,
+        }),
+        Key::Up => Some(PanelCommand::Move {
+            dx: 0.0,
+            dy: if chord.alt { -fine } else { -coarse },
+        }),
+        Key::Down => Some(PanelCommand::Move {
+            dx: 0.0,
+            dy: if chord.alt { fine } else { coarse },
+        }),
+        Key::Char('m') => Some(PanelCommand::Minimize),
+        Key::Char('f') => Some(PanelCommand::Maximize),
+        Key::Char('t') => Some(PanelCommand::ToggleMode),
+        Key::Escape => Some(PanelCommand::Restore),
+        Key::Tab if chord.shift => Some(PanelCommand::FocusPrev),
+        Key::Tab => Some(PanelCommand::FocusNext),
+        Key::Enter => Some(PanelCommand::Raise),
+        Key::Char(_) => None,
+    }
 }
 
 /// What an in-flight floating-mode drag is doing.
@@ -377,9 +660,11 @@ impl TileMetrics {
         outer: 16.0,
     };
 
-    /// Character-cell defaults for terminal shells.
+    /// Character-cell defaults for terminal shells. The row height is
+    /// authoritative for both rendering and resize snapping; renderers must
+    /// not keep a private copy.
     pub const CELLS: TileMetrics = TileMetrics {
-        row: 6.0,
+        row: 4.0,
         col_floor: 12.0,
         outer: 0.0,
     };
@@ -584,15 +869,209 @@ pub fn visible_panels<K>(panels: &[PanelWin<K>]) -> (Vec<usize>, Option<usize>) 
     (visible, maximized)
 }
 
-/// The persisted layout: panel geometry plus the layout mode. Shells decide
-/// where this lives (localStorage, a JSON file, a KV bucket) — core only
-/// defines the shape and the reconcile step.
+fn command_delta(delta: f64, step: CommandStep) -> f64 {
+    let magnitude = delta.abs();
+    if magnitude == CommandStep::WEB.coarse {
+        delta.signum() * step.coarse
+    } else if magnitude == CommandStep::WEB.fine {
+        delta.signum() * step.fine
+    } else {
+        delta
+    }
+}
+
+/// Apply a window-management intent to the panel set.
+///
+/// `focused` selects the target panel. Mode changes and focus cycling write
+/// their resulting values through `mode` and `focused`. Canonical coarse and
+/// fine magnitudes produced by [`command_for`] are translated through `step`.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_command<K: PanelKind>(
+    panels: &mut Vec<PanelWin<K>>,
+    mode: &mut Mode,
+    focused: &mut Option<K>,
+    cmd: PanelCommand,
+    clamp: Clamp,
+    step: CommandStep,
+    vw: f64,
+    vh: f64,
+) {
+    match cmd {
+        PanelCommand::Move { dx, dy } => {
+            let Some(kind) = *focused else {
+                return;
+            };
+            let Some(panel) = panels.iter_mut().find(|panel| panel.kind == kind) else {
+                return;
+            };
+            panel.x += command_delta(dx, step);
+            panel.y += command_delta(dy, step);
+            let (x, y, w, h) = effective_rect(panel, vw, vh, &clamp);
+            (panel.x, panel.y, panel.w, panel.h) = (x, y, w, h);
+        }
+        PanelCommand::Resize { dw, dh } => {
+            let Some(kind) = *focused else {
+                return;
+            };
+            let Some(panel) = panels.iter_mut().find(|panel| panel.kind == kind) else {
+                return;
+            };
+            panel.w += command_delta(dw, step);
+            panel.h += command_delta(dh, step);
+            let (x, y, w, h) = effective_rect(panel, vw, vh, &clamp);
+            (panel.x, panel.y, panel.w, panel.h) = (x, y, w, h);
+        }
+        PanelCommand::Minimize => {
+            let Some(kind) = *focused else {
+                return;
+            };
+            if let Some(panel) = panels.iter_mut().find(|panel| panel.kind == kind) {
+                panel.state = WinState::Minimized;
+            }
+        }
+        PanelCommand::Maximize => {
+            let Some(kind) = *focused else {
+                return;
+            };
+            if let Some(panel) = panels.iter_mut().find(|panel| panel.kind == kind) {
+                panel.state = if panel.state == WinState::Maximized {
+                    WinState::Floating
+                } else {
+                    WinState::Maximized
+                };
+            }
+        }
+        PanelCommand::Restore => {
+            let Some(kind) = *focused else {
+                return;
+            };
+            if let Some(panel) = panels.iter_mut().find(|panel| panel.kind == kind) {
+                if matches!(panel.state, WinState::Minimized | WinState::Maximized) {
+                    panel.state = WinState::Floating;
+                }
+            }
+        }
+        PanelCommand::ToggleMode => {
+            *mode = match *mode {
+                Mode::Floating => Mode::Tiling,
+                Mode::Tiling => Mode::Floating,
+            };
+        }
+        PanelCommand::Raise => {
+            let Some(kind) = *focused else {
+                return;
+            };
+            let z = front_z(panels);
+            if let Some(panel) = panels.iter_mut().find(|panel| panel.kind == kind) {
+                panel.z = z;
+            }
+        }
+        PanelCommand::FocusNext | PanelCommand::FocusPrev => {
+            let (visible, _) = visible_panels(panels);
+            if visible.is_empty() {
+                *focused = None;
+                return;
+            }
+            let current = (*focused)
+                .and_then(|kind| visible.iter().position(|&index| panels[index].kind == kind));
+            let next = match (cmd, current) {
+                (_, None) => 0,
+                (PanelCommand::FocusNext, Some(position)) => (position + 1) % visible.len(),
+                (PanelCommand::FocusPrev, Some(0)) => visible.len() - 1,
+                (PanelCommand::FocusPrev, Some(position)) => position - 1,
+                _ => unreachable!(),
+            };
+            *focused = Some(panels[visible[next]].kind);
+        }
+    }
+}
+
+/// Legacy V1 persisted layout. This remains readable so renderers can
+/// migrate the old `{ panels, tiling }` shape, but new layouts use
+/// [`SavedLayoutV2`].
 #[derive(Serialize, Deserialize)]
 pub struct SavedLayout<K> {
     /// All panels with their geometry and window state, in tiling order.
     pub panels: Vec<PanelWin<K>>,
     /// Whether tiling mode was active when saved.
     pub tiling: bool,
+}
+
+/// Current persisted-layout schema version.
+pub const LAYOUT_SCHEMA_VERSION: u32 = 2;
+
+/// Coordinate space used by a saved floating rectangle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Units {
+    /// CSS pixels.
+    CssPx,
+    /// Character cells.
+    Cells,
+}
+
+/// A versioned persisted layout with explicit geometry units.
+#[derive(Serialize, Deserialize)]
+pub struct SavedLayoutV2<K> {
+    /// Schema version. New records use [`LAYOUT_SCHEMA_VERSION`].
+    pub version: u32,
+    /// Coordinate space used by floating panel geometry.
+    pub units: Units,
+    /// Viewport the geometry was captured against, in `units`.
+    pub viewport: (f64, f64),
+    /// Layout mode active when saved.
+    pub mode: Mode,
+    /// All panels with their geometry and window state, in tiling order.
+    pub panels: Vec<PanelWin<K>>,
+}
+
+/// A persisted layout in either the legacy or current schema.
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StoredLayout<K> {
+    /// Current versioned schema.
+    V2(SavedLayoutV2<K>),
+    /// Legacy `{ panels, tiling }` schema.
+    V1(SavedLayout<K>),
+}
+
+/// Upgrade a V1 record using the loading renderer's units and viewport.
+pub fn migrate_v1<K>(old: SavedLayout<K>, units: Units, viewport: (f64, f64)) -> SavedLayoutV2<K> {
+    SavedLayoutV2 {
+        version: LAYOUT_SCHEMA_VERSION,
+        units,
+        viewport,
+        mode: if old.tiling {
+            Mode::Tiling
+        } else {
+            Mode::Floating
+        },
+        panels: old.panels,
+    }
+}
+
+/// Rescale floating geometry into a renderer's local units and viewport.
+///
+/// Tile spans are unitless and remain unchanged.
+pub fn reconcile_units<K>(
+    mut layout: SavedLayoutV2<K>,
+    to: Units,
+    viewport: (f64, f64),
+) -> SavedLayoutV2<K> {
+    if layout.units == to && layout.viewport == viewport {
+        return layout;
+    }
+
+    let scale_x = viewport.0 / layout.viewport.0;
+    let scale_y = viewport.1 / layout.viewport.1;
+    for panel in &mut layout.panels {
+        panel.x *= scale_x;
+        panel.w *= scale_x;
+        panel.y *= scale_y;
+        panel.h *= scale_y;
+    }
+    layout.units = to;
+    layout.viewport = viewport;
+    layout
 }
 
 /// Reconcile a loaded layout against the current panel set: panels added to
@@ -621,4 +1100,205 @@ pub fn kind_slug(title: &str) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    enum TestPanel {
+        First,
+        Second,
+        Third,
+    }
+
+    impl PanelKind for TestPanel {
+        fn title(self) -> &'static str {
+            match self {
+                Self::First => "First",
+                Self::Second => "Second",
+                Self::Third => "Third",
+            }
+        }
+    }
+
+    fn capabilities() -> SurfaceCapabilities {
+        SurfaceCapabilities {
+            coarse_pointer: false,
+            hover: true,
+            keyboard: true,
+        }
+    }
+
+    fn panel(kind: TestPanel) -> PanelWin<TestPanel> {
+        PanelWin {
+            kind,
+            x: 10.0,
+            y: 20.0,
+            w: 30.0,
+            h: 40.0,
+            state: WinState::Floating,
+            z: 1,
+            tile_w: 2,
+            tile_h: 3,
+        }
+    }
+
+    #[test]
+    fn compact_surface_forces_tiling() {
+        let profile = SurfaceProfile::from_logical_width(
+            759.0,
+            WEB_COMPACT_MAX,
+            WEB_TABLET_MAX,
+            capabilities(),
+        );
+
+        assert!(matches!(
+            effective_mode(Mode::Floating, &profile),
+            Mode::Tiling
+        ));
+    }
+
+    #[test]
+    fn compact_surface_still_offers_restore_for_a_maximized_panel() {
+        let compact = SurfaceProfile::from_logical_width(
+            390.0,
+            WEB_COMPACT_MAX,
+            WEB_TABLET_MAX,
+            capabilities(),
+        );
+        let regular = SurfaceProfile::from_logical_width(
+            1440.0,
+            WEB_COMPACT_MAX,
+            WEB_TABLET_MAX,
+            capabilities(),
+        );
+
+        // Compact withholds window management, so a maximized panel that
+        // arrived through persistence would otherwise be inescapable.
+        assert!(!compact.window_management());
+        assert!(compact.must_offer_restore(WinState::Maximized));
+
+        // Floating panels need nothing extra, and minimized panels escape
+        // through the dock.
+        assert!(!compact.must_offer_restore(WinState::Floating));
+        assert!(!compact.must_offer_restore(WinState::Minimized));
+
+        // A surface that already offers window management needs no override.
+        assert!(regular.window_management());
+        assert!(!regular.must_offer_restore(WinState::Maximized));
+    }
+
+    #[test]
+    fn bare_arrow_is_preserved_for_text_input() {
+        let chord = KeyChord {
+            key: Key::Left,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            meta: false,
+        };
+
+        assert!(command_for::<TestPanel>(chord, &FocusContext::TextInput).is_none());
+        assert!(matches!(
+            command_for::<TestPanel>(chord, &FocusContext::Workspace),
+            Some(PanelCommand::Move { dx, dy })
+                if dx == -CommandStep::WEB.coarse && dy == 0.0
+        ));
+    }
+
+    #[test]
+    fn focus_next_skips_minimized_panels_and_wraps() {
+        let mut panels = vec![
+            panel(TestPanel::First),
+            PanelWin {
+                state: WinState::Minimized,
+                ..panel(TestPanel::Second)
+            },
+            panel(TestPanel::Third),
+        ];
+        let mut mode = Mode::Floating;
+        let mut focused = Some(TestPanel::First);
+
+        apply_command(
+            &mut panels,
+            &mut mode,
+            &mut focused,
+            PanelCommand::FocusNext,
+            Clamp::WEB,
+            CommandStep::WEB,
+            1000.0,
+            800.0,
+        );
+        assert_eq!(focused, Some(TestPanel::Third));
+
+        apply_command(
+            &mut panels,
+            &mut mode,
+            &mut focused,
+            PanelCommand::FocusNext,
+            Clamp::WEB,
+            CommandStep::WEB,
+            1000.0,
+            800.0,
+        );
+        assert_eq!(focused, Some(TestPanel::First));
+    }
+
+    #[test]
+    fn reconcile_units_round_trips_between_viewports() {
+        let original = SavedLayoutV2 {
+            version: LAYOUT_SCHEMA_VERSION,
+            units: Units::CssPx,
+            viewport: (100.0, 200.0),
+            mode: Mode::Floating,
+            panels: vec![panel(TestPanel::First)],
+        };
+
+        let cells = reconcile_units(original, Units::Cells, (50.0, 100.0));
+        let restored = reconcile_units(cells, Units::CssPx, (100.0, 200.0));
+        let restored_panel = &restored.panels[0];
+
+        assert_eq!(
+            (
+                restored_panel.x,
+                restored_panel.y,
+                restored_panel.w,
+                restored_panel.h
+            ),
+            (10.0, 20.0, 30.0, 40.0)
+        );
+        assert_eq!((restored_panel.tile_w, restored_panel.tile_h), (2, 3));
+    }
+
+    #[test]
+    fn v1_json_deserializes_and_migrates_to_v2() {
+        let json = r#"{
+            "panels": [{
+                "kind": "First",
+                "x": 10.0,
+                "y": 20.0,
+                "w": 30.0,
+                "h": 40.0,
+                "state": "Floating",
+                "z": 1,
+                "tile_w": 2,
+                "tile_h": 3
+            }],
+            "tiling": true
+        }"#;
+        let stored: StoredLayout<TestPanel> = serde_json::from_str(json).unwrap();
+        let StoredLayout::V1(old) = stored else {
+            panic!("legacy JSON parsed as the wrong schema");
+        };
+
+        let migrated = migrate_v1(old, Units::Cells, (120.0, 40.0));
+
+        assert_eq!(migrated.version, LAYOUT_SCHEMA_VERSION);
+        assert_eq!(migrated.units, Units::Cells);
+        assert_eq!(migrated.viewport, (120.0, 40.0));
+        assert!(matches!(migrated.mode, Mode::Tiling));
+        assert_eq!(migrated.panels[0].kind, TestPanel::First);
+    }
 }

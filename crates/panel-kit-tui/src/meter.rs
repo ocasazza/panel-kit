@@ -2,6 +2,7 @@
 //! utilization, queue depth, and progress readouts. The string builder is the
 //! reusable core; [`span`] wraps it in a themed color for inline use.
 
+use panel_kit_core::badge::Rgb;
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 
@@ -15,7 +16,11 @@ pub fn bar(frac: f64, width: usize) -> String {
 
 /// The [`bar`] as a colored [`Span`], for placing inline in a [`Line`].
 ///
+/// `color` uses the renderer-neutral RGB shape shared with other backends;
+/// conversion to ratatui's [`Color`] happens here at the draw boundary.
+///
 /// [`Line`]: ratatui::text::Line
-pub fn span(frac: f64, width: usize, color: Color) -> Span<'static> {
-    Span::styled(bar(frac, width), Style::default().fg(color))
+pub fn span(frac: f64, width: usize, color: Rgb) -> Span<'static> {
+    let (r, g, b) = color;
+    Span::styled(bar(frac, width), Style::default().fg(Color::Rgb(r, g, b)))
 }

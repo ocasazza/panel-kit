@@ -66,9 +66,11 @@
         });
 
         # Declarative layout DSL: turns a Nix description of a panel
-        # workspace into JSON matching panel-kit-core's `SavedLayout<K>`
+        # workspace into JSON matching panel-kit-core's `SavedLayoutV2<K>`
         # serde schema (see nix/lib/mkLayout.nix). Renderer-agnostic, so the
-        # web (localStorage) and TUI (JSON file) shells can both seed from it.
+        # web (localStorage) and TUI (JSON file) shells can both seed from it;
+        # the `units` + `viewport` tags are what let `reconcile_units` rescale
+        # a layout loaded by a renderer other than the one that authored it.
         mkLayoutLib = import ./nix/lib/mkLayout.nix { inherit (pkgs) lib; };
 
         # The canary layout, evaluated from nix/examples/workspace-canary.nix
@@ -77,7 +79,7 @@
           inherit (pkgs) lib;
         };
 
-        # `nix build .#layout-canary` writes this SavedLayout JSON file — the
+        # `nix build .#layout-canary` writes this SavedLayoutV2 JSON file —
         # concrete demonstration of the DSL.
         layout-canary = pkgs.writeText "panel-kit-layout-canary.json"
           canaryLayout.json;
@@ -108,19 +110,28 @@
 
         # mkLayout for downstream flakes:
         # `inputs.panel-kit.lib.${system}.mkLayout { ... }`.
-        lib = { inherit (mkLayoutLib) mkLayout winStates tileWMax tileHMax; };
+        lib = {
+          inherit (mkLayoutLib)
+            mkLayout winStates modes unitKinds schemaVersion tileWMax tileHMax;
+        };
 
         checks = {
           inherit panel-kit;
           # Schema sanity check: the generated canary JSON must parse and
-          # carry the exact SavedLayout / PanelWin keys the Rust serde
-          # deserializer expects.
+          # carry the exact SavedLayoutV2 / PanelWin keys the Rust serde
+          # deserializer expects. Pinning the key sets is the point — a field
+          # added to either struct without updating this DSL fails here
+          # instead of silently deserializing with a defaulted value.
           layout-canary-schema =
             pkgs.runCommand "panel-kit-layout-canary-schema"
               { nativeBuildInputs = [ pkgs.jq ]; } ''
               json=${layout-canary}
               jq -e '
-                (.tiling | type == "boolean") and
+                (.version == 2) and
+                (.units | IN("CssPx", "Cells")) and
+                (.viewport | type == "array") and (.viewport | length == 2) and
+                (.viewport | all(type == "number")) and
+                (.mode | IN("Floating", "Tiling")) and
                 (.panels | type == "array") and
                 (.panels | length == 7) and
                 (.panels | all(

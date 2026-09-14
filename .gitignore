@@ -1,3 +1,7 @@
 /target
 /dist
 result
+.specs/scratchpad/
+.specs/scratchpad/*.md
+.specs/analysis/*.md
+.specs/reports/*.md

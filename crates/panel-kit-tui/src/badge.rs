@@ -44,7 +44,7 @@ impl Badge {
             return Color::Rgb(r, g, b);
         }
         match &self.kind {
-            BadgeKind::Tag => t.accent,
+            BadgeKind::Tag => t.badge_info,
             BadgeKind::Doctype | BadgeKind::Author => t.badge_info,
             BadgeKind::Folder => t.dim,
             BadgeKind::Entity { .. } | BadgeKind::Date => t.yellow,

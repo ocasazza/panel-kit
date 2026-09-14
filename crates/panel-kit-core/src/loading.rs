@@ -12,6 +12,12 @@
 //! Loading contract: a bar beats a spinner, and a determinate bar always
 //! shows its percentage. `fraction: None` is the honest indeterminate state —
 //! shells animate the bar and show no fabricated number.
+//!
+//! Surface classification remains core-owned by [`crate::SurfaceProfile`],
+//! but it is renderer context rather than async-source state and therefore is
+//! not copied into these snapshots. Each shell projects its existing surface
+//! context when rendering instead of threading a second profile through
+//! loading stores.
 
 /// Lifecycle of one async data source.
 #[derive(Clone, Copy, Debug, PartialEq)]

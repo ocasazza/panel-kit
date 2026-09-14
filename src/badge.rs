@@ -148,7 +148,7 @@ pub fn Badge(
     /// while keeping the dark fill.
     #[props(default)]
     accent_color: Option<String>,
-    /// Body-click semantics for non-Wikilink/Url kinds; see
+    /// Primary-button semantics for non-Wikilink/Url kinds; see
     /// [`BadgeClickKind`].
     #[props(default)]
     click_kind: BadgeClickKind,
@@ -198,30 +198,9 @@ pub fn Badge(
         span {
             class: "{class}",
             style: "{style}",
-            role: "button",
-            tabindex: "0",
-            aria_label: "{access}",
+            role: "group",
             title: "{value}",
-            onclick: move |_| {
-                let action = match &body_kind {
-                    BadgeKind::Wikilink { target, .. } => {
-                        BadgeAction::Navigate { target: target.clone() }
-                    }
-                    BadgeKind::Url { href, .. } => BadgeAction::OpenUrl { href: href.clone() },
-                    _ => match click_kind {
-                        BadgeClickKind::Toggle => BadgeAction::Toggle {
-                            field: body_field.clone(),
-                            value: body_value.clone(),
-                        },
-                        BadgeClickKind::Clicked => BadgeAction::Clicked {
-                            field: body_field.clone(),
-                            value: body_value.clone(),
-                        },
-                    },
-                };
-                on_action.call(action);
-            },
-            onmouseenter: move |_| {
+            onpointerenter: move |_| {
                 if emit_hover {
                     on_action.call(BadgeAction::Hovered {
                         field: hover_field.clone(),
@@ -229,13 +208,40 @@ pub fn Badge(
                     });
                 }
             },
-            span { class: "badge-label", "{label}" }
+            button {
+                class: "badge-main",
+                r#type: "button",
+                aria_label: "{access}",
+                onclick: move |_| {
+                    let action = match &body_kind {
+                        BadgeKind::Wikilink { target, .. } => {
+                            BadgeAction::Navigate { target: target.clone() }
+                        }
+                        BadgeKind::Url { href, .. } => {
+                            BadgeAction::OpenUrl { href: href.clone() }
+                        }
+                        _ => match click_kind {
+                            BadgeClickKind::Toggle => BadgeAction::Toggle {
+                                field: body_field.clone(),
+                                value: body_value.clone(),
+                            },
+                            BadgeClickKind::Clicked => BadgeAction::Clicked {
+                                field: body_field.clone(),
+                                value: body_value.clone(),
+                            },
+                        },
+                    };
+                    on_action.call(action);
+                },
+                span { class: "badge-label", "{label}" }
+            }
             // `+` sits left of `×` when both are on (egui trailing-edge order).
             if with_plus {
                 button {
                     class: "badge-btn badge-plus",
-                    onclick: move |e| {
-                        e.stop_propagation();
+                    r#type: "button",
+                    aria_label: "Add filter: {field}={value}",
+                    onclick: move |_| {
                         on_action.call(BadgeAction::AddFilter {
                             field: plus_field.clone(),
                             value: plus_value.clone(),
@@ -247,8 +253,9 @@ pub fn Badge(
             if with_x {
                 button {
                     class: "badge-btn badge-x",
-                    onclick: move |e| {
-                        e.stop_propagation();
+                    r#type: "button",
+                    aria_label: "Toggle filter: {field}={value}",
+                    onclick: move |_| {
                         // `×` is a toggle (removes when active) — egui parity.
                         on_action.call(BadgeAction::Toggle {
                             field: x_field.clone(),

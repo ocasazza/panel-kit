@@ -1,57 +1,51 @@
-//! Monaco editor demo — exercises every interface of
-//! `panel_kit::editor::MonacoEditor`.
+//! Monaco editor workspace demo — reactive editor APIs inside draggable
+//! panel-kit chrome.
 //!
 //! Run with: `dx serve --example editor --platform web`
-//! (dioxus-cli 0.6.x; provided by `nix develop`)
+//! (dioxus-cli 0.6.x; provided by `nix develop`).
 //!
 //! Asset prerequisite: the editor loads its vendored bundle from
 //! `assets/vendor/monaco-editor-0.56.0/` relative to the served root (see
-//! `panel_kit::editor::MONACO_ASSET_DIR`). When running from this repo that
-//! path is panel-kit's own `assets/` tree; a consuming app must copy that
-//! directory into its own served assets (trunk: `<link data-trunk
-//! rel="copy-dir" href="assets/vendor" />`) or call
+//! `panel_kit::editor::MONACO_ASSET_DIR`). A consuming app must copy that
+//! directory into its served assets or call
 //! `panel_kit::editor::set_monaco_asset_base` before first mount.
 //!
 //! What it demonstrates:
-//! - Two-way binding: the editor and the read-only `<pre>` mirror of the
-//!   same `Signal<String>` stay in sync both ways (type in the editor, or
-//!   use the "append"/"load sample" buttons to write the signal and watch
-//!   the editor update with the cursor preserved).
-//! - The pull/event interface: `on_change` entries land in the event log
-//!   (typed and `handle.set_value` edits fire it; external signal writes
-//!   do not).
-//! - The imperative `EditorHandle` (from `on_ready`): set value, read value,
-//!   switch language, toggle read-only, force layout.
-//! - Reactive props: the language and read-only buttons drive props, not
-//!   the handle, and the open editor follows.
-//! - The `pest` Monarch tokenizer (rule definitions, builtins, strings,
-//!   operators, comments) and the minimal `toml` language on real samples.
+//! - Monaco lives directly in a V2-persisted workspace panel. Drag another
+//!   panel across the editor: root pointer routing plus pointer capture keeps
+//!   the panel drag alive when the editor surface would otherwise swallow it.
+//! - The default `panel-kit-dark` Monaco preset is generated from
+//!   `panel_kit_core::tokens::DARK` and `tokens::MONO`. Switching to Monaco's
+//!   high-contrast preset and back makes the reactive theme prop observable.
+//! - Two-way `Signal<String>` binding, `on_change`, `on_ready`, and the
+//!   imperative `EditorHandle` value/layout controls.
+//! - Reactive language and read-only props, the `pest` Monarch tokenizer,
+//!   and the minimal `toml` language on real samples.
+//! - The workspace root delegates keyboard and pointer events to
+//!   `Workspace`; editor text focus remains protected by the core key policy.
 
+use dioxus::events::PointerEvent as DioxusPointerEvent;
 use dioxus::prelude::*;
-use panel_kit::editor::{EditorHandle, MonacoEditor};
-use panel_kit::CSS;
+use panel_kit::editor::{EditorHandle, MonacoEditor, PANEL_KIT_DARK_THEME};
+use panel_kit::{use_workspace, LayoutBuilder, PanelKind, PanelWin, CSS};
+use serde::{Deserialize, Serialize};
 
 const DEMO_CSS: &str = "
-body { overflow: auto !important; }
-.demo { padding: 1rem; max-width: 980px; margin: 0 auto; }
-.demo h1 { font-size: 1rem; }
-.demo h2 { font-size: .8rem; color: var(--dim); text-transform: uppercase;
-  letter-spacing: .06em; margin: 1.2rem 0 .4rem; }
+.topbar .editor-state { color: var(--dim); }
 .controls { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
 .controls button { background: var(--bg); color: var(--dim); border: 1px solid var(--line2);
-  border-radius: 3px; padding: .25rem .6rem; font-size: .72rem; cursor: pointer; }
+  border-radius: 3px; padding: .25rem .6rem; font-family: var(--mono);
+  font-size: .72rem; cursor: pointer; }
 .controls button.on { color: var(--fg); border-color: var(--accent); }
-.controls .sep { color: var(--line2); }
-.editor-wrap { height: 420px; border: 1px solid var(--line2); border-radius: 4px;
-  overflow: hidden; margin: .5rem 0; }
-.preview { border: 1px solid var(--line); border-radius: 4px; background: var(--panel);
+.controls .sep { color: var(--dim); }
+.editor-note { color: var(--dim); font-size: .78rem; }
+.preview { border: 1px solid var(--line2); border-radius: 4px; background: var(--panel);
   padding: .5rem .6rem; min-height: 6rem; max-height: 12rem; overflow: auto;
   font-size: .72rem; white-space: pre-wrap; margin: 0; }
-.log { border: 1px solid var(--line); border-radius: 4px; background: var(--panel);
+.log { border: 1px solid var(--line2); border-radius: 4px; background: var(--panel);
   padding: .5rem .6rem; min-height: 4rem; max-height: 10rem; overflow: auto; }
 .log div { font-size: .72rem; color: var(--fg); }
-.log div:nth-child(n+2) { color: var(--dim); }
-.log .none { color: var(--line2); }
+.log div:nth-child(n+2), .log .none { color: var(--dim); }
 ";
 
 const SAMPLE_PEST: &str = r##"// pest grammar for a line graph
@@ -86,113 +80,207 @@ fn push_log(log: &mut Signal<Vec<String>>, entry: String) {
     entries.truncate(12);
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EditorTheme {
+    Canonical,
+    HighContrast,
+}
+
+impl EditorTheme {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Canonical => "canonical tokens",
+            Self::HighContrast => "Monaco high contrast",
+        }
+    }
+
+    fn monaco_name(self) -> &'static str {
+        match self {
+            Self::Canonical => PANEL_KIT_DARK_THEME,
+            Self::HighContrast => "hc-black",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+enum Panel {
+    Editor,
+    Controls,
+    Mirror,
+}
+
+impl PanelKind for Panel {
+    fn title(self) -> &'static str {
+        match self {
+            Self::Editor => "Editor",
+            Self::Controls => "Controls",
+            Self::Mirror => "Mirror + Events",
+        }
+    }
+}
+
+fn default_layout() -> Vec<PanelWin<Panel>> {
+    let mut builder = LayoutBuilder::new();
+    vec![
+        builder
+            .at(Panel::Editor, 16.0, 16.0, 650.0, 520.0)
+            .with_tile(3, 3),
+        builder
+            .at(Panel::Controls, 686.0, 16.0, 360.0, 280.0)
+            .with_tile(1, 2),
+        builder
+            .at(Panel::Mirror, 686.0, 312.0, 360.0, 224.0)
+            .with_tile(1, 2),
+    ]
+}
+
 fn main() {
     dioxus::launch(App);
 }
 
 #[component]
 fn App() -> Element {
-    // Two-way bound document: the editor and the <pre> mirror share it.
+    let ws = use_workspace("panel_kit_example_editor", default_layout);
     let mut text = use_signal(|| SAMPLE_PEST.to_string());
     let mut handle = use_signal(|| None::<EditorHandle>);
     let mut log = use_signal(Vec::<String>::new);
-    // Reactive props driven by the buttons below.
     let mut language = use_signal(|| "pest".to_string());
     let mut read_only = use_signal(|| false);
+    let mut theme = use_signal(|| EditorTheme::Canonical);
+    let theme_name = theme().monaco_name().to_string();
 
-    rsx! {
-        style { {CSS} }
-        style { {DEMO_CSS} }
-        div { class: "demo",
-            h1 { "panel-kit monaco editor demo" }
-
-            div { class: "controls",
-                // EditorHandle (imperative) controls:
-                button {
-                    onclick: move |_| {
-                        if let Some(h) = *handle.read() {
-                            h.set_value(SAMPLE_PEST);
-                        }
-                    },
-                    "handle.set_value(sample)"
-                }
-                button {
-                    onclick: move |_| {
-                        if let Some(h) = *handle.read() {
-                            let v = h.value();
-                            push_log(&mut log, format!("handle.value() -> {} bytes", v.len()));
-                        }
-                    },
-                    "handle.value() → log"
-                }
-                button {
-                    onclick: move |_| {
-                        if let Some(h) = *handle.read() {
-                            h.layout();
-                        }
-                    },
-                    "handle.layout()"
-                }
-                span { class: "sep", "|" }
-                // Signal writes (external -> editor, cursor preserved):
-                button {
-                    onclick: move |_| text.write().push_str("// appended via the bound signal\n"),
-                    "signal: append comment"
-                }
-                // Reactive props:
-                button {
-                    class: if *language.read() == "pest" { "on" } else { "" },
-                    onclick: move |_| {
-                        language.set("pest".to_string());
-                        text.set(SAMPLE_PEST.to_string());
-                    },
-                    "prop: language=pest"
-                }
-                button {
-                    class: if *language.read() == "toml" { "on" } else { "" },
-                    onclick: move |_| {
-                        language.set("toml".to_string());
-                        text.set(SAMPLE_TOML.to_string());
-                    },
-                    "prop: language=toml"
-                }
-                button {
-                    class: if *read_only.read() { "on" } else { "" },
-                    onclick: move |_| {
-                        let next = !*read_only.read();
-                        read_only.set(next);
-                    },
-                    "prop: read_only"
-                }
-            }
-
-            div { class: "editor-wrap",
+    let body = move |kind: Panel, _maximized: bool| -> Element {
+        match kind {
+            Panel::Editor => rsx! {
                 MonacoEditor {
                     value: text,
                     language: "{language}",
                     read_only: *read_only.read(),
-                    on_change: move |v: String| {
-                        push_log(&mut log, format!("on_change: {} bytes", v.len()));
+                    theme: theme_name.clone(),
+                    on_change: move |value: String| {
+                        push_log(&mut log, format!("on_change: {} bytes", value.len()));
                     },
-                    on_ready: move |h: EditorHandle| {
+                    on_ready: move |editor: EditorHandle| {
                         push_log(&mut log, "on_ready: EditorHandle acquired".to_string());
-                        handle.set(Some(h));
+                        handle.set(Some(editor));
                     },
                 }
-            }
-
-            h2 { "bound signal (two-way mirror)" }
-            pre { class: "preview", "{text}" }
-
-            h2 { "event log" }
-            div { class: "log",
-                if log.read().is_empty() {
-                    div { class: "none", "no events yet — type in the editor" }
+            },
+            Panel::Controls => rsx! {
+                p { class: "editor-note",
+                    "Drag this panel by its inset title across Editor. Pointer capture "
+                    "keeps the drag alive over Monaco."
                 }
-                for entry in log.read().iter() {
-                    div { "{entry}" }
+                p { class: "editor-note",
+                    code { "{PANEL_KIT_DARK_THEME}" }
+                    " is generated from panel_kit_core::tokens::DARK and tokens::MONO."
+                }
+                div { class: "controls",
+                    button {
+                        onclick: move |_| {
+                            if let Some(editor) = *handle.read() {
+                                editor.set_value(SAMPLE_PEST);
+                            }
+                        },
+                        "handle.set_value(sample)"
+                    }
+                    button {
+                        onclick: move |_| {
+                            if let Some(editor) = *handle.read() {
+                                let value = editor.value();
+                                push_log(
+                                    &mut log,
+                                    format!("handle.value() -> {} bytes", value.len()),
+                                );
+                            }
+                        },
+                        "handle.value() → log"
+                    }
+                    button {
+                        onclick: move |_| {
+                            if let Some(editor) = *handle.read() {
+                                editor.layout();
+                            }
+                        },
+                        "handle.layout()"
+                    }
+                    span { class: "sep", "|" }
+                    button {
+                        onclick: move |_| {
+                            text.write().push_str("// appended via the bound signal\n")
+                        },
+                        "signal: append comment"
+                    }
+                    button {
+                        class: if *language.read() == "pest" { "on" } else { "" },
+                        onclick: move |_| {
+                            language.set("pest".to_string());
+                            text.set(SAMPLE_PEST.to_string());
+                        },
+                        "language: pest"
+                    }
+                    button {
+                        class: if *language.read() == "toml" { "on" } else { "" },
+                        onclick: move |_| {
+                            language.set("toml".to_string());
+                            text.set(SAMPLE_TOML.to_string());
+                        },
+                        "language: toml"
+                    }
+                    button {
+                        class: if *read_only.read() { "on" } else { "" },
+                        onclick: move |_| {
+                            let next = !*read_only.read();
+                            read_only.set(next);
+                        },
+                        "read-only"
+                    }
+                    button {
+                        class: if theme() == EditorTheme::Canonical { "on" } else { "" },
+                        onclick: move |_| theme.set(EditorTheme::Canonical),
+                        "theme: canonical"
+                    }
+                    button {
+                        class: if theme() == EditorTheme::HighContrast { "on" } else { "" },
+                        onclick: move |_| theme.set(EditorTheme::HighContrast),
+                        "theme: high contrast"
+                    }
+                }
+            },
+            Panel::Mirror => rsx! {
+                p { class: "editor-note", "Bound signal (two-way mirror)" }
+                pre { class: "preview", "{text}" }
+                p { class: "editor-note", "Event log" }
+                div { class: "log",
+                    if log.read().is_empty() {
+                        div { class: "none", "no events yet — type in the editor" }
+                    }
+                    for entry in log.read().iter() {
+                        div { "{entry}" }
+                    }
+                }
+            },
+        }
+    };
+
+    rsx! {
+        style { {CSS} }
+        style { {DEMO_CSS} }
+        div {
+            class: ws.root_class(),
+            tabindex: "0",
+            onpointermove: move |event: DioxusPointerEvent| ws.handle_pointer_move(&event),
+            onpointerup: move |event: DioxusPointerEvent| ws.handle_pointer_up(&event),
+            onpointercancel: move |event: DioxusPointerEvent| ws.handle_pointer_up(&event),
+            onkeydown: move |event: KeyboardEvent| ws.handle_key(&event),
+            header { class: "topbar",
+                h1 { "panel-kit monaco editor demo" }
+                span { class: "editor-state",
+                    "theme: {theme().label()} · V2 layout · drag Controls across Editor"
                 }
             }
+            {ws.render(body)}
+            {ws.dock()}
         }
     }
 }

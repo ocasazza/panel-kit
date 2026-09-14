@@ -3,6 +3,7 @@
 //! named series, theme-derived colors, auto-scaled axes, braille line
 //! rendering, legend.
 
+use panel_kit_core::badge::Rgb;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::symbols;
@@ -34,8 +35,12 @@ pub struct Series<'a> {
 }
 
 /// The categorical series palette, derived from the theme.
-pub fn series_colors(t: &Theme) -> [Color; 6] {
-    [t.accent, t.blue, t.pink, t.yellow, t.badge_info, t.red]
+fn series_colors(t: &Theme) -> [Color; 6] {
+    [t.fg, t.blue, t.pink, t.yellow, t.badge_info, t.red]
+}
+
+fn rgb_color((r, g, b): Rgb) -> Color {
+    Color::Rgb(r, g, b)
 }
 
 /// Render a multi-series time chart into `area`: x bounds span the data,
@@ -134,7 +139,7 @@ pub fn gauges(f: &mut Frame, area: Rect, t: &Theme, items: &[GaugeItem]) {
         } else if ratio > 0.75 {
             t.yellow
         } else {
-            t.accent
+            t.green
         };
         let bar = Rect::new(
             area.x + label_w + 1,
@@ -170,8 +175,9 @@ pub struct FlameSpan {
     pub depth: u16,
     /// Width weight (e.g. duration in seconds). Must be >= 0.
     pub value: f64,
-    /// Optional cell color; falls back to a depth-cycled theme hue.
-    pub color: Option<Color>,
+    /// Optional renderer-neutral RGB cell color; falls back to a
+    /// depth-cycled theme hue.
+    pub color: Option<Rgb>,
 }
 
 /// Render a flamegraph (icicle) into `area`: stacked rows by depth, each
@@ -267,7 +273,7 @@ pub fn flame(f: &mut Frame, area: Rect, t: &Theme, spans: &[FlameSpan]) {
             continue;
         }
         let cell_w = cell_w.min(area.right().saturating_sub(cell_x0));
-        let color = s.color.unwrap_or_else(|| {
+        let color = s.color.map(rgb_color).unwrap_or_else(|| {
             let base = colors[s.depth as usize % colors.len()];
             mix(base, t.bg, (s.depth as f64 * 0.08).min(0.45))
         });
@@ -307,8 +313,9 @@ pub struct BoxItem {
     pub label: String,
     /// Raw samples; quartiles are computed by linear interpolation.
     pub samples: Vec<f64>,
-    /// Optional box color; falls back to the categorical palette.
-    pub color: Option<Color>,
+    /// Optional renderer-neutral RGB box color; falls back to the
+    /// categorical palette.
+    pub color: Option<Rgb>,
 }
 
 /// Five-number summary of a sample set: min, Q1, median, Q3, max.
@@ -394,7 +401,10 @@ pub fn boxplot(f: &mut Frame, area: Rect, t: &Theme, items: &[BoxItem]) {
 
     for (i, item) in items.iter().enumerate() {
         let Some(s) = stats[i] else { continue };
-        let color = item.color.unwrap_or(colors[i % colors.len()]);
+        let color = item
+            .color
+            .map(rgb_color)
+            .unwrap_or(colors[i % colors.len()]);
         let slot_x = area.x + i as u16 * slot_w;
         let cx = slot_x + slot_w / 2;
         let box_w = (slot_w.saturating_sub(2)).clamp(1, 7);

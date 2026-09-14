@@ -1,6 +1,6 @@
 # Canary layout: a declarative mirror of the TUI canary
 # `crates/panel-kit-tui/examples/workspace_canary.rs` (`defaults()`), proving
-# the Nix DSL emits the same `SavedLayout` shape the Rust shells persist.
+# the Nix DSL emits the same `SavedLayoutV2` shape the Rust shells persist.
 #
 # Geometry, tile spans, and panel kinds match the Rust `Panel` enum
 # (Workspace, Badges, Activity, Capacity, Nodes, Notes, Theme) one-for-one.
@@ -15,7 +15,12 @@ let
   inherit (import ../lib/mkLayout.nix { inherit lib; }) mkLayout;
 in
 mkLayout {
-  tiling = false;
+  # The Rust canary is a terminal workspace, so its geometry is in cells.
+  units = "Cells";
+  # Matches the canary's authoring terminal: the widest panel ends at x+w=128
+  # and the lowest at y+h=40.
+  viewport = [ 128.0 40.0 ];
+  mode = "Floating";
   panels = [
     { kind = "Workspace"; x = 1.0; y = 0.0; w = 62.0; h = 11.0; tile_w = 1; tile_h = 2; }
     { kind = "Activity"; x = 1.0; y = 12.0; w = 62.0; h = 14.0; tile_w = 1; tile_h = 3; }

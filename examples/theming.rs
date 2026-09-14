@@ -5,14 +5,15 @@
 //!
 //! What it demonstrates:
 //! - The documented theming path: inject `panel_kit::CSS` once, then layer
-//!   a stylesheet after it that overrides the `:root` variables (`--bg`,
+//!   a stylesheet after it that overrides the full `:root` palette (`--bg`,
 //!   `--panel`, `--fg`, `--dim`, `--line`, `--line2`, `--inv-bg`,
-//!   `--inv-fg`, `--accent`, `--red`, `--yellow`, `--green`, `--mono`).
+//!   `--inv-fg`, `--accent`, `--red`, `--yellow`, `--green`, `--blue`,
+//!   `--pink`, `--badge-info`, and `--mono`).
 //! - Three presets switchable at runtime: the built-in dark default, a
 //!   light "paper" theme, and a CRT phosphor theme (which also swaps
 //!   `--mono` to show the font variable).
-//! - The whole chrome restyles: workspace panels, traffic lights, dock,
-//!   badges, and the spinner all follow the variables.
+//! - The whole chrome restyles: workspace panels, printer-CMY traffic lights
+//!   (blue mode, yellow minimize, pink maximize), dock, badges, and spinner.
 
 use dioxus::prelude::*;
 use panel_kit::badge::{Badge, BadgeAction, BadgeKind};
@@ -27,36 +28,56 @@ const DEMO_CSS: &str = "
 .swatches { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 ";
 
-/// Every themable variable, overridden to a warm light palette.
+/// Every color variable, overridden to a warm light palette.
+///
+/// WCAG sRGB contrast-script ratios, foreground on `--panel`:
+/// fg 16.54:1, dim 5.37:1, accent 5.16:1, red 5.34:1, yellow
+/// 4.19:1, green 5.14:1, blue 5.80:1, pink 5.14:1, badge-info
+/// 5.36:1; line2 edge 3.001:1; inverted pair 15.43:1. The 1.07:1
+/// bg/panel tonal step and 1.33:1 line/bg seam are deliberately structural,
+/// non-text layers; the independently passing line2 edge carries the bound.
 const THEME_PAPER: &str = ":root {
-  --bg:    #f6f1e7;
-  --panel: #fffdf6;
-  --fg:    #211d16;
-  --dim:   #8a8273;
-  --line:  #e3dac6;
-  --line2: #c9bda0;
-  --inv-bg:#211d16;
-  --inv-fg:#f6f1e7;
-  --accent:#b3541e;
-  --red:   #c4423a;
-  --yellow:#b8860b;
-  --green: #3e7d3a;
+  --bg:        #f4f1ea;
+  --panel:     #fbf9f4;
+  --fg:        #1a1a1a;
+  --dim:       #6e665c;
+  --line:      #d8d2c6;
+  --line2:     #99907f;
+  --inv-bg:    #1a1a1a;
+  --inv-fg:    #f4f1ea;
+  --accent:    #0c7a3d;
+  --red:       #c62828;
+  --yellow:    #a06f00;
+  --green:     #1d7a33;
+  --blue:      #1f5ec2;
+  --pink:      #c21f8e;
+  --badge-info:#2e6e8c;
 }";
 
 /// Green-phosphor CRT — also swaps `--mono` to prove the font variable.
+///
+/// WCAG sRGB contrast-script ratios, foreground on `--panel`:
+/// fg 10.44:1, dim 5.98:1, accent 14.87:1, red 6.49:1, yellow
+/// 11.74:1, green 10.44:1, blue 6.90:1, pink 7.60:1, badge-info
+/// 7.90:1; line2 edge 3.060:1; inverted pair 11.06:1. The 1.06:1
+/// bg/panel tonal step and 1.37:1 line/bg seam have the same structural,
+/// non-text role as the paper preset.
 const THEME_CRT: &str = ":root {
-  --bg:    #041204;
-  --panel: #061a06;
-  --fg:    #4ee04e;
-  --dim:   #1f7a1f;
-  --line:  #0c330c;
-  --line2: #145214;
-  --inv-bg:#4ee04e;
-  --inv-fg:#041204;
-  --accent:#9dff9d;
-  --red:   #ff6b5f;
-  --yellow:#e0d34e;
-  --green: #4ee04e;
+  --bg:        #041204;
+  --panel:     #061a06;
+  --fg:        #4ee04e;
+  --dim:       #44a844;
+  --line:      #0c330c;
+  --line2:     #327132;
+  --inv-bg:    #4ee04e;
+  --inv-fg:    #041204;
+  --accent:    #9dff9d;
+  --red:       #ff6b5f;
+  --yellow:    #e0d34e;
+  --green:     #4ee04e;
+  --blue:      #62a0ff;
+  --pink:      #ff79c6;
+  --badge-info:#72b5c7;
   --mono: 'Courier New', 'Courier', monospace;
 }";
 
@@ -155,8 +176,8 @@ fn App() -> Element {
         style { {theme_css} }
         div {
             class: ws.root_class(),
-            onmousemove: move |e| ws.handle_mouse_move(&e),
-            onmouseup: move |_| ws.handle_mouse_up(),
+            onpointermove: move |event| ws.handle_pointer_move(&event),
+            onpointerup: move |event| ws.handle_pointer_up(&event),
             header { class: "topbar",
                 h1 { "panel-kit theming demo" }
                 div { class: "theme-pick",

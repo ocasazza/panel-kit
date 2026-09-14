@@ -6,44 +6,78 @@
 //! Run: `cargo run -p panel-kit-tui --example workspace`
 //! Mouse: drag headers to move/reorder, drag the corner grip to resize,
 //! click lights, click badges, click Theme to swap presets, dock chips
-//! restore minimized panels. Keys: `t`, `1`-`6`, arrows, `q`.
+//! restore minimized panels. Keys: arrows move, Shift+arrows resize,
+//! Alt+arrows fine-move, `m` minimize, `f` maximize, `t` toggle mode,
+//! Tab/Shift+Tab change focus, Enter raises, `p` changes palette, and `q` quits.
 
 mod workspace_canary;
 
 use std::time::Duration;
 
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseButton, MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
+    MouseButton, MouseEventKind,
 };
 use crossterm::execute;
-use panel_kit_core::badge::BadgeClickKind;
-use panel_kit_core::Mode;
+use panel_kit_core::badge::{BadgeClickKind, Rgb};
+use panel_kit_core::{
+    FocusContext, Key, KeyChord, Mode, PointerButton, PointerEvent, PointerEventKind,
+};
 use panel_kit_tui::badge::Badge;
 use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
 use panel_kit_tui::scroll;
 use panel_kit_tui::spinner::spinner;
-use panel_kit_tui::{Theme, TuiMouseButton, TuiMouseEvent, TuiMouseEventKind, TuiWorkspace};
+use panel_kit_tui::{Theme, TuiWorkspace};
 use ratatui::layout::{Position, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use workspace_canary::{capacity_items, defaults, demo_badges, node_rows, Metrics, Panel};
 
-fn to_tui_mouse(m: crossterm::event::MouseEvent) -> Option<TuiMouseEvent> {
+fn to_pointer_event(m: crossterm::event::MouseEvent) -> Option<PointerEvent> {
     let kind = match m.kind {
-        MouseEventKind::Down(MouseButton::Left) => TuiMouseEventKind::Down(TuiMouseButton::Primary),
-        MouseEventKind::Up(MouseButton::Left) => TuiMouseEventKind::Up(TuiMouseButton::Primary),
-        MouseEventKind::Drag(MouseButton::Left) => TuiMouseEventKind::Drag(TuiMouseButton::Primary),
-        MouseEventKind::Moved => TuiMouseEventKind::Moved,
-        MouseEventKind::ScrollDown => TuiMouseEventKind::Scroll { delta_y: 1.0 },
-        MouseEventKind::ScrollUp => TuiMouseEventKind::Scroll { delta_y: -1.0 },
+        MouseEventKind::Down(MouseButton::Left) => PointerEventKind::Down(PointerButton::Primary),
+        MouseEventKind::Up(MouseButton::Left) => PointerEventKind::Up(PointerButton::Primary),
+        MouseEventKind::Drag(MouseButton::Left) => PointerEventKind::Drag(PointerButton::Primary),
+        MouseEventKind::Moved => PointerEventKind::Moved,
+        MouseEventKind::ScrollDown => PointerEventKind::Scroll { delta_y: 1.0 },
+        MouseEventKind::ScrollUp => PointerEventKind::Scroll { delta_y: -1.0 },
         _ => return None,
     };
-    Some(TuiMouseEvent {
+    Some(PointerEvent {
         kind,
         x: m.column as f64,
         y: m.row as f64,
     })
+}
+
+fn to_key_chord(event: KeyEvent) -> Option<KeyChord> {
+    let key = match event.code {
+        KeyCode::Left => Key::Left,
+        KeyCode::Right => Key::Right,
+        KeyCode::Up => Key::Up,
+        KeyCode::Down => Key::Down,
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Esc => Key::Escape,
+        KeyCode::Tab | KeyCode::BackTab => Key::Tab,
+        KeyCode::Char(ch) => Key::Char(ch),
+        _ => return None,
+    };
+    Some(KeyChord {
+        key,
+        shift: event.modifiers.contains(KeyModifiers::SHIFT)
+            || matches!(event.code, KeyCode::BackTab),
+        alt: event.modifiers.contains(KeyModifiers::ALT),
+        ctrl: event.modifiers.contains(KeyModifiers::CONTROL),
+        meta: false,
+    })
+}
+
+fn rgb(color: Color) -> Rgb {
+    match color {
+        Color::Rgb(r, g, b) => (r, g, b),
+        _ => unreachable!("panel-kit themes use RGB colors"),
+    }
 }
 
 struct Demo {
@@ -71,10 +105,10 @@ impl Demo {
         }
     }
 
-    fn handle_key(&mut self, ws: &mut TuiWorkspace<Panel>, key: KeyCode) -> bool {
-        match key {
+    fn handle_key(&mut self, ws: &mut TuiWorkspace<Panel>, event: KeyEvent) -> bool {
+        match event.code.clone() {
             KeyCode::Char('q') => return true,
-            KeyCode::Char('t') => self.toggle_theme(ws),
+            KeyCode::Char('p') => self.toggle_theme(ws),
             KeyCode::Char('1') => ws.restore_panel(Panel::Workspace),
             KeyCode::Char('2') => ws.restore_panel(Panel::Badges),
             KeyCode::Char('3') => ws.restore_panel(Panel::Activity),
@@ -84,15 +118,13 @@ impl Demo {
             KeyCode::Char('7') => ws.restore_panel(Panel::Nodes),
             KeyCode::Char('8') => ws.restore_panel(Panel::Flame),
             KeyCode::Char('9') => ws.restore_panel(Panel::Distribution),
-            KeyCode::Up => {
-                self.notes_scroll = self.notes_scroll.saturating_sub(1);
-            }
-            KeyCode::Down => {
-                self.notes_scroll = self.notes_scroll.saturating_add(1);
-            }
             KeyCode::PageUp => ws.scroll_by(-4.0),
             KeyCode::PageDown => ws.scroll_by(4.0),
-            _ => {}
+            _ => {
+                if let Some(chord) = to_key_chord(event) {
+                    ws.handle_key(chord, FocusContext::Workspace);
+                }
+            }
         }
         false
     }
@@ -110,7 +142,7 @@ impl Demo {
                 return;
             }
         }
-        if let Some(m) = to_tui_mouse(m) {
+        if let Some(m) = to_pointer_event(m) {
             ws.handle_mouse(m);
         }
     }
@@ -133,6 +165,11 @@ impl Demo {
         let tick = self.tick;
         let paper = self.paper;
         let metrics = &self.metrics;
+        let surface = ws.surface_profile().class;
+        let mode = match ws.effective_mode() {
+            Mode::Floating => "floating",
+            Mode::Tiling => "tiling",
+        };
         ws.render(frame, frame.area(), &mut |f, rect, kind, _max| match kind {
             Panel::Workspace => {
                 f.render_widget(
@@ -143,10 +180,12 @@ impl Demo {
                         )]),
                         Line::from(""),
                         Line::from("The same ratatui workspace renders in terminal and browser."),
-                        Line::from("The state machine is shared with the Dioxus renderer."),
+                        Line::from(format!("Surface: {surface:?} · effective mode: {mode}")),
+                        Line::from("Persistence: schema V2 · Units::Cells · current viewport."),
                         Line::from(""),
                         Line::from("Mouse: drag headers, drag the corner grip, click lights."),
-                        Line::from("Keys: t swaps theme, 1-9 restore panels, arrows scroll notes."),
+                        Line::from("Keys: arrows move, Shift resizes, Alt fine-moves; m/f/t, Tab, Enter."),
+                        Line::from("Palette: p · restore: 1-9 · workspace scroll: PgUp/PgDn."),
                     ])
                     .style(Style::default().fg(theme.dim)),
                     rect,
@@ -166,7 +205,7 @@ impl Demo {
                     .iter()
                     .rev()
                     .take(3)
-                    .map(|a| Line::from(Span::styled(a.clone(), Style::default().fg(theme.accent))))
+                    .map(|a| Line::from(Span::styled(a.clone(), Style::default().fg(theme.badge_info))))
                     .collect();
                 if log_y > rect.y {
                     f.render_widget(
@@ -192,7 +231,7 @@ impl Demo {
                 let rows: Vec<ratatui::widgets::Row> = node_rows()
                     .iter()
                     .map(|(name, ok, load, detail)| {
-                        let color = if *ok { theme.green } else { theme.red };
+                        let color = if *ok { rgb(theme.green) } else { rgb(theme.red) };
                         ratatui::widgets::Row::new(vec![
                             ratatui::widgets::Cell::from(panel_kit_tui::status::labeled(color, *name)),
                             ratatui::widgets::Cell::from(panel_kit_tui::meter::span(*load, 8, color)),
@@ -228,7 +267,7 @@ impl Demo {
                     "When the browser example builds under Trunk, the same public TUI API is still web-capable.",
                     "Keeping both examples broad catches drift between core, Dioxus, and TUI renderers.",
                     "The example is not a screenshot fixture: it is executable documentation.",
-                    "Use t for theme, 1-9 to restore minimized panels, and arrow keys to scroll this panel.",
+                    "Use p for palette, m/f/t for window state, Tab to cycle focus, 1-9 to restore, and PgUp/PgDn to scroll.",
                 ] {
                     lines.push(Line::from(text));
                 }
@@ -248,13 +287,12 @@ impl Demo {
                     Paragraph::new(vec![
                         Line::from(Span::styled(
                             if paper {
-                                "preset: paper (click or press t)"
+                                "preset: paper (click or press p)"
                             } else {
-                                "preset: dark (click or press t)"
+                                "preset: dark (click or press p)"
                             },
                             Style::default().fg(theme.fg),
                         )),
-                        sw(theme.accent, "accent"),
                         sw(theme.blue, "blue · mode light"),
                         sw(theme.yellow, "yellow · minimize"),
                         sw(theme.pink, "pink · maximize"),
@@ -279,7 +317,7 @@ fn main() -> std::io::Result<()> {
         terminal.draw(|f| demo.draw(&mut ws, f))?;
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {
-                Event::Key(k) if demo.handle_key(&mut ws, k.code) => break,
+                Event::Key(k) if demo.handle_key(&mut ws, k) => break,
                 Event::Mouse(m) => demo.handle_mouse(&mut ws, m),
                 _ => {}
             }

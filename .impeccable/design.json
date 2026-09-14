@@ -1,0 +1,480 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-14T00:00:00Z",
+  "title": "Design System: panel-kit",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Console Black",
+        "canonical": "#0a0a0a",
+        "tonalRamp": [
+          "#0a0a0a",
+          "#0d0d0d",
+          "#262626",
+          "#3a3a3a",
+          "#7a7a7a",
+          "#ededed"
+        ],
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel Black",
+        "canonical": "#0d0d0d",
+        "note": "Only 1.02:1 against bg \u2014 the tonal step alone cannot carry a boundary; the --line2 border does the work. Canonical value now originates in panel_kit_core::tokens."
+      },
+      "fg": {
+        "role": "neutral",
+        "displayName": "Terminal White",
+        "canonical": "#ededed",
+        "contrast": {
+          "onBg": 16.91,
+          "onPanel": 16.6
+        },
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "dim": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#7a7a7a",
+        "contrast": {
+          "onBg": 4.61,
+          "onPanel": 4.53
+        },
+        "note": "Passes 4.5:1 by 0.03 on panel. Any lightening, or any opacity state layered over it, fails immediately. Also now carries .dock-empty, which previously misused --line2 as text. Canonical value now originates in panel_kit_core::tokens."
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Seam",
+        "canonical": "#262626",
+        "purpose": "Region dividers only.",
+        "contrast": {
+          "onBg": 1.31
+        },
+        "note": "FAILS the 3:1 non-text threshold. Canonical value now originates in panel_kit_core::tokens."
+      },
+      "line2": {
+        "role": "neutral",
+        "displayName": "Edge",
+        "canonical": "#5f5f5f",
+        "purpose": "Object outlines only \u2014 never text.",
+        "contrast": {
+          "onPanel": 3.04,
+          "onBg": 3.1
+        },
+        "note": "Raised from #3a3a3a in 1.0.0: the old value computed 1.71:1 against --panel, below the 3:1 non-text threshold, and the resize grip is drawn only in this color so the control itself was invisible. Canonical value now originates in panel_kit_core::tokens."
+      },
+      "inv-bg": {
+        "role": "neutral",
+        "displayName": "Inverted Field",
+        "canonical": "#ededed",
+        "purpose": "::selection background.",
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "inv-fg": {
+        "role": "neutral",
+        "displayName": "Inverted Ink",
+        "canonical": "#0a0a0a",
+        "purpose": "::selection foreground.",
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Phosphor Green",
+        "canonical": "#5ef38c",
+        "purpose": "Live-system signal only: activity, loading, selection, drag-in-flight. Rare by rule (\u226410% of a screen).",
+        "contrast": {
+          "onBg": 13.84,
+          "onPanel": 13.58
+        },
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "blue": {
+        "role": "secondary",
+        "displayName": "Signal Blue",
+        "canonical": "#3b9bff",
+        "purpose": "Traffic light: floating \u21c4 tiling mode toggle.",
+        "contrast": {
+          "onPanel": 6.77
+        },
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "yellow": {
+        "role": "secondary",
+        "displayName": "Amber",
+        "canonical": "#ffbd2e",
+        "purpose": "Traffic light: minimize to dock.",
+        "contrast": {
+          "onPanel": 11.63
+        },
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "pink": {
+        "role": "secondary",
+        "displayName": "Magenta",
+        "canonical": "#ff5fc3",
+        "purpose": "Traffic light: maximize / restore.",
+        "contrast": {
+          "onPanel": 7.1
+        },
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "red": {
+        "role": "tertiary",
+        "displayName": "Alert Red",
+        "canonical": "#ff5f56",
+        "purpose": "Errors and unresolved references.",
+        "contrast": {
+          "onBg": 6.62
+        },
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "green": {
+        "role": "tertiary",
+        "displayName": "Confirm Green",
+        "canonical": "#27c93f",
+        "purpose": "Verdict \u2014 resolved/valid, URL badges. Distinct from accent, which means activity.",
+        "contrast": {
+          "onBg": 8.97
+        },
+        "note": "Canonical value now originates in panel_kit_core::tokens."
+      },
+      "badge-info": {
+        "role": "tertiary",
+        "displayName": "Slate Info",
+        "canonical": "#83b7cc",
+        "purpose": "Informational metadata badges, and the resting tint for tag badges.",
+        "contrast": {
+          "onBg": 9.06
+        },
+        "note": "Promoted to :root in 1.0.0. It was a literal on .badge, which shadowed any :root override and made it unthemeable from the web side. Tag badges moved here from --accent so static metadata no longer spends a live-state signal. Canonical value now originates in panel_kit_core::tokens."
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "Topbar product name. The largest type in the system and still under 11px."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Panel titles inset into the border row. Uppercase + 700 + .06em tracking is what keeps ~9.4px scannable."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All panel content. The 13px root that every other size is a rem fraction of."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Dock chips, badges, hints, spinner labels, tooltip text."
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "Maximize hint only. The legibility floor; nothing smaller exists."
+      }
+    },
+    "shadows": [
+      {
+        "name": "overlay-lift",
+        "value": "0 10px 30px #000c",
+        "purpose": "The fixed tooltip overlay \u2014 the only genuinely detached surface, and the only sanctioned elevation shadow."
+      },
+      {
+        "name": "drag-lift",
+        "value": "0 6px 24px #0007",
+        "purpose": "Applied only to .ws.floating .panel.dragging \u2014 a panel genuinely lifted mid-drag."
+      },
+      {
+        "name": "state-ring",
+        "value": "0 0 0 2px <color-mix>",
+        "purpose": "Light hover/focus and badge hover/active. A ring, not elevation: it draws state, so removing elevation never removes feedback."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-transition",
+        "value": "0.12s ease",
+        "purpose": "Traffic-light opacity and ring transitions."
+      },
+      {
+        "name": "pulse-activity",
+        "value": "1s infinite",
+        "purpose": "Topbar activity indicator."
+      },
+      {
+        "name": "pulse-skeleton",
+        "value": "1.1s infinite",
+        "purpose": "Loading skeleton."
+      },
+      {
+        "name": "spin",
+        "value": "0.7s linear infinite",
+        "purpose": "Spinner ring rotation."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce) in both stylesheets",
+        "purpose": "Determinate fill width changes lose their transition. Indeterminate fills stop moving and remain an incomplete static sliver rather than falsely reading as complete; loading skeleton pulses also stop."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "760px",
+        "cells": 60,
+        "note": "Withholds geometry manipulation: one column, spans collapse, no header drag or corner grip. Does NOT withhold restore \u2014 a maximized panel still gets its magenta light (Escape Hatch Rule)."
+      },
+      {
+        "name": "tablet",
+        "value": "1180px",
+        "cells": 110,
+        "note": "Keeps the complete window-management surface in two columns. The tier that makes iPad a real target rather than a degraded phone."
+      },
+      {
+        "name": "regular",
+        "value": ">1180px",
+        "cells": ">110",
+        "note": "Full four-column grid."
+      }
+    ],
+    "layers": [
+      {
+        "name": "panel-head",
+        "value": 2
+      },
+      {
+        "name": "topbar",
+        "value": 1000
+      },
+      {
+        "name": "tip-overlay",
+        "value": 6000
+      },
+      {
+        "name": "panel",
+        "value": "dynamic per-panel z from core front_z()"
+      }
+    ],
+    "scales": {
+      "note": "Added in 1.0.0: --focus-ring, --hit-min, --panel-head-h, --tile-cols, --tile-row-min, and --badge-info. Spacing, radius, and typographic scales remain untokenized \u2014 the measured sprawl below is the top remaining P2.",
+      "fontSizesObserved": [
+        "13px",
+        "0.65rem",
+        "0.7rem",
+        "0.72rem",
+        "0.78rem",
+        "0.8rem",
+        "0.85rem",
+        "0.9rem"
+      ],
+      "fontSizeCount": 8,
+      "radiiObserved": [
+        "3px",
+        "4px",
+        "5px",
+        "50%",
+        "999px"
+      ],
+      "radiiCount": 5,
+      "rawPxCount": 24,
+      "paddingLengthCount": 15,
+      "colorLiteralsOutsideTokens": [
+        {
+          "value": "#0007",
+          "role": "drag-lift shadow on .ws.floating .panel.dragging"
+        },
+        {
+          "value": "#000c",
+          "role": "tooltip overlay shadow"
+        }
+      ],
+      "controlTokens": {
+        "--focus-ring": "var(--fg); one .ws-root :focus-visible rule replaces Chrome's UA blue (measured outline: auto 1px rgb(0,95,204)) on near-black.",
+        "--hit-min": "24px default, 44px under .ws-root.coarse. The `coarse` class comes from matchMedia('(pointer: coarse)') through SurfaceProfile::caps. Keying this to the tier got both ends backwards: a 1400px kiosk touchscreen is `regular` and still needs 44px; a 900px mouse-driven window does not. Verified both ways in Chrome.",
+        "--panel-head-h": "22px. .panel-body top padding is calc(var(--panel-head-h) + 1px) so the inset header and its clearance cannot drift.",
+        "--tile-cols": "Written inline on .ws from SurfaceProfile::tile_columns(); never set per tier in CSS.",
+        "--tile-row-min": "90px. Tiling rows are minmax(var(--tile-row-min), 1fr): fill exactly when tiles fit, scroll once they cannot."
+      },
+      "tilingModel": "Grid, not wrapping flex. tile_w/tile_h are spans, so a panel emits grid-column: span <tile_w> and grid-row: span <tile_h>; row height comes from the grid, never the panel, so a tile may be shorter than its content and .panel-body scrolls instead of growing the row. Spans are clamped to tile_columns() because a DOM grid answers an over-wide span by manufacturing zero-width implicit columns that swallow the panel."
+    },
+    "parity": {
+      "tokenSurface": {
+        "cssRootDeclarations": 21,
+        "tuiThemeFields": 13,
+        "inCssNotInTheme": [
+          "--inv-bg",
+          "--inv-fg",
+          "--focus-ring",
+          "--hit-min",
+          "--panel-head-h",
+          "--tile-cols",
+          "--tile-row-min",
+          "--mono"
+        ],
+        "inThemeNotInCssRoot": []
+      },
+      "note": "panel_kit_core::tokens is the single palette and monospace source. build.rs renders assets/panel-kit-boot.css.in into OUT_DIR, so panel_kit::BOOT_CSS is generated rather than hand-mirrored. The injected assets/panel-kit.css declarations are parsed and pinned to the core tokens by a drift test, and terminal Theme::DARK derives from those tokens through const fn rgb(Token), with renderer parity pinned by tests."
+    },
+    "shadows_removed": [
+      {
+        "name": "panel-rest",
+        "value": "0 6px 24px #0007",
+        "purpose": "REMOVED in 1.0.0. Shadowed every panel at rest, floating or tiled or docked, with no terminal counterpart \u2014 a violation of the Cell-Expressible Rule."
+      }
+    ],
+    "breakpointPolicy": "Classified in core by SurfaceProfile::from_logical_width and re-evaluated on resize, not in a media query, because the shell changes behavior and not just style. The stylesheet contains zero @media queries. The terminal uses the same policy over cell counts, so both renderers agree on what a cramped surface is. Width describes how much room a surface has; it does not describe how precisely that room can be hit. Hit sizing is therefore keyed to SurfaceCapabilities::coarse_pointer via the root `coarse` class, not to the tier."
+  },
+  "components": [
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "An instrument module bolted into a rack. Controls and title are inset into the top border row rather than a header band, buying back content height.",
+      "html": "<section class=\"pk-panel\"><header class=\"pk-panel-head\"><span class=\"pk-lights\"><button class=\"pk-light pk-light-mode\" title=\"tiling / floating\"></button><button class=\"pk-light pk-light-min\" title=\"minimize\"></button><button class=\"pk-light pk-light-max\" title=\"maximize / restore\"></button></span><span class=\"pk-panel-title\">Inspector</span></header><div class=\"pk-panel-body\">content</div><div class=\"pk-resize\"></div></section>",
+      "css": ".pk-panel { display:flex; flex-direction:column; position:relative; background:var(--panel); border:1px solid var(--line2); border-radius:4px; overflow:hidden; min-width:180px; min-height:110px; font-family:var(--mono); font-size:13px; line-height:1.5; color:var(--fg); } .pk-panel-head { position:absolute; top:-1px; left:0; right:0; height:var(--panel-head-h); display:flex; align-items:center; gap:.5rem; padding:0 .5rem; z-index:2; } .pk-lights { display:flex; gap:6px; } .pk-light { width:12px; height:12px; border-radius:50%; border:0; padding:0; cursor:pointer; opacity:.9; transition:opacity .12s ease, box-shadow .12s ease; } .pk-light-mode { background:var(--blue); } .pk-light-min { background:var(--yellow); } .pk-light-max { background:var(--pink); } .pk-panel-title { color:var(--fg); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .pk-panel-body { flex:1; min-height:0; overflow:auto; padding:calc(var(--panel-head-h) + 1px) .55rem .55rem; } .pk-resize { position:absolute; right:0; bottom:0; width:14px; height:14px; cursor:nwse-resize; background:linear-gradient(135deg, transparent 50%, var(--line2) 50%); }"
+    },
+    {
+      "name": "Dock Chip",
+      "kind": "chip",
+      "refersTo": "dock-chip",
+      "description": "A minimized panel's parked nameplate. Recessed to --bg below the dock's --panel; hover moves the border to --fg and never the fill.",
+      "html": "<button class=\"pk-dock-chip\">Inspector</button>",
+      "css": ".pk-dock-chip { background:var(--bg); color:var(--fg); border:1px solid var(--line2); border-radius:3px; padding:.2rem .5rem; font-size:.72rem; font-family:var(--mono); cursor:pointer; white-space:nowrap; } .pk-dock-chip:hover { border-color:var(--fg); }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "A metadata chip that is also a filter control. Kind is carried by border color over a near-black fill, so ten kinds coexist without ten colored blocks competing.",
+      "html": "<span class=\"pk-badge\" role=\"button\" tabindex=\"0\">tag:rust<button class=\"pk-badge-btn\">\u00d7</button></span>",
+      "css": ".pk-badge { --badge-c:var(--accent); --badge-fg:var(--fg); display:inline-flex; align-items:center; gap:2px; padding:4px 10px; background:var(--bg); border:1px solid var(--badge-c); border-radius:999px; color:var(--badge-fg); font-family:var(--mono); font-size:.72rem; line-height:1.3; cursor:pointer; user-select:none; white-space:nowrap; } .pk-badge:hover:not(.active) { background:color-mix(in srgb, var(--badge-c) 18%, var(--bg)); box-shadow:0 0 0 2px color-mix(in srgb, var(--badge-c) 20%, transparent); } .pk-badge.active { background:color-mix(in srgb, var(--accent) 25%, var(--bg)); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); } .pk-badge:focus-visible { outline:1px solid var(--badge-c); outline-offset:1px; } .pk-badge-btn { background:none; border:none; padding:0 0 0 4px; margin:0; cursor:pointer; line-height:1; font-family:inherit; font-size:.85rem; color:color-mix(in srgb, var(--badge-fg) 70%, transparent); } .pk-badge-btn:hover { color:var(--fg); }"
+    },
+    {
+      "name": "Spinner",
+      "kind": "custom",
+      "refersTo": "spinner-label",
+      "description": "The smallest possible 'working' \u2014 a 12px ring whose top edge is the accent, with an optional accent caption that is omitted entirely when empty.",
+      "html": "<span class=\"pk-spinner\"><span class=\"pk-spin-ring\"></span><span class=\"pk-spin-label\">indexing\u2026</span></span>",
+      "css": ".pk-spinner { display:inline-flex; align-items:center; gap:.45rem; } .pk-spin-ring { width:12px; height:12px; border-radius:50%; border:2px solid var(--line2); border-top-color:var(--accent); animation:pk-spin .7s linear infinite; display:inline-block; } .pk-spin-label { color:var(--accent); font-size:.78rem; font-family:var(--mono); } @keyframes pk-spin { to { transform:rotate(360deg); } }"
+    },
+    {
+      "name": "Tooltip Overlay",
+      "kind": "custom",
+      "refersTo": "tooltip-overlay",
+      "description": "The one genuinely detached surface, and so the one sanctioned elevation shadow. Placement is computed in Rust (tip_pos): prefer left of the cursor, flip right without room, clamp inside the window.",
+      "html": "<div class=\"pk-tip-overlay\">Viewport-aware tooltip body.</div>",
+      "css": ".pk-tip-overlay { position:fixed; width:228px; z-index:6000; background:var(--panel); border:1px solid var(--line2); border-radius:5px; padding:.5rem .6rem; box-shadow:0 10px 30px #000c; font-family:var(--mono); font-size:.72rem; color:var(--fg); }"
+    },
+    {
+      "name": "Traffic Light",
+      "kind": "button",
+      "refersTo": "light-mode",
+      "description": "A lit indicator naming a window operation, printer-CMY rather than macOS red/yellow/green because none of these lights destroys anything. The 12px dot is now drawn by ::after inside a >=24px button so the visual mark stays small while the hit target clears WCAG 2.5.8.",
+      "html": "<button class=\"pk-light pk-light-mode\" title=\"tiling / floating\" aria-label=\"tiling / floating\"></button>",
+      "css": ".pk-light { position:relative; width:var(--hit-min); height:var(--hit-min); min-width:var(--hit-min); min-height:var(--hit-min); border:0; padding:0; background:none; cursor:pointer; } .pk-light::after { content:''; position:absolute; left:50%; top:50%; width:12px; height:12px; border-radius:50%; background:var(--light-c); opacity:.9; transform:translate(-50%,-50%); transition:opacity .12s ease, box-shadow .12s ease; } .pk-light:hover::after, .pk-light:focus-visible::after { opacity:1; box-shadow:0 0 0 2px color-mix(in srgb, var(--light-c) 70%, transparent); }"
+    },
+    {
+      "name": "Embedded Editor Viewport",
+      "kind": "custom",
+      "refersTo": "monaco-editor",
+      "description": "A Monaco editing surface that fills its panel body and presents panel-kit's non-inheriting dark theme, canonical monospace metrics, and token-bound loading or error states.",
+      "html": "<div class=\"pk-monaco\"><div class=\"pk-monaco-host\" role=\"textbox\" aria-label=\"Code editor\"></div><div class=\"pk-monaco-status\">loading editor\u2026</div></div>",
+      "css": ".pk-monaco { position:relative; display:flex; flex-direction:column; width:100%; height:100%; min-width:0; min-height:0; background:var(--panel); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:19.5px; } .pk-monaco-host { flex:1; min-width:0; min-height:0; } .pk-monaco-status { position:absolute; inset:0; display:grid; place-items:center; color:var(--dim); font-size:.78rem; letter-spacing:.03em; pointer-events:none; } .pk-monaco-error { color:var(--red); }"
+    },
+    {
+      "name": "Progress Bar",
+      "kind": "custom",
+      "refersTo": "progress-bar",
+      "description": "A store-shaped loading readout. Determinate progress includes a percentage; indeterminate progress omits the fabricated number and retains an incomplete static read when reduced motion is requested.",
+      "html": "<div class=\"pk-progress\" role=\"progressbar\" aria-busy=\"true\" aria-label=\"Loading\"><div class=\"pk-progress-head\"><span class=\"pk-progress-label\">Loading</span></div><div class=\"pk-progress-track\"><div class=\"pk-progress-fill indeterminate\"></div></div></div>",
+      "css": ".pk-progress { display:flex; flex-direction:column; gap:.3rem; width:100%; max-width:26rem; font-family:var(--mono); } .pk-progress-head { display:flex; align-items:baseline; gap:.5rem; font-size:.72rem; letter-spacing:.03em; } .pk-progress-label { color:var(--fg); } .pk-progress-detail { color:var(--dim); } .pk-progress-pct { margin-left:auto; color:var(--accent); font-variant-numeric:tabular-nums; } .pk-progress-track { height:.55rem; background:var(--bg); border:1px solid var(--line2); border-radius:3px; overflow:hidden; } .pk-progress-fill { height:100%; background:var(--accent); transition:width .4s ease; } .pk-progress-fill.indeterminate { width:40%; animation:pk-indet 1.2s infinite linear; } @keyframes pk-indet { 0% { transform:translateX(-100%); } 100% { transform:translateX(350%); } } @media (prefers-reduced-motion: reduce) { .pk-progress-fill { transition:none; } .pk-progress-fill.indeterminate { animation:none; width:40%; transform:none; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lit Console",
+    "overview": "panel-kit is a near-black console in which the only saturated color is a lit indicator. Everything structural is graphite; against it, five saturated hues exist and each one means something \u2014 printer-CMY traffic lights that name a window operation, and a phosphor-green accent that only ever says 'this is live right now.' The restraint is what makes a single lit pixel readable across a wall of panels.\n\nThe system is a window manager, not a page. Its job is to render a unified tileable, floatable, muxable workspace with the same experience on every platform it reaches \u2014 web and terminal today, iPad, Android, native desktop, and embedded as stated direction. That sets the hardest constraint in the system: the design language must be expressible in cells. A terminal has no shadows, no sub-pixel radii, no gradients, no opacity, so the visual system is built from what every target can draw \u2014 tonal layering, hairline borders, a fixed monospace grid, and color \u2014 and any finish beyond that set is a web-only garnish, never load-bearing.\n\nDensity is the third pillar. This is an Operate surface: chrome yields to content. Panel controls and titles are inset into the top border row rather than occupying a header band, following ratatui's Block::title treatment, precisely to buy back vertical space. Nothing decorates; everything either labels, separates, or signals.",
+    "keyCharacteristics": [
+      "Near-black graphite base (#0a0a0a / #0d0d0d) with exactly one text grey and one dim grey.",
+      "Monospace everywhere \u2014 no proportional font exists in the system.",
+      "Five saturated hues, each semantically assigned; never used as decoration.",
+      "Flat by rule: depth comes from tone and hairlines, not shadow.",
+      "Chrome inset into borders; content gets the height.",
+      "Every visual decision must survive translation into terminal cells."
+    ],
+    "rules": [
+      {
+        "name": "The Lit Indicator Rule",
+        "body": "Saturation is reserved for meaning. The accent and the five status hues together occupy \u226410% of any screen. If a surface reads as green, something is wrong \u2014 not something is live.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Greys Rule",
+        "body": "There is one text grey (fg) and one dim grey (dim). A third intermediate grey is never introduced; if text needs to sit between them, the answer is weight or case, not a new value.",
+        "section": "colors"
+      },
+      {
+        "name": "The Seam/Edge Rule",
+        "body": "--line divides regions; --line2 bounds objects. Never swap them, and never use either as a text color \u2014 the two-step ramp is the only cue that says 'this is a thing' versus 'this is a boundary between areas.'",
+        "section": "colors"
+      },
+      {
+        "name": "The Tracked-Caps Rule",
+        "body": "Any string set below .75rem that must be scanned rather than read is uppercase with .06em tracking. Monospace at that size loses word-shape; caps and tracking give it back.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Family Rule",
+        "body": "No proportional font enters the system, and button inherits --mono explicitly rather than falling back to the UA default.",
+        "section": "typography"
+      },
+      {
+        "name": "The Cell-Expressible Rule",
+        "body": "No depth cue may be load-bearing unless a terminal can draw it. If removing shadows from the web surface makes z-order illegible, the fix is a tonal or border treatment that both renderers share \u2014 not a bigger shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Cell-Expressible Rule",
+        "body": "No depth cue may be load-bearing unless a terminal can draw it. If removing shadows makes z-order illegible, the fix is a tonal or border treatment both renderers share \u2014 not a bigger shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Single-Source-of-Truth Rule",
+        "body": "Every shared palette value originates in panel_kit_core::tokens. Generate or derive renderer surfaces from it, or pin a necessary hand-authored declaration to it with a drift test; never maintain a visually equivalent copy by discipline alone.",
+        "section": "colors"
+      },
+      {
+        "name": "The Escape Hatch Rule",
+        "body": "A tier may withhold the means to enter a window state; it must never withhold the means to leave one. SavedLayoutV2 carries WinState across surfaces, so a panel maximized on a regular surface arrives maximized on a compact one. Compact renders the magenta restore light \u2014 and only that one \u2014 for a maximized panel. Minimized panels escape through the dock.",
+        "section": "layout"
+      }
+    ],
+    "dos": [
+      "Do put anything both renderers must agree on in panel-kit-core first, then let each backend translate it. 'Web and terminal both happen to do this' is not the same as 'core owns it'.",
+      "Do read colours from panel_kit_core::tokens: use Token.hex for CSS-facing integrations and Token.rgb for terminal or native backends.",
+      "Do keep every visual decision expressible in terminal cells: tone, hairline, monospace cell, color.",
+      "Do reserve --accent for live state \u2014 activity, loading, selection, drag-in-flight \u2014 and keep it under ~10% of any screen.",
+      "Do use --line for region dividers and --line2 for object edges, never interchangeably, and never as text.",
+      "Do carry hierarchy with size, weight, case, and tracking, since there is only one font family.",
+      "Do inset panel chrome into the border row and give reclaimed height to content.",
+      "Do express depth as --panel on --bg plus a --line2 edge.",
+      "Do theme by overriding :root variables in a stylesheet layered after panel_kit::CSS, and mirror the change in Theme so the terminal stays the same product.",
+      "Do let core own surface policy: tier classification, column count, keybindings, and step sizes come from SurfaceProfile / command_for / CommandStep, never from a stylesheet or a backend-local table.",
+      "Do key touch sizing to the detected pointer (SurfaceCapabilities::coarse_pointer -> the root `coarse` class), never to the viewport width."
+    ],
+    "donts": [
+      "Don't put box-shadow on a resting surface. Shadow belongs only to things that have genuinely left the plane, like the tooltip overlay.",
+      "Don't use the accent on static chrome \u2014 borders, titles, dividers, or decoration. A green that is always on cannot signal.",
+      "Don't introduce a third grey between --fg and --dim.",
+      "Don't give the traffic lights macOS red/yellow/green semantics; none of them destroys anything, and the CMY assignment is the mapping.",
+      "Don't add a proportional typeface, a gradient, a blur, or a translucent surface. None of them survives a cell grid.",
+      "Don't set scannable text below .65rem, and don't set it at .72rem or below without caps and tracking.",
+      "Don't hardcode a color, radius, or font stack that a :root token already names.",
+      "Don't hand-copy the palette into a fourth place such as a boot shell, JavaScript theme table, or native backend; generate or derive that surface from panel_kit_core::tokens.",
+      "Don't solve a layout problem with a media query when the shell needs to change behavior \u2014 the breakpoint is evaluated in Rust so behavior and style can change together.",
+      "Don't emit a tile span wider than SurfaceProfile::tile_columns(); a DOM grid answers an over-wide span with zero-width implicit columns that hide the panel entirely.",
+      "Don't give a tiled panel a fixed height. Rows are sized by the grid so content scrolls inside the tile; a fixed height either strands dead space or overflows the workspace.",
+      "Don't let a tier hide a control that is the only exit from a persisted state. Withholding the corner grip on a phone is policy; withholding restore from an already-maximized panel is a trap with no way out but clearing storage.",
+      "Don't hide window-management chrome from a stylesheet when the renderer already gates it. Two sources of truth let a `display:none` swallow the one control the renderer deliberately kept."
+    ]
+  }
+}

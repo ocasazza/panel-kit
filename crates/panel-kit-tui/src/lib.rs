@@ -1,11 +1,11 @@
 //! Ratatui shell for panel-kit-core: the same panel workspace the Dioxus
 //! crate renders to the DOM, drawn in terminal cells instead.
 //!
-//! Same state machine, same persisted layout shape, same interactions:
+//! Same state machine, same versioned persisted layout, same interactions:
 //! drag a panel header to move it (floating) or reorder it (tiling), drag
-//! the bottom-right grip to resize (span-snapped in tiling), traffic
-//! lights for mode/minimize/maximize, a dock line for minimized panels.
-//! Units are character cells; the core math doesn't care.
+//! the bottom-right grip to resize (span-snapped in tiling), use shared
+//! keyboard commands or traffic lights for window management, and restore
+//! minimized panels from the dock. Units are character cells.
 //!
 //! ```no_run
 //! use panel_kit_core::{LayoutBuilder, PanelKind, PanelWin};
@@ -46,10 +46,13 @@ pub use theme::Theme;
 use std::path::PathBuf;
 
 use panel_kit_core::{
-    apply_drag, begin_drag, begin_tile_resize, clamp_scroll, effective_rect, front_z, max_scroll,
-    merge_defaults, reorder_tile, restore, visible_panels, workspace_chrome, ChromeMetrics, Clamp,
-    Drag, DragKind, Mode, PanelKind, PanelWin, PointerButton, PointerEvent, PointerEventKind,
-    Region, SavedLayout, TileMetrics, WinState, TILE_W_MAX,
+    apply_command, apply_drag, begin_drag, begin_tile_resize, clamp_scroll, command_for,
+    effective_mode as core_effective_mode, effective_rect, max_scroll, merge_defaults, migrate_v1,
+    reconcile_units, reorder_tile, restore, visible_panels, workspace_chrome, ChromeMetrics, Clamp,
+    CommandStep, Drag, DragKind, FocusContext, KeyChord, Mode, PanelCommand, PanelKind, PanelWin,
+    PointerButton, PointerEvent, PointerEventKind, Region, SavedLayoutV2, StoredLayout,
+    SurfaceCapabilities, SurfaceProfile, TileMetrics, Units, WinState, CELLS_COMPACT_MAX,
+    CELLS_TABLET_MAX, LAYOUT_SCHEMA_VERSION, TILE_W_MAX,
 };
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Style;
@@ -59,9 +62,6 @@ use ratatui::widgets::{
     Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
 };
 use ratatui::Frame;
-
-/// Height of one tiling row unit in cells (`tile_h` counts these).
-const ROW_CELLS: f64 = 4.0;
 
 /// WebGL-safe chrome glyphs. Ratzilla's WebGL font atlas does not reliably
 /// include box-drawing symbols, so the shared TUI chrome sticks to ASCII.
@@ -126,14 +126,8 @@ fn write_header_text(f: &mut Frame, x: u16, y: u16, max_width: u16, text: &str, 
     }
 }
 
-/// Backwards-compatible alias for the shared pointer button type.
-pub type TuiMouseButton = PointerButton;
-/// Backwards-compatible alias for the shared pointer event kind.
-pub type TuiMouseEventKind = PointerEventKind;
-/// Backwards-compatible alias for the shared pointer event type.
-pub type TuiMouseEvent = PointerEvent;
-
 /// Per-panel hit zones recorded at draw time, in screen cells.
+#[derive(Clone, Copy)]
 struct Zone {
     /// Index into `panels`.
     idx: usize,
@@ -147,24 +141,72 @@ struct Zone {
     grip: Rect,
 }
 
+/// Persistence transport for a TUI workspace.
+///
+/// The workspace owns the versioned JSON shape; implementations only move
+/// that JSON to and from a backend such as a native file or browser
+/// `localStorage`. Returning `Ok(None)` means no saved layout exists.
+pub trait LayoutStore {
+    /// Load the previously saved layout JSON, if any.
+    fn load(&self) -> Result<Option<String>, String>;
+
+    /// Replace the saved layout with `json`.
+    fn save(&self, json: &str) -> Result<(), String>;
+}
+
+struct FileLayoutStore(PathBuf);
+
+impl LayoutStore for FileLayoutStore {
+    fn load(&self) -> Result<Option<String>, String> {
+        match std::fs::read_to_string(&self.0) {
+            Ok(json) => Ok(Some(json)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn save(&self, json: &str) -> Result<(), String> {
+        std::fs::write(&self.0, json).map_err(|error| error.to_string())
+    }
+}
+
+fn terminal_profile(width: f64) -> SurfaceProfile {
+    SurfaceProfile::from_logical_width(
+        width,
+        CELLS_COMPACT_MAX,
+        CELLS_TABLET_MAX,
+        SurfaceCapabilities {
+            coarse_pointer: false,
+            hover: true,
+            keyboard: true,
+        },
+    )
+}
+
 /// A panel workspace rendered with ratatui.
 ///
-/// Owns the panel `Vec`, the mode, and the in-flight drag — the exact state
-/// the Dioxus shell keeps in signals — and feeds pointer cells into the
-/// shared core math. Layout persists as JSON (same [`SavedLayout`] shape the
-/// web shell stores in localStorage) when a `store` path is given.
+/// Owns the panel `Vec`, preferred mode, keyboard focus, and in-flight drag,
+/// and feeds terminal-cell input into the shared core state machine. Layout
+/// persists as [`SavedLayoutV2`] JSON when a [`LayoutStore`] is configured.
 pub struct TuiWorkspace<K: PanelKind> {
     /// All panels with their geometry and window state. `Vec` order is the
     /// tiling order.
     pub panels: Vec<PanelWin<K>>,
-    /// The current layout [`Mode`].
+    /// Preferred layout mode. Compact surfaces render the core
+    /// [`effective_mode`](panel_kit_core::effective_mode) instead.
     pub mode: Mode,
+    /// Panel that receives keyboard window-management commands.
+    pub focused: Option<K>,
     /// Chrome palette — defaults to the web shell's dark palette
     /// ([`Theme::DARK`]); swap presets to retheme.
     pub theme: Theme,
     drag: Option<Drag>,
     tile_drag: Option<K>,
-    store: Option<PathBuf>,
+    store: Option<Box<dyn LayoutStore>>,
+    layout_ready: bool,
+    pending_layout: Option<StoredLayout<K>>,
+    viewport: (f64, f64),
+    surface: SurfaceProfile,
     ws_area: Rect,
     zones: Vec<Zone>,
     dock_chips: Vec<(Rect, usize)>,
@@ -180,33 +222,41 @@ pub struct TuiWorkspace<K: PanelKind> {
 }
 
 impl<K: PanelKind> TuiWorkspace<K> {
-    /// Create a workspace: restores the persisted layout from `store` if
-    /// given (merging in any panel kinds added since it was saved),
-    /// otherwise uses `defaults`.
+    /// Create a workspace backed by a native JSON file.
+    ///
+    /// The saved layout, when present, is restored on the first render so V1
+    /// migration and cross-unit reconciliation use the actual terminal size.
+    /// Defaults are merged after restoration so newly added panel kinds appear.
     pub fn new(store: Option<PathBuf>, defaults: fn() -> Vec<PanelWin<K>>) -> Self {
-        let mut panels = None;
-        let mut mode = Mode::Floating;
-        if let Some(path) = &store {
-            if let Ok(raw) = std::fs::read_to_string(path) {
-                if let Ok(saved) = serde_json::from_str::<SavedLayout<K>>(&raw) {
-                    let mut ps = saved.panels;
-                    merge_defaults(&mut ps, &defaults());
-                    panels = Some(ps);
-                    mode = if saved.tiling {
-                        Mode::Tiling
-                    } else {
-                        Mode::Floating
-                    };
-                }
-            }
-        }
+        let store = store.map(|path| Box::new(FileLayoutStore(path)) as Box<dyn LayoutStore>);
+        Self::build(store, defaults)
+    }
+
+    /// Create a workspace backed by a renderer-provided storage transport.
+    ///
+    /// This is the browser/Ratzilla entry point for `localStorage` and is also
+    /// suitable for native stores other than a file.
+    pub fn with_store(store: Box<dyn LayoutStore>, defaults: fn() -> Vec<PanelWin<K>>) -> Self {
+        Self::build(Some(store), defaults)
+    }
+
+    fn build(store: Option<Box<dyn LayoutStore>>, defaults: fn() -> Vec<PanelWin<K>>) -> Self {
+        let pending_layout = store
+            .as_ref()
+            .and_then(|store| store.load().ok().flatten())
+            .and_then(|raw| serde_json::from_str::<StoredLayout<K>>(&raw).ok());
         Self {
-            panels: panels.unwrap_or_else(defaults),
-            mode,
+            panels: defaults(),
+            mode: Mode::Floating,
+            focused: None,
             theme: Theme::default(),
             drag: None,
             tile_drag: None,
             store,
+            pending_layout,
+            layout_ready: false,
+            viewport: (0.0, 0.0),
+            surface: terminal_profile(0.0),
             ws_area: Rect::default(),
             zones: Vec::new(),
             dock_chips: Vec::new(),
@@ -225,18 +275,50 @@ impl<K: PanelKind> TuiWorkspace<K> {
         self
     }
 
-    /// Persist the layout now (also called automatically when a drag
-    /// settles). No-op without a store path.
+    /// Persist the current layout as schema V2.
+    /// Geometry is tagged as [`Units::Cells`] against the most recently
+    /// rendered terminal size. This is a no-op before the first usable render
+    /// or when no store is configured.
     pub fn save(&self) {
-        if let Some(path) = &self.store {
-            let saved = SavedLayout {
-                panels: self.panels.clone(),
-                tiling: self.mode == Mode::Tiling,
-            };
-            if let Ok(json) = serde_json::to_string_pretty(&saved) {
-                let _ = std::fs::write(path, json);
-            }
+        if !self.layout_ready || self.viewport.0 <= 0.0 || self.viewport.1 <= 0.0 {
+            return;
         }
+        let Some(store) = &self.store else { return };
+        let saved = SavedLayoutV2 {
+            version: LAYOUT_SCHEMA_VERSION,
+            units: Units::Cells,
+            viewport: self.viewport,
+            mode: self.mode,
+            panels: self.panels.clone(),
+        };
+        if let Ok(json) = serde_json::to_string_pretty(&saved) {
+            let _ = store.save(&json);
+        }
+    }
+
+    /// Surface classification from the most recent render.
+    pub fn surface_profile(&self) -> SurfaceProfile {
+        self.surface
+    }
+
+    /// Layout mode actually in force after applying the surface limits.
+    pub fn effective_mode(&self) -> Mode {
+        core_effective_mode(self.mode, &self.surface)
+    }
+
+    fn restore_pending_layout(&mut self) {
+        let Some(stored) = self.pending_layout.take() else {
+            return;
+        };
+        let layout = match stored {
+            StoredLayout::V1(old) => migrate_v1(old, Units::Cells, self.viewport),
+            StoredLayout::V2(layout) => reconcile_units(layout, Units::Cells, self.viewport),
+        };
+        let mut panels = layout.panels;
+        let defaults = self.panels.clone();
+        merge_defaults(&mut panels, &defaults);
+        self.panels = panels;
+        self.mode = layout.mode;
     }
 
     /// True while a move/resize/reorder drag is in flight.
@@ -254,6 +336,8 @@ impl<K: PanelKind> TuiWorkspace<K> {
         area: Rect,
         body: &mut dyn FnMut(&mut Frame, Rect, K, bool),
     ) {
+        self.viewport = (area.width as f64, area.height as f64);
+        self.surface = terminal_profile(self.viewport.0);
         self.zones.clear();
         self.dock_chips.clear();
         let cs = self.charset;
@@ -272,6 +356,10 @@ impl<K: PanelKind> TuiWorkspace<K> {
             );
             return;
         }
+        self.restore_pending_layout();
+        let mode = self.effective_mode();
+        self.layout_ready = true;
+        let window_management = self.surface.window_management();
         let t = self.theme;
         let chrome = workspace_chrome(area.width as f64, area.height as f64, &ChromeMetrics::CELLS);
         let root = area;
@@ -293,10 +381,16 @@ impl<K: PanelKind> TuiWorkspace<K> {
         f.render_widget(dock_block, dock);
 
         let (visible, maximized) = visible_panels(&self.panels);
+        if !visible
+            .iter()
+            .any(|&i| self.focused == Some(self.panels[i].kind))
+        {
+            self.focused = visible.first().map(|&i| self.panels[i].kind);
+        }
 
         // Floating panels draw back-to-front by z so overlap works.
         let mut order = visible;
-        if maximized.is_none() && self.mode == Mode::Floating {
+        if maximized.is_none() && mode == Mode::Floating {
             order.sort_by_key(|&i| self.panels[i].z);
         }
 
@@ -306,7 +400,7 @@ impl<K: PanelKind> TuiWorkspace<K> {
         // bounds the workspace-level vertical scroll. Then each tile is
         // shifted up by `ws_scroll` and clipped to the workspace band.
         let mut tile_rects: Vec<(usize, Rect)> = Vec::new();
-        let scrollable = maximized.is_none() && self.mode == Mode::Tiling;
+        let scrollable = maximized.is_none() && mode == Mode::Tiling;
         if scrollable {
             let col = (ws.width as f64 / TILE_W_MAX as f64).floor().max(1.0);
             // Virtual layout (top = 0), independent of scroll/viewport height.
@@ -320,7 +414,7 @@ impl<K: PanelKind> TuiWorkspace<K> {
                     used = 0;
                     row_h = 0;
                 }
-                let h = ((th as f64 * ROW_CELLS) as u16).max(3);
+                let h = ((th as f64 * TileMetrics::CELLS.row) as u16).max(3);
                 let x = ws.x + (used as f64 * col) as u16;
                 let w = if used + tw == TILE_W_MAX {
                     ws.right().saturating_sub(x)
@@ -361,7 +455,7 @@ impl<K: PanelKind> TuiWorkspace<K> {
             let p = self.panels[i];
             let rect = if maximized.is_some() {
                 ws
-            } else if self.mode == Mode::Tiling {
+            } else if mode == Mode::Tiling {
                 match tile_rects.iter().find(|(ti, _)| *ti == i) {
                     Some((_, r)) => *r,
                     None => continue,
@@ -382,12 +476,11 @@ impl<K: PanelKind> TuiWorkspace<K> {
 
             f.render_widget(Clear, rect);
             let t = self.theme;
-            let focused = maximized == Some(i)
-                || (self.mode == Mode::Floating && p.z == front_z(&self.panels) - 1);
+            let focused = self.focused == Some(p.kind);
             let border_style = if self.tile_drag == Some(p.kind) {
-                Style::default().fg(t.yellow)
+                Style::default().fg(t.accent)
             } else if focused {
-                Style::default().fg(t.dim)
+                Style::default().fg(t.fg)
             } else {
                 Style::default().fg(t.line2)
             };
@@ -400,21 +493,37 @@ impl<K: PanelKind> TuiWorkspace<K> {
             // the same hit zones.
             let ly = rect.y;
             let lx = rect.x + 2;
-            let light_cells = [
-                Rect::new(lx, ly, 1, 1),
-                Rect::new(lx + 2, ly, 1, 1),
-                Rect::new(lx + 4, ly, 1, 1),
-            ];
-            let hovered_light = self
-                .hover
-                .and_then(|h| light_cells.iter().position(|c| c.contains(h)));
+            // A tier may withhold the means to enter a window state, never
+            // the means to leave one: a panel maximized on a wider surface
+            // arrives maximized here through SavedLayoutV2, so a compact
+            // terminal still draws the magenta restore light — and only that
+            // one, in the leftmost slot since its siblings are absent.
+            let restore_only = self.surface.must_offer_restore(p.state);
+            let show_lights = window_management || restore_only;
+            let light_cells = if window_management {
+                [
+                    Rect::new(lx, ly, 1, 1),
+                    Rect::new(lx + 2, ly, 1, 1),
+                    Rect::new(lx + 4, ly, 1, 1),
+                ]
+            } else if restore_only {
+                [Rect::default(), Rect::default(), Rect::new(lx, ly, 1, 1)]
+            } else {
+                [Rect::default(); 3]
+            };
+            let hovered_light = show_lights
+                .then(|| {
+                    self.hover
+                        .and_then(|h| light_cells.iter().position(|c| c.contains(h)))
+                })
+                .flatten();
             let mut block = Block::default()
                 .borders(Borders::ALL)
                 .border_set(cs.border())
                 .border_style(border_style);
             let hovered_hint = hovered_light.map(|slot| match slot {
                 0 => {
-                    if self.mode == Mode::Tiling {
+                    if mode == Mode::Tiling {
                         "float"
                     } else {
                         "tile"
@@ -441,20 +550,28 @@ impl<K: PanelKind> TuiWorkspace<K> {
             }
             let inner = block.inner(rect);
             f.render_widget(block, rect);
-            for (slot, cell) in light_cells.iter().enumerate() {
-                let color = match slot {
-                    0 => t.blue,
-                    1 => t.yellow,
-                    _ => t.pink,
-                };
-                let ch = cs.light(hovered_light == Some(slot));
-                if cell.x < rect.right() && cell.y < rect.bottom() {
-                    f.buffer_mut()[(cell.x, cell.y)]
-                        .set_char(ch)
-                        .set_style(Style::default().fg(color));
+            if show_lights {
+                for (slot, cell) in light_cells.iter().enumerate() {
+                    let color = match slot {
+                        0 => t.blue,
+                        1 => t.yellow,
+                        _ => t.pink,
+                    };
+                    let ch = cs.light(hovered_light == Some(slot));
+                    if cell.width > 0 && cell.x < rect.right() && cell.y < rect.bottom() {
+                        f.buffer_mut()[(cell.x, cell.y)]
+                            .set_char(ch)
+                            .set_style(Style::default().fg(color));
+                    }
                 }
             }
-            let title_x = rect.x.saturating_add(9);
+            let title_x = rect.x.saturating_add(if window_management {
+                9
+            } else if restore_only {
+                4
+            } else {
+                2
+            });
             let title_w = rect.right().saturating_sub(title_x.saturating_add(1));
             write_header_text(
                 f,
@@ -474,14 +591,19 @@ impl<K: PanelKind> TuiWorkspace<K> {
             }
             body(f, inner, p.kind, maximized == Some(i));
             // Resize grip: the bottom-right corner itself, tinted accent
-            // under the pointer.
-            let grip = Rect::new(
-                rect.right().saturating_sub(2),
-                rect.bottom().saturating_sub(1),
-                2,
-                1,
-            );
-            if self.hover.map(|h| grip.contains(h)).unwrap_or(false) {
+            // under the pointer. Geometry manipulation stays withheld on
+            // compact surfaces even when the restore light is shown.
+            let grip = if window_management {
+                Rect::new(
+                    rect.right().saturating_sub(2),
+                    rect.bottom().saturating_sub(1),
+                    2,
+                    1,
+                )
+            } else {
+                Rect::default()
+            };
+            if window_management && self.hover.map(|h| grip.contains(h)).unwrap_or(false) {
                 f.render_widget(
                     Paragraph::new("+").style(Style::default().fg(t.accent)),
                     Rect::new(rect.right().saturating_sub(1), grip.y, 1, 1),
@@ -491,7 +613,11 @@ impl<K: PanelKind> TuiWorkspace<K> {
             self.zones.push(Zone {
                 idx: i,
                 panel: rect,
-                header: Rect::new(rect.x, rect.y, rect.width, 1),
+                header: if show_lights {
+                    Rect::new(rect.x, rect.y, rect.width, 1)
+                } else {
+                    Rect::default()
+                },
                 lights: light_cells,
                 grip,
             });
@@ -518,7 +644,7 @@ impl<K: PanelKind> TuiWorkspace<K> {
             let label = format!(" [{}]", self.panels[i].kind.title());
             let w = label.chars().count() as u16;
             self.dock_chips.push((Rect::new(x, dock_inner.y, w, 1), i));
-            spans.push(Span::styled(label, Style::default().fg(t.accent)));
+            spans.push(Span::styled(label, Style::default().fg(t.fg)));
             x += w;
         }
         f.render_widget(Paragraph::new(Line::from(spans)), dock_inner);
@@ -542,46 +668,75 @@ impl<K: PanelKind> TuiWorkspace<K> {
         }
     }
 
+    fn apply_panel_command(&mut self, command: PanelCommand) {
+        apply_command(
+            &mut self.panels,
+            &mut self.mode,
+            &mut self.focused,
+            command,
+            Clamp::CELLS,
+            CommandStep::CELLS,
+            self.ws_area.width as f64,
+            self.ws_area.height as f64,
+        );
+    }
+
+    /// Translate a renderer-neutral key chord through the shared command
+    /// table and apply it to this workspace.
+    ///
+    /// `focus` identifies whether the workspace, a panel, or a text input
+    /// owns the key. Returns `true` when the chord mapped to a command.
+    pub fn handle_key(&mut self, chord: KeyChord, focus: FocusContext<K>) -> bool {
+        if let FocusContext::Panel(kind) = focus {
+            self.focused = Some(kind);
+        }
+        let Some(command) = command_for(chord, &focus) else {
+            return false;
+        };
+        self.apply_panel_command(command);
+        self.save();
+        true
+    }
+
     /// Feed a mouse event in terminal-cell coordinates: clicks hit traffic lights, dock chips,
     /// headers (move/reorder), the grip (resize), and panel bodies (raise);
     /// drags apply through the shared core math; release settles + saves.
-    pub fn handle_mouse(&mut self, m: TuiMouseEvent) {
+    pub fn handle_mouse(&mut self, m: PointerEvent) {
         let at = Position::new(m.x as u16, m.y as u16);
         let (mx, my) = (m.x, m.y);
+        let mode = self.effective_mode();
         match m.kind {
-            TuiMouseEventKind::Down(TuiMouseButton::Primary) => {
+            PointerEventKind::Down(PointerButton::Primary) => {
                 for (rect, i) in &self.dock_chips {
                     if rect.contains(at) {
                         let kind = self.panels[*i].kind;
                         restore(&mut self.panels, kind);
+                        self.focused = Some(kind);
                         self.save();
                         return;
                     }
                 }
                 // Topmost panel first (zones are drawn back-to-front).
-                let zone = self.zones.iter().rev().find(|z| z.panel.contains(at));
+                let zone = self
+                    .zones
+                    .iter()
+                    .rev()
+                    .find(|z| z.panel.contains(at))
+                    .copied();
                 let Some(z) = zone else { return };
                 let i = z.idx;
+                self.focused = Some(self.panels[i].kind);
                 if z.lights[0].contains(at) {
-                    self.mode = if self.mode == Mode::Tiling {
-                        Mode::Floating
-                    } else {
-                        Mode::Tiling
-                    };
+                    self.apply_panel_command(PanelCommand::ToggleMode);
                     self.save();
                 } else if z.lights[1].contains(at) {
-                    self.panels[i].state = WinState::Minimized;
+                    self.apply_panel_command(PanelCommand::Minimize);
                     self.save();
                 } else if z.lights[2].contains(at) {
-                    let p = &mut self.panels[i];
-                    p.state = if p.state == WinState::Maximized {
-                        WinState::Floating
-                    } else {
-                        WinState::Maximized
-                    };
+                    self.apply_panel_command(PanelCommand::Maximize);
                     self.save();
                 } else if z.grip.contains(at) {
-                    self.drag = if self.mode == Mode::Tiling {
+                    self.drag = if mode == Mode::Tiling {
                         begin_tile_resize(&self.panels, i, mx, my)
                     } else {
                         let (vw, vh) = (self.ws_area.width as f64, self.ws_area.height as f64);
@@ -597,7 +752,7 @@ impl<K: PanelKind> TuiWorkspace<K> {
                         )
                     };
                 } else if z.header.contains(at) {
-                    if self.mode == Mode::Tiling {
+                    if mode == Mode::Tiling {
                         self.tile_drag = Some(self.panels[i].kind);
                     } else {
                         let (vw, vh) = (self.ws_area.width as f64, self.ws_area.height as f64);
@@ -611,17 +766,15 @@ impl<K: PanelKind> TuiWorkspace<K> {
                             vh,
                             &Clamp::CELLS,
                         );
-                        let z = front_z(&self.panels);
-                        self.panels[i].z = z;
+                        self.apply_panel_command(PanelCommand::Raise);
                     }
-                } else if self.mode == Mode::Floating {
-                    let z = front_z(&self.panels);
-                    self.panels[i].z = z;
+                } else if mode == Mode::Floating {
+                    self.apply_panel_command(PanelCommand::Raise);
                 }
             }
-            TuiMouseEventKind::Drag(TuiMouseButton::Primary) => {
+            PointerEventKind::Drag(PointerButton::Primary) => {
                 if let Some(d) = self.drag {
-                    let tiling = self.mode == Mode::Tiling;
+                    let tiling = mode == Mode::Tiling;
                     let vw = self.ws_area.width as f64;
                     apply_drag(
                         &mut self.panels,
@@ -642,17 +795,17 @@ impl<K: PanelKind> TuiWorkspace<K> {
                     }
                 }
             }
-            TuiMouseEventKind::Up(TuiMouseButton::Primary) => {
+            PointerEventKind::Up(PointerButton::Primary) => {
                 if self.dragging() {
                     self.drag = None;
                     self.tile_drag = None;
                     self.save();
                 }
             }
-            TuiMouseEventKind::Moved => {
+            PointerEventKind::Moved => {
                 self.hover = Some(at);
             }
-            TuiMouseEventKind::Scroll { delta_y } => {
+            PointerEventKind::Scroll { delta_y } => {
                 self.scroll_by(delta_y);
             }
         }
@@ -662,16 +815,17 @@ impl<K: PanelKind> TuiWorkspace<K> {
     /// reveals content further down). Clamped to the laid-out content bounds
     /// measured at the last [`render`](Self::render); a no-op unless the
     /// content overhangs the workspace area (tiling mode). Hook for wheel
-    /// events and `PgUp`/`PgDn`/arrow key bindings.
+    /// events and `PgUp`/`PgDn` bindings.
     pub fn scroll_by(&mut self, delta: f64) {
         let next = self.ws_scroll as f64 + delta;
         self.ws_scroll =
             clamp_scroll(next, self.content_h as f64, self.ws_area.height as f64) as u16;
     }
 
-    /// Restore and raise the panel of `kind` — hook for key bindings.
+    /// Restore, focus, and raise the panel of `kind` — hook for key bindings.
     pub fn restore_panel(&mut self, kind: K) {
         restore(&mut self.panels, kind);
+        self.focused = Some(kind);
         self.save();
     }
 }

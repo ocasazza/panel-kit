@@ -28,6 +28,14 @@
 //!   `fraction: None` is the honest indeterminate state — the bar animates
 //!   and no number is fabricated.
 //!
+//! Surface contract: these components are leaves and deliberately take no
+//! surface-profile prop. Mount them below the element whose class comes from
+//! [`crate::Workspace::root_class`]; [`crate::CSS`] adapts their layout from
+//! that existing `ws-root compact|tablet|regular` ancestor. In particular,
+//! [`GlobalLoadingBar`] belongs inside that root's top bar. Threading a second
+//! profile through loading call sites would duplicate the workspace's tier
+//! decision and let the two copies drift.
+//!
 //! ```no_run
 //! use dioxus::prelude::*;
 //! use panel_kit::loading::{loading_store, LoadingGate, GlobalLoadingBar};
@@ -169,7 +177,8 @@ pub fn loading_store(id: &'static str, label: impl Into<String>) -> LoadingStore
 /// `fraction: Some(_)` renders a filled bar plus the percentage text (the
 /// percentage is mandatory — never strip it); `None` renders the animated
 /// indeterminate fill and no number. Styling: `.pk-progress*` in
-/// [`crate::CSS`], themed by the `:root` variables.
+/// [`crate::CSS`], themed by the `:root` variables and surface-aware through
+/// the enclosing class from [`crate::Workspace::root_class`].
 #[component]
 pub fn ProgressBar(
     /// Completion in `0.0..=1.0`, or `None` for indeterminate.
@@ -179,7 +188,8 @@ pub fn ProgressBar(
     /// Phase detail shown dimmed after the label.
     #[props(default)]
     detail: Option<String>,
-    /// Compact single-row treatment for bars and headers.
+    /// Compact placement treatment (for example, a top-bar strip). Surface
+    /// adaptation is inherited separately from the workspace root class.
     #[props(default)]
     compact: bool,
 ) -> Element {
@@ -268,7 +278,8 @@ pub fn LoadingGate(
 /// Hidden while nothing is pending. Otherwise shows the pending count, the
 /// first pending store's label, and — when at least one pending store
 /// reports a fraction — the mean completion as a mandatory percentage (see
-/// [`aggregate_pending`]). Mount once, typically in the app's top bar.
+/// [`aggregate_pending`]). Mount once in a top bar that remains inside the
+/// workspace root so its surface-tier ancestor styles still apply.
 #[component]
 pub fn GlobalLoadingBar() -> Element {
     let snapshots: Vec<LoadSnapshot> = REGISTRY
@@ -550,9 +561,11 @@ mod tests {
     // --- stylesheet contract ---------------------------------------------------
 
     /// Every class the loading components emit must exist in the shipped
-    /// stylesheet — the same drift guard the boot contract tests enforce.
+    /// stylesheet. The tier selectors are asserted too: loading leaves
+    /// deliberately inherit the one workspace surface decision rather than
+    /// accepting a second profile prop.
     #[test]
-    fn loading_classes_exist_in_base_css() {
+    fn loading_styles_cover_classes_surface_and_motion() {
         const CLASSES: [&str; 12] = [
             "pk-progress",
             "pk-progress-head",
@@ -570,5 +583,34 @@ mod tests {
         for class in CLASSES {
             assert!(CSS.contains(&format!(".{class}")), "CSS missing .{class}");
         }
+        for selector in [
+            ".ws-root.compact .pk-global-load",
+            ".ws-root.compact .pk-progress-head",
+            ".ws-root.compact .pk-progress-label",
+            ".ws-root.compact .pk-progress-detail",
+        ] {
+            assert!(
+                CSS.contains(selector),
+                "CSS missing inherited surface selector {selector}"
+            );
+        }
+
+        // Reduced motion must preserve both observable contracts: determinate
+        // percentages remain in markup, while indeterminate progress becomes
+        // a visible static partial fill rather than vanishing or reading 100%.
+        let reduced_motion = CSS
+            .split_once("@media (prefers-reduced-motion: reduce)")
+            .expect("CSS missing reduced-motion loading treatment")
+            .1;
+        assert!(
+            reduced_motion.contains(".pk-progress-fill { transition:none; }"),
+            "determinate transition survives reduced motion"
+        );
+        assert!(
+            reduced_motion.contains(
+                ".pk-progress-fill.indeterminate { animation:none; width:40%; transform:none; }"
+            ),
+            "indeterminate bar needs a visible, non-full static fallback"
+        );
     }
 }

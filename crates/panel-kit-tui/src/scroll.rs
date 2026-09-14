@@ -58,7 +58,7 @@ pub fn lines(f: &mut Frame, area: Rect, t: &Theme, content: Vec<Line>, offset: u
                 .begin_symbol(None)
                 .end_symbol(None)
                 .style(Style::default().fg(t.dim))
-                .thumb_style(Style::default().fg(t.accent)),
+                .thumb_style(Style::default().fg(t.line2)),
             area,
             &mut state,
         );

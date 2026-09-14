@@ -1,3 +1,18 @@
+/* TEMPLATE — not the shipped stylesheet.
+   `build.rs` substitutes every double-brace placeholder from
+   panel_kit_core::tokens and writes the result to OUT_DIR, which
+   `panel_kit::BOOT_CSS` includes. An unknown placeholder name is a hard
+   build error, which is why this note spells the syntax out instead of
+   showing it.
+
+   This file exists because the boot shell paints *before* the WASM module
+   instantiates, so it cannot read the injected `panel_kit::CSS` and cannot
+   inherit its `:root` variables. It used to carry a hand-copied palette that
+   had already drifted seven values off the tokens. Generating it makes that
+   class of drift impossible instead of merely discouraged.
+
+   Edit the rules here; never edit the generated file. */
+
 .panel-kit-boot {
   position: fixed;
   inset: 0;
@@ -7,9 +22,9 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #09090a;
-  color: #efeff0;
-  font: 12px/1.35 "Courier Prime", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: {{bg}};
+  color: {{fg}};
+  font: 12px/1.35 {{mono}};
 }
 
 .panel-kit-boot-bar {
@@ -19,13 +34,13 @@
   height: 35px;
   flex: 0 0 35px;
   padding: 0 14px;
-  border-bottom: 1px solid #242427;
+  border-bottom: 1px solid {{line}};
   letter-spacing: .08em;
   text-transform: uppercase;
 }
 
 .panel-kit-boot-title { font-weight: 700; }
-.panel-kit-boot-status { color: #77777d; font-size: 10px; }
+.panel-kit-boot-status { color: {{dim}}; font-size: 10px; }
 
 /* Header progress bar. The static fragment is always indeterminate (no
    script may measure pre-WASM); LoadingWorkspace fills determinate width +
@@ -35,13 +50,13 @@
   max-width: 22rem;
   height: 6px;
   margin-left: auto;
-  background: #1a1a1d;
+  background: {{line}};
   border-radius: 3px;
   overflow: hidden;
 }
 .panel-kit-boot-fill {
   height: 100%;
-  background: #389cf6;
+  background: {{blue}};
   transition: width .4s ease;
 }
 .panel-kit-boot-fill.indeterminate {
@@ -49,7 +64,7 @@
   animation: panel-kit-boot-indet 1.2s linear infinite;
 }
 .panel-kit-boot-pct {
-  color: #389cf6;
+  color: {{blue}};
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
@@ -74,30 +89,36 @@
   position: relative;
   min-width: 0;
   min-height: 90px;
-  border: 1px solid #35353a;
+  border: 1px solid {{line2}};
   border-radius: 4px;
-  background: #0c0c0d;
+  background: {{panel}};
   overflow: hidden;
 }
 
 .panel-kit-boot-panel:first-child { grid-row: 1 / span 2; }
 
+/* The traffic-light cluster, drawn as three discrete dots rather than the
+   striped gradient this used to be. The dots are what the mounted app shows,
+   so the boot shell now previews the real control instead of approximating
+   it — and three flat circles survive translation into cells, which a
+   gradient never could. */
 .panel-kit-boot-panel::before {
   content: "";
   position: absolute;
-  top: 9px;
+  top: 11px;
   left: 12px;
-  width: 52px;
+  width: 8px;
   height: 8px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #389cf6 0 14%, transparent 14% 22%, #f6be3c 22% 36%, transparent 36% 44%, #ee60c2 44% 58%, transparent 58%);
+  border-radius: 50%;
+  background: {{blue}};
+  box-shadow: 14px 0 0 {{yellow}}, 28px 0 0 {{pink}};
 }
 
 .panel-kit-boot-line {
   height: 6px;
   margin: 34px 12px 0;
   border-radius: 3px;
-  background: #1a1a1d;
+  background: {{line}};
   animation: panel-kit-boot-pulse 1.25s ease-in-out infinite alternate;
 }
 

@@ -1,8 +1,15 @@
-//! Terminal palette mirroring the web shell's `:root` CSS variables, so
-//! the TUI looks like the same product. Override fields (or swap whole
-//! presets) to retheme — the terminal twin of overriding the CSS vars.
+//! Terminal palettes for the web shell's design language. The dark preset is
+//! derived from [`panel_kit_core::tokens`], while only the light preset is
+//! hand-authored. Override fields (or swap whole presets) to retheme — the
+//! terminal twin of overriding the CSS variables.
 
 use ratatui::style::Color;
+
+use panel_kit_core::tokens::{self, Token};
+
+const fn rgb(token: Token) -> Color {
+    Color::Rgb(token.rgb.0, token.rgb.1, token.rgb.2)
+}
 
 /// The chrome palette. Field names match the CSS variables in
 /// `assets/panel-kit.css` (`--bg`, `--accent`, …).
@@ -37,33 +44,34 @@ pub struct Theme {
 }
 
 impl Theme {
-    /// The default dark palette — the exact hex values from
-    /// `panel-kit.css`.
+    /// The default dark palette, derived from the canonical core tokens.
     pub const DARK: Theme = Theme {
-        bg: Color::Rgb(0x0a, 0x0a, 0x0a),
-        panel: Color::Rgb(0x0d, 0x0d, 0x0d),
-        fg: Color::Rgb(0xed, 0xed, 0xed),
-        dim: Color::Rgb(0x7a, 0x7a, 0x7a),
-        line: Color::Rgb(0x26, 0x26, 0x26),
-        line2: Color::Rgb(0x3a, 0x3a, 0x3a),
-        accent: Color::Rgb(0x5e, 0xf3, 0x8c),
-        red: Color::Rgb(0xff, 0x5f, 0x56),
-        yellow: Color::Rgb(0xff, 0xbd, 0x2e),
-        green: Color::Rgb(0x27, 0xc9, 0x3f),
-        blue: Color::Rgb(0x3b, 0x9b, 0xff),
-        pink: Color::Rgb(0xff, 0x5f, 0xc3),
-        badge_info: Color::Rgb(0x83, 0xb7, 0xcc),
+        bg: rgb(tokens::BG),
+        panel: rgb(tokens::PANEL),
+        fg: rgb(tokens::FG),
+        dim: rgb(tokens::DIM),
+        line: rgb(tokens::LINE),
+        line2: rgb(tokens::LINE2),
+        accent: rgb(tokens::ACCENT),
+        red: rgb(tokens::RED),
+        yellow: rgb(tokens::YELLOW),
+        green: rgb(tokens::GREEN),
+        blue: rgb(tokens::BLUE),
+        pink: rgb(tokens::PINK),
+        badge_info: rgb(tokens::BADGE_INFO),
     };
 
     /// A light "paper" preset — the terminal twin of the theming example's
     /// CSS-variable override path.
     pub const PAPER: Theme = Theme {
+        // Script-computed WCAG ratios: line2/panel 3.4763:1,
+        // dim/bg 5.0071:1, and dim/panel 5.3679:1.
         bg: Color::Rgb(0xf4, 0xf1, 0xea),
         panel: Color::Rgb(0xfb, 0xf9, 0xf4),
         fg: Color::Rgb(0x1a, 0x1a, 0x1a),
         dim: Color::Rgb(0x6e, 0x66, 0x5c),
         line: Color::Rgb(0xd8, 0xd2, 0xc6),
-        line2: Color::Rgb(0xbf, 0xb8, 0xa8),
+        line2: Color::Rgb(0x8c, 0x85, 0x78),
         accent: Color::Rgb(0x0c, 0x7a, 0x3d),
         red: Color::Rgb(0xc6, 0x28, 0x28),
         yellow: Color::Rgb(0xb8, 0x86, 0x0b),

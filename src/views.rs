@@ -26,7 +26,7 @@ use gloo_storage::{LocalStorage, Storage};
 use panel_kit_core::views::{view_layout_key, views_registry_key};
 use panel_kit_core::{Mode, PanelKind, PanelWin};
 
-use crate::{load_layout, save_layout, use_workspace_state, Workspace};
+use crate::{load_layout, save_layout, use_workspace_state, viewport_size, Workspace};
 
 pub use panel_kit_core::views::{SavedViews, ViewError};
 
@@ -80,7 +80,15 @@ pub fn use_views<K: PanelKind>(
 ) -> Views<K> {
     let registry = load_registry(base_key, initial_views);
     migrate_legacy_layout(base_key, &registry);
-    let saved = load_layout(&view_layout_key(base_key, &registry.active), &defaults());
+    // Each view is one SavedLayoutV2 record, read through the same
+    // StoredLayout reader as the single-layout case, so a pre-1.0 per-view V1
+    // record migrates and a record captured on a different viewport rescales.
+    let initial_viewport = viewport_size();
+    let saved = load_layout(
+        &view_layout_key(base_key, &registry.active),
+        &defaults(),
+        initial_viewport,
+    );
     let workspace = use_workspace_state(saved, defaults);
     let names = use_signal(|| registry.views.clone());
     let active = use_signal(|| registry.active.clone());
@@ -94,7 +102,12 @@ pub fn use_views<K: PanelKind>(
         let md = *workspace.mode.read();
         let view = active.read().clone();
         if workspace.drag.read().is_none() && workspace.tile_drag.read().is_none() {
-            save_layout(&view_layout_key(base_key, &view), &ps, md);
+            save_layout(
+                &view_layout_key(base_key, &view),
+                &ps,
+                md,
+                *workspace.viewport.read(),
+            );
         }
     });
 
@@ -166,8 +179,12 @@ impl<K: PanelKind> Views<K> {
     /// drop any in-flight drag and scroll offset.
     fn restore_into_workspace(&self, name: &str) {
         let defaults = (self.defaults)();
-        let (panels, mode) = load_layout(&view_layout_key(self.base_key, name), &defaults)
-            .unwrap_or((defaults, Mode::Floating));
+        let (panels, mode) = load_layout(
+            &view_layout_key(self.base_key, name),
+            &defaults,
+            *self.workspace.viewport.read(),
+        )
+        .unwrap_or((defaults, Mode::Floating));
         let mut ws = self.workspace;
         ws.panels.set(panels);
         ws.mode.set(mode);
@@ -190,7 +207,12 @@ impl<K: PanelKind> Views<K> {
         reg.activate(name)?;
         let ps = self.workspace.panels.read().clone();
         let md = *self.workspace.mode.read();
-        save_layout(&view_layout_key(self.base_key, &outgoing), &ps, md);
+        save_layout(
+            &view_layout_key(self.base_key, &outgoing),
+            &ps,
+            md,
+            *self.workspace.viewport.read(),
+        );
         self.restore_into_workspace(name);
         self.write_registry(reg);
         Ok(())

@@ -10,9 +10,9 @@
 //! ```
 //!
 //! This is intentionally comprehensive rather than cute: it exercises the
-//! same `TuiWorkspace` chrome as the terminal example plus badges, spinner,
-//! theming, scrollable content, and charts. That makes it useful both as
-//! docs-as-code and as a browser/WASM canary.
+//! same `TuiWorkspace` chrome as the terminal example plus keyboard window
+//! management, compact/tablet/regular surface tiers, V2 localStorage
+//! persistence, wheel scrolling, badges, spinner, theming, and charts.
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
@@ -29,23 +29,25 @@ mod workspace_canary;
 mod browser {
     use std::{cell::RefCell, rc::Rc};
 
-    use panel_kit_core::badge::BadgeClickKind;
-    use panel_kit_core::Mode;
+    use panel_kit_core::badge::{BadgeClickKind, Rgb};
+    use panel_kit_core::{
+        FocusContext, Key, KeyChord, Mode, PointerButton, PointerEvent, PointerEventKind,
+    };
     use panel_kit_tui::badge::Badge;
     use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
     use panel_kit_tui::scroll;
     use panel_kit_tui::spinner::spinner;
-    use panel_kit_tui::{
-        Charset, Theme, TuiMouseButton, TuiMouseEvent, TuiMouseEventKind, TuiWorkspace,
-    };
+    use panel_kit_tui::{Charset, LayoutStore, Theme, TuiWorkspace};
     use ratatui::layout::{Position, Rect};
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
     use ratatui::widgets::Paragraph;
     use ratzilla::event::{
-        KeyCode, MouseButton as WebMouseButton, MouseEvent as WebMouseEvent,
+        KeyCode, KeyEvent, MouseButton as WebMouseButton, MouseEvent as WebMouseEvent,
         MouseEventKind as WebMouseEventKind,
     };
+    use ratzilla::web_sys::js_sys::{Function, Reflect};
+    use ratzilla::web_sys::wasm_bindgen::{closure::Closure, JsCast, JsValue};
     use ratzilla::{
         backend::webgl2::{FontAtlasConfig, WebGl2BackendOptions},
         CursorShape, WebGl2Backend, WebRenderer,
@@ -54,6 +56,75 @@ mod browser {
     use crate::workspace_canary::{
         capacity_items, defaults, demo_badges, node_rows, Metrics, Panel,
     };
+
+    const STORAGE_KEY: &str = "panel-kit-tui-layout-v2";
+
+    struct BrowserStore;
+
+    impl BrowserStore {
+        fn storage() -> Result<JsValue, String> {
+            let window = ratzilla::web_sys::window().ok_or("window unavailable")?;
+            Reflect::get(window.as_ref(), &JsValue::from_str("localStorage"))
+                .map_err(|error| format!("{error:?}"))
+        }
+
+        fn method(storage: &JsValue, name: &str) -> Result<Function, String> {
+            Reflect::get(storage, &JsValue::from_str(name))
+                .map_err(|error| format!("{error:?}"))?
+                .dyn_into::<Function>()
+                .map_err(|_| format!("localStorage.{name} is not callable"))
+        }
+    }
+
+    impl LayoutStore for BrowserStore {
+        fn load(&self) -> Result<Option<String>, String> {
+            let storage = Self::storage()?;
+            let value = Self::method(&storage, "getItem")?
+                .call1(&storage, &JsValue::from_str(STORAGE_KEY))
+                .map_err(|error| format!("{error:?}"))?;
+            Ok(value.as_string())
+        }
+
+        fn save(&self, json: &str) -> Result<(), String> {
+            let storage = Self::storage()?;
+            Self::method(&storage, "setItem")?
+                .call2(
+                    &storage,
+                    &JsValue::from_str(STORAGE_KEY),
+                    &JsValue::from_str(json),
+                )
+                .map_err(|error| format!("{error:?}"))?;
+            Ok(())
+        }
+    }
+
+    fn to_key_chord(event: KeyEvent) -> Option<KeyChord> {
+        let key = match event.code {
+            KeyCode::Left => Key::Left,
+            KeyCode::Right => Key::Right,
+            KeyCode::Up => Key::Up,
+            KeyCode::Down => Key::Down,
+            KeyCode::Enter => Key::Enter,
+            KeyCode::Esc => Key::Escape,
+            KeyCode::Tab => Key::Tab,
+            KeyCode::Char(ch) => Key::Char(ch),
+            _ => return None,
+        };
+        Some(KeyChord {
+            key,
+            shift: event.shift,
+            alt: event.alt,
+            ctrl: event.ctrl,
+            meta: false,
+        })
+    }
+
+    fn rgb(color: Color) -> Rgb {
+        match color {
+            Color::Rgb(r, g, b) => (r, g, b),
+            _ => unreachable!("panel-kit themes use RGB colors"),
+        }
+    }
 
     struct App {
         ws: TuiWorkspace<Panel>,
@@ -71,7 +142,8 @@ mod browser {
     impl App {
         fn new() -> Self {
             // WebGL font atlas can't render box-drawing / geometric glyphs.
-            let mut ws = TuiWorkspace::new(None, defaults).charset(Charset::Ascii);
+            let mut ws =
+                TuiWorkspace::with_store(Box::new(BrowserStore), defaults).charset(Charset::Ascii);
             ws.mode = Mode::Tiling;
             Self {
                 ws,
@@ -87,9 +159,9 @@ mod browser {
             }
         }
 
-        fn handle_key(&mut self, key: KeyCode) {
-            match key {
-                KeyCode::Char('t') => {
+        fn handle_key(&mut self, event: KeyEvent) {
+            match event.code.clone() {
+                KeyCode::Char('p') => {
                     self.paper = !self.paper;
                     self.ws.theme = if self.paper {
                         Theme::PAPER
@@ -106,13 +178,13 @@ mod browser {
                 KeyCode::Char('7') => self.ws.restore_panel(Panel::Nodes),
                 KeyCode::Char('8') => self.ws.restore_panel(Panel::Flame),
                 KeyCode::Char('9') => self.ws.restore_panel(Panel::Distribution),
-                KeyCode::Up => {
-                    self.notes_scroll = self.notes_scroll.saturating_sub(1);
+                KeyCode::PageUp => self.ws.scroll_by(-4.0),
+                KeyCode::PageDown => self.ws.scroll_by(4.0),
+                _ => {
+                    if let Some(chord) = to_key_chord(event) {
+                        self.ws.handle_key(chord, FocusContext::Workspace);
+                    }
                 }
-                KeyCode::Down => {
-                    self.notes_scroll = self.notes_scroll.saturating_add(1);
-                }
-                _ => {}
             }
         }
 
@@ -138,33 +210,33 @@ mod browser {
                 }
             }
 
-            if let Some(event) = self.to_tui_mouse(event) {
+            if let Some(event) = self.to_pointer_event(event) {
                 self.ws.handle_mouse(event);
             }
         }
 
         #[allow(clippy::wrong_self_convention)]
-        fn to_tui_mouse(&mut self, event: WebMouseEvent) -> Option<TuiMouseEvent> {
+        fn to_pointer_event(&mut self, event: WebMouseEvent) -> Option<PointerEvent> {
             let kind = match event.kind {
                 WebMouseEventKind::ButtonDown(WebMouseButton::Left) => {
                     self.mouse_down = true;
-                    TuiMouseEventKind::Down(TuiMouseButton::Primary)
+                    PointerEventKind::Down(PointerButton::Primary)
                 }
                 WebMouseEventKind::ButtonUp(WebMouseButton::Left) => {
                     self.mouse_down = false;
-                    TuiMouseEventKind::Up(TuiMouseButton::Primary)
+                    PointerEventKind::Up(PointerButton::Primary)
                 }
                 WebMouseEventKind::Moved if self.mouse_down => {
-                    TuiMouseEventKind::Drag(TuiMouseButton::Primary)
+                    PointerEventKind::Drag(PointerButton::Primary)
                 }
-                WebMouseEventKind::Moved => TuiMouseEventKind::Moved,
+                WebMouseEventKind::Moved => PointerEventKind::Moved,
                 WebMouseEventKind::SingleClick(WebMouseButton::Left) => {
-                    TuiMouseEventKind::Up(TuiMouseButton::Primary)
+                    PointerEventKind::Up(PointerButton::Primary)
                 }
                 _ => return None,
             };
 
-            Some(TuiMouseEvent {
+            Some(PointerEvent {
                 kind,
                 x: event.col as f64,
                 y: event.row as f64,
@@ -180,6 +252,11 @@ mod browser {
             let tick = self.tick;
             let paper = self.paper;
             let metrics = &self.metrics;
+            let surface = self.ws.surface_profile().class;
+            let mode = match self.ws.effective_mode() {
+                Mode::Floating => "floating",
+                Mode::Tiling => "tiling",
+            };
             self.ws.render(frame, frame.area(), &mut |f, rect, kind, _max| match kind {
                 Panel::Workspace => {
                     f.render_widget(
@@ -189,10 +266,12 @@ mod browser {
                             ]),
                             Line::from(""),
                             Line::from("The same ratatui workspace renders in terminal and browser."),
-                            Line::from("The state machine is shared with the Dioxus renderer."),
+                            Line::from(format!("Surface: {surface:?} · effective mode: {mode}")),
+                            Line::from("Persistence: schema V2 · Units::Cells · browser localStorage."),
                             Line::from(""),
-                            Line::from("Mouse: drag headers, drag the corner grip, click lights."),
-                            Line::from("Keys: t swaps theme, 1-9 restore panels, arrows scroll notes."),
+                            Line::from("Mouse: drag headers/grip, click lights; wheel scrolls workspace."),
+                            Line::from("Keys: arrows move, Shift resizes, Alt fine-moves; m/f/t, Tab, Enter."),
+                            Line::from("Palette: p · restore: 1-9 · workspace scroll: PgUp/PgDn."),
                         ])
                         .style(Style::default().fg(theme.dim)),
                         rect,
@@ -212,7 +291,7 @@ mod browser {
                         .iter()
                         .rev()
                         .take(3)
-                        .map(|a| Line::from(Span::styled(a.clone(), Style::default().fg(theme.accent))))
+                        .map(|a| Line::from(Span::styled(a.clone(), Style::default().fg(theme.badge_info))))
                         .collect();
                     if log_y > rect.y {
                         f.render_widget(
@@ -238,7 +317,7 @@ mod browser {
                     let rows: Vec<ratatui::widgets::Row> = node_rows()
                         .iter()
                         .map(|(name, ok, load, detail)| {
-                            let color = if *ok { theme.green } else { theme.red };
+                            let color = if *ok { rgb(theme.green) } else { rgb(theme.red) };
                             ratatui::widgets::Row::new(vec![
                                 ratatui::widgets::Cell::from(panel_kit_tui::status::labeled(color, *name)),
                                 ratatui::widgets::Cell::from(panel_kit_tui::meter::span(*load, 8, color)),
@@ -271,7 +350,7 @@ mod browser {
                         "When the browser example builds under Trunk, the same public TUI API is still web-capable.",
                         "Keeping both examples broad catches drift between core, Dioxus, and TUI renderers.",
                         "The example is not a screenshot fixture: it is executable documentation.",
-                        "Use t for theme, 1-9 to restore minimized panels, and arrow keys to scroll this panel.",
+                        "Use p for palette, m/f/t for window state, Tab to cycle focus, 1-9 to restore, and PgUp/PgDn or the wheel to scroll.",
                     ] {
                         lines.push(Line::from(text));
                     }
@@ -290,10 +369,9 @@ mod browser {
                     f.render_widget(
                         Paragraph::new(vec![
                             Line::from(Span::styled(
-                                if paper { "preset: paper (click or press t)" } else { "preset: dark (click or press t)" },
+                                if paper { "preset: paper (click or press p)" } else { "preset: dark (click or press p)" },
                                 Style::default().fg(theme.fg),
                             )),
-                            sw(theme.accent, "accent"),
                             sw(theme.blue, "blue · mode light"),
                             sw(theme.yellow, "yellow · minimize"),
                             sw(theme.pink, "pink · maximize"),
@@ -304,6 +382,38 @@ mod browser {
                 }
             });
         }
+    }
+
+    fn install_wheel_translation(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
+        let document = ratzilla::web_sys::window()
+            .and_then(|window| window.document())
+            .ok_or_else(|| JsValue::from_str("document unavailable"))?;
+        let target = document
+            .get_element_by_id("panel-kit-tui")
+            .ok_or_else(|| JsValue::from_str("panel-kit-tui element unavailable"))?;
+        let wheel = Closure::wrap(Box::new(move |event: JsValue| {
+            let delta = Reflect::get(&event, &JsValue::from_str("deltaY"))
+                .ok()
+                .and_then(|value| value.as_f64())
+                .unwrap_or(0.0);
+            if delta != 0.0 {
+                app.borrow_mut().ws.handle_mouse(PointerEvent {
+                    kind: PointerEventKind::Scroll {
+                        delta_y: delta.signum() * 3.0,
+                    },
+                    x: 0.0,
+                    y: 0.0,
+                });
+            }
+            if let Ok(prevent_default) = Reflect::get(&event, &JsValue::from_str("preventDefault"))
+                .and_then(|value| value.dyn_into::<Function>())
+            {
+                let _ = prevent_default.call0(&event);
+            }
+        }) as Box<dyn FnMut(JsValue)>);
+        target.add_event_listener_with_callback("wheel", wheel.as_ref().unchecked_ref())?;
+        wheel.forget();
+        Ok(())
     }
 
     pub fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -322,9 +432,11 @@ mod browser {
         let mut terminal = ratatui::Terminal::new(backend)?;
         let app = Rc::new(RefCell::new(App::new()));
 
+        install_wheel_translation(app.clone())
+            .map_err(|error| std::io::Error::other(format!("{error:?}")))?;
         terminal.on_key_event({
             let app = app.clone();
-            move |key| app.borrow_mut().handle_key(key.code)
+            move |key| app.borrow_mut().handle_key(key)
         })?;
 
         terminal.on_mouse_event({
