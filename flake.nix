@@ -48,9 +48,10 @@
           fileset = pkgs.lib.fileset.unions [
             ./Cargo.toml
             ./Cargo.lock
+            ./build.rs # generates OUT_DIR/panel-kit-boot.css from core tokens
             ./src
             ./crates
-            ./assets # panel-kit.css is include_str!'d into the lib
+            ./assets # panel-kit.css + panel-kit-boot.css.in, include_str!'d/generated
             ./examples # one browser demo per component, clippy'd by checks
           ];
         };
