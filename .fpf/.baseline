@@ -1,0 +1,164 @@
+{
+  "last_actualized": "2026-09-14T20:29:34+00:00",
+  "commit": "d444651c31bd6269ef5f5f0be2145718ff04240c",
+  "branch": "main",
+  "worktree_dirty": true,
+  "tracked_files_modified": 25,
+  "knowledge_base": [
+    ".specs/design/libraryness-2026-09-14.md",
+    ".specs/design/libraryness-2026-09-14.solution.a.md",
+    ".specs/design/libraryness-2026-09-14.solution.b.md",
+    ".specs/design/libraryness-2026-09-14.solution.c.md"
+  ],
+  "citation_ranges_total": 244,
+  "citation_ranges_in_bounds": 239,
+  "cited_files": {
+    "AGENTS.md": {
+      "sha256": "abe673cdbfd9f82a773513603d55a303a75d6bf008de77358a5c33da53e0ccb6",
+      "lines": 68,
+      "citations_stale": false
+    },
+    "DESIGN.md": {
+      "sha256": "2609ed941c06813d436e7be19815fd42537f8eae475a19e0ab195f8e6cba0b6f",
+      "lines": 532,
+      "citations_stale": false
+    },
+    "MIGRATION.md": {
+      "sha256": "07af1c3cd77f4a84d1324683de46452e7b425336c686ec1b78df380d5d6ea964",
+      "lines": 695,
+      "citations_stale": false
+    },
+    "PRODUCT.md": {
+      "sha256": "039ee42fb76077d408dde57453f42e65df1a20b56dc806e143bd10436654fb81",
+      "lines": 158,
+      "citations_stale": false
+    },
+    "README.md": {
+      "sha256": "72faf04254617e27e25112e8382a034fe53239b096334cd997465c276335d735",
+      "lines": 296,
+      "citations_stale": false
+    },
+    "assets/panel-kit.css": {
+      "sha256": "7769f34371a59609988226678cea3a48b75878eaf35f3efd0b6106ce959edaf6",
+      "lines": 324,
+      "citations_stale": false
+    },
+    "crates/panel-kit-core/Cargo.toml": {
+      "sha256": "cc7232a0624bdb2c28fa4f5b232e7bb67a9023247b358df990aa1970d37ccd92",
+      "lines": 15,
+      "citations_stale": false
+    },
+    "crates/panel-kit-core/src/badge.rs": {
+      "sha256": "616cb89b3275dce386cc1119193dfce900ab8ecb52edf33424763aa0c3b39a14",
+      "lines": 159,
+      "citations_stale": false
+    },
+    "crates/panel-kit-core/src/lib.rs": {
+      "sha256": "9c1c2ed35a6e716e8d45c2e81899232a498d2a8a6b4138aef8624e1b32b293c0",
+      "lines": 1304,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/examples/browser_tui.rs": {
+      "sha256": "0b2b13f58cc0d5c0c7f55eeedd820ffebab4d4abe32a85ecf679a08f59c433d1",
+      "lines": 455,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/examples/workspace.rs": {
+      "sha256": "a81af917be0933b273cd8b7e3a800b747511673268d954ef76e71b99d442e767",
+      "lines": 329,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/examples/workspace_canary.rs": {
+      "sha256": "8949b439bf3188030ed66a1c1468a21f5d5e80fa82b41e6322decef0ac70fd98",
+      "lines": 290,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/src/badge.rs": {
+      "sha256": "d0f8928ca9dd6aff2b4d999ef3143a70b088794db25723b66aa489de243e56fc",
+      "lines": 125,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/src/charts.rs": {
+      "sha256": "d511b0d018a50e7331db12ec75654bca68962c98a995690c9ef2f480a5f6e105",
+      "lines": 475,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/src/lib.rs": {
+      "sha256": "5fc2263fc0db525c56ef817690d80d3524b48d85817adc72d1fd136136a34023",
+      "lines": 831,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/src/meter.rs": {
+      "sha256": "80a695654675ae724bc3d8d5a8cc07303a280c53ad97c25c93dc3d434b7678f9",
+      "lines": 26,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/src/scroll.rs": {
+      "sha256": "7a2d12e364a7e37a8802a1dd52fe1b2f8f6a4de9502f5e2b62a4ac143c633a77",
+      "lines": 78,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/src/spinner.rs": {
+      "sha256": "75720e2f472fe7c772aba447e2462d817af0a7516ce5da4ee748382d2574da03",
+      "lines": 29,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/src/status.rs": {
+      "sha256": "198b99047fca0a033bdea96a79a903015967976d115e7f36e053b1ecff2ae253",
+      "lines": 31,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/src/table.rs": {
+      "sha256": "025ada9182ed2ef13fd5a07f830f8718bf868e4546e8b95f61a585645f8c6b6e",
+      "lines": 43,
+      "citations_stale": false
+    },
+    "crates/panel-kit-tui/src/theme.rs": {
+      "sha256": "5cc4bfc34aa0e8034e5b33238c222af031d4edcf441eac7e285788c431647953",
+      "lines": 89,
+      "citations_stale": false
+    },
+    "examples/workspace.rs": {
+      "sha256": "7f4d4422b43902c0fc71f38a32c4b49ffbddfb61e2cb1db81c3e959bb0e46ca4",
+      "lines": 328,
+      "citations_stale": false
+    },
+    "flake.nix": {
+      "sha256": "bdff079b59f97be48280666b03c3af51959f722419502659c1d98e58cb9ad886",
+      "lines": 216,
+      "citations_stale": false
+    },
+    "nix/examples/workspace-canary.nix": {
+      "sha256": "de59aa9328e1aebf0b83268baeb610bf9c4126aec70c3d76dcb273bbc8545146",
+      "lines": 33,
+      "citations_stale": false
+    },
+    "nix/lib/mkLayout.nix": {
+      "sha256": "27d4d7c4681d8000fc830ca4f6dd19e905ee9cfccc3697e5b730b42321dcec3a",
+      "lines": 139,
+      "citations_stale": false
+    },
+    "src/badge.rs": {
+      "sha256": "0c376f173facc98925a2c8b86c245ad32ef9caff9cc3dbcab7445aaeae640429",
+      "lines": 308,
+      "citations_stale": false
+    },
+    "src/lib.rs": {
+      "sha256": "f0134424213b80dc503d435ded48dc84aed429060ae8da99c9c7fe9c9c5e9195",
+      "lines": 1638,
+      "citations_stale": false
+    }
+  },
+  "note": "No .fpf/ knowledge base exists in this repo; FPF was never initialized. This baseline pins the citation surface of the .specs/ design artifacts so the next actualization can detect drift. Gate re-verified after commit d444651 (build.rs fileset fix + clippy 1.96 fixes).",
+  "gate": {
+    "nix_flake_check": "PASS",
+    "checks": 4,
+    "verified_at": "d444651c31bd6269ef5f5f0be2145718ff04240c"
+  },
+  "known_live_defect": {
+    "check": "checks.aarch64-darwin.layout-canary-schema",
+    "defect": "jq asserts (.panels|length==7) against Nix output only; Rust side (9 panels incl. Flame, Distribution) never compared",
+    "remedy": "design spec slice 13 (.specs/design/libraryness-2026-09-14.md) - checks.spec-parity",
+    "status": "open"
+  }
+}

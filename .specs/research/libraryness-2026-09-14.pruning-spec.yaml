@@ -1,0 +1,263 @@
+rrd_cycle_applied: true
+self_verification_completed: true
+evaluation_specification:
+  metadata:
+    user_prompt: >-
+      Improve the library-ness of panel-kit (library over framework; composition over
+      inheritance) and add pure-Nix panel-kit specifications that are totally feature
+      complete alongside the Rust examples. Binding interpretation (local://tot-task.md):
+      (1) library, not framework — user owns control flow, opt-in composable pieces, no
+      unbypassable inversion of control, no god-object handle, no hardcoded
+      storage/format/breakpoint policy; (2) panel-kit-core is the contract, Dioxus and
+      ratatui are thin backends (AGENTS.md); (3) a Nix spec in nix/lib exported via
+      lib.${system} expressing everything the Rust examples express (panels,
+      layout/geometry, mode, window state, tile spans, chrome metrics, theme, badges,
+      widgets/content bindings, persistence policy, breakpoint/charset) with parity
+      proven by `nix flake check`, not hand-mirroring; (4) examples are canary tests
+      (web -> wasm32-unknown-unknown, TUI -> native). Constraints: design only; cite real
+      files/symbols; toolchain pins (dioxus 0.6, wasm-bindgen lockstep, nix develop)
+      must not break; prefer deleting/simplifying — every new abstraction justified by a
+      concrete composition it enables; migration path for consumers jump-cannon and
+      apple-notes-ocr-flow with explicit breaking changes.
+    artifact_type: "proposals (18 high-level approaches, 6 per explorer file; each with name/summary, description, key decisions, trade-offs, probability, complexity, risks) — judges select the top 3 for expansion"
+    proposal_files:
+      - ".specs/research/libraryness-2026-09-14.proposals.a.md"
+      - ".specs/research/libraryness-2026-09-14.proposals.b.md"
+      - ".specs/research/libraryness-2026-09-14.proposals.c.md"
+    ground_truth_context: "local://panel-kit-context.md; repo root /Users/casazza/Repositories/ocasazza/panel-kit; verify citations against src/lib.rs, crates/panel-kit-core/src/lib.rs, crates/panel-kit-tui/src/lib.rs, nix/lib/mkLayout.nix, flake.nix, AGENTS.md"
+
+  checklist:
+    - id: "CK-001"
+      question: "Does the proposal contain all seven mandated fields: name + one-sentence summary, description, key design decisions with rationale, trade-offs, probability (0.0-1.0), complexity (low/medium/high), and risks/failure modes?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "A proposal missing fields cannot be compared against its siblings on equal footing."
+    - id: "CK-002"
+      question: "Does the proposal name at least one specific framework-ish mechanism in the current code that it removes or makes bypassable (e.g. the shell-owned render tree behind `Workspace<K>::render(body)`, the `fn() -> Vec<PanelWin<K>>` defaults pointer, the `&'static str` storage key, hardcoded localStorage/JSON-file persistence, hardcoded mobile breakpoint)?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "Pillar 1. A proposal that does not touch any concrete inversion-of-control or hardcoded policy cannot improve library-ness."
+    - id: "CK-003"
+      question: "Does the proposal place every cross-backend behavior it introduces or moves (state container, reducer, persistence shape, theme, widget model, spec type) in `panel-kit-core`, leaving the Dioxus crate with only DOM/signals/CSS/localStorage and the TUI crate with only cells/adapters?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "Pillar 2 and the AGENTS.md architecture rule: if behavior should match, encode it in core first."
+    - id: "CK-004"
+      question: "Does the proposal describe a Nix specification whose scope goes beyond the current `SavedLayout` geometry emitted by `nix/lib/mkLayout.nix` (i.e. it names at least chrome metrics, theme, badges, widgets/content bindings, persistence policy, breakpoint/charset among its inputs)?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "Pillar 3 requires feature completeness; a geometry-only extension does not meet the ask."
+    - id: "CK-005"
+      question: "Does the proposal name a specific `nix flake check` job (or `checks.*` attribute) that FAILS when the Nix spec and its Rust counterpart diverge, using a Rust-side deserialization or comparison rather than only a jq/schema shape check?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "Pillar 3: parity must be proven by a build check, not by hand-mirroring. Today `flake.nix` `layout-canary-schema` only checks JSON key shape with jq."
+    - id: "CK-006"
+      question: "Does the proposal keep or add build checks so that web examples compile to `wasm32-unknown-unknown`, TUI examples build natively, and the Nix spec path is exercised by a check?"
+      category: "hard_rule"
+      importance: "important"
+      rationale: "Pillar 4: examples are canary tests for every supported backend plus the Nix path."
+    - id: "CK-007"
+      question: "Does the proposal cite at least one real file path or symbol from the repository (e.g. `src/lib.rs` `use_workspace`, `crates/panel-kit-core/src/lib.rs` `PanelKind`/`SavedLayout`/`merge_defaults`, `crates/panel-kit-tui/src/lib.rs` `TuiWorkspace::new`, `nix/lib/mkLayout.nix`, `flake.nix` checks)?"
+      category: "hard_rule"
+      importance: "important"
+      rationale: "The task constraint requires claims to be grounded in real files/symbols; uncited proposals cannot be verified."
+    - id: "CK-008"
+      question: "Does the proposal cite a file, symbol, function, or flake attribute that does NOT exist in the repository (verify against the ground-truth context)?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Fabricated evidence indicates the explorer did not read the code; downstream expansion would build on a false diagnosis."
+    - id: "CK-009"
+      question: "Does the proposal avoid changing the dioxus 0.6 / wasm-bindgen lockstep pins and avoid requiring any toolchain or build step outside `nix develop` / the crane build?"
+      category: "hard_rule"
+      importance: "important"
+      rationale: "Explicit constraint: toolchain pins must not be broken; builds happen inside nix develop."
+    - id: "CK-010"
+      question: "Is every new type, trait, module, or crate the proposal introduces paired with a concrete composition it enables that the current API cannot express?"
+      category: "hard_rule"
+      importance: "important"
+      rationale: "Explicit constraint: prefer deleting/simplifying; every new abstraction must be justified by a concrete composition."
+    - id: "CK-011"
+      question: "Does the proposal state the impact on the two known consumers (jump-cannon, apple-notes-ocr-flow) — either naming the breaking API changes they must absorb, or stating that the public API they use is unchanged and why?"
+      category: "hard_rule"
+      importance: "important"
+      rationale: "The deliverable requires a migration path with explicit breaking changes; the README currently promises 'Public API unchanged' to these consumers."
+    - id: "CK-012"
+      question: "Does the proposal address compatibility of already-persisted `SavedLayout<K>` JSON (localStorage / on-disk files of existing users) — either preserving the serde shape or naming a migration?"
+      category: "principle"
+      importance: "important"
+      rationale: "Changing the persisted shape silently discards users' saved layouts; a serious proposal names this."
+    - id: "CK-013"
+      question: "Is the proposal genuinely distinct in mechanism from its sibling proposals in the same file (not a re-parameterization or renaming of another approach)?"
+      category: "principle"
+      importance: "important"
+      rationale: "Tree-of-Thoughts exploration requires diverse branches; near-duplicates waste expansion slots."
+    - id: "CK-014"
+      question: "Does the proposal require Rust consumers to depend on Nix at build or run time (e.g. a build.rs that evaluates a flake, or reading Nix output at runtime) for ordinary use of the library?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "A library must remain usable by plain-cargo consumers; the Nix spec is an additional authoring path, not a mandatory dependency."
+    - id: "CK-015"
+      question: "Does the proposal achieve Nix/Rust parity by hand-mirroring the same values in both a Nix file and a Rust example (rather than one being derived from, or checked against, the other by a build step)?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Hand-mirroring is exactly the current unverified state (`nix/examples/workspace-canary.nix` vs the TUI canary `defaults()`) the task asks to eliminate."
+    - id: "CK-016"
+      question: "Does the proposal introduce a single mandatory handle, builder, or facade (e.g. a `WorkspaceKit`/`App`/`Engine` object) through which all panel-kit functionality must be accessed?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Replacing one god object with another is a framework pattern, contrary to pillar 1."
+    - id: "CK-017"
+      question: "Is the stated probability inconsistent with the proposal's own complexity and risk sections (e.g. probability >= 0.8 alongside 'high' complexity and unmitigated risks, or probability <= 0.1 with 'low' complexity and no named risks)?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Self-inconsistent estimates signal shallow analysis; the probability itself is not scoring evidence."
+    - id: "CK-018"
+      question: "Does the proposal define any shared feature (theme, badges, widgets, persistence, breakpoint) separately per backend instead of once in core?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Per-backend duplication is the current asymmetry (theme only on TUI, widgets with different shapes) that AGENTS.md forbids."
+    - id: "CK-019"
+      question: "Does the proposal address only one half of the ask (only Rust library-ness with no Nix spec mechanism, or only the Nix spec with no change to the Rust composition model)?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "The user asked for both together; a half-scope proposal cannot be expanded into the required design specification."
+    - id: "CK-020"
+      question: "Does the proposal consist mainly of full implementation code (complete function bodies, full Nix modules) rather than an approach with API sketches?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "This phase is design-only; implementation dumps obscure the approach and pre-empt the TDD pipeline."
+
+  rubric_dimensions:
+    - name: "Composability Gain"
+      description: "After this proposal, can an application own its own render tree and control flow and use panel-kit pieces (geometry math, state reducer, persistence, chrome, widgets, theme) independently of one another? Or must it still hand a body closure to a shell that owns the tree, or go through one handle to reach any capability? Which specific inversion-of-control points and hardcoded policies (render ownership, `fn()` defaults pointer, `&'static str` key, localStorage/JSON-file persistence, breakpoint) does it dissolve, and which remain?"
+      scale: "1-5"
+      weight: 0.16
+      instruction: "List every capability the proposal exposes and, for each, whether an app can use it without the others and without a shell owning the render tree. List the IoC/hardcoded-policy points from the current code that remain mandatory. Place the proposal relative to the anchors: closer to score_2 when the app still must go through a shell/handle for the render tree or for any capability; closer to score_4 when pieces are independently usable and the shell is optional. Score 5 only if every listed policy is caller-supplied and the shell is a thin convenience over public pieces; score 1 if nothing changes about control-flow ownership."
+      anchors:
+        contrast: "The app assembles the tree from public pieces, not hands a body closure to a shell that owns the tree."
+        score_2: |
+          both backends call `kit.render(body)`; the shell renders everything
+        score_4: |
+          backends expose `panel_frames(&Workspace<K>) -> impl Iterator<Item = Frame<K>>`; the app writes its own `rsx!`/`ratatui` tree, or uses the optional `Shell`
+
+    - name: "Core-Contract Fidelity"
+      description: "Which behaviors that must match across backends (state container, load/merge/save, mode and drag ownership, theme, widget model, spec type) does the proposal put in `panel-kit-core`, and which does it leave duplicated or newly defined in the Dioxus or ratatui crate? Are backends reduced to DOM/signals/CSS/localStorage and cells/adapters respectively, with platform events translated into core input types at the boundary?"
+      scale: "1-5"
+      weight: 0.15
+      instruction: "Enumerate each shared behavior the proposal touches and record its home crate. Count behaviors that land in core versus per-backend. Place the proposal relative to the anchors: closer to score_2 when a shared concept (theme, persistence, widgets) is added or extended per backend; closer to score_4 when the shared state/spec/persistence shape is a core type and backends only adapt it. Score 5 when every shared behavior named has a core home and backends add no parallel semantics; score 1 when the proposal adds new backend-specific state or event types for concepts core could represent."
+      anchors:
+        contrast: "The shared state and persistence shape are core types, not a theme/persistence added separately to each backend."
+        score_2: |
+          Theme is added to the TUI `Theme` and a matching CSS var list in the web crate.
+        score_4: |
+          `panel-kit-core`: `Workspace<K> { panels, mode, scroll }`, `to_saved(&Workspace<K>) -> SavedLayout<K>`; backends own only DOM/signals (web) or cells (TUI)
+
+    - name: "Nix Spec Coverage"
+      description: "Against the fixed feature list from the task — panels, layout/geometry, mode, window state, tile spans, chrome metrics, theme, badges, widgets/content bindings, persistence policy, breakpoint/charset — which items can the proposed Nix specification express such that a Nix spec and a Rust example are interchangeable? Does the proposal have a coherent story for the hard items (widgets/content bindings given a closed `PanelKind` enum; persistence policy; charset)?"
+      scale: "1-5"
+      weight: 0.16
+      instruction: "Tick each of the 11 listed feature items the Nix spec explicitly covers, and note whether content/widget bindings have a mechanism (not just a named attribute). Do NOT reward attribute lists longer than the fixed feature list. Place the proposal relative to the anchors: closer to score_2 when only geometry plus one or two extras are covered; closer to score_4 when the full list is named with a mechanism for content bindings. Score 5 when every item is covered and the proposal explains how the spec maps onto core types; score 1 when the Nix spec is unchanged from `mkLayout` or absent."
+      anchors:
+        contrast: "Covers the full enumerated feature set, not geometry plus two extra attributes."
+        score_2: |
+          Extend `mkLayout.nix` with `theme` and `chrome` attrs
+        score_4: |
+          `mkSpec { panels, mode, chrome, theme, badges, widgets, persistence, breakpoint, charset }` -> JSON of core `WorkspaceSpec<K>`
+
+    - name: "Parity Proof Strength"
+      description: "How does the proposal prove that the Nix spec and the Rust example are interchangeable? Is there a single source of truth (one is derived from or deserialized into the other), and is the proof a `nix flake check` job that fails on drift by deserializing into the real Rust types and comparing values — or is it a schema/key check, or prose?"
+      scale: "1-5"
+      weight: 0.15
+      instruction: "Identify the exact check job named, what it deserializes into, and what it compares. Determine whether values (not just keys) are compared and whether `kind` strings are validated against the Rust enum. Place the proposal relative to the anchors: closer to score_2 when the check is jq/schema-only or values are hand-mirrored; closer to score_4 when a Rust-side round-trip deserializes the Nix output into the real type and asserts equality against the example. Score 5 when additionally the Rust example itself is generated from or consumes the Nix spec (no duplicated values anywhere); score 1 when parity is asserted in prose only."
+      anchors:
+        contrast: "Deserializes into the Rust type and asserts value equality, not checks JSON keys exist while values are mirrored by hand."
+        score_2: |
+          the Rust examples mirror the same values by hand; extend the jq check so the keys exist
+        score_4: |
+          check `spec-roundtrip`: a native test bin deserializes the Nix JSON into `WorkspaceSpec<CanaryKind>` and asserts `== workspace_canary::spec()`
+
+    - name: "Net Simplification"
+      description: "Does the proposal leave panel-kit with fewer mandatory concepts than today, deleting or collapsing existing types/functions, and is each abstraction it does add paired with a concrete composition that was previously impossible? Or does it layer traits, builders, providers, and adapters on top of the existing API?"
+      scale: "1-5"
+      weight: 0.08
+      instruction: "Count public types/traits/modules the proposal deletes or merges versus those it adds. For each addition, check whether a concrete enabled composition is named. Place the proposal relative to the anchors: closer to score_2 when several abstractions are added with generic justification ('cleaner', 'pluggable'); closer to score_4 when existing surface is deleted and additions are each tied to a named composition. Score 5 when the net public surface shrinks and every addition is justified; score 1 when additions are unjustified and nothing is removed."
+      anchors:
+        contrast: "Deletes existing surface with each addition tied to a named composition, not adds several traits justified only as 'cleaner'."
+        score_2: |
+          Add `trait Backend`, `trait Storage`, `trait ThemeProvider`, `trait Breakpoint`. Trade-offs: more traits but cleaner.
+        score_4: |
+          The `fn()` pointer and `&'static str` key are deleted; persistence reuses `merge_defaults`; gain: geometry usable without persistence, persistence without render
+
+    - name: "Migration Realism"
+      description: "Does the proposal name the exact public signatures that change for jump-cannon and apple-notes-ocr-flow, estimate the call-site impact, and state whether already-persisted `SavedLayout` JSON continues to load? Or does it wave at 'public API unchanged' or leave breakage unstated?"
+      scale: "1-5"
+      weight: 0.08
+      instruction: "Extract every stated breaking change and check it against the current signatures (`use_workspace(storage_key, defaults)`, `TuiWorkspace::new(store, defaults)`, `PanelKind`). Check whether persisted-JSON compatibility is stated. Place the proposal relative to the anchors: closer to score_2 when migration is a one-line claim without named changes; closer to score_4 when old and new signatures are named with consumer impact and persisted-data status. Score 5 when a staged path (e.g. deprecation alias then removal, or explicit cutover order) is also given; score 1 when the proposal breaks consumers without acknowledging it."
+      anchors:
+        contrast: "Names the old and new signature and the consumer impact, not asserts the API is unchanged."
+        score_2: |
+          Migration: Public API unchanged.
+        score_4: |
+          `use_workspace(key, defaults)` removed -> `use_workspace(spec: WorkspaceSpec<K>, store: impl Store)`; jump-cannon and apple-notes-ocr-flow each change one call site; existing `SavedLayout` JSON still loads
+
+    - name: "Technical Feasibility"
+      description: "Can the proposed mechanism actually be built with Rust + serde + crane + Nix under the pinned toolchain? Does any step require Nix to know Rust types, a proc-macro to read flake outputs, wasm-only crates to run in a native check, or runtime-defined panel kinds that conflict with `PanelKind: Copy + Serialize + DeserializeOwned + 'static`? Is the data flow Nix spec -> JSON -> Rust type -> backends concretely traceable?"
+      scale: "1-5"
+      weight: 0.06
+      instruction: "Trace the proposal's data flow end to end and flag any step with no known implementation path under the constraints. Place the proposal relative to the anchors: closer to score_2 when a step depends on an impossible or unspecified bridge; closer to score_4 when every step maps to an existing mechanism (serde, crane test bin, `pkgs.runCommand`, existing check patterns). Score 5 when the proposal also names the existing repo mechanism it reuses for each step; score 1 when the core mechanism cannot work as described."
+      anchors:
+        contrast: "Every step maps to an existing mechanism, not one step relying on Nix knowing the Rust enum."
+        score_2: |
+          the flake evaluates the app's `PanelKind` enum to validate `kind` at Nix eval time
+        score_4: |
+          `kinds` compared to `CanaryKind::ALL` inside the native `spec-roundtrip` test bin; wasm check mirrors the existing `browser-tui-example` crane job (`flake.nix:143`)
+
+    - name: "Risk Concreteness"
+      description: "Are the stated risks specific failure modes of THIS approach (e.g. generic `K` makes Nix `kind` strings unverifiable; wasm checks lengthen CI; serde shape change discards saved layouts), each with a mitigation tied to a test, check, or design choice? Or are they generic ('might be complex', 'needs care')?"
+      scale: "1-5"
+      weight: 0.06
+      instruction: "For each listed risk, classify it as approach-specific or generic and note whether a mitigation is tied to a verifiable artifact. Do not reward the number of risks. Place the proposal relative to the anchors: closer to score_2 when risks are generic and unmitigated; closer to score_4 when each named risk is approach-specific with a mitigation tied to a check. Score 5 when the proposal also names the failure signal (which check fails, what the user observes); score 1 when the risk section is empty or contentless."
+      anchors:
+        contrast: "Names an approach-specific failure mode with a mitigation tied to a check, not a generic worry."
+        score_2: |
+          Risks: Might be complex to implement.
+        score_4: |
+          generic `K` makes Nix `kind` strings unverifiable -> mitigated by `kinds` vs `K::ALL` assertion in the round-trip test
+
+    - name: "TDD Sliceability"
+      description: "Can this proposal be handed to `/plan-task` -> `/implement-task` as ordered, independently testable slices, each with an obvious first test (core unit test, serde round-trip, `nix flake check` job, example build)? Or is it a big-bang rewrite whose first test is unclear?"
+      scale: "1-5"
+      weight: 0.10
+      instruction: "Identify the slices the proposal implies or states and, for each, whether a first failing test is evident. Place the proposal relative to the anchors: closer to score_2 when no ordering or first test is evident; closer to score_4 when slices are ordered with a concrete first test each. Score 5 when slices are also independently mergeable (each leaves the workspace building); score 1 when the approach can only be validated after everything is rewritten."
+      anchors:
+        contrast: "Ordered slices each naming a first test, not a single undivided rewrite."
+        score_2: |
+          Rewrite both backends and the Nix DSL on top of `WorkspaceKit`.
+        score_4: |
+          1) core `Workspace` reducer tests replay existing `begin_drag`/`apply_drag` fixtures; 2) `WorkspaceSpec` serde round-trip; 3) `mkSpec` -> `spec-roundtrip` check; 4) web adapter; 5) TUI adapter
+
+  scoring:
+    aggregation: "weighted_sum"
+    total_weight: 1.0
+    scale: "1-5 per dimension; overall = sum(weight_i * score_i)"
+    essential_gate: "If any checklist item with importance 'essential' is NO, the proposal's overall score is capped at 2.0 regardless of rubric scores."
+    important_gate: "Each 'important' checklist item answered NO subtracts 0.25 from the overall score (floor 1.0)."
+    pitfall_penalty: "Each 'pitfall' checklist item answered YES subtracts 0.25 from the overall score (floor 1.0)."
+    judge_notes:
+      - "Score every proposal in every file (expect 18) before voting; record per-dimension scores with a quoted excerpt as evidence."
+      - "The explorer's self-reported probability is NOT scoring evidence. Use it only for pitfall CK-017. Tail (low-probability, unconventional) proposals are scored on merit exactly like head proposals; neither novelty nor conventionality earns or loses points."
+      - "Do not reward length, number of attributes, number of risks, or confident tone. Coverage is measured against the fixed 11-item feature list; risk quality against mitigation-tied-to-check."
+      - "Verify at least one citation per proposal against the repository or local://panel-kit-context.md before answering CK-007/CK-008."
+    selection:
+      procedure: "Rank all proposals by overall score. Vote for the top 3 as 1st/2nd/3rd choice."
+      tie_break: "Higher sum of the four 0.15/0.16-weight dimensions (Composability Gain, Core-Contract Fidelity, Nix Spec Coverage, Parity Proof Strength) wins; then fewer pitfall YES answers."
+      diversity_rule: "If two of the top 3 share the same core mechanism (CK-013 would be NO for the pair), keep the higher-scoring one and promote the next-highest proposal with a distinct mechanism, so the expansion phase develops three genuinely different approaches."
+    output_format:
+      per_proposal:
+        - "proposal_id (file letter + approach number, e.g. A3)"
+        - "checklist: list of {id, answer: YES|NO, evidence}"
+        - "criteria: list of {criterion_name, score, reason}"
+        - "overall_score"
+        - "overall_label: strong | viable | weak | invalid"
+      votes: "ordered list of 3 proposal_ids with a one-paragraph rationale each, plus concerns/questions to forward to the expansion agent"

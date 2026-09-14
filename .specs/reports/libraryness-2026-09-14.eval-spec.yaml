@@ -1,0 +1,441 @@
+rrd_cycle_applied: true
+self_verification_completed: true
+evaluation_specification:
+  metadata:
+    user_prompt: |
+      Verbatim: "on how we can improve the library'ness of this repository /
+      considering the differences (and advantages) of a library vs a framework I want to
+      improve panel-kit's value for users by leaning into the advantages and composability
+      (in the abstraction / composition vs inheritance sense) of this repository /
+      I'd also like you to consider pure nix based panel-kit specifications that are
+      totally feature complete alongside the rust based examples"
+
+      Binding interpretation (local://tot-task.md): design how panel-kit evolves so that
+      (1) the user's code owns control flow and panel-kit exposes composable opt-in pieces
+      with no inversion of control the user cannot bypass and no god object; (2)
+      panel-kit-core is the cross-backend contract and Dioxus/ratatui are thin backends;
+      (3) a pure-Nix WorkspaceSpec can express everything the Rust examples express, with
+      parity proven by a build check rather than hand-mirroring; (4) examples are canaries
+      with build checks. Deliverable is a design specification (not code) for a
+      /plan-task -> /implement-task TDD pipeline, containing problem statement with
+      citations, target architecture (crate/module layout, Rust signatures, Nix schemas,
+      Nix->Rust->backend data flow), what is deleted, the Nix specification surface with a
+      field-by-field completeness table against examples/workspace.rs and
+      crates/panel-kit-tui/examples/workspace_canary.rs, a mechanized spec-parity proof,
+      concrete MIGRATION.md-style consumer migration for jump-cannon and
+      apple-notes-ocr-flow, verifiable acceptance criteria, TDD decomposition naming the
+      first failing test per slice, and explicit non-goals.
+    artifact_type: "documentation — competing design specifications for a Rust + Nix library refactor, each ~one file, handed to a spec-driven TDD implementation pipeline"
+    solutions_under_evaluation: 3
+    solution_lineage:
+      - "A1 — headless core reducer + pluggable store + escape-hatch shells"
+      - "C-B — headless event reducer + frame projection; backends as widget kits"
+      - "C-F — spec compiler + capability-assembled shells + parity matrix"
+    repo_root: "/Users/casazza/Repositories/ocasazza/panel-kit"
+    evaluation_mode: "comparative — score each solution independently against the anchors, then rank"
+
+  # ----------------------------------------------------------------------------
+  # Ground truth. Every fact below was read directly from the working tree on
+  # 2026-09-14 by the meta-judge. Judges MUST use these to audit citations and
+  # MUST re-read the file when a solution cites something not listed here.
+  # Design against the WORKING TREE, not HEAD 6120e9b.
+  # ----------------------------------------------------------------------------
+  ground_truth:
+    verified_citations:
+      - "src/lib.rs:96 — use gloo_storage::{LocalStorage, Storage};"
+      - "src/lib.rs:249 — fn save_layout<K: PanelKind>(key: &str, ...) (private)"
+      - "src/lib.rs:269 — fn load_layout<K: PanelKind>(key: &str, ...) (private)"
+      - "src/lib.rs:293 — pub struct Workspace<K: PanelKind> (bundle of Signals)"
+      - "src/lib.rs:344-347 — pub fn use_workspace<K>(storage_key: &'static str, defaults: fn() -> Vec<PanelWin<K>>) -> Workspace<K>"
+      - "src/lib.rs:435 — save_layout(storage_key, &ps, md, vp) inside the persistence effect"
+      - "src/lib.rs:776 — pub fn render(&self, body: impl Fn(K, bool) -> Element) -> Element"
+      - "src/badge.rs:21 — pub use panel_kit_core::badge::{tag_hue, BadgeAction, BadgeClickKind, BadgeKind, Rgb}"
+      - "src/badge.rs:272-300 — #[cfg(test)] mod tests: tag_hue_deterministic, wikilink_label_prefixed, url_label_prefers_host (three tests of CORE symbols living in the web crate)"
+      - "crates/panel-kit-core/src/lib.rs:1093-1258 — #[cfg(test)] mod tests with FIVE tests: compact_surface_forces_tiling, bare_arrow_is_preserved_for_text_input, focus_next_skips_minimized_panels_and_wraps, reconcile_units_round_trips_between_viewports, v1_json_deserializes_and_migrates_to_v2"
+      - "crates/panel-kit-tui/src/lib.rs:149-155 — pub trait LayoutStore { fn load(&self) -> Result<Option<String>, String>; fn save(&self, json: &str) -> Result<(), String>; } (in a BACKEND crate)"
+      - "crates/panel-kit-tui/src/lib.rs:157 — struct FileLayoutStore(PathBuf) (private impl)"
+      - "crates/panel-kit-tui/src/lib.rs:230 — pub fn new(store: Option<PathBuf>, defaults: fn() -> Vec<PanelWin<K>>)"
+      - "crates/panel-kit-tui/src/lib.rs:239 — pub fn with_store(store: Box<dyn LayoutStore>, defaults: fn() -> Vec<PanelWin<K>>)"
+      - "flake.nix:30 — hydraSystems = [ \"x86_64-linux\" \"aarch64-darwin\" ]"
+      - "flake.nix:46-56 — crane src fileset = Cargo.toml, Cargo.lock, ./src, ./crates, ./assets, ./examples; ./nix is NOT included"
+      - "flake.nix:57-62 — commonArgs { strictDeps = true; CARGO_BUILD_TARGET = \"wasm32-unknown-unknown\"; doCheck = false; # no test runner on bare wasm32 }"
+      - "flake.nix:113-116 — lib.${system} exports mkLayout winStates modes unitKinds schemaVersion tileWMax tileHMax"
+      - "flake.nix:118-164 — checks = { panel-kit, layout-canary-schema, clippy (--all-targets -D warnings), browser-tui-example, doc (RUSTDOCFLAGS=-D warnings) }"
+      - "flake.nix:125-149 — layout-canary-schema is jq-only over the Nix-generated JSON; flake.nix:136 asserts (.panels | length == 7)"
+      - "nix/examples/workspace-canary.nix:1-33 — 7 panels (Workspace, Activity, Notes, Badges, Nodes, Capacity, Theme); header claims it is a declarative mirror proving the Nix DSL emits the same shape"
+      - "crates/panel-kit-tui/examples/workspace_canary.rs:8-18,36-50 — 9 panels (Workspace, Badges, Activity, Capacity, Flame, Distribution, Nodes, Notes, Theme); defaults() at :36-50"
+      - "nix/lib/mkLayout.nix:106 — mkLayout = { units, viewport, mode ? \"Floating\", panels }: with lib.assertMsg validation; :49-58 winStates/modes/unitKinds/schemaVersion"
+      - "examples/workspace.rs:1-33 — doc comment enumerating the web feature surface: storage key, PanelKind enum with a Minimized dock chip, LayoutBuilder/with_tile, render(body)/dock()/root_class(), floating drag/resize/z-raise, CMY mode+minimize+maximize controls, tiling hover-snap reorder and tile spans, viewport clamping, compact/tablet/regular SurfaceProfile, handle_key bindings, wheel chaining, restore, focus/scroll/span state, tip_pos"
+      - "File sizes: crates/panel-kit-core/src/lib.rs 1258, src/lib.rs 1137, crates/panel-kit-tui/src/lib.rs 822, nix/lib/mkLayout.nix 139, crates/panel-kit-tui/src/theme.rs 81, src/badge.rs 308, crates/panel-kit-tui/src/badge.rs 125"
+    live_drift_to_catch: "nix/examples/workspace-canary.nix lists 7 panels; workspace_canary.rs::defaults() yields 9 (Flame and Distribution absent from Nix, plus stale Notes/Theme y); flake.nix:136 asserts length == 7 and the check passes GREEN. An accepted design must turn this class of drift into a build failure."
+    traps:
+      - id: "TRAP-no-tests"
+        fact: "Rust unit tests DO exist (5 in crates/panel-kit-core/src/lib.rs:1093, 3 in src/badge.rs:272). The stale phase-1 context asserted none existed."
+        effect: "A solution claiming a clean slate or 'no #[test] anywhere' is citing an unverified fact — count it as a failed citation and answer CK-021 YES."
+      - id: "TRAP-no-test-runner"
+        fact: "nix flake check runs NO Rust tests: there is no cargo test / nextest check, commonArgs sets CARGO_BUILD_TARGET=wasm32-unknown-unknown with doCheck = false, and ./nix is outside the crane src fileset."
+        effect: "Acceptance criteria that rest on a core unit test, or a spec-parity check that serde-deserializes Nix JSON in Rust, are unenforceable until the spec adds a host-target runner and extends the fileset. Scored by 'Parity Check Feasibility'."
+      - id: "TRAP-already-landed"
+        fact: "SurfaceProfile/SurfaceClass/effective_mode, the Key/KeyChord/PanelCommand/command_for/apply_command layer, SavedLayoutV2/StoredLayout/Units/migrate_v1/reconcile_units, mkLayout emitting V2, and pub trait LayoutStore already exist."
+        effect: "Presenting any of these as new work is padding; LayoutStore's placement in a backend crate is a legitimate finding, its existence is not a proposal."
+      - id: "TRAP-stale-lines"
+        fact: "Phase-1 proposal line numbers were taken against HEAD 6120e9b and are stale."
+        effect: "A citation whose line number points at unrelated code counts as failed even if the symbol exists elsewhere in the file."
+
+  # ----------------------------------------------------------------------------
+  # Protocol the judge MUST follow before scoring.
+  # ----------------------------------------------------------------------------
+  judging_protocol:
+    citation_audit:
+      required: true
+      procedure: "Collect every file/symbol/line citation in the solution. Verify at least 8, chosen to include (a) every citation the solution's central mechanism depends on, (b) every citation about persistence, LayoutStore, the canaries, or flake checks, and (c) a random remainder. Verify by reading the cited file at the cited location in the working tree — never by plausibility. Record counts: citations_present, citations_checked, citations_verified, citations_failed, with one line per failure naming the claim and what is actually there."
+      failure_classes:
+        - "fabricated — the symbol or file does not exist"
+        - "misattributed — the symbol exists but not at the cited path/line (includes stale HEAD line numbers)"
+        - "false-claim — an assertion about the repo that is contradicted by the tree (e.g. 'no Rust tests exist', 'there is no LayoutStore')"
+        - "unverifiable — a claim stated as fact with no locatable referent"
+      gate: "Citation Fidelity MUST NOT be scored before this audit is recorded."
+    drift_test:
+      required: true
+      procedure: "For each solution, simulate the live drift against the described spec-parity mechanism: with Nix at 7 panels and workspace_canary.rs::defaults() at 9, does the described check FAIL? Then simulate a field added to the Rust type only, and a field added to the Nix schema only. Record the three answers (fails / passes / undetermined) and quote the sentence of the spec that decides each. A mechanism that requires a human to update an expected count does not fail on drift."
+    composition_test:
+      required: true
+      procedure: "Take one composition impossible today — paint a single panel with no workspace shell, reuse the chrome without the panel loop, or persist through a caller-owned store keyed by runtime config — and trace it through the solution's proposed public API using only the signatures the spec gives. Record whether it type-checks on paper and which named items it needs."
+    output_schema:
+      per_solution:
+        - "solution_id"
+        - "citation_audit: { citations_present, citations_checked, citations_verified, citations_failed, failures: [ { claim, actual, class } ] }"
+        - "drift_test: { seven_vs_nine, rust_only_field, nix_only_field, deciding_quotes }"
+        - "composition_test: { composition, type_checks_on_paper, api_items_used }"
+        - "checklist_answers: [ { id, answer: YES|NO, evidence } ]"
+        - "criterion_scores: [ { criterion_name, score, reason } ]  # reason MUST quote or cite the artifact"
+        - "weighted_total"
+        - "overall_label"
+      comparative:
+        - "ranking: ordered solution_ids with a one-sentence discriminator per adjacent pair"
+        - "tie_breaks: applied in order Citation Fidelity -> spec-parity Mechanization -> Inversion-of-Control Removal"
+        - "borrowables: mechanisms from a lower-ranked solution that the winner should absorb, each named with its section"
+    prohibited_signals:
+      - "Length, word count, section count, table count, or code-block count MUST NOT influence any score."
+      - "Confidence of tone MUST NOT influence any score. A confidently stated unverifiable claim scores strictly WORSE than an explicitly acknowledged gap or non-goal."
+      - "Formatting polish, headings style, and prose fluency MUST NOT influence any score."
+      - "Novelty of approach MUST NOT be rewarded; conformance to AGENTS.md, MIGRATION.md clean-cutover style, and existing repo patterns MUST be."
+      - "Perceived implementation difficulty MUST NOT be rewarded. A smaller design that deletes more and proves the same properties scores higher."
+      - "Do NOT reward a solution for volume of new public API. Each item must earn its place."
+
+  checklist:
+    - id: "CK-001"
+      question: "Is the artifact a design specification containing every required section — problem statement with citations, target architecture (crate/module layout, Rust signatures, Nix schemas, Nix->Rust->backend data flow), what is deleted, the Nix specification surface with a field-by-field completeness table, the mechanized spec-parity proof, consumer migration, acceptance criteria, TDD decomposition, and explicit non-goals?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "The deliverable form is enumerated in the binding task; a missing section means the spec cannot be handed to /plan-task."
+    - id: "CK-002"
+      question: "Does every file path, symbol, and line citation checked in the citation audit resolve to the working tree (citations_failed == 0)?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "The batch context names fabricated citations the single worst failure mode; a TDD pipeline built on a false citation produces a test against code that does not exist."
+    - id: "CK-003"
+      question: "Does the spec use the names WorkspaceSpec and spec-parity, state where WorkspaceSpec lives (core Rust type, JSON schema, or Nix module), and state whether it is build-time only?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "Shared vocabulary was mandated so the three solutions are comparable; the locus determines whether parity is even checkable."
+    - id: "CK-004"
+      question: "Does the described spec-parity mechanism FAIL on the live drift (Nix canary 7 panels vs workspace_canary.rs::defaults() 9)?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "This exact drift is green today; a design that cannot catch it does not solve the stated problem."
+    - id: "CK-005"
+      question: "Does the migration section cover BOTH jump-cannon and apple-notes-ocr-flow with explicitly named breaking changes?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "Both consumers are named in the contract; a breaking 1.0.0 cutover that silently breaks one of them is not shippable."
+    - id: "CK-006"
+      question: "Is the artifact design-only — no repo source files modified, and no claim of having run cargo/nix/dx builds, formatters, linters, or tests?"
+      category: "hard_rule"
+      importance: "essential"
+      rationale: "Explicit phase constraint; a solution that edited the tree or fabricated build output violates the brief and contaminates sibling work."
+    - id: "CK-007"
+      question: "Is every acceptance criterion mapped to a specific named mechanism — a named test function, a named nix flake check attribute, or a named example build?"
+      category: "hard_rule"
+      importance: "important"
+      rationale: "Unmapped criteria cannot be verified by /implement-task and become aspirations."
+    - id: "CK-008"
+      question: "Does each TDD slice name its first failing test, including what that test asserts and why it fails against the current tree?"
+      category: "hard_rule"
+      importance: "important"
+      rationale: "The pipeline is test-first; without a named failing test a slice has no entry point."
+    - id: "CK-009"
+      question: "Is there an explicit non-goals section that excludes at least one thing a reader would otherwise expect?"
+      category: "hard_rule"
+      importance: "important"
+      rationale: "Required by the deliverable form; bounds scope creep in implementation."
+    - id: "CK-010"
+      question: "Is the migration a clean cutover with no deprecated aliases, compatibility shims, or transitional re-exports?"
+      category: "principle"
+      importance: "important"
+      rationale: "The existing MIGRATION.md establishes 0.2.x -> 1.0.0 clean cutover; shims contradict the repo's stated policy."
+    - id: "CK-011"
+      question: "Does the spec relocate LayoutStore out of the backend crate (crates/panel-kit-tui/src/lib.rs:149) into panel-kit-core?"
+      category: "principle"
+      importance: "important"
+      rationale: "AGENTS.md puts cross-backend behavior in core; persistence is cross-backend and is currently in a backend."
+    - id: "CK-012"
+      question: "Does the spec state that Nix evaluation happens at build time only, with no runtime Nix dependency for consuming apps?"
+      category: "principle"
+      importance: "important"
+      rationale: "Explicit judge concern; a runtime Nix dependency is unacceptable for jump-cannon and apple-notes-ocr-flow."
+    - id: "CK-013"
+      question: "Does the spec show at least one composition that is impossible today, as a concrete code sketch using its own proposed signatures?"
+      category: "principle"
+      importance: "important"
+      rationale: "Library-ness claims are unfalsifiable without a composition that the current API forbids."
+    - id: "CK-014"
+      question: "Does the spec avoid presenting already-landed features (SurfaceProfile/effective_mode, command_for/apply_command, SavedLayoutV2/migrate_v1/reconcile_units, mkLayout emitting V2, the existence of LayoutStore) as new work?"
+      category: "principle"
+      importance: "important"
+      rationale: "Re-proposing landed work inflates apparent scope and misleads the implementer."
+    - id: "CK-015"
+      question: "Is the widget/theme asymmetry (TUI-only Theme at crates/panel-kit-tui/src/theme.rs, TUI-only charts/table/meter/scroll/status, Badge duplicated across src/badge.rs and crates/panel-kit-tui/src/badge.rs, plus assets/panel-kit.css and DESIGN.md tokens) either addressed or explicitly declared a non-goal with a rationale?"
+      category: "principle"
+      importance: "important"
+      rationale: "Named judge concern; silently ignoring it leaves the completeness claim unsupported."
+    - id: "CK-016"
+      question: "Does the spec state how its checks execute given that commonArgs pins CARGO_BUILD_TARGET=wasm32-unknown-unknown with doCheck = false (flake.nix:57-62), ./nix is outside the crane src fileset (flake.nix:46-56), and no cargo test / nextest check exists?"
+      category: "principle"
+      importance: "important"
+      rationale: "Without a host-target runner and a fileset change, every Rust-side acceptance criterion and any serde-based parity check is unrunnable in this flake."
+    - id: "CK-017"
+      question: "Does the spec name at least one concrete existing file or symbol to delete, with a verifiable citation?"
+      category: "principle"
+      importance: "important"
+      rationale: "Repo taste prefers deletion; a pure-addition design worsens the framework-shaped surface it claims to fix."
+    - id: "CK-018"
+      question: "Does every newly introduced public type or trait carry a named composition it enables?"
+      category: "principle"
+      importance: "optional"
+      rationale: "Explicit constraint: every new abstraction must be justified by a concrete composition."
+    - id: "CK-019"
+      question: "Does the spec state what happens when a WorkspaceSpec field is added on only one side (Rust type or Nix schema)?"
+      category: "principle"
+      importance: "optional"
+      rationale: "Field-level drift is the next instance of the same bug class as the 7-vs-9 panel drift."
+    - id: "CK-020"
+      question: "Does the spec state which behavior deliberately stays backend-local (DOM events/signals/CSS for Dioxus, crossterm/ratatui painting for the TUI) and why?"
+      category: "principle"
+      importance: "optional"
+      rationale: "Core-as-contract needs a stated boundary, not just a direction of travel."
+    - id: "CK-021"
+      question: "Does the spec claim that no Rust tests exist, or otherwise contradict crates/panel-kit-core/src/lib.rs:1093 and src/badge.rs:272?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "A specific stale-context trap; repeating it proves the working tree was not verified."
+    - id: "CK-022"
+      question: "Is the parity mechanism only jq/shape assertions, a hand-maintained expected count, or another human-mirrored expectation?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Shape-only parity is the mechanism that is already green while drifted; extending it was pre-rejected by the judges."
+    - id: "CK-023"
+      question: "Does the spec replace Workspace<K> with a new single mandatory object or entry point that apps must route all interaction through?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Named judge concern: trading one god object for another does not improve library-ness."
+    - id: "CK-024"
+      question: "Does the spec rely on stale HEAD-era line numbers carried over from the phase-1 proposals?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Stale citations were the mandatory drift concern for this phase."
+    - id: "CK-025"
+      question: "Does the spec add per-frame or per-event allocation, cloning, or string formatting on a hot path without justifying it?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Repo taste forbids avoidable allocation/copy; a projection or reducer boundary is exactly where this creeps in."
+    - id: "CK-026"
+      question: "Does the spec require Nix at consumer runtime, or embed Nix evaluation into the app's execution path?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Explicitly forbidden; consumers are a web app and a flow tool, not Nix hosts."
+    - id: "CK-027"
+      question: "Does the spec restate requirements, roadmap phases, or benefits in place of a mechanism (no signature, no schema, no check attribute)?"
+      category: "principle"
+      importance: "pitfall"
+      rationale: "Padding inflates apparent completeness while leaving the implementer with nothing to execute."
+
+  rubric_dimensions:
+    - name: "Citation Fidelity"
+      description: "Do the spec's claims about the code hold at the cited location? Walk the citation audit: does every checked file path, symbol, signature, and line number resolve in the working tree? Are any citations fabricated (symbol does not exist), misattributed (right symbol, wrong path or a stale HEAD line), or false claims about the tree (for example asserting no Rust tests exist when crates/panel-kit-core/src/lib.rs:1093 holds five, or asserting LayoutStore does not exist when crates/panel-kit-tui/src/lib.rs:149 defines it)? Where the spec is uncertain, does it say so rather than assert?"
+      scale: "1-5"
+      weight: 0.16
+      instruction: "Complete the citation audit first and record citations_checked / citations_verified / citations_failed plus one line per failure. Then place the artifact against the anchors: each failed citation that the spec's central mechanism depends on pulls it toward score_2; a clean audit with locatable referents throughout places it at or above score_4. Do not credit a citation for looking plausible, and do not penalise an explicitly flagged uncertainty as if it were a false claim."
+      anchors:
+        contrast: "Cites a location that actually contains the claimed symbol, rather than a location that does not."
+        score_2: |
+          `Workspace` (`src/lib.rs:412`) does too much, and there is no `LayoutStore`.
+        score_4: |
+          `pub struct Workspace<K: PanelKind>` (`src/lib.rs:293`) bundles the Signals;
+          `pub trait LayoutStore` already exists at `crates/panel-kit-tui/src/lib.rs:149`.
+
+    - name: "Inversion-of-Control Removal"
+      description: "Does the spec identify each unbypassable inversion of control individually and show it removed? Specifically: Workspace::render(body) as the only paint path (src/lib.rs:776); defaults: fn() -> Vec<PanelWin<K>> which cannot capture app config (src/lib.rs:346); storage_key: &'static str which forces a literal (src/lib.rs:345); and the hardcoded gloo_storage localStorage path (src/lib.rs:96, :249, :269). For each, does the spec name the composition that construct currently blocks, and give the replacement signature? Or does it gesture at 'framework-shaped' without naming the constructs?"
+      scale: "1-5"
+      weight: 0.15
+      instruction: "Enumerate the four inversions and mark, for each, whether the spec (a) names it with a citation, (b) names the composition it blocks, (c) gives a replacement signature. Place the artifact against the anchors: gestures at the problem without naming constructs pulls toward score_2; per-construct naming with the blocked composition and a replacement signature places it at or above score_4. Ignore how much prose surrounds the analysis."
+      anchors:
+        contrast: "Names the construct and the composition it blocks, rather than describing the object as doing too much."
+        score_2: |
+          `Workspace` owns the render tree and does too much, so apps cannot compose.
+        score_4: |
+          `pub fn render(&self, body: impl Fn(K, bool) -> Element) -> Element`
+          (`src/lib.rs:776`) is the only paint path, so an app cannot paint one panel
+          or replace the dock region; it is replaced by free `panel(&PanelWin<K>, body)`
+          plus an opt-in `WorkspacePanels` component.
+
+    - name: "spec-parity Mechanization"
+      description: "Is Nix<->Rust equivalence proven against Rust types, or against human-maintained expectations? Does the check deserialize the Nix output into the actual Rust WorkspaceSpec type (serde, deny_unknown_fields, exhaustive matching, or generation of one side from the other), so disagreement is a type or equality error? Run the drift test: does the mechanism fail on the live 7-vs-9 panel drift, on a field added to the Rust type only, and on a field added to the Nix schema only? Or does catching drift still require a human to edit an expected count?"
+      scale: "1-5"
+      weight: 0.16
+      instruction: "Record the three drift-test answers with the deciding quote from the spec. Place the artifact against the anchors: any mechanism whose failure depends on a human-updated expectation pulls toward score_2; a mechanism where disagreement is a deserialization or equality failure against the Rust type, and where all three drift cases fail the check, places it at or above score_4. Judge the mechanism, not the number of assertions described."
+      anchors:
+        contrast: "Disagreement is decided by the Rust type, rather than by a hand-written expected value."
+        score_2: |
+          Extend `checks.layout-canary-schema` and update the expected panel count
+          from 7 to 9 so the canary matches `workspace_canary.rs`.
+        score_4: |
+          `checks.spec-parity` runs `serde_json::from_str::<WorkspaceSpec>` (with
+          `#[serde(deny_unknown_fields)]`) over the Nix JSON and asserts equality with
+          `workspace_canary::spec()`; the 7-vs-9 drift fails it with no count to edit.
+
+    - name: "WorkspaceSpec Completeness"
+      description: "Is the pure-Nix surface enumerated field-by-field against what the Rust examples actually express, or asserted? Does the spec carry a table whose rows come from examples/workspace.rs:1-33 and crates/panel-kit-tui/examples/workspace_canary.rs — panels and kinds, geometry, mode, window state, tile spans, chrome metrics, surface thresholds, theme, keybindings, charset, persistence policy, badges, widget/content bindings — each marked expressible-in-Nix, not-yet, or explicit non-goal with a rationale? Are gaps marked honestly rather than implied away by phrases like 'and the rest of the surface'?"
+      scale: "1-5"
+      weight: 0.15
+      instruction: "Build the row list from the two examples yourself, then check the spec's table against it row by row and count rows present / rows missing / gaps honestly marked. Place the artifact against the anchors: summarising the surface in prose or trailing off into an etcetera pulls toward score_2; a row-per-feature table with honest not-yet and non-goal markings places it at or above score_4. An honestly marked non-goal is worth more than an unsupported claim of coverage; do not credit table size for its own sake."
+      anchors:
+        contrast: "Enumerates each feature row with its status, rather than summarising the surface and trailing off."
+        score_2: |
+          `WorkspaceSpec` covers panels, theme, keybindings, and the rest of the surface,
+          giving full feature parity with the Rust examples.
+        score_4: |
+          | feature | Rust source | Nix field | status |
+          | tile spans | `workspace_canary.rs:39` `with_tile(1, 2)` | `panels[].tile_w/_h` | expressible |
+          | charset | `theme.rs` glyph set | — | non-goal 1.0 (TUI-only, rationale below) |
+
+    - name: "Parity Check Feasibility"
+      description: "Can the proposed checks actually run in this flake? Does the spec account for commonArgs pinning CARGO_BUILD_TARGET=wasm32-unknown-unknown with doCheck = false and the comment 'no test runner on bare wasm32' (flake.nix:57-62), for ./nix being absent from the crane src fileset (flake.nix:46-56), and for there being no cargo test or nextest check at all (flake.nix:118-164)? Does it name the host-target toolchain or derivation that executes Rust assertions, how the Nix JSON reaches the check, and that it builds on both hydraSystems (flake.nix:30)?"
+      scale: "1-5"
+      weight: 0.06
+      instruction: "List the executable prerequisites the spec's checks need (host target, second craneLib or derivation, fileset entry, how JSON is passed in) and mark each stated or unstated. Place the artifact against the anchors: naming a check without naming what makes it runnable here pulls toward score_2; naming the toolchain and fileset change with the reason drawn from flake.nix places it at or above score_4. Do not penalise a solution for choosing a different runner, only for leaving the runner unaccounted for."
+      anchors:
+        contrast: "States the toolchain and fileset change that makes the check runnable, rather than naming only the check."
+        score_2: |
+          `checks.spec-parity` runs a Rust test that deserializes the Nix JSON.
+        score_4: |
+          `checks.spec-parity` uses a new `craneLibNative` (host target) because
+          `commonArgs` pins wasm32 with `doCheck = false` (`flake.nix:57-62`), and adds
+          `./nix` to the crane fileset (`flake.nix:46-56`) so the JSON is an input.
+
+    - name: "God-Object Avoidance"
+      description: "Is each capability reachable without routing through one mandatory object? Can an app use geometry, chrome, persistence, the reducer, or a single panel independently, with named escape hatches, or must it construct the new core container and funnel every interaction through it? Does the spec demonstrate a partial composition — one panel, or chrome without the panel loop — using its own signatures? Has Workspace<K> been decomposed, or renamed?"
+      scale: "1-5"
+      weight: 0.06
+      instruction: "Trace the composition test using only the spec's own signatures and record which items it needs. Place the artifact against the anchors: a design where the partial composition still requires the central container pulls toward score_2; one where the capability is usable as a free function or standalone value places it at or above score_4. Judge reachability, not how emphatically the spec denies being a framework."
+      anchors:
+        contrast: "The capability is reachable without constructing the central container, rather than only through it."
+        score_2: |
+          All apps construct `WorkspaceState<K>` once and route every interaction
+          through `state.update(event)` and `state.view()`.
+        score_4: |
+          `panel_kit_core::geometry::effective_rect(&win, &clamp)` and
+          `panel_kit::panel(&win, body)` are usable alone; `WorkspaceState` is the
+          optional convenience that composes them.
+
+    - name: "Core-as-Contract Placement"
+      description: "Is cross-backend behavior specified in panel-kit-core and backend-local behavior named as such? Does the spec move LayoutStore out of crates/panel-kit-tui/src/lib.rs:149 into core, and place the shared load -> StoredLayout -> migrate_v1/reconcile_units -> merge_defaults -> save sequence in core rather than duplicated in both shells? Does it notice related misplacement, such as src/badge.rs:272 testing core symbols from the web crate? Does it state what deliberately stays in each backend?"
+      scale: "1-5"
+      weight: 0.06
+      instruction: "For each behavior the spec touches, mark the crate it assigns and whether that assignment matches the AGENTS.md rule that cross-backend behavior lives in core. Place the artifact against the anchors: leaving a cross-backend behavior in a backend crate, or being silent about where it lives, pulls toward score_2; naming the move with its destination module and the rule it satisfies places it at or above score_4."
+      anchors:
+        contrast: "Assigns the cross-backend behavior to core, rather than leaving it in a backend crate."
+        score_2: |
+          The TUI already has `LayoutStore`; the web shell gains its own
+          `WebLayoutStore` trait so both sides can persist.
+        score_4: |
+          `LayoutStore` moves from `crates/panel-kit-tui/src/lib.rs:149` to
+          `panel_kit_core::store`; `FileLayoutStore` and `LocalStorageStore` are the two
+          backend impls of the one core trait (AGENTS.md: cross-backend behavior in core).
+
+    - name: "Executable Acceptance & TDD Decomposition"
+      description: "Can /implement-task execute this without inventing anything? Is every acceptance criterion bound to a named mechanism — a test function with its module path, a nix flake check attribute, or an example target and its build target triple? For each slice, is the first failing test named, with the assertion it makes and the reason it fails against the current tree? Or are criteria stated as outcomes ('Nix and Rust stay in sync', 'the library feels composable') that no command can decide?"
+      scale: "1-5"
+      weight: 0.06
+      instruction: "Tabulate criteria against mechanisms and count how many are bound to a named test function, check attribute, or example target, and how many slices name a first failing test with its failure reason. Place the artifact against the anchors: outcome statements with no decidable mechanism pull toward score_2; criterion-to-named-mechanism binding with a stated present-day failure places it at or above score_4. Judge bindability, not the number of criteria listed."
+      anchors:
+        contrast: "Binds the criterion to a named mechanism that can decide it, rather than stating an outcome."
+        score_2: |
+          - Nix and Rust specs stay in sync.
+          - The library feels composable and apps own control flow.
+        score_4: |
+          | criterion | mechanism |
+          | Nix and Rust agree on the panel set | `checks.spec-parity` (red today: 7 vs 9) |
+          | store is replaceable | `panel_kit_core::store::tests::round_trips_through_a_custom_store` |
+
+    - name: "Migration Concreteness"
+      description: "Could a jump-cannon or apple-notes-ocr-flow maintainer apply this migration mechanically? Are there before/after call sites in code, an enumeration of each breaking change (use_workspace removed, &'static str key becomes an owned String, fn() becomes impl Fn, render replaced), and MIGRATION.md-style clean cutover with no deprecated aliases or shims? Is each consumer addressed specifically rather than collectively?"
+      scale: "1-5"
+      weight: 0.06
+      instruction: "For each of the two named consumers, check for a before/after call site and an enumeration of breaking changes, and check whether any alias or shim is proposed. Place the artifact against the anchors: telling consumers to update call sites, or offering a transitional alias, pulls toward score_2; before/after code with named breaking changes and no alias places it at or above score_4."
+      anchors:
+        contrast: "Shows the call-site diff and names the breaking change, rather than instructing consumers to update."
+        score_2: |
+          `jump-cannon` and `apple-notes-ocr-flow` switch to the new API; a
+          `use_workspace_compat` alias is kept for one release.
+        score_4: |
+          jump-cannon before: `let ws = use_workspace("jc_layout", default_layout);`
+          after: `let ws = Workspace::builder().store(LocalStorageStore::new(cfg.key.clone())).build();`
+          Breaking: `use_workspace` removed; key `&'static str` -> `String`. No aliases.
+
+    - name: "Deletion Accounting"
+      description: "Does the spec account for what leaves the tree, with citations? Are the duplicated per-backend load/save paths (src/lib.rs:249, :269 and their TUI counterpart), the hand-mirrored canary and its jq assertions (nix/examples/workspace-canary.nix, flake.nix:125-149), the redundant per-backend theme/badge sources, and the superseded entry points named as deleted or moved? Is the net change a simplification, or does the spec only add?"
+      scale: "1-5"
+      weight: 0.04
+      instruction: "List what the spec says is removed or moved, with citations, and compare against what its own architecture supersedes. Place the artifact against the anchors: superseding a construct without saying it goes pulls toward score_2; naming the removed file/symbol with a citation places it at or above score_4. Count only deletions the spec's own design actually makes possible."
+      anchors:
+        contrast: "Names the superseded code as deleted with a citation, rather than leaving it standing."
+        score_2: |
+          The new store API supersedes the current persistence helpers.
+        score_4: |
+          Deleted: `src/lib.rs:249-291` (`save_layout`/`load_layout`),
+          `Workspace::render` (`src/lib.rs:776`), and the jq assertions at
+          `flake.nix:125-149`.
+
+    - name: "Abstraction Economy"
+      description: "Does every new public item earn its place? For each newly introduced type, trait, or module, is there a named composition it enables that is impossible or awkward without it? Are traits introduced where a free function or a plain value would do? Does the spec avoid adding per-frame allocation, cloning, or string formatting on hot paths, or justify it where unavoidable?"
+      scale: "1-5"
+      weight: 0.04
+      instruction: "List each new public item and mark whether the spec names the composition it enables and whether a simpler form would suffice. Place the artifact against the anchors: an item introduced with only a role description pulls toward score_2; an item paired with the composition it unlocks, or deliberately kept as a free function, places it at or above score_4. Do not reward quantity of new API; a smaller surface proving the same properties scores higher."
+      anchors:
+        contrast: "Pairs the new item with the composition it enables, rather than describing its role."
+        score_2: |
+          Introduce `WorkspaceState<K>`, `FrameProjector`, and `ChromeProvider` as the
+          core abstraction layer.
+        score_4: |
+          `LayoutStore` in core (enables: jump-cannon persisting to IndexedDB keyed by a
+          runtime workspace id — impossible while `src/lib.rs:96` hardcodes localStorage).
+          Chrome stays a free `workspace_chrome(...)` — no trait, nothing to inject.
+
+  scoring:
+    aggregation: "weighted_sum"
+    total_weight: 1.0
+    scale: "1-5 integers per dimension; interpolate and extrapolate from the two anchors"
+    gates:
+      - "If any essential checklist item (CK-001..CK-006) answers NO, the overall score MUST NOT exceed 2.0 regardless of rubric scores, and the reason MUST name the failed item."
+      - "Each pitfall item (CK-021..CK-027) answered YES reduces the overall score by 0.25, to a floor of 1.0, and MUST be cited in the reason."
+      - "A solution whose citation audit records any fabricated or false-claim failure on a citation its central mechanism depends on MUST NOT score above 3.0 overall."
+    overall_label:
+      - "excellent — no essential failure, no pitfall, weighted total >= 4.2, clean citation audit"
+      - "acceptable — no essential failure, weighted total >= 3.2"
+      - "weak — weighted total >= 2.0 or a single essential failure"
+      - "rejected — two or more essential failures, or a fabricated citation under its central mechanism"
+    required_fields_per_criterion:
+      - "criterion_name"
+      - "score"
+      - "reason (MUST quote the artifact or cite artifact section, and MUST state which anchor it sits nearer)"

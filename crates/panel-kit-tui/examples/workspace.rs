@@ -106,7 +106,7 @@ impl Demo {
     }
 
     fn handle_key(&mut self, ws: &mut TuiWorkspace<Panel>, event: KeyEvent) -> bool {
-        match event.code.clone() {
+        match event.code {
             KeyCode::Char('q') => return true,
             KeyCode::Char('p') => self.toggle_theme(ws),
             KeyCode::Char('1') => ws.restore_panel(Panel::Workspace),
