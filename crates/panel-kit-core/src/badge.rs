@@ -6,6 +6,8 @@
 //! both over these types, so a host app's action-routing `match` is
 //! identical in the browser and the terminal.
 
+use serde::{Deserialize, Serialize};
+
 /// RGB triple for the community-tint override. Kept numeric (not a CSS
 /// string) so shells can derive contrast foregrounds / brightened borders
 /// in Rust.
@@ -18,7 +20,8 @@ pub type Rgb = (u8, u8, u8);
 /// [`Url`](BadgeKind::Url) also change the click action to
 /// [`BadgeAction::Navigate`] / [`BadgeAction::OpenUrl`] and decorate the
 /// label (see [`display_label`]).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 pub enum BadgeKind {
     /// A `#tag`-style label. Pair with [`tag_hue`] for a stable per-value
     /// colour via the shells' `override_color`.
@@ -110,7 +113,8 @@ pub enum BadgeAction {
 
 /// Selects the click semantics for a non-Wikilink/Url body click.
 /// Default is `Toggle` (back-compat with filter-toggle call sites).
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 pub enum BadgeClickKind {
     /// Body clicks emit [`BadgeAction::Toggle`] — for badges that drive a
     /// filter set. This is the default.
@@ -120,6 +124,10 @@ pub enum BadgeClickKind {
     /// hosts that want to decide themselves.
     Clicked,
 }
+
+mod spec;
+
+pub use spec::BadgeSpec;
 
 /// Stable hue derivation (0.0..1.0) for tag-like values. FNV-1a 32-bit —
 /// small, deterministic, no extra deps — so hosts share one colour mapping
@@ -157,3 +165,7 @@ pub fn display_label(kind: &BadgeKind, value: &str) -> String {
         _ => value.to_string(),
     }
 }
+
+#[cfg(test)]
+#[path = "badge_tests.rs"]
+mod tests;

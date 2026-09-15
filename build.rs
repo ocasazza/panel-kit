@@ -1,36 +1,51 @@
-//! Generates the pre-WASM boot stylesheet from the canonical token source.
+//! Generates theme-derived assets from the canonical core token source.
 //!
-//! `assets/panel-kit-boot.css` used to be hand-maintained, which meant the
-//! palette existed in three places (the `:root` block, the terminal `Theme`,
-//! and the boot shell) held together by discipline alone. The discipline had
-//! already failed by seven near-miss values. The boot shell genuinely cannot
-//! read `panel_kit::CSS` — it paints before the WASM module exists — so the
-//! fix is to generate it rather than to ask people to remember.
-//!
-//! Every `{{name}}` in `assets/panel-kit-boot.css.in` is replaced with the
-//! matching `panel_kit_core::tokens` value. An unknown placeholder is a hard
-//! error: a typo must not silently ship as literal text in a stylesheet.
+//! The pre-WASM boot stylesheet, the injected stylesheet's `:root` theme
+//! variables, and the `DESIGN.md` token region are generated rather than
+//! hand-copied. Unknown boot placeholders fail hard: a typo must not silently
+//! ship as literal text in a stylesheet.
 
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use panel_kit_core::theme::{
+    css_root_block, design_token_region, replace_generated_region, ThemeTokens,
+    CSS_THEME_REGION_BEGIN, CSS_THEME_REGION_END, DESIGN_THEME_REGION_BEGIN,
+    DESIGN_THEME_REGION_END,
+};
 use panel_kit_core::tokens;
 
 const TEMPLATE: &str = "assets/panel-kit-boot.css.in";
+const CSS_FILE: &str = "assets/panel-kit.css";
+const DESIGN_FILE: &str = "DESIGN.md";
 
 fn main() {
     println!("cargo:rerun-if-changed={TEMPLATE}");
+    println!("cargo:rerun-if-changed={CSS_FILE}");
+    println!("cargo:rerun-if-changed={DESIGN_FILE}");
     println!("cargo:rerun-if-changed=build.rs");
 
     let template =
         fs::read_to_string(TEMPLATE).unwrap_or_else(|e| panic!("cannot read {TEMPLATE}: {e}"));
-
     let rendered = render(&template);
-
     let out = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set by cargo"))
         .join("panel-kit-boot.css");
-    fs::write(&out, rendered).unwrap_or_else(|e| panic!("cannot write {}: {e}", out.display()));
+    write_if_changed(&out, &rendered);
+
+    let dark = ThemeTokens::dark();
+    update_generated_region(
+        CSS_FILE,
+        CSS_THEME_REGION_BEGIN,
+        CSS_THEME_REGION_END,
+        &css_root_block(&dark),
+    );
+    update_generated_region(
+        DESIGN_FILE,
+        DESIGN_THEME_REGION_BEGIN,
+        DESIGN_THEME_REGION_END,
+        &design_token_region(&dark),
+    );
 }
 
 /// Substitute every double-brace placeholder, returning the rendered sheet.
@@ -46,29 +61,47 @@ fn render(template: &str) -> String {
             .unwrap_or_else(|| panic!("unterminated placeholder in {TEMPLATE}"));
         let name = after[..end].trim();
 
-        let value = if name == "mono" {
-            tokens::MONO.to_string()
-        } else {
-            tokens::by_name(name)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "{TEMPLATE} references unknown token `{name}`; \
-                         known tokens: mono, {}",
-                        tokens::DARK
-                            .iter()
-                            .map(|t| t.name)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                })
-                .hex
-                .to_string()
-        };
-
-        out.push_str(&value);
+        out.push_str(&placeholder_value(name));
         rest = &after[end + 2..];
     }
     out.push_str(rest);
 
     out
+}
+
+fn placeholder_value(name: &str) -> String {
+    if name == "mono" {
+        return tokens::MONO.to_string();
+    }
+
+    tokens::by_name(name)
+        .unwrap_or_else(|| {
+            panic!(
+                "{TEMPLATE} references unknown token `{name}`; known tokens: mono, {}",
+                tokens::DARK
+                    .iter()
+                    .map(|t| t.name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .hex
+        .to_string()
+}
+
+fn update_generated_region(path: &str, begin: &str, end: &str, generated: &str) {
+    let document = fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
+    let rendered = replace_generated_region(&document, begin, end, generated);
+    write_if_changed(path, &rendered);
+}
+
+fn write_if_changed(path: impl AsRef<Path>, contents: &str) {
+    let path = path.as_ref();
+    if let Ok(existing) = fs::read_to_string(path) {
+        if existing == contents {
+            return;
+        }
+    }
+
+    fs::write(path, contents).unwrap_or_else(|e| panic!("cannot write {}: {e}", path.display()));
 }

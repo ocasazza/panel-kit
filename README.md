@@ -49,28 +49,34 @@ reorder, minimize, maximize, and mode-toggle controls.
 
 ## Usage
 
-The app supplies two things: a `PanelKind` impl (an enum of its panels) and a
-body-render callback. Everything else — geometry, z-order, drag state,
-viewport clamping, surface classification, keyboard commands, and
-persistence — lives here.
+Applications own the workspace. Start with a `PanelKind` enum, construct a
+`panel_kit_core::reducer::Snapshot`, keep a reusable
+`panel_kit_core::frame::ProjectionBuffer`, reduce browser events through
+`panel_kit_core::reducer::reduce`, and render only the web parts you want:
 
 ```rust
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-enum Panel { Graph, Inspector }
-impl panel_kit::PanelKind for Panel {
-    fn title(self) -> &'static str { /* … */ }
-}
+let snapshot = panel_kit_core::reducer::Snapshot::from_defaults(
+    default_layout(),
+    panel_kit::Mode::Floating,
+    viewport,
+);
+let frame = panel_kit_core::frame::project_into(input, &mut projection_buffer);
 
-let ws = panel_kit::use_workspace("myapp_layout", default_layout);
 rsx! {
     style { {panel_kit::CSS} }
-    div { class: ws.root_class(), tabindex: "0",
-        onpointermove: move |event| ws.handle_pointer_move(&event),
-        onpointerup: move |event| ws.handle_pointer_up(&event),
-        onkeydown: move |event| ws.handle_key(&event),
-        header { class: "topbar", /* app-specific */ }
-        {ws.render(|kind, maximized| rsx! { /* panel body for `kind` */ })}
-        {ws.dock()}
+    div { class: "{panel_kit::widgets::root::root_class(&frame)}", tabindex: "0",
+        header { class: "topbar", /* app-specific controls */ }
+        for panel in frame.panels.iter().copied() {
+            {
+                let meta = catalog.get(panel.key).expect("projected panel is in the catalog");
+                panel_kit::widgets::panel::panel_shell(panel, None, rsx! {
+                    {panel_kit::widgets::panel::panel_chrome_with_events(panel, meta, emit, None, None)}
+                    {panel_kit::widgets::panel::panel_body(rsx! { /* body for panel.key */ })}
+                    {panel_kit::widgets::panel::resize_grip(panel, emit)}
+                })
+            }
+        }
+        {panel_kit::widgets::dock::dock(frame.dock, &catalog, emit)}
     }
 }
 ```
@@ -87,13 +93,14 @@ destructive red control would teach the wrong model.
 
 ### Surface tiers
 
-`Workspace::surface_profile()` reports `Compact`, `Tablet`, or `Regular`
-plus coarse-pointer, hover, and keyboard capabilities. The web defaults are
-`<760px`, `<1180px`, and everything wider. Compact surfaces force tiling and
-withhold the affordances that move or resize a panel by hand; tablet and
-regular surfaces keep move, resize, minimize, and maximize behavior.
-`root_class()` emits exactly one of `compact`, `tablet`, or `regular`
-alongside `ws-root`, plus `coarse` when the primary pointer is imprecise.
+`panel_kit::surface::surface_profile(width)` reports `Compact`, `Tablet`, or
+`Regular` plus coarse-pointer, hover, and keyboard capabilities. The web
+defaults are `<760px`, `<1180px`, and everything wider. Compact surfaces force
+tiling and withhold the affordances that move or resize a panel by hand; tablet
+and regular surfaces keep move, resize, minimize, and maximize behavior.
+`panel_kit::widgets::root::root_class(&frame)` emits exactly one of `compact`,
+`tablet`, or `regular` alongside `ws-root`, plus `coarse` when the primary
+pointer is imprecise.
 
 Two rules follow from that, and both are load-bearing:
 
@@ -102,46 +109,49 @@ Two rules follow from that, and both are load-bearing:
   regular surface that still needs 44px targets; a 900px mouse-driven window
   does not.
 - **A tier never traps a window state.** Layouts persist across surfaces, so a
-  panel maximized on a desktop arrives maximized on a phone. Compact
-  therefore still renders the magenta restore light — and only that one — for
-  a maximized panel.
+  panel maximized on a desktop arrives maximized on a phone. Compact therefore
+  still renders the magenta restore light — and only that one — for a maximized
+  panel.
 
 ### Keyboard window management
 
-Pass the root `onkeydown` event to `Workspace::handle_key`. Arrow keys move
-the focused panel, Shift+arrows resize, and Alt+arrows fine-move. `m`, `f`,
-`t`, and Escape minimize, maximize, toggle mode, and restore; Tab and
-Shift+Tab cycle focus, while Enter raises. Bare shortcuts are ignored while
-a text input owns focus. The focused kind is available through
-`Workspace::focused()` and the public `focused` signal.
+Translate a root `onkeydown` event with `panel_kit::input::keyboard_event`,
+then apply it with `panel_kit_core::reducer::reduce` if the host did not give
+the focused editor or application shortcut first refusal. Arrow keys move the
+focused panel, Shift+arrows resize, and Alt+arrows fine-move. `m`, `f`, `t`,
+and Escape minimize, maximize, toggle mode, and restore; Tab and Shift+Tab
+cycle focus, while Enter raises. Bare shortcuts are ignored while a text input
+owns focus.
 
 ### Versioned persistence
 
-Web workspaces now write `SavedLayoutV2` with schema version, `Units::CssPx`,
-capture viewport, mode, and panels. Existing `{ panels, tiling }` V1 records
-remain readable and are migrated automatically. Core exposes `StoredLayout`,
-`migrate_v1`, and `reconcile_units` so other renderers can perform the same
-upgrade and rescale foreign viewport/unit geometry. Named views persist
+Web workspaces write `SavedLayoutV2` with schema version, `Units::CssPx`,
+captured viewport, mode, and panels when the host applies `SavePolicy` or calls
+`persist_snapshot`. Existing `{ panels, tiling }` V1 records remain readable
+through `restore_snapshot`. Core exposes `StoredLayout`, `migrate_v1`,
+`reconcile_units`, and `LayoutStore` so every renderer performs the same
+upgrade and rescales foreign viewport/unit geometry. Named views persist
 through the same reader and writer, one V2 record per view.
 
 ### Named views
 
-For several named, switchable layouts inside one workspace, `use_views`
-layers a view registry over the same machinery — one `Workspace`, one
-`render`/`dock` pair, a storage key per view:
+For several named, switchable layouts inside one workspace, the application now
+owns the view switcher state instead of calling a web controller hook. Keep a
+core `SavedViews` registry, store it at `views_registry_key(base)`, and create
+one `LocalStorageLayoutStore` per active view with `view_layout_key(base, name)`:
 
 ```rust
-let views = panel_kit::use_views("myapp_layout", default_layout, &["User", "Sessions"]);
-let ws = views.workspace;
-// views.names / views.active are signals; views.switch(name),
-// views.create(name), views.rename(old, new), views.delete(name)
-// manage the registry.
+let registry = panel_kit_core::views::SavedViews::new(&["User", "Sessions"]);
+let store = panel_kit::store::LocalStorageLayoutStore::new(
+    panel_kit_core::views::view_layout_key("myapp_layout", &registry.active),
+);
+// host: restore_snapshot/store + reduce + SavePolicy + web parts
 ```
 
 The registry persists at `myapp_layout:views`, each view's layout at
-`myapp_layout:view:<name>`; a pre-views layout at the bare base key migrates
-into the first view on first run (copied, never deleted). See the `views`
-example for a full switcher UI — the hook ships no UI of its own.
+`myapp_layout:view:<name>`; a pre-views layout at the bare base key still
+migrates into the first view on first run (copied, never deleted). See the
+`views` example for the complete host-owned switcher and parts loop.
 
 ### Loading before WASM
 
@@ -243,8 +253,8 @@ dx serve --example workspace --platform web
 
 | example | shows |
 | --- | --- |
-| `workspace` | `use_workspace` + `PanelKind` + `LayoutBuilder`; floating pointer and keyboard move/resize/raise; blue mode, yellow minimize, and pink maximize/restore controls; tiling reorder and span resize; a restore-by-kind control; viewport clamping; inner-panel and workspace wheel chaining; live compact/tablet/regular, focus, `tile_w`/`tile_h`, and `ws_scroll` state; versioned localStorage persistence; and a `tip_pos` overlay |
-| `views` | named views over one workspace: `use_views`, per-view persistence keys (`panel_kit_example_views:view:<name>` + the `:views` registry), a switcher bar with create/rename/delete, per-view reset, and the legacy single-layout migration |
+| `workspace` | host-owned `Snapshot` + `ProjectionBuffer` + composable web parts; floating pointer and keyboard move/resize/raise; blue mode, yellow minimize, and pink maximize/restore controls; tiling reorder and span resize; a restore-by-key control; viewport clamping; inner-panel and workspace wheel chaining; live compact/tablet/regular, focus, `tile_w`/`tile_h`, and workspace-scroll state; versioned localStorage persistence; and a `tip_pos` overlay |
+| `views` | host-owned named views over one workspace: core `SavedViews`, per-view `LocalStorageLayoutStore` records (`panel_kit_example_views:view:<name>` + the `:views` registry), explicit `SavePolicy`, a composable parts loop, a switcher bar with create/rename/delete, per-view reset, and the legacy single-layout migration copy |
 | `badge` | all ten `BadgeKind`s, every prop (`active`, `with_x`, `with_plus`, `small`, `override_color`, `accent_color`, both `BadgeClickKind`s, `emit_hover`) behind live toggles, an event log proving every `BadgeAction` variant fires, and a `tag_hue` FNV hue-spread row |
 | `spinner` | `Spinner` with and without `label`, plus a live-editable label |
 | `loading_workspace` | the post-mount `LoadingWorkspace` twin of the static pre-WASM boot contract |

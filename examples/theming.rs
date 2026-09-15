@@ -16,9 +16,14 @@
 //!   (blue mode, yellow minimize, pink maximize), dock, badges, and spinner.
 
 use dioxus::prelude::*;
-use panel_kit::badge::{Badge, BadgeAction, BadgeKind};
-use panel_kit::{use_workspace, LayoutBuilder, PanelKind, PanelWin, Spinner, CSS};
+use panel_kit::badge::{Badge, BadgeAction, BadgeKind, BadgeSpec};
+use panel_kit::{LayoutBuilder, PanelKind, PanelWin, Spinner, CSS};
+use panel_kit_core::frame::Placement;
+use panel_kit_core::persist::SavePolicy;
 use serde::{Deserialize, Serialize};
+
+#[path = "support/composable_workspace.rs"]
+mod composable_workspace;
 
 const DEMO_CSS: &str = "
 .theme-pick { display: flex; gap: .4rem; margin-left: auto; }
@@ -27,6 +32,11 @@ const DEMO_CSS: &str = "
 .theme-pick button.on { color: var(--fg); border-color: var(--accent); }
 .swatches { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 ";
+/// localStorage key retained for saved-layout compatibility.
+///
+/// Stable `Panel` serde IDs are unchanged: `Swatches`, `About`.
+const STORAGE_KEY: &str = "panel_kit_example_theming";
+
 
 /// Every color variable, overridden to a warm light palette.
 ///
@@ -135,7 +145,10 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    let ws = use_workspace("panel_kit_example_theming", default_layout);
+    let workspace =
+        composable_workspace::use_demo_workspace(STORAGE_KEY, default_layout, SavePolicy::OnSettle);
+    composable_workspace::mount_viewport_observer(&workspace);
+    let emit = composable_workspace::workspace_event_handler(&workspace);
     let mut theme = use_signal(|| Theme::Default);
     let theme_css = theme().css();
 
@@ -144,16 +157,22 @@ fn App() -> Element {
             Panel::Swatches => rsx! {
                 p { "Badges and the spinner pick the variables up too:" }
                 div { class: "swatches",
-                    Badge { field: "tag", value: "accent", kind: BadgeKind::Tag,
-                        active: true, on_action: move |_: BadgeAction| {} }
-                    Badge { field: "status", value: "green", kind: BadgeKind::Status,
-                        on_action: move |_: BadgeAction| {} }
-                    Badge { field: "entity", value: "yellow",
-                        kind: BadgeKind::Entity { ty: None },
-                        on_action: move |_: BadgeAction| {} }
-                    Badge { field: "link", value: "red (unresolved)",
-                        kind: BadgeKind::Wikilink { resolved: false, target: "x".to_string() },
-                        on_action: move |_: BadgeAction| {} }
+                    Badge {
+                        spec: BadgeSpec { active: true, ..BadgeSpec::new("tag", "accent", BadgeKind::Tag) },
+                        on_action: move |_: BadgeAction| {},
+                    }
+                    Badge {
+                        spec: BadgeSpec::new("status", "green", BadgeKind::Status),
+                        on_action: move |_: BadgeAction| {},
+                    }
+                    Badge {
+                        spec: BadgeSpec::new("entity", "yellow", BadgeKind::Entity { ty: None }),
+                        on_action: move |_: BadgeAction| {},
+                    }
+                    Badge {
+                        spec: BadgeSpec::new("link", "red (unresolved)", BadgeKind::Wikilink { resolved: false, target: "x".to_string() }),
+                        on_action: move |_: BadgeAction| {},
+                    }
                     Spinner { label: "spinning in theme colours" }
                 }
             },
@@ -170,14 +189,32 @@ fn App() -> Element {
         }
     };
 
+    let snapshot = workspace.snapshot.read();
+    let mut scratch = workspace.scratch.borrow_mut();
+    let frame = composable_workspace::project_workspace(&snapshot, &mut scratch);
+    let root_class = panel_kit::widgets::root::root_class(&frame);
+    let workspace_class = composable_workspace::workspace_area_class(&frame);
+    let workspace_style = frame
+        .tile_grid
+        .map(panel_kit::widgets::root::tile_grid_style)
+        .unwrap_or_default();
+    let pointer_move_workspace = workspace.clone();
+    let pointer_up_workspace = workspace.clone();
+    let pointer_cancel_workspace = workspace.clone();
+    let key_workspace = workspace.clone();
+    let wheel_workspace = workspace.clone();
+
     rsx! {
         style { {CSS} }
         style { {DEMO_CSS} }
         style { {theme_css} }
         div {
-            class: ws.root_class(),
-            onpointermove: move |event| ws.handle_pointer_move(&event),
-            onpointerup: move |event| ws.handle_pointer_up(&event),
+            class: "{root_class}",
+            tabindex: "0",
+            onpointermove: move |event| composable_workspace::handle_pointer_move(&pointer_move_workspace, &event),
+            onpointerup: move |event| composable_workspace::handle_pointer_up(&pointer_up_workspace, &event),
+            onpointercancel: move |event| composable_workspace::handle_pointer_up(&pointer_cancel_workspace, &event),
+            onkeydown: move |event: KeyboardEvent| composable_workspace::handle_key(&key_workspace, &event),
             header { class: "topbar",
                 h1 { "panel-kit theming demo" }
                 div { class: "theme-pick",
@@ -190,8 +227,31 @@ fn App() -> Element {
                     }
                 }
             }
-            {ws.render(body)}
-            {ws.dock()}
+            div {
+                class: "{workspace_class}",
+                style: "{workspace_style}",
+                onwheel: move |event| composable_workspace::handle_wheel(&wheel_workspace, &event),
+                for panel in frame.panels.iter().copied() {
+                    if let Some(meta) = workspace.catalog.get(panel.key) {
+                        {
+                            let panel_class = format!("panel-{}", meta.slug);
+                            let maximized = matches!(panel.placement, Placement::Maximized);
+                            panel_kit::widgets::panel::panel_shell(panel, Some(&panel_class), rsx! {
+                                {panel_kit::widgets::panel::panel_chrome_with_events(
+                                    panel,
+                                    meta,
+                                    emit.clone(),
+                                    Some(panel_kit::widgets::panel::traffic_lights(panel, emit.clone())),
+                                    None,
+                                )}
+                                {panel_kit::widgets::panel::panel_body(body(panel.key, maximized))}
+                                {panel_kit::widgets::panel::resize_grip(panel, emit.clone())}
+                            })
+                        }
+                    }
+                }
+            }
+            {panel_kit::widgets::dock::dock(frame.dock, &workspace.catalog, emit.clone())}
         }
     }
 }

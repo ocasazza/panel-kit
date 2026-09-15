@@ -6,6 +6,11 @@
 //! deliver pointer coordinates) owns shared panel state and calls into these
 //! contracts:
 //!
+//! - [`PanelKey`] / [`PanelCatalog`] to identify panels and map them to the
+//!   stable string IDs layouts persist,
+//! - [`reducer`] for host-owned [`reducer::Snapshot`] state and the pure
+//!   [`reducer::reduce`] event path, which delegates to the free functions
+//!   below,
 //! - [`SurfaceProfile`] / [`effective_mode`] to adapt layout behavior to the
 //!   rendered surface,
 //! - [`command_for`] / [`apply_command`] for keyboard window management,
@@ -29,18 +34,34 @@
 #![warn(missing_docs)]
 
 pub mod badge;
+pub mod frame;
 pub mod loading;
+pub mod panel;
+pub mod persist;
+pub mod reducer;
+pub mod spec;
+pub mod theme;
+pub mod widgets;
 pub mod tokens;
 pub mod views;
 
 use serde::{Deserialize, Serialize};
+
+pub use panel::{CatalogError, PanelCatalog, PanelKey, PanelMeta, SpecPanelId};
+pub use spec::{
+    BackendKind, BindingManifest, Charset, ChromeSpec, CommandBinding, ContentKind, InputSpec,
+    LayoutSpec, PanelProviderDeclaration, PanelSpec, PersistenceSpec, ResolvedWorkspace,
+    SpecDiagnostic, SpecErrors, SurfaceSpec, TileLayoutSpec, WindowSpec, WorkspaceSpec,
+    WORKSPACE_SPEC_VERSION,
+};
 
 /// The app's panel identifier — typically a fieldless enum.
 ///
 /// One variant per panel plus a [`title`](PanelKind::title). The serde
 /// bounds exist because layouts (including each panel's kind) persist; the
 /// `Copy + Eq + Hash` bounds let workspaces use kinds as cheap, stable panel
-/// identities across reorders and reloads.
+/// identities across reorders and reloads. Every `PanelKind` also
+/// implements [`PanelKey`], the narrower bound generic panel APIs accept.
 pub trait PanelKind:
     Copy + PartialEq + Eq + std::hash::Hash + Serialize + serde::de::DeserializeOwned + 'static
 {
@@ -50,7 +71,8 @@ pub trait PanelKind:
 }
 
 /// Per-panel window state, cycled by the traffic lights.
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 pub enum WinState {
     /// Normal: shown at its stored geometry (floating mode) or in its grid
     /// slot (tiling mode).
@@ -62,7 +84,8 @@ pub enum WinState {
 }
 
 /// Workspace layout mode.
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 pub enum Mode {
     /// Free placement: panels are absolutely positioned, draggable,
     /// resizable, and overlap by z-order.
@@ -73,7 +96,9 @@ pub enum Mode {
 }
 
 /// How much room a rendered surface has for panel management.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub enum SurfaceClass {
     /// A narrow surface where panels tile without window-management chrome.
     Compact,
@@ -84,7 +109,9 @@ pub enum SurfaceClass {
 }
 
 /// Input capabilities available on a rendered surface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct SurfaceCapabilities {
     /// Whether the primary pointer has coarse precision, such as touch.
     pub coarse_pointer: bool,
@@ -198,7 +225,13 @@ pub enum FocusContext<K> {
 }
 
 /// A renderer-neutral key press.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// Serializes in the authored external form: non-character keys are
+/// snake_case strings (`"left"`, `"enter"`) and a printable key is a
+/// one-field object (`{"char":"m"}`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub enum Key {
     /// Left arrow.
     Left,
@@ -219,7 +252,9 @@ pub enum Key {
 }
 
 /// A key press plus its modifier state.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct KeyChord {
     /// Pressed key.
     pub key: Key,
@@ -238,7 +273,12 @@ pub struct KeyChord {
 /// Geometry commands returned by [`command_for`] carry canonical web
 /// magnitudes: `16.0` marks a coarse step and `1.0` marks a fine step.
 /// [`apply_command`] translates those markers through its [`CommandStep`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// Serializes internally tagged by `kind` in snake_case:
+/// `{"kind":"move","dx":-16.0,"dy":0.0}`, `{"kind":"minimize"}`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PanelCommand {
     /// Move the focused panel in the given directions.
     Move {
@@ -271,7 +311,9 @@ pub enum PanelCommand {
 }
 
 /// Step sizes for keyboard geometry changes, in renderer units.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct CommandStep {
     /// Normal arrow-key step.
     pub coarse: f64,
@@ -351,7 +393,7 @@ pub fn command_for<K>(chord: KeyChord, focus: &FocusContext<K>) -> Option<PanelC
 }
 
 /// What an in-flight floating-mode drag is doing.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DragKind {
     /// Dragging the panel header: the panel follows the pointer.
     Move,
@@ -439,7 +481,9 @@ pub struct WorkspaceChrome {
 }
 
 /// Unit-specific chrome metrics for [`workspace_chrome`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct ChromeMetrics {
     /// Inset between the root border and the content.
     pub inset: f64,
@@ -483,7 +527,7 @@ pub fn workspace_chrome(width: f64, height: f64, metrics: &ChromeMetrics) -> Wor
 /// For a tiling resize started with [`begin_tile_resize`], `start_w`/
 /// `start_h` hold the *tile spans*, not length units — [`apply_drag`]
 /// branches on `tiling`.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Drag {
     /// Index of the dragged panel in the workspace `Vec`.
     pub idx: usize,
@@ -527,7 +571,8 @@ fn default_tile_h() -> u8 {
 /// grows. Build defaults with [`LayoutBuilder`].
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PanelWin<K> {
-    /// Which panel this is (the app's [`PanelKind`]).
+    /// Which panel this is (the app's [`PanelKey`], typically a `PanelKind`
+    /// enum).
     pub kind: K,
     /// Left edge, relative to the workspace area (px on the web, cells in
     /// a terminal).
@@ -596,6 +641,9 @@ impl LayoutBuilder {
 /// Viewport-clamp parameters for [`effective_rect`] — the unit-dependent
 /// knobs that turn a raw viewport into a workspace area and keep panels
 /// visible inside it.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct Clamp {
     /// Subtracted from viewport width to get the workspace width.
     pub outer_w: f64,
@@ -642,6 +690,9 @@ impl Clamp {
 }
 
 /// Tiling-mode metrics: how pointer deltas snap to tile spans.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct TileMetrics {
     /// Height of one tile row.
     pub row: f64,
@@ -886,7 +937,7 @@ fn command_delta(delta: f64, step: CommandStep) -> f64 {
 /// their resulting values through `mode` and `focused`. Canonical coarse and
 /// fine magnitudes produced by [`command_for`] are translated through `step`.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_command<K: PanelKind>(
+pub fn apply_command<K: PanelKey>(
     panels: &mut [PanelWin<K>],
     mode: &mut Mode,
     focused: &mut Option<K>,
@@ -1002,6 +1053,7 @@ pub const LAYOUT_SCHEMA_VERSION: u32 = 2;
 
 /// Coordinate space used by a saved floating rectangle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 pub enum Units {
     /// CSS pixels.
     CssPx,

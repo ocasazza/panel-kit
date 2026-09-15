@@ -21,14 +21,19 @@
 //!   imperative `EditorHandle` value/layout controls.
 //! - Reactive language and read-only props, the `pest` Monarch tokenizer,
 //!   and the minimal `toml` language on real samples.
-//! - The workspace root delegates keyboard and pointer events to
-//!   `Workspace`; editor text focus remains protected by the core key policy.
+//! - The workspace root translates keyboard and pointer events through the
+//!   core reducer; editor text focus remains protected by the key policy.
 
 use dioxus::events::PointerEvent as DioxusPointerEvent;
 use dioxus::prelude::*;
 use panel_kit::editor::{EditorHandle, MonacoEditor, PANEL_KIT_DARK_THEME};
-use panel_kit::{use_workspace, LayoutBuilder, PanelKind, PanelWin, CSS};
+use panel_kit::{LayoutBuilder, PanelKind, PanelWin, CSS};
+use panel_kit_core::frame::Placement;
+use panel_kit_core::persist::SavePolicy;
 use serde::{Deserialize, Serialize};
+
+#[path = "support/composable_workspace.rs"]
+mod composable_workspace;
 
 const DEMO_CSS: &str = "
 .topbar .editor-state { color: var(--dim); }
@@ -47,6 +52,11 @@ const DEMO_CSS: &str = "
 .log div { font-size: .72rem; color: var(--fg); }
 .log div:nth-child(n+2), .log .none { color: var(--dim); }
 ";
+/// localStorage key retained for saved-layout compatibility.
+///
+/// Stable `Panel` serde IDs are unchanged: `Editor`, `Controls`, `Mirror`.
+const STORAGE_KEY: &str = "panel_kit_example_editor";
+
 
 const SAMPLE_PEST: &str = r##"// pest grammar for a line graph
 line_graph = { SOI ~ line* ~ EOI }
@@ -140,7 +150,10 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    let ws = use_workspace("panel_kit_example_editor", default_layout);
+    let workspace =
+        composable_workspace::use_demo_workspace(STORAGE_KEY, default_layout, SavePolicy::OnSettle);
+    composable_workspace::mount_viewport_observer(&workspace);
+    let emit = composable_workspace::workspace_event_handler(&workspace);
     let mut text = use_signal(|| SAMPLE_PEST.to_string());
     let mut handle = use_signal(|| None::<EditorHandle>);
     let mut log = use_signal(Vec::<String>::new);
@@ -263,24 +276,68 @@ fn App() -> Element {
         }
     };
 
+    let snapshot = workspace.snapshot.read();
+    let mut scratch = workspace.scratch.borrow_mut();
+    let frame = composable_workspace::project_workspace(&snapshot, &mut scratch);
+    let root_class = panel_kit::widgets::root::root_class(&frame);
+    let workspace_class = composable_workspace::workspace_area_class(&frame);
+    let workspace_style = frame
+        .tile_grid
+        .map(panel_kit::widgets::root::tile_grid_style)
+        .unwrap_or_default();
+    let pointer_move_workspace = workspace.clone();
+    let pointer_up_workspace = workspace.clone();
+    let pointer_cancel_workspace = workspace.clone();
+    let key_workspace = workspace.clone();
+    let wheel_workspace = workspace.clone();
+
     rsx! {
         style { {CSS} }
         style { {DEMO_CSS} }
         div {
-            class: ws.root_class(),
+            class: "{root_class}",
             tabindex: "0",
-            onpointermove: move |event: DioxusPointerEvent| ws.handle_pointer_move(&event),
-            onpointerup: move |event: DioxusPointerEvent| ws.handle_pointer_up(&event),
-            onpointercancel: move |event: DioxusPointerEvent| ws.handle_pointer_up(&event),
-            onkeydown: move |event: KeyboardEvent| ws.handle_key(&event),
+            onpointermove: move |event: DioxusPointerEvent| {
+                composable_workspace::handle_pointer_move(&pointer_move_workspace, &event)
+            },
+            onpointerup: move |event: DioxusPointerEvent| {
+                composable_workspace::handle_pointer_up(&pointer_up_workspace, &event)
+            },
+            onpointercancel: move |event: DioxusPointerEvent| {
+                composable_workspace::handle_pointer_up(&pointer_cancel_workspace, &event)
+            },
+            onkeydown: move |event: KeyboardEvent| composable_workspace::handle_key(&key_workspace, &event),
             header { class: "topbar",
                 h1 { "panel-kit monaco editor demo" }
                 span { class: "editor-state",
                     "theme: {theme().label()} · V2 layout · drag Controls across Editor"
                 }
             }
-            {ws.render(body)}
-            {ws.dock()}
+            div {
+                class: "{workspace_class}",
+                style: "{workspace_style}",
+                onwheel: move |event| composable_workspace::handle_wheel(&wheel_workspace, &event),
+                for panel in frame.panels.iter().copied() {
+                    if let Some(meta) = workspace.catalog.get(panel.key) {
+                        {
+                            let panel_class = format!("panel-{}", meta.slug);
+                            let maximized = matches!(panel.placement, Placement::Maximized);
+                            panel_kit::widgets::panel::panel_shell(panel, Some(&panel_class), rsx! {
+                                {panel_kit::widgets::panel::panel_chrome_with_events(
+                                    panel,
+                                    meta,
+                                    emit.clone(),
+                                    Some(panel_kit::widgets::panel::traffic_lights(panel, emit.clone())),
+                                    None,
+                                )}
+                                {panel_kit::widgets::panel::panel_body(body(panel.key, maximized))}
+                                {panel_kit::widgets::panel::resize_grip(panel, emit.clone())}
+                            })
+                        }
+                    }
+                }
+            }
+            {panel_kit::widgets::dock::dock(frame.dock, &workspace.catalog, emit.clone())}
         }
     }
 }

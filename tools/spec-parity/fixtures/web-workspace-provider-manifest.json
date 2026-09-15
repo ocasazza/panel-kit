@@ -1,0 +1,1 @@
+{"backend":"web","panels":[{"binding":"web.editor","content_kind":"editor","panel_id":"editor"},{"binding":null,"content_kind":"meter","panel_id":"meter"},{"binding":null,"content_kind":"status","panel_id":"status"},{"binding":null,"content_kind":"spinner","panel_id":"spinner"}]}

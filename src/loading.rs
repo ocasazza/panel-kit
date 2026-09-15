@@ -29,9 +29,9 @@
 //!   and no number is fabricated.
 //!
 //! Surface contract: these components are leaves and deliberately take no
-//! surface-profile prop. Mount them below the element whose class comes from
-//! [`crate::Workspace::root_class`]; [`crate::CSS`] adapts their layout from
-//! that existing `ws-root compact|tablet|regular` ancestor. In particular,
+//! surface-profile prop. Mount them below the host element whose class comes
+//! from [`crate::widgets::root::root_class`]; [`crate::CSS`] adapts their layout
+//! from that existing `ws-root compact|tablet|regular` ancestor. In particular,
 //! [`GlobalLoadingBar`] belongs inside that root's top bar. Threading a second
 //! profile through loading call sites would duplicate the workspace's tier
 //! decision and let the two copies drift.
@@ -178,7 +178,7 @@ pub fn loading_store(id: &'static str, label: impl Into<String>) -> LoadingStore
 /// percentage is mandatory — never strip it); `None` renders the animated
 /// indeterminate fill and no number. Styling: `.pk-progress*` in
 /// [`crate::CSS`], themed by the `:root` variables and surface-aware through
-/// the enclosing class from [`crate::Workspace::root_class`].
+/// the enclosing class from [`crate::widgets::root::root_class`].
 #[component]
 pub fn ProgressBar(
     /// Completion in `0.0..=1.0`, or `None` for indeterminate.

@@ -8,8 +8,15 @@ repository = "https://github.com/ocasazza/panel-kit"
 keywords = ["ui", "panels", "workspace", "layout"]
 categories = ["gui"]
 
+[features]
+default = []
+spec-json = ["dep:serde_json"]
+spec-schema = ["spec-json", "dep:schemars"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"], optional = true }
+schemars = { version = "1", optional = true }
 
 [dev-dependencies]
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }

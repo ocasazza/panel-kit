@@ -1,0 +1,11 @@
+spec-parity: workspace-canary
+provider mismatch: panel manifest differs
+/panels/2/id: nix="Notes", rust="Flame"
+/panels/3/id: nix="Badges", rust="Notes"
+/panels/4/id: nix="Nodes", rust="Badges"
+/panels/5/id: nix="Capacity", rust="Nodes"
+/panels/6/id: nix="Theme", rust="Capacity"
+/panels/7/id: nix=<missing>, rust="Distribution"
+/panels/8/id: nix=<missing>, rust="Theme"
+/panels/length: nix=7, rust=9
+missing from Nix: Flame, Distribution

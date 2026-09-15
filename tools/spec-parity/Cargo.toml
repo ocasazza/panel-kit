@@ -1,0 +1,21 @@
+[package]
+name = "spec-parity"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+
+[lints.rust]
+# The shared TUI canary module gates renderer-only content with the
+# `panel-kit-tui` crate's `spec-plan` feature. `tools/spec-parity` includes the
+# same file only for provider declarations, so the cfg name must be recognized
+# here without declaring an enableable local feature.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("spec-plan"))'] }
+
+[dependencies]
+panel-kit-core = { path = "../../crates/panel-kit-core", features = ["spec-json", "spec-schema"] }
+panel-kit = { path = "../..", default-features = false, features = ["spec-plan"] }
+panel-kit-tui = { path = "../../crates/panel-kit-tui", default-features = false, features = ["spec-plan"] }
+serde = { version = "1", features = ["derive"] }
+schemars = "1"
+serde_json = { version = "1", features = ["preserve_order"] }

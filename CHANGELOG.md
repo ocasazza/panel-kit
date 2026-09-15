@@ -23,41 +23,33 @@
 * add panel header actions ([f0b0388](https://github.com/ocasazza/panel-kit/commit/f0b0388b789abc2c24586722ef2233ba56a9e9fb))
 * add workspace boot shell ([6f633b8](https://github.com/ocasazza/panel-kit/commit/6f633b8b33340fc4a253812e3585713caa7479de))
 * Monaco editor component with pest grammar language ([c938642](https://github.com/ocasazza/panel-kit/commit/c938642b175ad6bb6616e9ae5082bad8d6b80985))
-* named workspace views (use_views) with per-view layout persistence ([#6](https://github.com/ocasazza/panel-kit/issues/6)) ([2524fec](https://github.com/ocasazza/panel-kit/commit/2524fec6e731c6d41d1569058becaccd3c1b2adf))
+* named workspace views with per-view layout persistence ([#6](https://github.com/ocasazza/panel-kit/issues/6)) ([2524fec](https://github.com/ocasazza/panel-kit/commit/2524fec6e731c6d41d1569058becaccd3c1b2adf))
 * store-shaped async hydration with mandatory-percentage progress bars ([930c067](https://github.com/ocasazza/panel-kit/commit/930c067de8ba5a00a5b24823730317baf0b0f74d))
 
 
 ### BREAKING CHANGES
 
-* consumers pinned to 0.3.x keep working on their current
-revision and must migrate before moving the pin. MIGRATION.md documents every
-change below with before/after edits and ends with the consumer notice.
-
-* viewport_is_mobile() and Workspace::is_mobile are removed in favour of core
-  SurfaceProfile with compact, tablet and regular tiers, and effective_mode.
-* Workspace mouse entry points are renamed to begin_pointer_drag,
-  begin_pointer_tile_resize, handle_pointer_move and handle_pointer_up, and
-  consume pointer events; the mouse-named methods are gone with no aliases.
-* Workspace gains handle_key, focused and surface_profile.
-* The root class `mobile` is replaced by exactly one of compact, tablet or
-  regular, plus `coarse` when the pointer is imprecise. Consumer CSS keyed on
-  `.mobile`, or keyed on a tier for control sizing, must be rewritten to use
-  var(--hit-min) or `.coarse`.
-* Consumer CSS that hides .lights or .resize by tier must be deleted; it now
-  suppresses the compact restore control.
-* Tiled panels receive inline grid spans instead of flex and height, and
-  .ws.tiling is a grid. Overrides that assumed flex have no effect.
-* Persistence writes SavedLayoutV2 and reads the legacy V1 shape through
-  StoredLayout with automatic migration, including per-view records.
-* assets/panel-kit-boot.css is deleted and generated into OUT_DIR from
-  assets/panel-kit-boot.css.in; patch the template, never the output.
-* Colours must come from panel_kit_core::tokens rather than copied literals.
-* Nix mkLayout takes { units, viewport, mode ? "Floating", panels } and emits
-  V2; the `tiling` boolean is gone.
-* panel-kit-tui removes the TuiMouseButton, TuiMouseEventKind and
-  TuiMouseEvent aliases and its local ROW_CELLS, adds LayoutStore, and its
-  widget colour parameters take panel_kit_core::badge::Rgb.
-* TileMetrics::CELLS.row changes from 6.0 to 4.0 and is authoritative.
+* 1.0 is a clean cutover to host-owned composition. Git-pinned consumers keep
+  their existing revision until their migration branch builds, then update the
+  pin; no compatibility facades or deprecated aliases are shipped.
+* The web workspace controller, hook, all render/dock methods, and the named
+  views controller composite are removed. Applications now own snapshots,
+  reducer calls, projection scratch, persistence timing, and Dioxus part
+  composition.
+* The TUI workspace controller and its render/input/persistence methods are
+  removed. Terminal hosts now project through core and draw `panel-kit-tui`
+  root, panel, dock, and scrollbar parts explicitly.
+* Persistence ports live in `panel_kit_core::persist`: `LayoutStore` now
+  includes `clear`, `SavePolicy` owns write timing, and web/TUI stores are
+  byte transports only.
+* Theme defaults move to `panel_kit_core::theme::ThemeTokens`; web CSS and TUI
+  colours are emitted or converted from that source, including focus-ring
+  coverage.
+* Badge and widget data models move to core, while web and TUI modules retain
+  native painters over the shared semantics.
+* `mkLayout` remains the unchanged layout-only `SavedLayoutV2` producer. Full
+  declarative workspaces use `mkWorkspaceSpec` and the generated schema/parity
+  checks.
 
 # [0.3.0](https://github.com/ocasazza/panel-kit/compare/v0.2.0...v0.3.0) (2026-07-28)
 

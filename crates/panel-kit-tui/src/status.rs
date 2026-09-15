@@ -1,8 +1,11 @@
-//! Status-dot component — a colored `●` for state readouts in tables and
-//! lists. Callers map their own domain state to a renderer-neutral [`Rgb`]
-//! value and use these helpers to render it consistently.
+//! Status-dot painter for table cells and summaries.
+//!
+//! Core owns the semantic [`StatusModel`]. The terminal backend converts that
+//! model into borrowed ratatui spans so table painters can consume shared data
+//! without cloning labels.
 
 use panel_kit_core::badge::Rgb;
+use panel_kit_core::widgets::status::StatusModel;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
@@ -21,11 +24,26 @@ pub fn style(rgb: Rgb) -> Style {
     Style::default().fg(color(rgb))
 }
 
-/// A `● label` line: the dot and the label both in `color`.
-pub fn labeled(rgb: Rgb, label: impl Into<String>) -> Line<'static> {
+/// A borrowed `● label` line from a shared core [`StatusModel`].
+pub fn line(model: &StatusModel) -> Line<'_> {
+    labeled_borrowed(model.color, &model.label)
+}
+
+/// A borrowed `● label` line for table painters that already hold cell parts.
+pub fn labeled_borrowed(rgb: Rgb, label: &str) -> Line<'_> {
     Line::from(vec![
         dot(rgb),
         Span::raw(" "),
-        Span::styled(label.into(), Style::default().fg(color(rgb))),
+        Span::styled(label, Style::default().fg(color(rgb))),
+    ])
+}
+
+/// An owned `● label` line for standalone status readouts.
+pub fn labeled(rgb: Rgb, label: impl Into<String>) -> Line<'static> {
+    let label = label.into();
+    Line::from(vec![
+        dot(rgb),
+        Span::raw(" "),
+        Span::styled(label, Style::default().fg(color(rgb))),
     ])
 }

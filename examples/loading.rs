@@ -7,13 +7,17 @@
 //! determinate chunk progress while Branches remains honestly indeterminate
 //! until the operator completes or fails it. The visible controls exercise
 //! `LoadingStore::succeed`, `LoadingStore::fail`, and retry after failure;
-//! the root delegates keyboard and pointer input to `Workspace`.
+//! the root translates keyboard and pointer input through the core reducer.
 
 use dioxus::events::PointerEvent as DioxusPointerEvent;
 use dioxus::prelude::*;
 use panel_kit::loading::{loading_store, GlobalLoadingBar, LoadingGate};
 use panel_kit::{LayoutBuilder, LoadingWorkspace, PanelKind, PanelWin};
+use panel_kit_core::persist::SavePolicy;
 use serde::{Deserialize, Serialize};
+
+#[path = "support/composable_workspace.rs"]
+mod composable_workspace;
 
 const DEMO_CSS: &str = "
 .load-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-left: auto; }
@@ -23,6 +27,11 @@ const DEMO_CSS: &str = "
 .load-actions button:hover { border-color: var(--fg); }
 .load-note { color: var(--dim); font-size: .78rem; }
 ";
+/// localStorage key retained for saved-layout compatibility.
+///
+/// Stable `Panel` serde IDs are unchanged: `Graph`, `Branches`.
+const STORAGE_KEY: &str = "panel_kit_loading_demo";
+
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 enum Panel {
@@ -67,7 +76,10 @@ fn default_layout() -> Vec<PanelWin<Panel>> {
 fn App() -> Element {
     let graph = loading_store("demo-graph", "loading graph…");
     let branches = loading_store("demo-branches", "loading branches…");
-    let ws = panel_kit::use_workspace("panel_kit_loading_demo", default_layout);
+    let workspace =
+        composable_workspace::use_demo_workspace(STORAGE_KEY, default_layout, SavePolicy::OnSettle);
+    composable_workspace::mount_viewport_observer(&workspace);
+    let emit = composable_workspace::workspace_event_handler(&workspace);
     let mut booted = use_signal(|| false);
     let mut phase = use_signal(|| 0.0f64);
 
@@ -94,16 +106,39 @@ fn App() -> Element {
         };
     }
 
+    let snapshot = workspace.snapshot.read();
+    let mut scratch = workspace.scratch.borrow_mut();
+    let frame = composable_workspace::project_workspace(&snapshot, &mut scratch);
+    let root_class = panel_kit::widgets::root::root_class(&frame);
+    let workspace_class = composable_workspace::workspace_area_class(&frame);
+    let workspace_style = frame
+        .tile_grid
+        .map(panel_kit::widgets::root::tile_grid_style)
+        .unwrap_or_default();
+    let pointer_move_workspace = workspace.clone();
+    let pointer_up_workspace = workspace.clone();
+    let pointer_cancel_workspace = workspace.clone();
+    let key_workspace = workspace.clone();
+    let wheel_workspace = workspace.clone();
+
     rsx! {
         style { {panel_kit::CSS} }
         style { {DEMO_CSS} }
         div {
-            class: ws.root_class(),
+            class: "{root_class}",
             tabindex: "0",
-            onpointermove: move |event: DioxusPointerEvent| ws.handle_pointer_move(&event),
-            onpointerup: move |event: DioxusPointerEvent| ws.handle_pointer_up(&event),
-            onpointercancel: move |event: DioxusPointerEvent| ws.handle_pointer_up(&event),
-            onkeydown: move |event: KeyboardEvent| ws.handle_key(&event),
+            onpointermove: move |event: DioxusPointerEvent| {
+                composable_workspace::handle_pointer_move(&pointer_move_workspace, &event)
+            },
+            onpointerup: move |event: DioxusPointerEvent| {
+                composable_workspace::handle_pointer_up(&pointer_up_workspace, &event)
+            },
+            onpointercancel: move |event: DioxusPointerEvent| {
+                composable_workspace::handle_pointer_up(&pointer_cancel_workspace, &event)
+            },
+            onkeydown: move |event: KeyboardEvent| {
+                composable_workspace::handle_key(&key_workspace, &event)
+            },
             header { class: "topbar",
                 h1 { "loading demo" }
                 GlobalLoadingBar {}
@@ -126,29 +161,51 @@ fn App() -> Element {
                     }
                 }
             }
-            {ws.render(|kind, _maximized| match kind {
-                Panel::Graph => rsx! {
-                    p { class: "load-note",
-                        "Determinate: measured chunks always include a percentage."
-                    }
-                    LoadingGate { store: graph,
-                        div { "graph data rendered here" }
-                    }
-                },
-                Panel::Branches => rsx! {
-                    p { class: "load-note",
-                        "Indeterminate: no percentage is invented. With reduced motion, "
-                        "the sweep stops while this label remains."
-                    }
-                    LoadingGate { store: branches,
-                        ul {
-                            li { "main" }
-                            li { "feat/loading-stores" }
+            div {
+                class: "{workspace_class}",
+                style: "{workspace_style}",
+                onwheel: move |event| composable_workspace::handle_wheel(&wheel_workspace, &event),
+                for panel in frame.panels.iter().copied() {
+                    if let Some(meta) = workspace.catalog.get(panel.key) {
+                        {
+                            let panel_class = format!("panel-{}", meta.slug);
+                            panel_kit::widgets::panel::panel_shell(panel, Some(&panel_class), rsx! {
+                                {panel_kit::widgets::panel::panel_chrome_with_events(
+                                    panel,
+                                    meta,
+                                    emit.clone(),
+                                    Some(panel_kit::widgets::panel::traffic_lights(panel, emit.clone())),
+                                    None,
+                                )}
+                                {panel_kit::widgets::panel::panel_body(match panel.key {
+                                    Panel::Graph => rsx! {
+                                        p { class: "load-note",
+                                            "Determinate: measured chunks always include a percentage."
+                                        }
+                                        LoadingGate { store: graph,
+                                            div { "graph data rendered here" }
+                                        }
+                                    },
+                                    Panel::Branches => rsx! {
+                                        p { class: "load-note",
+                                            "Indeterminate: no percentage is invented. With reduced motion, "
+                                            "the sweep stops while this label remains."
+                                        }
+                                        LoadingGate { store: branches,
+                                            ul {
+                                                li { "main" }
+                                                li { "feat/loading-stores" }
+                                            }
+                                        }
+                                    },
+                                })}
+                                {panel_kit::widgets::panel::resize_grip(panel, emit.clone())}
+                            })
                         }
                     }
-                },
-            })}
-            {ws.dock()}
+                }
+            }
+            {panel_kit::widgets::dock::dock(frame.dock, &workspace.catalog, emit.clone())}
         }
     }
 }

@@ -1,8 +1,8 @@
-//! Scrollable panel content. panel-kit-tui panels are content-agnostic, so
-//! the scroll offset lives with the consumer (it owns the content and knows
+//! Scrollable panel content painter. panel-kit-tui panels are content-agnostic,
+//! so the scroll offset lives with the consumer (it owns the content and knows
 //! when it changes); this module owns the rendering: clamp the offset to the
-//! content, draw the visible window, and paint a ratatui scrollbar in the
-//! panel's right edge whenever the content overflows the body.
+//! core scroll policy math, draw the visible window, and paint a ratatui
+//! scrollbar in the panel's right edge whenever the content overflows the body.
 //!
 //! Typical use, from a panel body callback:
 //!
@@ -11,24 +11,25 @@
 //! app.scroll = panel_kit_tui::scroll::lines(f, rect, &theme, content, app.scroll);
 //! ```
 
+use panel_kit_core::widgets::scroll::max_offset;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 use ratatui::Frame;
 
-use crate::Theme;
-
-/// The maximum offset for `total` lines in a `view`-row viewport — the
-/// consumer clamps wheel events against this so it never scrolls past the end.
-pub fn max_offset(total: usize, view: u16) -> usize {
-    total.saturating_sub(view as usize)
-}
+use crate::ResolvedTuiTheme;
 
 /// Render `content` into `area` starting `offset` rows down, drawing a
 /// vertical scrollbar in the rightmost column when the content overflows.
 /// Returns the clamped offset so the caller can store it back.
-pub fn lines(f: &mut Frame, area: Rect, t: &Theme, content: Vec<Line>, offset: usize) -> usize {
+pub fn lines(
+    f: &mut Frame,
+    area: Rect,
+    t: &ResolvedTuiTheme,
+    content: Vec<Line>,
+    offset: usize,
+) -> usize {
     let total = content.len();
     let view = area.height;
     let max = max_offset(total, view);
@@ -45,8 +46,8 @@ pub fn lines(f: &mut Frame, area: Rect, t: &Theme, content: Vec<Line>, offset: u
         area
     };
 
-    let visible: Vec<Line> = content.into_iter().skip(off).take(view as usize).collect();
-    f.render_widget(Paragraph::new(visible), body);
+    let visible_lines: Vec<Line> = content.into_iter().skip(off).take(view as usize).collect();
+    f.render_widget(Paragraph::new(visible_lines), body);
 
     if overflow {
         let mut state = ScrollbarState::new(max).position(off);
@@ -66,13 +67,13 @@ pub fn lines(f: &mut Frame, area: Rect, t: &Theme, content: Vec<Line>, offset: u
     off
 }
 
-/// Hard-wrap `s` into lines of at most `width` characters (character-based,
-/// no word boundaries). Returns the string as a single line when it fits or
-/// `width` is zero. Pairs with [`lines`] for laying out free text in a panel.
-pub fn wrap(s: &str, width: usize) -> Vec<String> {
-    let chars: Vec<char> = s.chars().collect();
-    if width == 0 || chars.len() <= width {
-        return vec![s.to_string()];
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scroll_math_reuses_core_semantics() {
+        assert_eq!(max_offset(10, 4), panel_kit_core::widgets::scroll::max_offset(10, 4));
     }
-    chars.chunks(width).map(|c| c.iter().collect()).collect()
 }
+

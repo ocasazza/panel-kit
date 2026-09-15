@@ -1,42 +1,15 @@
-//! Reusable pill-shaped badge widget for clickable metadata — a Dioxus
-//! port of jump-cannon's egui badge (`graph-renderer/src/ui/badge.rs`).
+//! Dioxus painter for the shared badge model.
 //!
-//! Renders a (field, value) pair as a rounded chip whose click navigates,
-//! opens a URL, or toggles a filter depending on [`BadgeKind`]. The egui
-//! widget returns a `BadgeAction` from its immediate-mode `show()`; here
-//! the action arrives through the `on_action` callback instead, so there
-//! is no `None` variant — the callback only fires when something happens.
-//! The host app maps fields/values onto kinds and routes the action.
-//!
-//! Entry points: the [`Badge`] component, [`BadgeKind`] /
-//! [`BadgeClickKind`] to configure it, [`BadgeAction`] for what comes
-//! back, and [`tag_hue`] for stable per-tag colours.
+//! The semantic badge contract lives in `panel-kit-core::badge::BadgeSpec` so
+//! browser and terminal callers route the same actions. This module only maps
+//! that spec to web DOM, ARIA, CSS classes, and the web-only CSS accent escape
+//! hatch.
 
 use dioxus::prelude::*;
 
-// The badge model (kinds, actions, hue derivation) lives in
-// panel-kit-core::badge so the terminal shell shares it; this module is
-// the Dioxus rendering of that model.
 use panel_kit_core::badge::display_label;
-pub use panel_kit_core::badge::{tag_hue, BadgeAction, BadgeClickKind, BadgeKind, Rgb};
-
-/// Rec. 709 luma in [0, 1]. Picks a foreground (light vs dark) that stays
-/// readable across the full categorical palette.
-fn perceived_brightness((r, g, b): Rgb) -> f32 {
-    0.2126 * (r as f32 / 255.0) + 0.7152 * (g as f32 / 255.0) + 0.0722 * (b as f32 / 255.0)
-}
-
-/// Opaquely blend `over` (at strength `a`) on top of `base` — the border
-/// of a community-tinted badge is its bg pushed 30% toward white.
-fn tint_over(base: Rgb, over: Rgb, a: f32) -> Rgb {
-    let a = a.clamp(0.0, 1.0);
-    let mix = |b: u8, o: u8| -> u8 { (b as f32 * (1.0 - a) + o as f32 * a).round() as u8 };
-    (
-        mix(base.0, over.0),
-        mix(base.1, over.1),
-        mix(base.2, over.2),
-    )
-}
+use panel_kit_core::widgets::badge::{perceived_brightness, tint_over};
+pub use panel_kit_core::badge::{tag_hue, BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec, Rgb};
 
 fn kind_class(kind: &BadgeKind) -> &'static str {
     match kind {
@@ -46,9 +19,7 @@ fn kind_class(kind: &BadgeKind) -> &'static str {
         BadgeKind::Author => "badge-author",
         BadgeKind::Entity { .. } => "badge-entity",
         BadgeKind::Wikilink { resolved: true, .. } => "badge-wikilink",
-        BadgeKind::Wikilink {
-            resolved: false, ..
-        } => "badge-wikilink badge-unresolved",
+        BadgeKind::Wikilink { resolved: false, .. } => "badge-wikilink badge-unresolved",
         BadgeKind::Url { .. } => "badge-url",
         BadgeKind::Date => "badge-date",
         BadgeKind::Status => "badge-status",
@@ -56,253 +27,211 @@ fn kind_class(kind: &BadgeKind) -> &'static str {
     }
 }
 
-/// Pill-shaped chip rendering a `(field, value)` pair of clickable
-/// metadata; user interaction arrives as a [`BadgeAction`] through
-/// `on_action`.
-///
-/// Mirrors the egui builder surface: `active` (halo), `with_x` (trailing
-/// `×` → [`BadgeAction::Toggle`]), `with_plus` (trailing `+` →
-/// [`BadgeAction::AddFilter`], drawn left of `×` when both are on),
-/// `small` (cramped chip-strip geometry), `override_color` (community
-/// tint: bg = colour, border/fg derived for contrast), `click_kind`,
-/// `emit_hover`.
-///
-/// `accent_color` is the DOM port of the egui modal's one-shot
-/// `status_pill` / `ticket_badge` stroke colour: it recolours border +
-/// text (any CSS colour, `var(--…)` included) while keeping the dark fill.
-///
-/// Long values truncate with an ellipsis (the chip carries the full value
-/// in `title`); the egui widget sizes to content instead, but unbounded
-/// chips don't survive a DOM flex row.
-///
-/// # Examples
-///
-/// ```no_run
-/// use dioxus::prelude::*;
-/// use panel_kit::badge::{Badge, BadgeAction, BadgeKind};
-///
-/// # fn chips() -> Element {
-/// rsx! {
-///     // A removable tag chip driving a filter set.
-///     Badge {
-///         field: "tag",
-///         value: "project/alpha",
-///         kind: BadgeKind::Tag,
-///         active: true,
-///         with_x: true,
-///         on_action: move |a: BadgeAction| {
-///             if let BadgeAction::Toggle { field, value } = a {
-///                 // flip the (field, value) filter…
-///             }
-///         },
-///     }
-///     // A wikilink chip that navigates on click.
-///     Badge {
-///         field: "link",
-///         value: "Reading List",
-///         kind: BadgeKind::Wikilink { resolved: true, target: "Reading List".into() },
-///         on_action: move |a: BadgeAction| {
-///             if let BadgeAction::Navigate { target } = a {
-///                 // open `target`…
-///             }
-///         },
-///     }
-/// }
-/// # }
-/// ```
-#[component]
-#[allow(clippy::too_many_arguments)]
-pub fn Badge(
-    /// Attribute name half of the pair (e.g. `"tag"`); carried back in
-    /// field-bearing [`BadgeAction`]s and in the accessible
-    /// `badge:<field>=<value>` label.
-    field: String,
-    /// Attribute value half of the pair — the chip's label (except for
-    /// [`BadgeKind::Url`], which shows its host) and the chip's `title`
-    /// tooltip.
-    value: String,
-    /// Visual + behavioural kind; see [`BadgeKind`]. Defaults to
-    /// [`BadgeKind::Generic`].
-    #[props(default = BadgeKind::Generic)]
-    kind: BadgeKind,
-    /// Draw the active halo — use for badges whose filter is currently
-    /// applied.
-    #[props(default)]
-    active: bool,
-    /// Append a trailing `×` button that emits [`BadgeAction::Toggle`]
-    /// (which removes when the badge is active).
-    #[props(default)]
-    with_x: bool,
-    /// Append a trailing `+` button that emits [`BadgeAction::AddFilter`];
-    /// drawn left of `×` when both are on.
-    #[props(default)]
-    with_plus: bool,
-    /// Cramped geometry for dense chip strips.
-    #[props(default)]
-    small: bool,
-    /// Community tint: the [`Rgb`] becomes the background, with border and
-    /// foreground derived for contrast.
-    #[props(default)]
-    override_color: Option<Rgb>,
-    /// Recolour border + text with any CSS colour (`var(--…)` included)
-    /// while keeping the dark fill.
-    #[props(default)]
-    accent_color: Option<String>,
-    /// Primary-button semantics for non-Wikilink/Url kinds; see
-    /// [`BadgeClickKind`].
-    #[props(default)]
-    click_kind: BadgeClickKind,
-    /// Also emit [`BadgeAction::Hovered`] when the pointer enters the chip.
-    #[props(default)]
-    emit_hover: bool,
-    /// Receives every [`BadgeAction`] the chip produces.
-    on_action: EventHandler<BadgeAction>,
-) -> Element {
-    let label = display_label(&kind, &value);
-    // Accessible name matches the egui widget's `widget_info` label so
-    // test harnesses can find badges by the same key on both stacks.
-    let access = format!("badge:{field}={value}");
+fn rgb_css((r, g, b): Rgb) -> String {
+    format!("rgb({r},{g},{b})")
+}
 
-    let mut class = format!("badge {}", kind_class(&kind));
-    if active {
+fn class_for(spec: &BadgeSpec) -> String {
+    let mut class = format!("badge {}", kind_class(&spec.kind));
+    if spec.active {
         class.push_str(" active");
     }
-    if small {
+    if spec.small {
         class.push_str(" small");
     }
+    class
+}
 
+fn style_for(spec: &BadgeSpec, accent_color: Option<&str>) -> String {
     let mut style = String::new();
-    if let Some(c) = override_color {
-        let (br, bg_, bb) = tint_over(c, (255, 255, 255), 0.30);
-        let fg = if perceived_brightness(c) < 0.55 {
-            "var(--fg)"
-        } else {
-            "var(--bg)"
-        };
+    if let Some(c) = spec.override_color {
+        let (br, bg, bb) = tint_over(c, (255, 255, 255), 0.30);
+        let fg = if perceived_brightness(c) < 0.55 { "var(--fg)" } else { "var(--bg)" };
         style.push_str(&format!(
-            "--badge-bg:rgb({},{},{});--badge-c:rgb({br},{bg_},{bb});--badge-fg:{fg};",
-            c.0, c.1, c.2
+            "--badge-bg:{};--badge-c:rgb({br},{bg},{bb});--badge-fg:{fg};",
+            rgb_css(c)
         ));
     }
-    if let Some(c) = &accent_color {
+    if let Some(c) = spec.accent_color {
+        let c = rgb_css(c);
         style.push_str(&format!("--badge-c:{c};--badge-fg:{c};"));
     }
+    if let Some(c) = accent_color {
+        style.push_str(&format!("--badge-c:{c};--badge-fg:{c};"));
+    }
+    style
+}
 
-    let body_kind = kind.clone();
-    let (body_field, body_value) = (field.clone(), value.clone());
-    let (hover_field, hover_value) = (field.clone(), value.clone());
-    let (plus_field, plus_value) = (field.clone(), value.clone());
-    let (x_field, x_value) = (field.clone(), value.clone());
+/// Action delivered by a primary body click.
+pub(crate) fn body_action(spec: &BadgeSpec) -> BadgeAction {
+    spec.primary_action()
+}
+
+/// Action delivered by the optional `+` affordance.
+pub(crate) fn plus_action(spec: &BadgeSpec) -> BadgeAction {
+    spec.plus_action()
+}
+
+/// Action delivered by the optional `×` affordance.
+pub(crate) fn x_action(spec: &BadgeSpec) -> BadgeAction {
+    spec.x_action()
+}
+
+/// Action delivered by pointer hover when hover emission is enabled.
+pub(crate) fn hover_action(spec: &BadgeSpec) -> Option<BadgeAction> {
+    spec.hover_action()
+}
+
+/// Paint the badge body button with an already-selected primary action.
+fn badge_body_button(
+    aria_label: String,
+    label: String,
+    action: BadgeAction,
+    on_action: EventHandler<BadgeAction>,
+) -> Element {
+    rsx! {
+        button {
+            class: "badge-main",
+            r#type: "button",
+            aria_label,
+            onclick: move |_| on_action.call(action.clone()),
+            span { class: "badge-label", "{label}" }
+        }
+    }
+}
+
+/// Paint a secondary badge affordance with an already-selected action.
+fn badge_affordance(
+    class: &'static str,
+    aria_label: String,
+    text: &'static str,
+    action: BadgeAction,
+    on_action: EventHandler<BadgeAction>,
+) -> Element {
+    rsx! {
+        button {
+            class,
+            r#type: "button",
+            aria_label,
+            onclick: move |_| on_action.call(action.clone()),
+            "{text}"
+        }
+    }
+}
+
+/// Omit an absent optional badge affordance without cloning the whole spec.
+fn optional_badge_affordance(
+    action: Option<(BadgeAction, String)>,
+    class: &'static str,
+    text: &'static str,
+    on_action: EventHandler<BadgeAction>,
+) -> Element {
+    match action {
+        Some((action, label)) => badge_affordance(class, label, text, action, on_action),
+        None => rsx! {},
+    }
+}
+
+/// Paint a badge from borrowed core fields while capturing only event actions.
+pub(crate) fn paint_badge(
+    spec: &BadgeSpec,
+    accent_color: Option<&str>,
+    on_action: EventHandler<BadgeAction>,
+) -> Element {
+    let label = display_label(&spec.kind, &spec.value);
+    let class = class_for(spec);
+    let style = style_for(spec, accent_color);
+    let access = format!("badge:{}={}", spec.field, spec.value);
+    let body = body_action(spec);
+    let plus = spec.with_plus.then(|| {
+        (
+            plus_action(spec),
+            format!("Add filter: {}={}", spec.field, spec.value),
+        )
+    });
+    let x = spec.with_x.then(|| {
+        (
+            x_action(spec),
+            format!("Toggle filter: {}={}", spec.field, spec.value),
+        )
+    });
+    let hover = hover_action(spec);
 
     rsx! {
         span {
             class: "{class}",
             style: "{style}",
             role: "group",
-            title: "{value}",
+            title: "{spec.value}",
             onpointerenter: move |_| {
-                if emit_hover {
-                    on_action.call(BadgeAction::Hovered {
-                        field: hover_field.clone(),
-                        value: hover_value.clone(),
-                    });
+                if let Some(action) = hover.as_ref() {
+                    on_action.call(action.clone());
                 }
             },
-            button {
-                class: "badge-main",
-                r#type: "button",
-                aria_label: "{access}",
-                onclick: move |_| {
-                    let action = match &body_kind {
-                        BadgeKind::Wikilink { target, .. } => {
-                            BadgeAction::Navigate { target: target.clone() }
-                        }
-                        BadgeKind::Url { href, .. } => {
-                            BadgeAction::OpenUrl { href: href.clone() }
-                        }
-                        _ => match click_kind {
-                            BadgeClickKind::Toggle => BadgeAction::Toggle {
-                                field: body_field.clone(),
-                                value: body_value.clone(),
-                            },
-                            BadgeClickKind::Clicked => BadgeAction::Clicked {
-                                field: body_field.clone(),
-                                value: body_value.clone(),
-                            },
-                        },
-                    };
-                    on_action.call(action);
-                },
-                span { class: "badge-label", "{label}" }
-            }
-            // `+` sits left of `×` when both are on (egui trailing-edge order).
-            if with_plus {
-                button {
-                    class: "badge-btn badge-plus",
-                    r#type: "button",
-                    aria_label: "Add filter: {field}={value}",
-                    onclick: move |_| {
-                        on_action.call(BadgeAction::AddFilter {
-                            field: plus_field.clone(),
-                            value: plus_value.clone(),
-                        });
-                    },
-                    "+"
-                }
-            }
-            if with_x {
-                button {
-                    class: "badge-btn badge-x",
-                    r#type: "button",
-                    aria_label: "Toggle filter: {field}={value}",
-                    onclick: move |_| {
-                        // `×` is a toggle (removes when active) — egui parity.
-                        on_action.call(BadgeAction::Toggle {
-                            field: x_field.clone(),
-                            value: x_value.clone(),
-                        });
-                    },
-                    "\u{00D7}"
-                }
-            }
+            {badge_body_button(access, label, body, on_action)}
+            {optional_badge_affordance(plus, "badge-btn badge-plus", "+", on_action)}
+            {optional_badge_affordance(x, "badge-btn badge-x", "\u{00D7}", on_action)}
         }
     }
+}
+
+/// Pill-shaped web badge painted from one shared [`BadgeSpec`].
+///
+/// `accent_color` is intentionally web-only: it accepts arbitrary CSS color
+/// strings such as `var(--accent)` that other renderers cannot interpret.
+/// Portable RGB accents belong in [`BadgeSpec::accent_color`].
+#[component]
+pub fn Badge(
+    /// Shared renderer-neutral badge semantics.
+    spec: BadgeSpec,
+    /// Optional web-only CSS color overriding the portable RGB accent.
+    #[props(default)]
+    accent_color: Option<String>,
+    /// Receives the badge action selected by [`BadgeSpec`] semantics.
+    on_action: EventHandler<BadgeAction>,
+) -> Element {
+    paint_badge(&spec, accent_color.as_deref(), on_action)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn tag_hue_deterministic() {
-        assert_eq!(tag_hue("alpha"), tag_hue("alpha"));
-        assert!((0.0..1.0).contains(&tag_hue("alpha")));
-        assert_ne!(tag_hue("alpha"), tag_hue("beta"));
+    #[component]
+    fn BadgeProbe() -> Element {
+        let spec = BadgeSpec { active: true, with_plus: true, with_x: true, accent_color: Some((94, 243, 140)), ..BadgeSpec::new("tag", "alpha", BadgeKind::Tag) };
+
+        rsx! {
+            Badge { spec, accent_color: Some("var(--accent)".to_string()), on_action: move |_| {} }
+        }
     }
 
     #[test]
-    fn wikilink_label_prefixed() {
-        let k = BadgeKind::Wikilink {
-            resolved: true,
-            target: "Page".into(),
-        };
-        assert_eq!(display_label(&k, "Page"), "\u{27F6} Page");
+    fn web_badge_renders_spec_label_aria_and_accent_escape_hatch() {
+        let html = dioxus_ssr::render_element(rsx! { BadgeProbe {} });
+
+        assert!(html.contains("role=\"group\""), "{html}");
+        assert!(html.contains("badge:tag=alpha"), "{html}");
+        assert!(html.contains("class=\"badge badge-tag active\""), "{html}");
+        assert!(html.contains("--badge-c:rgb(94,243,140);"), "{html}");
+        assert!(html.contains("--badge-fg:var(--accent);"), "{html}");
+        assert!(html.contains("Add filter: tag=alpha"), "{html}");
+        assert!(html.contains("Toggle filter: tag=alpha"), "{html}");
     }
 
     #[test]
-    fn url_label_prefers_host() {
-        let k = BadgeKind::Url {
-            href: "https://example.com/x".into(),
-            host: "example.com".into(),
-        };
-        assert_eq!(display_label(&k, "https://example.com/x"), "example.com");
-        let bare = BadgeKind::Url {
-            href: "https://example.com".into(),
-            host: String::new(),
-        };
-        assert_eq!(
-            display_label(&bare, "https://example.com"),
-            "https://example.com"
-        );
+    fn badge_actions_match_across_backends() {
+        let tag = BadgeSpec { with_plus: true, with_x: true, emit_hover: true, ..BadgeSpec::new("tag", "alpha", BadgeKind::Tag) };
+        let clicked = BadgeSpec { click_kind: BadgeClickKind::Clicked, ..BadgeSpec::new("tag", "alpha", BadgeKind::Tag) };
+        let link = BadgeSpec::new("link", "Panel Kit", BadgeKind::Wikilink { resolved: true, target: "Panel Kit".into() });
+        let url = BadgeSpec::new("url", "panel-kit", BadgeKind::Url { href: "https://example.com/panel-kit".into(), host: "example.com".into() });
+
+        assert_eq!(body_action(&tag), tag.primary_action());
+        assert_eq!(body_action(&clicked), clicked.primary_action());
+        assert_eq!(body_action(&link), link.primary_action());
+        assert_eq!(body_action(&url), url.primary_action());
+        assert_eq!(plus_action(&tag), tag.plus_action());
+        assert_eq!(x_action(&tag), tag.x_action());
+        assert_eq!(hover_action(&tag), tag.hover_action());
     }
 }

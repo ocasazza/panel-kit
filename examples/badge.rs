@@ -21,7 +21,7 @@
 //! - Long-value truncation: ellipsis after 28ch, full value in the tooltip.
 
 use dioxus::prelude::*;
-use panel_kit::badge::{tag_hue, Badge, BadgeAction, BadgeClickKind, BadgeKind, Rgb};
+use panel_kit::badge::{tag_hue, Badge, BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec, Rgb};
 use panel_kit::CSS;
 
 const DEMO_CSS: &str = "
@@ -261,19 +261,19 @@ fn DemoBadge(
     } else {
         c.accent_color.read().clone()
     };
+    let mut spec = BadgeSpec::new(field, value, kind);
+    spec.active = *c.active.read();
+    spec.with_x = *c.with_x.read();
+    spec.with_plus = *c.with_plus.read();
+    spec.small = *c.small.read();
+    spec.override_color = *c.override_color.read();
+    spec.click_kind = *c.click_kind.read();
+    spec.emit_hover = *c.emit_hover.read();
+
     rsx! {
         Badge {
-            field,
-            value,
-            kind,
-            active: *c.active.read(),
-            with_x: *c.with_x.read(),
-            with_plus: *c.with_plus.read(),
-            small: *c.small.read(),
-            override_color: *c.override_color.read(),
+            spec,
             accent_color: accent,
-            click_kind: *c.click_kind.read(),
-            emit_hover: *c.emit_hover.read(),
             on_action: move |a: BadgeAction| push_log(c.log, &a),
         }
     }

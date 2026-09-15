@@ -573,3 +573,277 @@ external                       jump-cannon, apple-notes-ocr-flow migrate per des
 ```
 
 **Cutover note (HR-22)**: every design §12.1 deletion lands in the same slice as its replacement, amended by D-11 (ledger item 12.1.14: web `use_views`/`Views` hook deleted; core `SavedViews` registry retained; example rewritten). Implementation follows design §15's 18 dependency-ordered TDD slices with each slice's named first-failing proof; ordering amendments from this synthesis: D-11 lands at the slice-17/18 cutover, and the initial seven-vs-nine red is captured at slice 13 before the slice-15 canary migration. Current-tree file:line anchors from the analysis file govern throughout (D-12).
+
+---
+
+## Implementation Process
+
+You MUST launch for each step a separate agent, instead of performing all steps yourself. And for each step marked as parallel, you MUST launch separate agents in parallel.
+
+**CRITICAL:** For each agent you MUST:
+1. Use the **Model** and **Agent** type specified in the step's sub-task file (e.g., `haiku`, `sonnet`, `tech-writer`)
+2. Provide the path to THIS task file AND the path to that step's sub-task file
+3. Require agent to implement exactly that step, not more, not less, not other steps
+
+**CRITICAL:** Verification is done at PHASE level, not per step. When every step of a phase is complete, you MUST launch the code reviewer ONCE for that phase, at the **Reviewer model** named for that phase in the Phase Overview.
+
+### Parallelization Overview
+
+```
+01-panel-identity [sonnet]        02-theme-core [sonnet]
+        │   (parallel, width 2)           │
+        ▼                                 │
+03-reducer-commands [sonnet]              │
+        │                                 │
+═══ end of Phase 1 (review: opus) ═══     │
+        │                                 │
+        ▼                                 ▼
+04-reducer-input [sonnet]   05-widget-models [sonnet]   06-theme-generation [sonnet]
+        │                  (parallel, width 3)          │
+        │                                 │             │
+═══ end of Phase 2 (review: opus) ═══     │             │
+        │                                 │             │
+   ┌────┴──────┐                          │             │
+   ▼           ▼                          │             │
+07-frame   09-persistence                 │             │
+[opus]     [sonnet]  (width 2)            │             │
+   │           │                           │             │
+   ▼           ▼                           │             │
+08-frame   10-save-policy                 │             │
+[sonnet]   [sonnet]  (width 2)            │             │
+   │                                       │             │
+═══ end of Phase 3 (review: opus) ═══     │             │
+   │                                       │             │
+   ▼                                       ▼             ▼
+11-partial-projectors [sonnet] ∥ 14-web-painters [sonnet] ∥ 15-tui-painters [sonnet]
+        │                       (parallel, width 3)
+        ▼
+12-web-parts [sonnet] ∥ 13-tui-parts [sonnet]  (width 2)
+        │
+═══ end of Phase 4 (review: opus) ═══
+        │
+        ▼
+16-workspace-spec [opus] ∥ 25-example-migrations [sonnet] ∥ 26-views-cutover [sonnet]
+        │                       (parallel, width 3)
+        ▼
+17-nix-producer [sonnet]
+        │
+═══ end of Phase 5 (review: opus) ═══
+        │
+        ▼
+18-spec-parity-checker [opus]
+        │
+        ├──────────────────────────────┬──────────────┐
+        ▼                              ▼              │
+19-plan-coverage [sonnet] ∥ 20-canary-spec [sonnet]  │
+        │                              │  (width 2)   │
+═══ end of Phase 6 (review: opus) ═══   │              │
+        │                              │              │
+        ▼                              ▼              ▼
+21-flake-lanes [sonnet]  (needs 18, 19, 20, 10, 06)
+        │
+        ├──────────────────────────────┬──────────────┘
+        ▼                              ▼
+22-web-canary-example [sonnet] ∥ 23-tui-native-canary [sonnet]  (width 2)
+                                       │
+                                       ▼
+                       24-browser-tui-canary [sonnet]
+                                       │
+═══ end of Phase 7 (review: opus) ═══
+                                       │
+                                       ▼
+                       27-controller-cutover [opus]
+                                       │
+                          ┌────────────┴────────────┐
+                          ▼                         ▼
+          28-jump-cannon-migration [sonnet] ∥ 29-apple-notes-migration [sonnet]
+                                      (width 2)
+                                       │
+═══ end of Phase 8 (review: opus) ═══
+```
+
+| Step | Phase | Model | Agent | Depends on | Parallel with | Sub-Task File |
+|------|-------|-------|-------|------------|---------------|---------------|
+| `01-panel-identity` [DONE] | Phase 1 | sonnet | developer | None | `02-theme-core` | `.specs/sub-tasks/refactor-panel-kit-composable-library/01-panel-identity.md` |
+| `02-theme-core` [DONE] | Phase 1 | sonnet | developer | None | `01-panel-identity` | `.specs/sub-tasks/refactor-panel-kit-composable-library/02-theme-core.md` |
+| `03-reducer-commands` [DONE] | Phase 1 | sonnet | developer | `01-panel-identity` | None | `.specs/sub-tasks/refactor-panel-kit-composable-library/03-reducer-commands.md` |
+| `04-reducer-input` [DONE] | Phase 2 | sonnet | developer | `03-reducer-commands` | `05-widget-models`, `06-theme-generation` | `.specs/sub-tasks/refactor-panel-kit-composable-library/04-reducer-input.md` |
+| `05-widget-models` [DONE] | Phase 2 | sonnet | developer | `02-theme-core` | `04-reducer-input`, `06-theme-generation` | `.specs/sub-tasks/refactor-panel-kit-composable-library/05-widget-models.md` |
+| `06-theme-generation` [DONE] | Phase 2 | sonnet | developer | `02-theme-core` | `04-reducer-input`, `05-widget-models` | `.specs/sub-tasks/refactor-panel-kit-composable-library/06-theme-generation.md` |
+| `07-frame-projection` [DONE] | Phase 3 | opus | developer | `04-reducer-input` | `09-persistence-core` | `.specs/sub-tasks/refactor-panel-kit-composable-library/07-frame-projection.md` |
+| `08-frame-proofs` [DONE] | Phase 3 | sonnet | developer | `07-frame-projection` | `10-save-policy` | `.specs/sub-tasks/refactor-panel-kit-composable-library/08-frame-proofs.md` |
+| `09-persistence-core` [DONE] | Phase 3 | sonnet | developer | `04-reducer-input` | `07-frame-projection` | `.specs/sub-tasks/refactor-panel-kit-composable-library/09-persistence-core.md` |
+| `10-save-policy` [DONE] | Phase 3 | sonnet | developer | `09-persistence-core` | `08-frame-proofs` | `.specs/sub-tasks/refactor-panel-kit-composable-library/10-save-policy.md` |
+| `11-partial-projectors` [DONE] | Phase 4 | sonnet | developer | `08-frame-proofs` | `14-web-painters`, `15-tui-painters` | `.specs/sub-tasks/refactor-panel-kit-composable-library/11-partial-projectors.md` |
+| `14-web-painters` [DONE] | Phase 4 | sonnet | developer | `05-widget-models`, `06-theme-generation` | `11-partial-projectors`, `15-tui-painters` | `.specs/sub-tasks/refactor-panel-kit-composable-library/14-web-painters.md` |
+| `15-tui-painters` [DONE] | Phase 4 | sonnet | developer | `05-widget-models`, `06-theme-generation` | `11-partial-projectors`, `14-web-painters` | `.specs/sub-tasks/refactor-panel-kit-composable-library/15-tui-painters.md` |
+| `12-web-parts` [DONE] | Phase 4 | sonnet | developer | `11-partial-projectors` | `13-tui-parts` | `.specs/sub-tasks/refactor-panel-kit-composable-library/12-web-parts.md` |
+| `13-tui-parts` [DONE] | Phase 4 | sonnet | developer | `11-partial-projectors` | `12-web-parts` | `.specs/sub-tasks/refactor-panel-kit-composable-library/13-tui-parts.md` |
+| `16-workspace-spec` [DONE] | Phase 5 | opus | developer | `01-panel-identity`, `02-theme-core`, `05-widget-models` | `25-example-migrations`, `26-views-cutover` | `.specs/sub-tasks/refactor-panel-kit-composable-library/16-workspace-spec.md` |
+| `25-example-migrations` [DONE] | Phase 5 | sonnet | developer | `06-theme-generation`, `09-persistence-core`, `10-save-policy`, `12-web-parts` | `16-workspace-spec`, `26-views-cutover` | `.specs/sub-tasks/refactor-panel-kit-composable-library/25-example-migrations.md` |
+| `26-views-cutover` [DONE] | Phase 5 | sonnet | developer | `12-web-parts`, `16-workspace-spec`, `25-example-migrations` | `17-nix-producer` | `.specs/sub-tasks/refactor-panel-kit-composable-library/26-views-cutover.md` |
+| `17-nix-producer` [DONE] | Phase 5 | sonnet | developer | `16-workspace-spec` | None | `.specs/sub-tasks/refactor-panel-kit-composable-library/17-nix-producer.md` |
+| `18-spec-parity-checker` [DONE] | Phase 6 | opus | developer | `17-nix-producer` | None | `.specs/sub-tasks/refactor-panel-kit-composable-library/18-spec-parity-checker.md` |
+| `19-plan-coverage` [DONE] | Phase 6 | sonnet | developer | `16-workspace-spec`, `18-spec-parity-checker` | `20-canary-spec` | `.specs/sub-tasks/refactor-panel-kit-composable-library/19-plan-coverage.md` |
+| `20-canary-spec` [DONE] | Phase 6 | sonnet | developer | `18-spec-parity-checker` | `19-plan-coverage` | `.specs/sub-tasks/refactor-panel-kit-composable-library/20-canary-spec.md` |
+| `21-flake-lanes` [DONE] | Phase 7 | sonnet | developer | `06-theme-generation`, `10-save-policy`, `18-spec-parity-checker`, `19-plan-coverage`, `20-canary-spec` | None | `.specs/sub-tasks/refactor-panel-kit-composable-library/21-flake-lanes.md` |
+| `22-web-canary-example` [DONE] | Phase 7 | sonnet | developer | `14-web-painters`, `19-plan-coverage`, `20-canary-spec`, `21-flake-lanes` | `23-tui-native-canary` | `.specs/sub-tasks/refactor-panel-kit-composable-library/22-web-canary-example.md` |
+| `23-tui-native-canary` [DONE] | Phase 7 | sonnet | developer | `13-tui-parts`, `15-tui-painters`, `19-plan-coverage`, `20-canary-spec`, `21-flake-lanes` | `22-web-canary-example` | `.specs/sub-tasks/refactor-panel-kit-composable-library/23-tui-native-canary.md` |
+| `24-browser-tui-canary` [DONE] | Phase 7 | sonnet | developer | `15-tui-painters`, `20-canary-spec`, `21-flake-lanes` | `23-tui-native-canary` | `.specs/sub-tasks/refactor-panel-kit-composable-library/24-browser-tui-canary.md` |
+| `27-controller-cutover` [DONE] | Phase 8 | opus | developer | `22-web-canary-example`, `23-tui-native-canary`, `24-browser-tui-canary`, `25-example-migrations`, `26-views-cutover` | None | `.specs/sub-tasks/refactor-panel-kit-composable-library/27-controller-cutover.md` |
+| `28-jump-cannon-migration` [DONE] | Phase 8 | sonnet | developer | `27-controller-cutover` | `29-apple-notes-migration` | `.specs/sub-tasks/refactor-panel-kit-composable-library/28-jump-cannon-migration.md` |
+| `29-apple-notes-migration` [DONE] | Phase 8 | sonnet | developer | `27-controller-cutover` | `28-jump-cannon-migration` | `.specs/sub-tasks/refactor-panel-kit-composable-library/29-apple-notes-migration.md` |
+
+### Phase Overview
+
+#### Phase 1: Core foundation — identity, theme source, command reducer [REVIEWED]
+
+Steps: `01-panel-identity`, `02-theme-core`, `03-reducer-commands`
+Reviewer model: `opus`
+Acceptance Criteria that should be fulfiled:
+Checklist items:
+- `HR-1` — Does host code reduce keyboard, pointer, command, dock restore, wheel, and viewport events via the core reducer without importing a backend? (command-path half: `reduce_key_matches_command_for_and_apply_command`)
+- `CK-26` — Does the reducer delegate to the existing `command_for`/`apply_command`/… functions rather than duplicating transition logic? (command path)
+- `CK-27` — Is the new code free of duplication that already exists elsewhere (theme values absorbed, not copied)?
+
+Rubrics:
+- `Single-Source Theme & Widget Unification`
+- `Project Guidelines Alignment`
+
+#### Phase 2: Reducer completion, unified widget models, generated theme consumers [REVIEWED]
+
+Steps: `04-reducer-input`, `05-widget-models`, `06-theme-generation`
+Reviewer model: `opus`
+Acceptance Criteria that should be fulfiled:
+Checklist items:
+- `HR-1` — All event classes (pointer move/resize/reorder, wheel precedence, viewport policies, invalid-target no-ops) reduce purely via core: `reducer_preserves_wheel_precedence`, `viewport_resize_policy_is_explicit`
+- `HR-10` — One core badge/widget model covering both surfaces; core badge tests live in core (`badge_spec_covers_web_and_tui_fields`; painter halves due Phase 4)
+- `HR-11` — One editable theme source with complete web/TUI conversions (`dark_theme_emits_every_web_and_tui_token`; `checks.theme-parity` wiring due Phase 7)
+- `CK-26` — Pointer-path delegation verified (`reducer_reuses_existing_command_and_pointer_transitions` complete)
+- `CK-27` — Widget models moved (not duplicated) into core
+- `CK-34` — DESIGN.md token region and CSS `:root` are generated, never hand-edited
+
+Rubrics:
+- `Single-Source Theme & Widget Unification`
+- `Project Guidelines Alignment`
+
+#### Phase 3: Borrowed frame projection and core persistence [REVIEWED]
+
+Steps: `07-frame-projection`, `09-persistence-core`, `08-frame-proofs`, `10-save-policy`
+Reviewer model: `opus`
+Acceptance Criteria that should be fulfiled:
+Checklist items:
+- `HR-2` — Free functions still usable; standalone core example builds and links no backend (controller-deletion half due Phase 8)
+- `HR-3` — Full projected frame contains chrome, deterministic paint order, placement/z/state/focus/drag, hit regions, dock entries, content extent (`projected_frame_resolves_all_semantic_regions`)
+- `HR-4` — Zero allocation after reserve/warm-up, no clones, compile-fail borrow proof (`project_into_allocates_zero_after_reserved_warmup`)
+- `HR-8` — `LayoutStore` only in core; V1/V2 restore, stable-ID mapping, reconciliation, merge, save, clear (`core_store_restores_v1_reconciles_merges_saves_v2`, `store_clear_is_observable`)
+- `HR-9` — Exact SavePolicy write-count table with fake store; reset-clear not re-saving (`save_policy_fake_store_write_counts`)
+- `CK-36` — `ProjectedFrame` never stored in signals/memos/props (borrow discipline established; web wiring checked Phase 4)
+
+Rubrics:
+- `Projection Performance & Borrow Discipline`
+- `Persistence Lifecycle Exactness`
+- `Test Evidence Quality`
+
+#### Phase 4: Composition parts and unified painters [REVIEWED]
+
+Steps: `11-partial-projectors`, `14-web-painters`, `15-tui-painters`, `12-web-parts`, `13-tui-parts`
+Reviewer model: `opus`
+Acceptance Criteria that should be fulfiled:
+Checklist items:
+- `HR-2` — `project_panel` free of any Snapshot/catalog/store/dock requirement (`project_panel_requires_no_snapshot_catalog_store_or_dock`)
+- `HR-5` — Web CSS Grid and TUI cell conversion consume the identical `TileGridProjection` (`web_and_tui_use_same_tile_grid_projection`)
+- `HR-6` — Standalone single-surface panel and replace-only-the-dock without a controller (`standalone_surface_has_no_implicit_chrome` + offscreen test; wasm smoke due Phase 7)
+- `HR-7` — TUI `Block::title`/`inner` and web semantic DOM/focus/ARIA/overflow/wheel preserved (`tui_panel_inner_matches_projection`, `web_panel_preserves_focus_aria_and_overflow`)
+- `HR-10` — Badge/widget unification complete: web tests assert only rendering/actions (`badge_actions_match_across_backends`)
+- `CK-27` — Painters consume shared core models; no second geometry or model implementation
+- `CK-36` — Web render loop keeps frames render-scoped over non-reactive scratch
+- `CK-38` — TUI painters iterate the borrowed frame; no temporary visible/order/dock `Vec`s or per-frame title `String`s
+
+Rubrics:
+- `Composability & Clean Cutover`
+- `Native Fidelity Preservation`
+- `Single-Source Theme & Widget Unification`
+- `Projection Performance & Borrow Discipline`
+
+#### Phase 5: Strict WorkspaceSpec, Nix producer, and example migrations [REVIEWED]
+
+Steps: `16-workspace-spec`, `25-example-migrations`, `26-views-cutover`, `17-nix-producer`
+Reviewer model: `opus`
+Acceptance Criteria that should be fulfiled:
+Checklist items:
+- `HR-12` — Strict `WorkspaceSpec` rejects unknown/missing fields, reports every semantic error in document order as JSON pointers (`workspace_spec_reports_strict_errors_by_pointer`)
+- `HR-18` — Default-feature Cargo-only consumer path free of Nix/schemars/serde_json dependencies (`plain_rust_enum_path_has_no_spec_schema_dependency`)
+- `CK-28` — Every serialized struct strict (`deny_unknown_fields`), required-nullable distinct from absent, `spec-json`/`spec-schema` opt-in non-default
+- `CK-34` — Generated schema (`nix/schema/workspace-spec.schema.json`) machine-generated, no hand edits
+
+Rubrics:
+- `Spec Strictness & Validation Diagnostics`
+- `Architecture Economy & Feature Gating`
+
+#### Phase 6: Parity machinery and the authoritative canary [REVIEWED]
+
+Steps: `18-spec-parity-checker`, `19-plan-coverage`, `20-canary-spec`
+Reviewer model: `opus`
+Acceptance Criteria that should be fulfiled:
+Checklist items:
+- `HR-13` — Pure Nix expresses every §10.4 completeness row through value/binding/observation/approximation (matrix proven locally; CI green due Phase 7)
+- `HR-14` — Historical seven-versus-nine drift fails without an editable expected count, reporting Flame/Distribution plus ordered pointers; permanent negative comparator preserves the class; initial red captured before migration
+- `HR-15` — Rust-only, Nix-only, and backend-ignored field drift each make a named check red (`rust_only_field_is_rejected`, `nix_only_field_is_rejected`, `backend_ignored_field_is_rejected`)
+- `HR-19` — `mkLayout` remains an unchanged V2 layout-only API with round-trip proven inside the checker
+- `CK-33` — No hand-pinned expected values (jq counts or expected-field lists) anywhere in parity checks
+- `CK-35` — Parity proofs assert observable behavior, not source text
+- `CK-37` — No public plan trait, capability lattice, or semantic-manifest API; checker stays private over concrete plans
+
+Rubrics:
+- `Parity Machinery Rigor`
+- `Test Evidence Quality`
+- `Architecture Economy & Feature Gating`
+
+#### Phase 7: Dual build lanes and the three backend canaries [REVIEWED]
+
+Steps: `21-flake-lanes`, `22-web-canary-example`, `23-tui-native-canary`, `24-browser-tui-canary`
+Reviewer model: `opus`
+Acceptance Criteria that should be fulfiled:
+Checklist items:
+- `HR-6` — One-panel web wasm build check green (smoke half)
+- `HR-11` — `checks.theme-parity` green in CI
+- `HR-13` — `checks.spec-parity` schema/value/plan matrix green in CI
+- `HR-16` — `checks.core-unit-tests` and `checks.spec-parity` execute natively (host crane lane, no `CARGO_BUILD_TARGET`) on both Hydra systems
+- `HR-17` — `checks.workspace-spec-web-wasm` and `checks.workspace-spec-browser-tui-wasm` build for wasm32 (incl. ASCII override); `checks.workspace-spec-tui-native` builds and runs `--check-offscreen` from the same Nix canary spec, exercising every content kind
+- `CK-23` — `nix flake check` passes with all named checks green
+- `CK-24` — Clippy gate passes with zero warnings on the changed workspace
+- `CK-25` — Rustdoc gate passes with zero warnings
+- `CK-29` — Every selected test type (unit, integration, component, contract, smoke) has at least one implemented test/check
+- `CK-30` — Every Test Matrix row (main + edge + error) has an implemented test/check
+- `CK-31` — Every testable checklist item resolves to at least one real, passing named proof (in-repo set)
+- `CK-32` — Every Test Cases to Cover entry implemented (in-repo set; consumer proofs due Phase 8)
+
+Rubrics:
+- `Parity Machinery Rigor`
+- `Test Evidence Quality`
+- `Native Fidelity Preservation`
+
+#### Phase 8: Clean cutover and consumer migrations [REVIEWED]
+
+Steps: `27-controller-cutover`, `28-jump-cannon-migration`, `29-apple-notes-migration`
+Reviewer model: `opus`
+Acceptance Criteria that should be fulfiled:
+Checklist items:
+- `HR-2` — Both backend controllers deleted; free functions and partial projectors are the surface (final)
+- `HR-20` — jump-cannon supports two independent workspaces sharing no state or store, keys/IDs/resize preserved, building before pin update (`two_concurrent_workspaces_do_not_share_state_or_store`, `jump-cannon-app-ui-wasm`)
+- `HR-21` — apple-notes-ocr-flow preserves reviewer/editor priority and persisted IDs; real wasm target builds before pin update (`apple-notes-ocr-flow-reviewer-wasm`)
+- `HR-22` — Every §12 deletion (incl. D-11 web `use_views` hook and `src/views.rs`) landed with its replacement; no facade/alias/re-export/stale README wording
+- `CK-23` — `nix flake check` green at the final tree
+- `CK-24` — Clippy gate zero warnings at the final tree
+- `CK-25` — Rustdoc gate zero warnings at the final tree
+- `CK-29` — Test-type coverage complete including consumer proofs
+- `CK-30` — Test Matrix fully implemented including consumer proofs
+- `CK-31` — No orphaned testable checklist items (final)
+- `CK-32` — Every Test Cases to Cover entry implemented (final)
+- `CK-35` — Cutover/deletion proofs rely on compilation and observable behavior, not source-text tests
+- `CK-39` — Scope-appropriate Boy Scout improvements on touched code without scope creep
+
+Rubrics:
+- `Composability & Clean Cutover`
+- `Project Guidelines Alignment`
