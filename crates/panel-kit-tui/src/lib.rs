@@ -43,22 +43,22 @@
 
 #![warn(missing_docs)]
 
-pub mod input;
 pub mod badge;
 pub mod charts;
+pub mod input;
 pub mod meter;
 pub mod scroll;
-pub mod spinner;
-pub mod status;
-pub mod table;
 #[cfg(feature = "spec-plan")]
 pub mod spec_plan;
+pub mod spinner;
+pub mod status;
 pub mod store;
+pub mod table;
 pub mod theme;
 pub mod widgets;
 
-pub use theme::{ResolvedTuiTheme, TuiThemeDisposition};
 use panel_kit_core::Region;
+pub use theme::{ResolvedTuiTheme, TuiThemeDisposition};
 
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -127,4 +127,3 @@ fn write_header_text(f: &mut Frame, x: u16, y: u16, max_width: u16, text: &str, 
             .set_style(style);
     }
 }
-

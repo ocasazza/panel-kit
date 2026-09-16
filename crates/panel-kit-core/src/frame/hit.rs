@@ -1,10 +1,13 @@
 use crate::reducer::{HitTarget, PanelPart};
 use crate::{PanelKey, Region};
 
-use super::{PanelChromeProjection, ProjectedFrame, FrameStatus};
+use super::{FrameStatus, PanelChromeProjection, ProjectedFrame};
 
 /// Resolve a point against dock entries, controls, headers, bodies, and workspace.
-pub fn hit_test<K: PanelKey>(frame: &ProjectedFrame<'_, K>, point: (f64, f64)) -> Option<HitTarget<K>> {
+pub fn hit_test<K: PanelKey>(
+    frame: &ProjectedFrame<'_, K>,
+    point: (f64, f64),
+) -> Option<HitTarget<K>> {
     if frame.status != FrameStatus::Ready {
         return None;
     }
@@ -17,7 +20,10 @@ pub fn hit_test<K: PanelKey>(frame: &ProjectedFrame<'_, K>, point: (f64, f64)) -
 
     for panel in frame.panels.iter().rev() {
         if let Some(part) = hit_panel(panel.chrome, point) {
-            return Some(HitTarget::Panel { key: panel.key, part });
+            return Some(HitTarget::Panel {
+                key: panel.key,
+                part,
+            });
         }
     }
 
@@ -25,16 +31,28 @@ pub fn hit_test<K: PanelKey>(frame: &ProjectedFrame<'_, K>, point: (f64, f64)) -
 }
 
 fn hit_panel(chrome: PanelChromeProjection, point: (f64, f64)) -> Option<PanelPart> {
-    if chrome.resize_hit.is_some_and(|region| contains(region, point)) {
+    if chrome
+        .resize_hit
+        .is_some_and(|region| contains(region, point))
+    {
         return Some(PanelPart::ResizeGrip);
     }
-    if chrome.maximize_hit.is_some_and(|region| contains(region, point)) {
+    if chrome
+        .maximize_hit
+        .is_some_and(|region| contains(region, point))
+    {
         return Some(PanelPart::MaximizeControl);
     }
-    if chrome.minimize_hit.is_some_and(|region| contains(region, point)) {
+    if chrome
+        .minimize_hit
+        .is_some_and(|region| contains(region, point))
+    {
         return Some(PanelPart::MinimizeControl);
     }
-    if chrome.mode_hit.is_some_and(|region| contains(region, point)) {
+    if chrome
+        .mode_hit
+        .is_some_and(|region| contains(region, point))
+    {
         return Some(PanelPart::ModeControl);
     }
     if contains(chrome.header_hit, point) {

@@ -30,7 +30,10 @@ mod tests {
 
     #[test]
     fn spinner_uses_core_frame_selection() {
-        assert_eq!(spinner_frame(0), panel_kit_core::widgets::spinner::spinner_frame(0));
+        assert_eq!(
+            spinner_frame(0),
+            panel_kit_core::widgets::spinner::spinner_frame(0)
+        );
         assert_eq!(FRAMES, panel_kit_core::widgets::spinner::FRAMES);
     }
 }

@@ -54,15 +54,18 @@ pub(super) fn panel_chrome(
     let header_hit = Region::new(region.x, region.y, region.w, header_h);
     let restore_only = surface.must_offer_restore(state);
     let window_management = surface.window_management();
-    let mode_hit = (chrome.mode_control && window_management).then(|| light_region(region, metrics, 0));
-    let minimize_hit = (chrome.minimize_control && window_management).then(|| light_region(region, metrics, 1));
-    let maximize_hit = (chrome.maximize_control && (window_management || restore_only)).then(|| {
-        if window_management {
-            light_region(region, metrics, 2)
-        } else {
-            light_region(region, metrics, 0)
-        }
-    });
+    let mode_hit =
+        (chrome.mode_control && window_management).then(|| light_region(region, metrics, 0));
+    let minimize_hit =
+        (chrome.minimize_control && window_management).then(|| light_region(region, metrics, 1));
+    let maximize_hit =
+        (chrome.maximize_control && (window_management || restore_only)).then(|| {
+            if window_management {
+                light_region(region, metrics, 2)
+            } else {
+                light_region(region, metrics, 0)
+            }
+        });
     let resize_hit = (chrome.resize_grip && window_management).then(|| {
         Region::new(
             (region.x + region.w - metrics.resize_w).max(region.x),
@@ -72,7 +75,15 @@ pub(super) fn panel_chrome(
         )
     });
 
-    PanelChromeProjection { outer: region, body, header_hit, mode_hit, minimize_hit, maximize_hit, resize_hit }
+    PanelChromeProjection {
+        outer: region,
+        body,
+        header_hit,
+        mode_hit,
+        minimize_hit,
+        maximize_hit,
+        resize_hit,
+    }
 }
 
 fn panel_body(region: Region, header_h: f64, chrome: &ChromeProjectionInput) -> Region {
@@ -99,5 +110,10 @@ fn panel_body(region: Region, header_h: f64, chrome: &ChromeProjectionInput) -> 
 
 fn light_region(region: Region, metrics: PanelChromeMetrics, slot: u8) -> Region {
     let x = region.x + metrics.light_left + slot as f64 * (metrics.hit + metrics.light_gap);
-    Region::new(x, region.y, metrics.hit.min(region.w).max(0.0), metrics.header_h.min(region.h).max(0.0))
+    Region::new(
+        x,
+        region.y,
+        metrics.hit.min(region.w).max(0.0),
+        metrics.header_h.min(region.h).max(0.0),
+    )
 }

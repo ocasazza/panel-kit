@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-use crate::frame::{project_into, ChromeProjectionInput, PanelProjection, ProjectedFrame, ProjectionBuffer, ProjectionInput, TileLayoutMetrics};
+use crate::frame::{
+    project_into, ChromeProjectionInput, PanelProjection, ProjectedFrame, ProjectionBuffer,
+    ProjectionInput, TileLayoutMetrics,
+};
 use crate::reducer::{Snapshot, Viewport};
 use crate::{
-    Clamp, ChromeMetrics, Drag, DragKind, LayoutBuilder, Mode, PanelKind, Region,
+    ChromeMetrics, Clamp, Drag, DragKind, LayoutBuilder, Mode, PanelKind, Region,
     SurfaceCapabilities, SurfaceProfile, TileMetrics, Units, WinState,
 };
 
@@ -29,10 +32,18 @@ impl PanelKind for TestPanel {
 pub(super) fn semantic_snapshot(mode: Mode) -> Snapshot<TestPanel> {
     let mut layout = LayoutBuilder::new();
     let mut panels = vec![
-        layout.at(TestPanel::Alpha, 10.0, 20.0, 240.0, 160.0).with_tile(1, 2),
-        layout.at(TestPanel::Beta, 60.0, 80.0, 220.0, 150.0).with_tile(2, 1),
-        layout.at(TestPanel::Gamma, 120.0, 140.0, 280.0, 180.0).with_tile(1, 1),
-        layout.at(TestPanel::Docked, 0.0, 0.0, 180.0, 110.0).with_tile(1, 1),
+        layout
+            .at(TestPanel::Alpha, 10.0, 20.0, 240.0, 160.0)
+            .with_tile(1, 2),
+        layout
+            .at(TestPanel::Beta, 60.0, 80.0, 220.0, 150.0)
+            .with_tile(2, 1),
+        layout
+            .at(TestPanel::Gamma, 120.0, 140.0, 280.0, 180.0)
+            .with_tile(1, 1),
+        layout
+            .at(TestPanel::Docked, 0.0, 0.0, 180.0, 110.0)
+            .with_tile(1, 1),
     ];
     panels[0].z = 30;
     panels[1].z = 10;
@@ -42,9 +53,22 @@ pub(super) fn semantic_snapshot(mode: Mode) -> Snapshot<TestPanel> {
     Snapshot {
         panels,
         preferred_mode: mode,
-        viewport: Viewport { width: 800.0, height: 600.0, units: Units::CssPx },
+        viewport: Viewport {
+            width: 800.0,
+            height: 600.0,
+            units: Units::CssPx,
+        },
         focused: Some(TestPanel::Gamma),
-        drag: Some(Drag { idx: 2, kind: DragKind::Move, start_x: 120.0, start_y: 140.0, start_w: 280.0, start_h: 180.0, start_mx: 130.0, start_my: 150.0 }),
+        drag: Some(Drag {
+            idx: 2,
+            kind: DragKind::Move,
+            start_x: 120.0,
+            start_y: 140.0,
+            start_w: 280.0,
+            start_h: 180.0,
+            start_mx: 130.0,
+            start_my: 150.0,
+        }),
         tile_drag: Some(TestPanel::Beta),
         workspace_scroll: 25.0,
     }
@@ -76,7 +100,11 @@ pub(super) fn regular_surface() -> SurfaceProfile {
         800.0,
         crate::WEB_COMPACT_MAX,
         crate::WEB_TABLET_MAX,
-        SurfaceCapabilities { coarse_pointer: false, hover: true, keyboard: true },
+        SurfaceCapabilities {
+            coarse_pointer: false,
+            hover: true,
+            keyboard: true,
+        },
     )
 }
 

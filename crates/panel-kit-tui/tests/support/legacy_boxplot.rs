@@ -36,7 +36,10 @@ pub fn boxplot(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, items: &[BoxItem
 
     for (i, item) in items.iter().enumerate() {
         let s = item.summary;
-        let color = item.color.map(rgb_color).unwrap_or(colors[i % colors.len()]);
+        let color = item
+            .color
+            .map(rgb_color)
+            .unwrap_or(colors[i % colors.len()]);
         let slot_x = area.x + i as u16 * slot_w;
         let cx = slot_x + slot_w / 2;
         let box_w = (slot_w.saturating_sub(2)).clamp(1, 7);

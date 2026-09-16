@@ -4,10 +4,12 @@ Generic Dioxus panel-workspace library. Every view is a panel you can
 move/resize/minimize/maximize, with floating (free placement) and tiling
 (auto grid) workspace modes, printer-CMY operation lights, pointer and
 keyboard window management, tiling drag-to-reorder, a minimized-panel dock,
-and versioned layout persistence. Includes a reusable `Badge` chip component,
-`Spinner`, panel-header actions, loading-workspace primitives, and a
-Monaco-based code editor (`editor::MonacoEditor`) with a `.pest` grammar
-language and a token-matched dark theme.
+and versioned layout persistence. Includes reusable badge, spinner, dropdown,
+cascade, and interactive-table widgets; panel-header actions and
+loading-workspace primitives; Grafana and lightweight IDE panels; retained-DOM
+keepalive composition; an optional Bevy canvas bridge; and a Monaco-based code
+editor (`editor::MonacoEditor`) with a `.pest` grammar language and a
+token-matched dark theme.
 
 Factored out of [jump-cannon](https://github.com/ocasazza/jump-cannon) and
 apple-notes-ocr-flow, which both consume it as a git dependency:
@@ -76,7 +78,7 @@ rsx! {
                 })
             }
         }
-        {panel_kit::widgets::dock::dock(frame.dock, &catalog, emit)}
+        {panel_kit::widgets::dock::dock(frame.dock, &catalog, emit, None)}
     }
 }
 ```
@@ -253,9 +255,12 @@ dx serve --example workspace --platform web
 
 | example | shows |
 | --- | --- |
-| `workspace` | host-owned `Snapshot` + `ProjectionBuffer` + composable web parts; floating pointer and keyboard move/resize/raise; blue mode, yellow minimize, and pink maximize/restore controls; tiling reorder and span resize; a restore-by-key control; viewport clamping; inner-panel and workspace wheel chaining; live compact/tablet/regular, focus, `tile_w`/`tile_h`, and workspace-scroll state; versioned localStorage persistence; and a `tip_pos` overlay |
+| `workspace` | host-owned `Snapshot` + `ProjectionBuffer` + composable web parts; floating pointer and keyboard move/resize/raise; host-owned move/resize snap toggles in the dock trailing slot; layout reset via store clear plus snapshot replacement; tiling reorder and span resize; viewport clamping; wheel chaining; live surface state; and versioned localStorage persistence |
 | `views` | host-owned named views over one workspace: core `SavedViews`, per-view `LocalStorageLayoutStore` records (`panel_kit_example_views:view:<name>` + the `:views` registry), explicit `SavePolicy`, a composable parts loop, a switcher bar with create/rename/delete, per-view reset, and the legacy single-layout migration copy |
 | `badge` | all ten `BadgeKind`s, every prop (`active`, `with_x`, `with_plus`, `small`, `override_color`, `accent_color`, both `BadgeClickKind`s, `emit_hover`) behind live toggles, an event log proving every `BadgeAction` variant fires, and a `tag_hue` FNV hue-spread row |
+| `dropdown` | grouped searchable single-select with host-owned popup and selected value |
+| `cascade` | host-owned Miller-column navigation retained through a parent render storm |
+| `table` | core `TableModel` painting with host-owned row selection, dense mode, full-value tooltips, and empty state |
 | `spinner` | `Spinner` with and without `label`, plus a live-editable label |
 | `loading_workspace` | the post-mount `LoadingWorkspace` twin of the static pre-WASM boot contract |
 | `theming` | the documented full-palette retheme path: `:root` variable overrides layered after `panel_kit::CSS`, with three switchable presets |

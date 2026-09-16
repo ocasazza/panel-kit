@@ -66,7 +66,7 @@ rsx! {
         for panel in frame.panels.iter().copied() {
             // The host chooses the body and which chrome parts to mount.
         }
-        {widgets::dock::dock(frame.dock, &catalog, emit)}
+        {widgets::dock::dock(frame.dock, &catalog, emit, None)}
     }
 }
 ```

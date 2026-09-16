@@ -43,21 +43,141 @@ macro_rules! token {
     };
 }
 
-token!(BG, "bg", "#0a0a0a", 0x0a, 0x0a, 0x0a, "Page background, and the recessed field behind chips and badges.");
-token!(PANEL, "panel", "#0d0d0d", 0x0d, 0x0d, 0x0d, "Every raised surface: panels, topbar, dock, tooltip.");
-token!(FG, "fg", "#ededed", 0xed, 0xed, 0xed, "Body and title text.");
-token!(DIM, "dim", "#7a7a7a", 0x7a, 0x7a, 0x7a, "De-emphasized text. The only grey between `FG` and the lines.");
-token!(LINE, "line", "#262626", 0x26, 0x26, 0x26, "Structural hairline dividing regions. Never a text colour.");
-token!(LINE2, "line2", "#5f5f5f", 0x5f, 0x5f, 0x5f, "Object outline. Reaches 3:1 against `PANEL`; never a text colour.");
-token!(INV_BG, "inv-bg", "#ededed", 0xed, 0xed, 0xed, "Inverted background, used by selection.");
-token!(INV_FG, "inv-fg", "#0a0a0a", 0x0a, 0x0a, 0x0a, "Inverted foreground, used by selection.");
-token!(ACCENT, "accent", "#5ef38c", 0x5e, 0xf3, 0x8c, "Live-system signal only: activity, loading, selection, drag-in-flight.");
-token!(RED, "red", "#ff5f56", 0xff, 0x5f, 0x56, "Errors and unresolved references.");
-token!(YELLOW, "yellow", "#ffbd2e", 0xff, 0xbd, 0x2e, "Minimize light.");
-token!(GREEN, "green", "#27c93f", 0x27, 0xc9, 0x3f, "Verdict: resolved, valid, reachable.");
-token!(BLUE, "blue", "#3b9bff", 0x3b, 0x9b, 0xff, "Floating/tiling mode light.");
-token!(PINK, "pink", "#ff5fc3", 0xff, 0x5f, 0xc3, "Maximize/restore light.");
-token!(BADGE_INFO, "badge-info", "#83b7cc", 0x83, 0xb7, 0xcc, "Informational metadata badges, and the resting tint for tags.");
+token!(
+    BG,
+    "bg",
+    "#0a0a0a",
+    0x0a,
+    0x0a,
+    0x0a,
+    "Page background, and the recessed field behind chips and badges."
+);
+token!(
+    PANEL,
+    "panel",
+    "#0d0d0d",
+    0x0d,
+    0x0d,
+    0x0d,
+    "Every raised surface: panels, topbar, dock, tooltip."
+);
+token!(
+    FG,
+    "fg",
+    "#ededed",
+    0xed,
+    0xed,
+    0xed,
+    "Body and title text."
+);
+token!(
+    DIM,
+    "dim",
+    "#7a7a7a",
+    0x7a,
+    0x7a,
+    0x7a,
+    "De-emphasized text. The only grey between `FG` and the lines."
+);
+token!(
+    LINE,
+    "line",
+    "#262626",
+    0x26,
+    0x26,
+    0x26,
+    "Structural hairline dividing regions. Never a text colour."
+);
+token!(
+    LINE2,
+    "line2",
+    "#5f5f5f",
+    0x5f,
+    0x5f,
+    0x5f,
+    "Object outline. Reaches 3:1 against `PANEL`; never a text colour."
+);
+token!(
+    INV_BG,
+    "inv-bg",
+    "#ededed",
+    0xed,
+    0xed,
+    0xed,
+    "Inverted background, used by selection."
+);
+token!(
+    INV_FG,
+    "inv-fg",
+    "#0a0a0a",
+    0x0a,
+    0x0a,
+    0x0a,
+    "Inverted foreground, used by selection."
+);
+token!(
+    ACCENT,
+    "accent",
+    "#5ef38c",
+    0x5e,
+    0xf3,
+    0x8c,
+    "Live-system signal only: activity, loading, selection, drag-in-flight."
+);
+token!(
+    RED,
+    "red",
+    "#ff5f56",
+    0xff,
+    0x5f,
+    0x56,
+    "Errors and unresolved references."
+);
+token!(
+    YELLOW,
+    "yellow",
+    "#ffbd2e",
+    0xff,
+    0xbd,
+    0x2e,
+    "Minimize light."
+);
+token!(
+    GREEN,
+    "green",
+    "#27c93f",
+    0x27,
+    0xc9,
+    0x3f,
+    "Verdict: resolved, valid, reachable."
+);
+token!(
+    BLUE,
+    "blue",
+    "#3b9bff",
+    0x3b,
+    0x9b,
+    0xff,
+    "Floating/tiling mode light."
+);
+token!(
+    PINK,
+    "pink",
+    "#ff5fc3",
+    0xff,
+    0x5f,
+    0xc3,
+    "Maximize/restore light."
+);
+token!(
+    BADGE_INFO,
+    "badge-info",
+    "#83b7cc",
+    0x83,
+    0xb7,
+    0xcc,
+    "Informational metadata badges, and the resting tint for tags."
+);
 
 /// The monospace stack, as a CSS `font-family` value.
 ///

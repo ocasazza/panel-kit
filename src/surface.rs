@@ -33,7 +33,11 @@ pub fn viewport_size() -> (f64, f64) {
 /// Convert raw dimensions into a core viewport, rejecting unsafe values.
 pub fn viewport_from_size(width: f64, height: f64) -> Option<Viewport> {
     if width.is_finite() && height.is_finite() && width > 0.0 && height > 0.0 {
-        Some(Viewport { width, height, units: Units::CssPx })
+        Some(Viewport {
+            width,
+            height,
+            units: Units::CssPx,
+        })
     } else {
         None
     }
@@ -43,7 +47,11 @@ pub fn viewport_from_size(width: f64, height: f64) -> Option<Viewport> {
 pub fn browser_capabilities() -> SurfaceCapabilities {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        SurfaceCapabilities { coarse_pointer: false, hover: true, keyboard: true }
+        SurfaceCapabilities {
+            coarse_pointer: false,
+            hover: true,
+            keyboard: true,
+        }
     }
 
     #[cfg(target_arch = "wasm32")]

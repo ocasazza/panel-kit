@@ -16,7 +16,7 @@ use ratatui::Terminal;
 
 use support::{
     allocations_during, draw_composed_workspace, fixed_snapshot, project_cells, rect_from_region,
-    ALLOCATION_TEST_LOCK, TestPanel,
+    TestPanel, ALLOCATION_TEST_LOCK,
 };
 
 #[test]
@@ -79,11 +79,23 @@ fn tui_hit_adapter_maps_drawn_parts_to_workspace_events() {
     );
     assert_eq!(
         panel_kit_tui::input::workspace_event_from_key(
-            KeyChord { key: Key::Tab, shift: false, alt: false, ctrl: false, meta: false },
+            KeyChord {
+                key: Key::Tab,
+                shift: false,
+                alt: false,
+                ctrl: false,
+                meta: false
+            },
             FocusContext::<TestPanel>::Workspace,
         ),
         WorkspaceEvent::Key {
-            chord: KeyChord { key: Key::Tab, shift: false, alt: false, ctrl: false, meta: false },
+            chord: KeyChord {
+                key: Key::Tab,
+                shift: false,
+                alt: false,
+                ctrl: false,
+                meta: false
+            },
             focus: FocusContext::<TestPanel>::Workspace,
         }
     );
@@ -91,7 +103,9 @@ fn tui_hit_adapter_maps_drawn_parts_to_workspace_events() {
 
 #[test]
 fn drawing_over_borrowed_frame_uses_no_owned_scratch_vectors_after_reserve() {
-    let _guard = ALLOCATION_TEST_LOCK.lock().expect("allocation test lock is not poisoned");
+    let _guard = ALLOCATION_TEST_LOCK
+        .lock()
+        .expect("allocation test lock is not poisoned");
     let (snapshot, catalog) = fixed_snapshot(Mode::Floating);
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("test backend initializes");
     let mut projection = ProjectionBuffer::with_panel_capacity(snapshot.panels.len());
@@ -109,14 +123,26 @@ fn drawing_over_borrowed_frame_uses_no_owned_scratch_vectors_after_reserve() {
         })
     };
 
-    draw_composed_workspace(&mut terminal, &snapshot, &catalog, &mut projection, &mut hits);
+    draw_composed_workspace(
+        &mut terminal,
+        &snapshot,
+        &catalog,
+        &mut projection,
+        &mut hits,
+    );
     {
         let projected = project_cells(&snapshot, &mut projection);
         assert_header_hit_was_recorded(&hits, projected.panels);
     }
 
     let allocations = allocations_during(|| {
-        draw_composed_workspace(&mut terminal, &snapshot, &catalog, &mut projection, &mut hits);
+        draw_composed_workspace(
+            &mut terminal,
+            &snapshot,
+            &catalog,
+            &mut projection,
+            &mut hits,
+        );
     });
 
     let allowed_allocations = empty_draw_allocations + native_chrome_allocations;
@@ -126,7 +152,10 @@ fn drawing_over_borrowed_frame_uses_no_owned_scratch_vectors_after_reserve() {
     );
 
     let projected = project_cells(&snapshot, &mut projection);
-    assert_eq!(rect_from_region(projected.chrome.root), terminal.get_frame().area());
+    assert_eq!(
+        rect_from_region(projected.chrome.root),
+        terminal.get_frame().area()
+    );
 }
 
 fn assert_header_hit_was_recorded(
@@ -146,7 +175,10 @@ fn assert_header_hit_was_recorded(
     assert_eq!(
         panel_kit_tui::input::workspace_event_from_pointer(hits, header_event),
         Some(WorkspaceEvent::Pointer {
-            target: HitTarget::Panel { key: TestPanel::Alpha, part: PanelPart::Header },
+            target: HitTarget::Panel {
+                key: TestPanel::Alpha,
+                part: PanelPart::Header
+            },
             event: header_event,
         })
     );
@@ -161,7 +193,9 @@ fn draw_native_chrome_allocation_baseline(
     terminal
         .draw(|frame| {
             for panel in panels.iter().copied() {
-                let meta = catalog.get(panel.key).expect("projected panel metadata exists");
+                let meta = catalog
+                    .get(panel.key)
+                    .expect("projected panel metadata exists");
                 let outer = rect_from_region(panel.chrome.outer);
                 let block = Block::default()
                     .borders(Borders::ALL)

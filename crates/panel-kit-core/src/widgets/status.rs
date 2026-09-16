@@ -40,7 +40,11 @@ mod tests {
 
     #[test]
     fn status_model_carries_label_state_and_color() {
-        let model = StatusModel { label: "build".into(), state: StatusState::Warning, color: (255, 200, 0) };
+        let model = StatusModel {
+            label: "build".into(),
+            state: StatusState::Warning,
+            color: (255, 200, 0),
+        };
 
         assert_eq!(model.label, "build");
         assert_eq!(model.state, StatusState::Warning);

@@ -95,12 +95,19 @@ pub(super) fn defaults() -> Snapshot<TestPanel> {
             builder.at(TestPanel::Third, 320.0, 20.0, 140.0, 100.0),
         ],
         Mode::Floating,
-        Viewport { width: 400.0, height: 300.0, units: Units::CssPx },
+        Viewport {
+            width: 400.0,
+            height: 300.0,
+            units: Units::CssPx,
+        },
     )
 }
 
 pub(super) fn restore_context() -> RestoreContext {
-    RestoreContext { units: Units::CssPx, viewport: (400.0, 300.0) }
+    RestoreContext {
+        units: Units::CssPx,
+        viewport: (400.0, 300.0),
+    }
 }
 
 fn meta(kind: TestPanel, stable_id: &'static str) -> PanelMeta<TestPanel> {

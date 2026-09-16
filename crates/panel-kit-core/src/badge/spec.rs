@@ -54,7 +54,9 @@ impl BadgeSpec {
     /// Action delivered by a primary body click.
     pub fn primary_action(&self) -> BadgeAction {
         match &self.kind {
-            BadgeKind::Wikilink { target, .. } => BadgeAction::Navigate { target: target.clone() },
+            BadgeKind::Wikilink { target, .. } => BadgeAction::Navigate {
+                target: target.clone(),
+            },
             BadgeKind::Url { href, .. } => BadgeAction::OpenUrl { href: href.clone() },
             _ => self.field_value_action(self.click_kind),
         }
@@ -62,23 +64,38 @@ impl BadgeSpec {
 
     /// Action delivered by the optional `+` affordance.
     pub fn plus_action(&self) -> BadgeAction {
-        BadgeAction::AddFilter { field: self.field.clone(), value: self.value.clone() }
+        BadgeAction::AddFilter {
+            field: self.field.clone(),
+            value: self.value.clone(),
+        }
     }
 
     /// Action delivered by the optional `×` affordance.
     pub fn x_action(&self) -> BadgeAction {
-        BadgeAction::Toggle { field: self.field.clone(), value: self.value.clone() }
+        BadgeAction::Toggle {
+            field: self.field.clone(),
+            value: self.value.clone(),
+        }
     }
 
     /// Action delivered by pointer hover when `emit_hover` is enabled.
     pub fn hover_action(&self) -> Option<BadgeAction> {
-        self.emit_hover.then(|| BadgeAction::Hovered { field: self.field.clone(), value: self.value.clone() })
+        self.emit_hover.then(|| BadgeAction::Hovered {
+            field: self.field.clone(),
+            value: self.value.clone(),
+        })
     }
 
     fn field_value_action(&self, click_kind: BadgeClickKind) -> BadgeAction {
         match click_kind {
-            BadgeClickKind::Toggle => BadgeAction::Toggle { field: self.field.clone(), value: self.value.clone() },
-            BadgeClickKind::Clicked => BadgeAction::Clicked { field: self.field.clone(), value: self.value.clone() },
+            BadgeClickKind::Toggle => BadgeAction::Toggle {
+                field: self.field.clone(),
+                value: self.value.clone(),
+            },
+            BadgeClickKind::Clicked => BadgeAction::Clicked {
+                field: self.field.clone(),
+                value: self.value.clone(),
+            },
         }
     }
 }

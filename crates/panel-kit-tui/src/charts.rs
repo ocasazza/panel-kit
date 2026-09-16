@@ -25,9 +25,8 @@ pub(super) fn mix(a: Color, b: Color, t: f64) -> Color {
     match (a, b) {
         (Color::Rgb(ar, ag, ab), Color::Rgb(br, bg, bb)) => {
             let t = t.clamp(0.0, 1.0);
-            let lerp = |from: u8, to: u8| {
-                (from as f64 + (to as f64 - from as f64) * t).round() as u8
-            };
+            let lerp =
+                |from: u8, to: u8| (from as f64 + (to as f64 - from as f64) * t).round() as u8;
             Color::Rgb(lerp(ar, br), lerp(ag, bg), lerp(ab, bb))
         }
         _ => a,

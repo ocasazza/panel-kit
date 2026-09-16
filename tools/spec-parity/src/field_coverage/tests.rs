@@ -43,7 +43,9 @@ fn nix_only_field_is_rejected() {
         .expect_err("extra Nix output fields must fail strict serde/schema validation");
 
     assert!(
-        report.to_string().contains("/chrome/new_field: unknown field"),
+        report
+            .to_string()
+            .contains("/chrome/new_field: unknown field"),
         "{report}"
     );
 }
@@ -53,7 +55,9 @@ fn backend_ignored_field_is_rejected() {
     let spec = WorkspaceSpec::from_json_value(reference_spec_value())
         .expect("reference spec should decode");
     let providers = binding_manifest_for(&spec, BackendKind::Web);
-    let resolved = spec.resolve(&providers).expect("providers match fixture spec");
+    let resolved = spec
+        .resolve(&providers)
+        .expect("providers match fixture spec");
     let web_plan = panel_kit::spec_plan::lower_spec(&resolved);
     let mut dispositions = web_field_dispositions(&web_plan);
     dispositions.remove("/chrome/dock");
@@ -82,7 +86,9 @@ fn tui_typography_and_density_are_explicit_approximations() {
     let spec = WorkspaceSpec::from_json_value(reference_spec_value())
         .expect("reference spec should decode");
     let providers = binding_manifest_for(&spec, BackendKind::Tui);
-    let resolved = spec.resolve(&providers).expect("providers match fixture spec");
+    let resolved = spec
+        .resolve(&providers)
+        .expect("providers match fixture spec");
     let tui_plan = panel_kit_tui::spec_plan::lower_spec(&resolved);
     let dispositions = tui_field_dispositions(&tui_plan);
 
@@ -92,10 +98,7 @@ fn tui_typography_and_density_are_explicit_approximations() {
     assert_explicit_approximation(&dispositions, "/theme/density/spacing_md");
 }
 
-fn assert_explicit_approximation(
-    dispositions: &BTreeMap<String, FieldDisposition>,
-    pointer: &str,
-) {
+fn assert_explicit_approximation(dispositions: &BTreeMap<String, FieldDisposition>, pointer: &str) {
     match dispositions.get(pointer) {
         Some(FieldDisposition::Approximated { reason, .. }) if !reason.trim().is_empty() => {}
         other => panic!("{pointer} should be an explicit approximation, got {other:?}"),

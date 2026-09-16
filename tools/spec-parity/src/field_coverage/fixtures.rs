@@ -22,7 +22,8 @@ pub(super) fn reference_spec_value() -> Value {
             "preferred_mode": "Floating",
             "clamp": {
                 "outer_w": 0.0, "outer_h": 0.0, "floor_w": 24.0, "floor_h": 8.0,
-                "inner": 2.0, "edge": 0.0, "min_w": 20.0, "min_h": 5.0
+                "inner": 2.0, "edge": 0.0, "min_w": 20.0, "min_h": 5.0,
+                "max_frac": 0.75
             },
             "tile": {
                 "resize": { "row": 4.0, "col_floor": 12.0, "outer": 0.0 },

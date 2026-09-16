@@ -4,8 +4,10 @@
 //! `panel-kit-core`, while this crate maps borrowed runtime views to DOM.
 
 pub mod badge;
+pub mod cascade;
 pub mod charts;
 pub mod dock;
+pub mod dropdown;
 pub mod meter;
 pub mod panel;
 mod panel_layout;
@@ -14,6 +16,9 @@ pub mod scroll;
 pub mod spinner;
 pub mod status;
 pub mod table;
+
+pub use cascade::{CascadeAction, CascadeItem, CascadeState, CascadingDropdown};
+pub use dropdown::{Dropdown, DropdownAction, DropdownItem, DropdownState};
 
 use dioxus::prelude::*;
 use panel_kit_core::badge::BadgeAction;
@@ -34,7 +39,7 @@ pub fn content_view(
             div { class: "pk-content pk-content-editor", role: "group", aria_label: "editor content {binding}", "data-binding": "{binding}" }
         },
         ContentView::Badges(specs) => badge::strip(specs, on_badge_action),
-        ContentView::Table(view) => table::table(view),
+        ContentView::Table(view) => table::table(view, None, None, false),
         ContentView::TimeSeries { series, unit } => charts::time_series(series, unit),
         ContentView::Gauges(items) => charts::gauges(items),
         ContentView::Flamegraph(spans) => charts::flamegraph(spans),

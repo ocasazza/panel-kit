@@ -1,4 +1,7 @@
-use super::tokens::{ACCENT, BADGE_INFO, BG, BLUE, DIM, FG, GREEN, INV_BG, INV_FG, LINE, LINE2, MONO, PANEL, PINK, RED, YELLOW};
+use super::tokens::{
+    ACCENT, BADGE_INFO, BG, BLUE, DIM, FG, GREEN, INV_BG, INV_FG, LINE, LINE2, MONO, PANEL, PINK,
+    RED, YELLOW,
+};
 use super::{Color, ColorTokens, DensityTokens, TypographyTokens};
 
 /// The dark palette, derived from the `Token` seed so the flat constants

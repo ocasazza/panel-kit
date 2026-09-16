@@ -51,7 +51,12 @@ pub struct TableColumn {
 /// Semantic cell variants supported by authored tables.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
-#[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    tag = "kind",
+    content = "value",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
 pub enum TableCell {
     /// Plain text cell.
     Text(String),
@@ -109,8 +114,15 @@ mod tests {
     #[test]
     fn table_model_carries_columns_and_tagged_cells() {
         let table = TableModel {
-            columns: vec![TableColumn { key: "service".into(), title: "Service".into(), width: ColumnWidth::Flex { weight: 2 }, align: TextAlign::Left }],
-            rows: vec![TableRow { cells: vec![TableCell::Text("api".into())] }],
+            columns: vec![TableColumn {
+                key: "service".into(),
+                title: "Service".into(),
+                width: ColumnWidth::Flex { weight: 2 },
+                align: TextAlign::Left,
+            }],
+            rows: vec![TableRow {
+                cells: vec![TableCell::Text("api".into())],
+            }],
         };
 
         assert_eq!(table.columns[0].key, "service");

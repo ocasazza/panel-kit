@@ -26,13 +26,21 @@ fn main() {
     let snapshot = Snapshot::from_defaults(
         vec![layout.at(StandalonePanel::Main, 24.0, 32.0, 320.0, 180.0)],
         Mode::Floating,
-        Viewport { width: 960.0, height: 640.0, units: Units::CssPx },
+        Viewport {
+            width: 960.0,
+            height: 640.0,
+            units: Units::CssPx,
+        },
     );
     let surface = SurfaceProfile::from_logical_width(
         snapshot.viewport.width,
         WEB_COMPACT_MAX,
         WEB_TABLET_MAX,
-        SurfaceCapabilities { coarse_pointer: false, hover: true, keyboard: true },
+        SurfaceCapabilities {
+            coarse_pointer: false,
+            hover: true,
+            keyboard: true,
+        },
     );
     let tile = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
     let chrome = ChromeProjectionInput::full(ChromeMetrics::WEB);

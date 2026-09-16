@@ -12,20 +12,27 @@ mod workspace_canary;
 
 use std::time::Duration;
 
-use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseButton, MouseEventKind};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseButton, MouseEventKind,
+};
 use crossterm::execute;
-use panel_kit_core::frame::{project_into, ChromeProjectionInput, ProjectionBuffer, ProjectionInput, TileLayoutMetrics};
+use evidence::{check_offscreen, RenderEvidence};
+use panel_kit_core::frame::{
+    project_into, ChromeProjectionInput, ProjectionBuffer, ProjectionInput, TileLayoutMetrics,
+};
 use panel_kit_core::persist::{apply_save_decision, restore_snapshot, LayoutError, RestoreContext};
 use panel_kit_core::reducer::{reduce, Snapshot, Viewport, WheelDisposition, WorkspaceEvent};
 use panel_kit_core::spec::{BackendKind, Charset as SpecCharset, WorkspaceSpec};
 use panel_kit_core::{FocusContext, Region, SpecPanelId, SurfaceCapabilities, SurfaceProfile};
-use panel_kit_tui::input::{crossterm_key_chord, crossterm_pointer_event, workspace_event_from_key, workspace_event_from_pointer};
+use panel_kit_tui::input::{
+    crossterm_key_chord, crossterm_pointer_event, workspace_event_from_key,
+    workspace_event_from_pointer,
+};
 use panel_kit_tui::store::JsonFileLayoutStore;
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
 use panel_kit_tui::{Charset, ResolvedTuiTheme};
 use ratatui::layout::{Position, Rect};
 use workspace_canary::content::{render_content, ContentRenderContext, DemoData};
-use evidence::{check_offscreen, RenderEvidence};
 
 const CHECK_WIDTH: u16 = 128;
 const CHECK_HEIGHT: u16 = 52;
@@ -59,10 +66,11 @@ impl NativeCanary {
         let spec = decode_workspace_spec()?;
         let manifest = workspace_canary::provider_manifest(BackendKind::Tui);
         let resolved = spec.resolve(&manifest)?;
-        let store = resolved
-            .persistence
-            .enabled
-            .then(|| JsonFileLayoutStore::new(std::env::temp_dir().join("panel-kit-tui-workspace-spec-canary.json")));
+        let store = resolved.persistence.enabled.then(|| {
+            JsonFileLayoutStore::new(
+                std::env::temp_dir().join("panel-kit-tui-workspace-spec-canary.json"),
+            )
+        });
         let snapshot = restore_or_initial(&resolved, store.as_ref())?;
         let panel_count = resolved.catalog.len();
         let theme = ResolvedTuiTheme::from(&resolved.theme);
@@ -70,7 +78,13 @@ impl NativeCanary {
         let chrome = chrome_input(&resolved.chrome);
 
         Ok(Self {
-            workspace: ResolvedCanary { resolved, snapshot, theme, charset, chrome },
+            workspace: ResolvedCanary {
+                resolved,
+                snapshot,
+                theme,
+                charset,
+                chrome,
+            },
             projection: ProjectionBuffer::with_panel_capacity(panel_count),
             hits: TuiHitBuffer::with_capacity(panel_count, panel_count),
             store,
@@ -103,19 +117,58 @@ impl NativeCanary {
 
             self.evidence.root = rect_from_region(projected.chrome.root);
             self.evidence.dock = rect_from_region(projected.chrome.dock);
-            widgets::root::draw_root(frame, self.evidence.root, &self.workspace.theme, self.workspace.charset);
+            widgets::root::draw_root(
+                frame,
+                self.evidence.root,
+                &self.workspace.theme,
+                self.workspace.charset,
+            );
 
             let mode = projected.mode;
             let dock_area = rect_from_region(projected.chrome.dock);
             for panel in projected.panels.iter().copied() {
-                let Some(meta) = self.workspace.resolved.catalog.get(panel.key) else { continue };
-                self.evidence.chrome.push((panel.key, rect_from_region(panel.chrome.outer)));
-                widgets::panel::draw_panel_surface(frame, panel, &self.workspace.theme, self.workspace.charset, &mut self.hits);
-                let body = widgets::panel::draw_panel_chrome(frame, panel, meta, &self.workspace.theme, self.workspace.charset, &mut self.hits);
-                widgets::panel::draw_traffic_lights(frame, panel, mode, None, &self.workspace.theme, self.workspace.charset, &mut self.hits);
-                widgets::panel::draw_resize_grip(frame, panel, None, &self.workspace.theme, &mut self.hits);
+                let Some(meta) = self.workspace.resolved.catalog.get(panel.key) else {
+                    continue;
+                };
+                self.evidence
+                    .chrome
+                    .push((panel.key, rect_from_region(panel.chrome.outer)));
+                widgets::panel::draw_panel_surface(
+                    frame,
+                    panel,
+                    &self.workspace.theme,
+                    self.workspace.charset,
+                    &mut self.hits,
+                );
+                let body = widgets::panel::draw_panel_chrome(
+                    frame,
+                    panel,
+                    meta,
+                    &self.workspace.theme,
+                    self.workspace.charset,
+                    &mut self.hits,
+                );
+                widgets::panel::draw_traffic_lights(
+                    frame,
+                    panel,
+                    mode,
+                    None,
+                    &self.workspace.theme,
+                    self.workspace.charset,
+                    &mut self.hits,
+                );
+                widgets::panel::draw_resize_grip(
+                    frame,
+                    panel,
+                    None,
+                    &self.workspace.theme,
+                    &mut self.hits,
+                );
                 self.evidence.bodies.push((panel.key, body));
-                self.content_jobs.push(ContentJob { body, key: panel.key });
+                self.content_jobs.push(ContentJob {
+                    body,
+                    key: panel.key,
+                });
             }
 
             widgets::dock::draw_dock(
@@ -136,7 +189,12 @@ impl NativeCanary {
         let demo = &mut self.demo;
         let content_kinds = &mut self.evidence.content_kinds;
         for job in self.content_jobs.iter().copied() {
-            let Some(content) = workspace.resolved.panels.get(job.key.index() as usize).map(|panel| &panel.content) else {
+            let Some(content) = workspace
+                .resolved
+                .panels
+                .get(job.key.index() as usize)
+                .map(|panel| &panel.content)
+            else {
                 continue;
             };
             render_content(
@@ -164,12 +222,22 @@ impl NativeCanary {
             return Ok(false);
         }
         if let Some(key) = restore_key(event.code, &self.workspace.resolved.catalog) {
-            self.apply_event(WorkspaceEvent::Command { target: Some(key), command: panel_kit_core::PanelCommand::Restore })?;
+            self.apply_event(WorkspaceEvent::Command {
+                target: Some(key),
+                command: panel_kit_core::PanelCommand::Restore,
+            })?;
             return Ok(false);
         }
         if matches!(event.code, KeyCode::PageUp | KeyCode::PageDown) {
-            let delta_y = if matches!(event.code, KeyCode::PageUp) { -4.0 } else { 4.0 };
-            self.apply_event(WorkspaceEvent::Wheel { delta_y, disposition: WheelDisposition::BubbleToWorkspace })?;
+            let delta_y = if matches!(event.code, KeyCode::PageUp) {
+                -4.0
+            } else {
+                4.0
+            };
+            self.apply_event(WorkspaceEvent::Wheel {
+                delta_y,
+                disposition: WheelDisposition::BubbleToWorkspace,
+            })?;
             return Ok(false);
         }
         if let Some(chord) = crossterm_key_chord(event) {
@@ -181,8 +249,15 @@ impl NativeCanary {
     fn handle_mouse(&mut self, event: crossterm::event::MouseEvent) -> Result<(), LayoutError> {
         let at = Position::new(event.column, event.row);
         if event.kind == MouseEventKind::Down(MouseButton::Left) {
-            if let Some((_, index)) = self.demo.badge_zones.iter().find(|(rect, _)| rect.contains(at)) {
-                self.demo.actions.push(format!("{:?}", self.demo.badges[*index].primary_action()));
+            if let Some((_, index)) = self
+                .demo
+                .badge_zones
+                .iter()
+                .find(|(rect, _)| rect.contains(at))
+            {
+                self.demo
+                    .actions
+                    .push(format!("{:?}", self.demo.badges[*index].primary_action()));
                 return Ok(());
             }
             if self.demo.theme_zone.contains(at) {
@@ -204,11 +279,22 @@ impl NativeCanary {
             clamp: &self.workspace.resolved.layout.clamp,
             command_step: self.workspace.resolved.input.steps,
             tile: &self.workspace.resolved.layout.tile.resize,
+            snap: panel_kit_core::SnapPolicy::default(),
         };
         let reduction = reduce(&mut self.workspace.snapshot, event, context);
         if let Some(store) = &self.store {
-            let decision = self.workspace.resolved.persistence.save_policy.decide(&reduction);
-            apply_save_decision(decision, store, &self.workspace.snapshot, &self.workspace.resolved.catalog)?;
+            let decision = self
+                .workspace
+                .resolved
+                .persistence
+                .save_policy
+                .decide(&reduction);
+            apply_save_decision(
+                decision,
+                store,
+                &self.workspace.snapshot,
+                &self.workspace.resolved.catalog,
+            )?;
         }
         Ok(())
     }
@@ -229,14 +315,17 @@ impl NativeCanary {
         self.apply_event(event)
     }
 
-
     fn surface_profile(&self) -> SurfaceProfile {
         let surface = &self.workspace.resolved.surface;
         SurfaceProfile::from_logical_width(
             self.workspace.snapshot.viewport.width,
             surface.compact_max,
             surface.tablet_max,
-            SurfaceCapabilities { coarse_pointer: false, hover: true, keyboard: true },
+            SurfaceCapabilities {
+                coarse_pointer: false,
+                hover: true,
+                keyboard: true,
+            },
         )
     }
 
@@ -249,9 +338,9 @@ impl NativeCanary {
             gap: tile.gap,
             padding: tile.padding,
             fill_viewport: tile.fill_viewport,
+            fill_order: panel_kit_core::frame::TileFillOrder::RowMajor,
         }
     }
-
 
     fn toggle_theme(&mut self) {
         self.demo.paper = !self.demo.paper;
@@ -261,8 +350,6 @@ impl NativeCanary {
             ResolvedTuiTheme::from(&self.workspace.resolved.theme)
         };
     }
-
-
 }
 
 fn main() -> std::io::Result<()> {
@@ -270,7 +357,8 @@ fn main() -> std::io::Result<()> {
         return check_offscreen().map_err(std::io::Error::other);
     }
 
-    let mut app = NativeCanary::from_spec_env().map_err(|error| std::io::Error::other(error.to_string()))?;
+    let mut app =
+        NativeCanary::from_spec_env().map_err(|error| std::io::Error::other(error.to_string()))?;
     let mut terminal = ratatui::init();
     let _ = execute!(std::io::stdout(), EnableMouseCapture);
     loop {
@@ -292,25 +380,37 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-
 fn decode_workspace_spec() -> Result<WorkspaceSpec, Box<dyn std::error::Error>> {
     let Some(path) = option_env!("PANEL_KIT_WORKSPACE_SPEC") else {
-        return Err("PANEL_KIT_WORKSPACE_SPEC must point at the Nix-authored workspace spec JSON".into());
+        return Err(
+            "PANEL_KIT_WORKSPACE_SPEC must point at the Nix-authored workspace spec JSON".into(),
+        );
     };
     let json = std::fs::read_to_string(path)?;
     Ok(WorkspaceSpec::from_json_str(&json)?)
 }
 
-fn restore_or_initial(resolved: &panel_kit_core::ResolvedWorkspace, store: Option<&JsonFileLayoutStore>) -> Result<Snapshot<SpecPanelId>, LayoutError> {
+fn restore_or_initial(
+    resolved: &panel_kit_core::ResolvedWorkspace,
+    store: Option<&JsonFileLayoutStore>,
+) -> Result<Snapshot<SpecPanelId>, LayoutError> {
     if !resolved.persistence.enabled || !resolved.persistence.restore {
         return Ok(resolved.initial.clone());
     }
-    let Some(store) = store else { return Ok(resolved.initial.clone()) };
+    let Some(store) = store else {
+        return Ok(resolved.initial.clone());
+    };
     restore_snapshot(
         store,
         resolved.initial.clone(),
         &resolved.catalog,
-        RestoreContext { units: resolved.layout.units, viewport: (resolved.initial.viewport.width, resolved.initial.viewport.height) },
+        RestoreContext {
+            units: resolved.layout.units,
+            viewport: (
+                resolved.initial.viewport.width,
+                resolved.initial.viewport.height,
+            ),
+        },
     )
 }
 
@@ -336,7 +436,10 @@ fn spec_charset(charset: SpecCharset) -> Charset {
     }
 }
 
-fn restore_key(code: KeyCode, catalog: &panel_kit_core::PanelCatalog<SpecPanelId>) -> Option<SpecPanelId> {
+fn restore_key(
+    code: KeyCode,
+    catalog: &panel_kit_core::PanelCatalog<SpecPanelId>,
+) -> Option<SpecPanelId> {
     let id = match code {
         KeyCode::Char('1') => "Workspace",
         KeyCode::Char('2') => "Activity",
@@ -352,12 +455,14 @@ fn restore_key(code: KeyCode, catalog: &panel_kit_core::PanelCatalog<SpecPanelId
     catalog.get_by_stable_id(id).map(|meta| meta.key)
 }
 
-
 fn rect_from_region(region: Region) -> Rect {
-    Rect::new(region.x as u16, region.y as u16, region.w as u16, region.h as u16)
+    Rect::new(
+        region.x as u16,
+        region.y as u16,
+        region.w as u16,
+        region.h as u16,
+    )
 }
-
-
 
 mod evidence {
     use std::collections::BTreeSet;
@@ -393,7 +498,8 @@ mod evidence {
     /// Render the native canary into a fixed TestBackend and assert golden regions.
     pub fn check_offscreen() -> Result<(), String> {
         let mut app = NativeCanary::from_spec_env().map_err(|error| error.to_string())?;
-        let mut terminal = Terminal::new(TestBackend::new(CHECK_WIDTH, CHECK_HEIGHT)).map_err(|error| error.to_string())?;
+        let mut terminal = Terminal::new(TestBackend::new(CHECK_WIDTH, CHECK_HEIGHT))
+            .map_err(|error| error.to_string())?;
         let mut draw_result = Ok(());
         terminal
             .draw(|frame| {
@@ -405,14 +511,37 @@ mod evidence {
 
         let mut diff = Vec::new();
         let catalog = &app.workspace.resolved.catalog;
-        expect_rect(&mut diff, "root", app.evidence.root, Rect::new(0, 0, 128, 52));
-        expect_rect(&mut diff, "workspace body", body_rect(&app.evidence, catalog, "Workspace"), Rect::new(3, 2, 60, 9));
-        expect_rect(&mut diff, "badges body", body_rect(&app.evidence, catalog, "Badges"), Rect::new(65, 2, 61, 9));
-        expect_rect(&mut diff, "dock", app.evidence.dock, Rect::new(1, 48, 126, 3));
+        expect_rect(
+            &mut diff,
+            "root",
+            app.evidence.root,
+            Rect::new(0, 0, 128, 52),
+        );
+        expect_rect(
+            &mut diff,
+            "workspace body",
+            body_rect(&app.evidence, catalog, "Workspace"),
+            Rect::new(3, 2, 60, 9),
+        );
+        expect_rect(
+            &mut diff,
+            "badges body",
+            body_rect(&app.evidence, catalog, "Badges"),
+            Rect::new(65, 2, 61, 9),
+        );
+        expect_rect(
+            &mut diff,
+            "dock",
+            app.evidence.dock,
+            Rect::new(1, 48, 126, 3),
+        );
 
         let expected_kinds = expected_content_kinds(&app.workspace.resolved.panels);
         if app.evidence.content_kinds != expected_kinds {
-            diff.push(format!("content kinds: got {:?}, expected {:?}", app.evidence.content_kinds, expected_kinds));
+            diff.push(format!(
+                "content kinds: got {:?}, expected {:?}",
+                app.evidence.content_kinds, expected_kinds
+            ));
         }
         expect_text(&mut diff, &buffer, "panel-kit-tui workspace-spec canary");
         expect_text(&mut diff, &buffer, "dock:");
@@ -421,10 +550,17 @@ mod evidence {
         if diff.is_empty() {
             return Ok(());
         }
-        Err(format!("offscreen workspace-spec TUI canary mismatch:\n{}", diff.join("\n")))
+        Err(format!(
+            "offscreen workspace-spec TUI canary mismatch:\n{}",
+            diff.join("\n")
+        ))
     }
 
-    fn body_rect(evidence: &RenderEvidence, catalog: &PanelCatalog<SpecPanelId>, title: &str) -> Rect {
+    fn body_rect(
+        evidence: &RenderEvidence,
+        catalog: &PanelCatalog<SpecPanelId>,
+        title: &str,
+    ) -> Rect {
         evidence
             .bodies
             .iter()
@@ -433,7 +569,9 @@ mod evidence {
     }
 
     fn title_matches(catalog: &PanelCatalog<SpecPanelId>, key: SpecPanelId, title: &str) -> bool {
-        catalog.get(key).is_some_and(|meta| meta.title.as_ref() == title)
+        catalog
+            .get(key)
+            .is_some_and(|meta| meta.title.as_ref() == title)
     }
 
     fn expected_content_kinds(panels: &[panel_kit_core::PanelSpec]) -> BTreeSet<&'static str> {
@@ -467,8 +605,11 @@ mod tests {
     #[test]
     fn draw_records_body_jobs_by_stable_panel_key() {
         let mut app = NativeCanary::from_spec_env().expect("workspace spec should resolve");
-        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(CHECK_WIDTH, CHECK_HEIGHT))
-            .expect("test backend should initialize");
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(
+            CHECK_WIDTH,
+            CHECK_HEIGHT,
+        ))
+        .expect("test backend should initialize");
         let mut draw_result = Ok(());
 
         terminal
@@ -479,8 +620,18 @@ mod tests {
         draw_result.expect("workspace draw should succeed");
 
         assert_eq!(app.content_jobs.len(), app.evidence.bodies.len());
-        assert!(app.content_jobs.iter().all(|job| app.workspace.resolved.catalog.get(job.key).is_some()));
-        assert!(app.evidence.bodies.iter().all(|(key, _)| app.workspace.resolved.catalog.get(*key).is_some()));
+        assert!(app.content_jobs.iter().all(|job| app
+            .workspace
+            .resolved
+            .catalog
+            .get(job.key)
+            .is_some()));
+        assert!(app.evidence.bodies.iter().all(|(key, _)| app
+            .workspace
+            .resolved
+            .catalog
+            .get(*key)
+            .is_some()));
     }
 
     #[test]

@@ -21,7 +21,10 @@ pub fn css_root_block(theme: &ThemeTokens) -> String {
     }
 
     css.push_str(&format!("  --mono: {};\n", theme.typography.family));
-    css.push_str(&format!("  --body-size: {};\n", px(theme.typography.body_size)));
+    css.push_str(&format!(
+        "  --body-size: {};\n",
+        px(theme.typography.body_size)
+    ));
     css.push_str(&format!(
         "  --body-line-height: {};\n",
         number(theme.typography.body_line_height)
@@ -30,16 +33,34 @@ pub fn css_root_block(theme: &ThemeTokens) -> String {
         "  --label-size: {}rem;\n",
         number(theme.typography.label_size)
     ));
-    css.push_str(&format!("  --label-weight: {};\n", theme.typography.label_weight));
+    css.push_str(&format!(
+        "  --label-weight: {};\n",
+        theme.typography.label_weight
+    ));
     css.push_str(&format!(
         "  --label-tracking: {}em;\n",
         number(theme.typography.label_tracking)
     ));
-    css.push_str(&format!("  --panel-radius: {};\n", px(theme.density.panel_radius)));
-    css.push_str(&format!("  --badge-radius: {};\n", px(theme.density.badge_radius)));
-    css.push_str(&format!("  --space-xs: {};\n", px(theme.density.spacing_xs)));
-    css.push_str(&format!("  --space-sm: {};\n", px(theme.density.spacing_sm)));
-    css.push_str(&format!("  --space-md: {};\n", px(theme.density.spacing_md)));
+    css.push_str(&format!(
+        "  --panel-radius: {};\n",
+        px(theme.density.panel_radius)
+    ));
+    css.push_str(&format!(
+        "  --badge-radius: {};\n",
+        px(theme.density.badge_radius)
+    ));
+    css.push_str(&format!(
+        "  --space-xs: {};\n",
+        px(theme.density.spacing_xs)
+    ));
+    css.push_str(&format!(
+        "  --space-sm: {};\n",
+        px(theme.density.spacing_sm)
+    ));
+    css.push_str(&format!(
+        "  --space-md: {};\n",
+        px(theme.density.spacing_md)
+    ));
     css.push('}');
     css
 }
@@ -56,12 +77,7 @@ pub fn design_token_region(theme: &ThemeTokens) -> String {
 }
 
 /// Replace a marker-delimited generated region with freshly rendered content.
-pub fn replace_generated_region(
-    document: &str,
-    begin: &str,
-    end: &str,
-    generated: &str,
-) -> String {
+pub fn replace_generated_region(document: &str, begin: &str, end: &str, generated: &str) -> String {
     let start = document
         .find(begin)
         .unwrap_or_else(|| panic!("missing generated-region begin marker {begin:?}"));
@@ -125,7 +141,6 @@ fn design_spacing(theme: &ThemeTokens) -> String {
         px(theme.density.spacing_md),
     )
 }
-
 
 fn yaml_string(value: &str) -> String {
     format!("{value:?}")

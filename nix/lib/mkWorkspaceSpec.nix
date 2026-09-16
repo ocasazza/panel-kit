@@ -50,7 +50,7 @@ let
       units = require pointer input "units";
       viewport = builtins.map asFloat (require pointer input "viewport");
       preferred_mode = require pointer input "preferred_mode";
-      clamp = normalizeByFields (join pointer "clamp") [ "outer_w" "outer_h" "floor_w" "floor_h" "inner" "edge" "min_w" "min_h" ] asFloat (require pointer input "clamp");
+      clamp = normalizeByFields (join pointer "clamp") [ "outer_w" "outer_h" "floor_w" "floor_h" "inner" "edge" "min_w" "min_h" "max_frac" ] asFloat (require pointer input "clamp");
       tile = normalizeByShape (join pointer "tile") [ "resize" "row_min" "gap" "padding" "fill_viewport" ] {
         resize = normalizeByFields (join pointer "tile/resize") [ "row" "col_floor" "outer" ] asFloat (require (join pointer "tile") (require pointer input "tile") "resize");
         row_min = asFloat (require (join pointer "tile") (require pointer input "tile") "row_min");

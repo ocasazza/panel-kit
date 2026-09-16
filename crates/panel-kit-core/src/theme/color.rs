@@ -94,7 +94,10 @@ impl From<Color> for String {
 
 /// Decode one channel from two lowercase hex digits.
 fn channel(bytes: &[u8], start: usize) -> Option<u8> {
-    match (lower_hex_digit(bytes[start]), lower_hex_digit(bytes[start + 1])) {
+    match (
+        lower_hex_digit(bytes[start]),
+        lower_hex_digit(bytes[start + 1]),
+    ) {
         (Some(hi), Some(lo)) => Some(hi * 16 + lo),
         _ => None,
     }

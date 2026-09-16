@@ -5,7 +5,9 @@
 //! boundaries.
 
 pub mod badge;
+pub mod cascade;
 pub mod charts;
+pub mod dropdown;
 pub mod meter;
 pub mod scroll;
 pub mod spinner;

@@ -5,11 +5,11 @@
 //! formatting lives in `panel-kit-core` so the build script and runtime emitter
 //! cannot drift.
 
+use panel_kit_core::theme::{self as core_theme, ThemeTokens};
 pub use panel_kit_core::theme::{
     CSS_THEME_REGION_BEGIN, CSS_THEME_REGION_END, DESIGN_THEME_REGION_BEGIN,
     DESIGN_THEME_REGION_END,
 };
-use panel_kit_core::theme::{self as core_theme, ThemeTokens};
 
 /// Render `ThemeTokens` as a complete `:root` custom-property block.
 pub fn css_root_block(tokens: &ThemeTokens) -> String {

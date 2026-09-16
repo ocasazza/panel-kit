@@ -6,9 +6,7 @@ use panel_kit_core::frame::{
     ProjectionBuffer, TileGridProjection,
 };
 use panel_kit_core::reducer::{HitTarget, PanelPart};
-use panel_kit_core::{
-    ChromeMetrics, Clamp, LayoutBuilder, Mode, PanelCatalog, Region, WinState,
-};
+use panel_kit_core::{ChromeMetrics, Clamp, LayoutBuilder, Mode, PanelCatalog, Region, WinState};
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
 use panel_kit_tui::{Charset, ResolvedTuiTheme};
 use ratatui::layout::Rect;
@@ -95,7 +93,10 @@ fn standalone_panel_surface_draws_no_implicit_chrome_or_dock() {
     assert!(!buffer_contains(&buffer, "dock:"));
     assert_eq!(
         hit_buffer.hit_test((expected.x as f64, expected.y as f64)),
-        Some(HitTarget::Panel { key: TestPanel::Alpha, part: PanelPart::Surface })
+        Some(HitTarget::Panel {
+            key: TestPanel::Alpha,
+            part: PanelPart::Surface
+        })
     );
 }
 
@@ -133,7 +134,9 @@ fn draw_dock_is_callable_alone_for_replace_only_dock_composition() {
     assert!(buffer_contains(&buffer, "Docked"));
     assert_eq!(
         hit_buffer.hit_test((dock[0].region.x + 0.5, dock[0].region.y + 0.5)),
-        Some(HitTarget::Dock { key: TestPanel::Docked })
+        Some(HitTarget::Dock {
+            key: TestPanel::Docked
+        })
     );
 }
 
@@ -147,7 +150,12 @@ fn web_and_tui_use_same_tile_grid_projection() {
         gap: 1.0,
         padding: 1.0,
     };
-    let placement = Placement::Tiled { column: 1, row: 2, column_span: 2, row_span: 1 };
+    let placement = Placement::Tiled {
+        column: 1,
+        row: 2,
+        column_span: 2,
+        row_span: 1,
+    };
 
     assert_eq!(
         widgets::panel::tiled_cell_rect(placement, grid, Rect::new(10, 5, 30, 10), 1.0),

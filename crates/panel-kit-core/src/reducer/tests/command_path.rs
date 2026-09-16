@@ -3,7 +3,7 @@ use crate::reducer::{reduce, ChangePhase, HitTarget, PanelPart, Reduction, Works
 use crate::{
     apply_command, apply_drag, begin_drag, begin_tile_resize, reorder_tile, restore, Clamp,
     CommandStep, DragKind, Mode, PanelCommand, PointerButton, PointerEvent, PointerEventKind,
-    TileMetrics, WinState,
+    SnapPolicy, TileMetrics, WinState,
 };
 
 /// CK-26: reduced commands and pointer gestures must equal the controllers'
@@ -101,6 +101,7 @@ fn assert_pointer_transition_delegation() {
         50.0,
         70.0,
         false,
+        SnapPolicy::default(),
         direct.viewport.width,
         &Clamp::WEB,
         &TileMetrics::WEB,

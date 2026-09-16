@@ -24,7 +24,12 @@ pub fn projected_panel(placement: Placement, focused: bool) -> PanelProjection<P
     PanelProjection {
         source_index: 0,
         key: ProbePanel::Nodes,
-        region: Region { x: 16.0, y: 24.0, w: 320.0, h: 180.0 },
+        region: Region {
+            x: 16.0,
+            y: 24.0,
+            w: 320.0,
+            h: 180.0,
+        },
         placement,
         z: 7,
         state: WinState::Floating,
@@ -32,13 +37,48 @@ pub fn projected_panel(placement: Placement, focused: bool) -> PanelProjection<P
         pointer_dragging: false,
         tile_dragging: false,
         chrome: PanelChromeProjection {
-            outer: Region { x: 16.0, y: 24.0, w: 320.0, h: 180.0 },
-            body: Region { x: 16.0, y: 46.0, w: 320.0, h: 158.0 },
-            header_hit: Region { x: 16.0, y: 24.0, w: 320.0, h: 22.0 },
-            mode_hit: Some(Region { x: 24.0, y: 24.0, w: 24.0, h: 22.0 }),
-            minimize_hit: Some(Region { x: 54.0, y: 24.0, w: 24.0, h: 22.0 }),
-            maximize_hit: Some(Region { x: 84.0, y: 24.0, w: 24.0, h: 22.0 }),
-            resize_hit: Some(Region { x: 312.0, y: 180.0, w: 24.0, h: 24.0 }),
+            outer: Region {
+                x: 16.0,
+                y: 24.0,
+                w: 320.0,
+                h: 180.0,
+            },
+            body: Region {
+                x: 16.0,
+                y: 46.0,
+                w: 320.0,
+                h: 158.0,
+            },
+            header_hit: Region {
+                x: 16.0,
+                y: 24.0,
+                w: 320.0,
+                h: 22.0,
+            },
+            mode_hit: Some(Region {
+                x: 24.0,
+                y: 24.0,
+                w: 24.0,
+                h: 22.0,
+            }),
+            minimize_hit: Some(Region {
+                x: 54.0,
+                y: 24.0,
+                w: 24.0,
+                h: 22.0,
+            }),
+            maximize_hit: Some(Region {
+                x: 84.0,
+                y: 24.0,
+                w: 24.0,
+                h: 22.0,
+            }),
+            resize_hit: Some(Region {
+                x: 312.0,
+                y: 180.0,
+                w: 24.0,
+                h: 24.0,
+            }),
         },
     }
 }

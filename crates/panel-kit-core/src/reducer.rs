@@ -124,9 +124,12 @@ fn reduce_pointer<K: PanelKey>(
             reduce_pointer_motion(snapshot, context, target, event)
         }
         PointerEventKind::Up(PointerButton::Primary) => reduce_pointer_up(snapshot),
-        PointerEventKind::Scroll { delta_y } => {
-            reduce_wheel(snapshot, context, delta_y, WheelDisposition::BubbleToWorkspace)
-        }
+        PointerEventKind::Scroll { delta_y } => reduce_wheel(
+            snapshot,
+            context,
+            delta_y,
+            WheelDisposition::BubbleToWorkspace,
+        ),
     }
 }
 
@@ -187,7 +190,9 @@ fn begin_panel_drag<K: PanelKey>(
     let tile_drag_before = snapshot.tile_drag;
 
     if mode == Mode::Tiling && drag_kind == DragKind::Move {
-        snapshot.tile_drag = Some(key);
+        if context.snap.move_ {
+            snapshot.tile_drag = Some(key);
+        }
         snapshot.focused = Some(key);
     } else if mode == Mode::Tiling {
         snapshot.drag = begin_tile_resize(&snapshot.panels, index, event.x, event.y);
@@ -281,6 +286,7 @@ fn apply_pointer_drag<K: PanelKey>(
         event.x,
         event.y,
         tiling,
+        context.snap,
         snapshot.viewport.width,
         context.clamp,
         context.tile,
@@ -390,8 +396,8 @@ fn apply_command_with_report<K: PanelKey>(
     let mode_before = snapshot.preferred_mode;
     let focused_before = snapshot.focused;
     let mut focused = target.or(snapshot.focused);
-    let panel_before = focused
-        .and_then(|kind| panel_by_key(&snapshot.panels, kind).map(|panel| (kind, panel)));
+    let panel_before =
+        focused.and_then(|kind| panel_by_key(&snapshot.panels, kind).map(|panel| (kind, panel)));
 
     apply_command(
         &mut snapshot.panels,

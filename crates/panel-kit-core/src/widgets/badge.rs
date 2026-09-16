@@ -18,7 +18,11 @@ pub fn hue_color(hue: f32) -> Rgb {
     };
     let m = l - c / 2.0;
 
-    (((r + m) * 255.0) as u8, ((g + m) * 255.0) as u8, ((b + m) * 255.0) as u8)
+    (
+        ((r + m) * 255.0) as u8,
+        ((g + m) * 255.0) as u8,
+        ((b + m) * 255.0) as u8,
+    )
 }
 
 /// Rec. 709 luma in `[0, 1]` for contrast decisions.
@@ -29,9 +33,15 @@ pub fn perceived_brightness((r, g, b): Rgb) -> f32 {
 /// Opaquely blend `over` at strength `alpha` on top of `base`.
 pub fn tint_over(base: Rgb, over: Rgb, alpha: f32) -> Rgb {
     let alpha = alpha.clamp(0.0, 1.0);
-    let mix = |base: u8, over: u8| -> u8 { (base as f32 * (1.0 - alpha) + over as f32 * alpha).round() as u8 };
+    let mix = |base: u8, over: u8| -> u8 {
+        (base as f32 * (1.0 - alpha) + over as f32 * alpha).round() as u8
+    };
 
-    (mix(base.0, over.0), mix(base.1, over.1), mix(base.2, over.2))
+    (
+        mix(base.0, over.0),
+        mix(base.1, over.1),
+        mix(base.2, over.2),
+    )
 }
 
 #[cfg(test)]
@@ -53,6 +63,9 @@ mod tests {
         assert!((perceived_brightness((255, 0, 0)) - 0.2126).abs() < f32::EPSILON);
         assert_eq!(tint_over((10, 20, 30), (110, 120, 130), 0.30), (40, 50, 60));
         assert_eq!(tint_over((10, 20, 30), (110, 120, 130), -1.0), (10, 20, 30));
-        assert_eq!(tint_over((10, 20, 30), (110, 120, 130), 2.0), (110, 120, 130));
+        assert_eq!(
+            tint_over((10, 20, 30), (110, 120, 130), 2.0),
+            (110, 120, 130)
+        );
     }
 }

@@ -92,7 +92,11 @@ fn panel_catalog() -> PanelCatalog<Panel> {
 /// Current browser viewport expressed in core reducer units.
 fn current_viewport() -> Viewport {
     let (width, height) = viewport_size();
-    Viewport { width, height, units: Units::CssPx }
+    Viewport {
+        width,
+        height,
+        units: Units::CssPx,
+    }
 }
 
 /// Load the registry through the core shape and sanitize invalid stored values.
@@ -112,7 +116,9 @@ fn save_registry(registry: &SavedViews) -> Result<(), String> {
 /// Preserve the legacy first-run copy from the old bare layout key.
 fn migrate_legacy_layout(registry: &SavedViews) -> Result<(), String> {
     let storage = LocalStorage::raw();
-    let Some(first) = registry.views.first() else { return Ok(()) };
+    let Some(first) = registry.views.first() else {
+        return Ok(());
+    };
     let dest = view_layout_key(BASE_KEY, first);
     let dest_exists = storage
         .get_item(&dest)
@@ -142,11 +148,12 @@ fn restore_view_snapshot(
     let defaults = Snapshot::from_defaults(default_layout(), Mode::Floating, viewport);
     let key = view_layout_key(BASE_KEY, name);
     let store = LocalStorageLayoutStore::new(key.as_str());
-    restore_snapshot(&store, defaults.clone(), catalog, restore_context(viewport))
-        .unwrap_or_else(|error| {
+    restore_snapshot(&store, defaults.clone(), catalog, restore_context(viewport)).unwrap_or_else(
+        |error| {
             console_layout_error("restore view layout", &key, &error);
             defaults
-        })
+        },
+    )
 }
 
 /// Persist one snapshot into a view's layout record.
@@ -163,7 +170,10 @@ fn persist_view_snapshot(
 
 /// Restore context shared by every per-view layout record.
 fn restore_context(viewport: Viewport) -> RestoreContext {
-    RestoreContext { units: Units::CssPx, viewport: (viewport.width, viewport.height) }
+    RestoreContext {
+        units: Units::CssPx,
+        viewport: (viewport.width, viewport.height),
+    }
 }
 
 /// Human-readable layout failure message shared by UI and console reporting.
@@ -179,11 +189,7 @@ fn console_layout_error(action: &str, key: &str, error: &LayoutError) {
 }
 
 /// Human-readable storage failure message for user-visible raw localStorage failures.
-fn format_storage_error(
-    action: &str,
-    key: &str,
-    error: impl std::fmt::Debug,
-) -> String {
+fn format_storage_error(action: &str, key: &str, error: impl std::fmt::Debug) -> String {
     format!("panel-kit {action} failed for storage key `{key}`: {error:?}")
 }
 
@@ -193,11 +199,7 @@ fn layout_failure(action: &str, key: &str, error: &LayoutError) -> Result<(), St
 }
 
 /// Convert a raw localStorage failure into the result shape consumed by [`report`].
-fn storage_failure(
-    action: &str,
-    key: &str,
-    error: impl std::fmt::Debug,
-) -> Result<(), String> {
+fn storage_failure(action: &str, key: &str, error: impl std::fmt::Debug) -> Result<(), String> {
     Err(format_storage_error(action, key, error))
 }
 
@@ -243,6 +245,7 @@ fn reduce_context(snapshot: &Snapshot<Panel>) -> panel_kit_core::reducer::Reduce
         clamp: &Clamp::WEB,
         command_step: CommandStep::WEB,
         tile: &TileMetrics::WEB,
+        snap: panel_kit_core::SnapPolicy::default(),
     }
 }
 
@@ -258,18 +261,28 @@ fn switch_view(
         return Ok(());
     }
     let outgoing = next_registry.active.clone();
-    next_registry.activate(name).map_err(|error| error.to_string())?;
+    next_registry
+        .activate(name)
+        .map_err(|error| error.to_string())?;
     persist_view_snapshot(&outgoing, &snapshot.read(), &catalog)?;
     save_registry(&next_registry)?;
     let viewport = snapshot.read().viewport;
-    snapshot.set(restore_view_snapshot(&next_registry.active, &catalog, viewport));
+    snapshot.set(restore_view_snapshot(
+        &next_registry.active,
+        &catalog,
+        viewport,
+    ));
     registry.set(next_registry);
     Ok(())
 }
 
 /// Workspace class for the projected panel region.
 fn workspace_class(frame: &panel_kit_core::frame::ProjectedFrame<'_, Panel>) -> &'static str {
-    if frame.panels.iter().any(|panel| panel.state == panel_kit_core::WinState::Maximized) {
+    if frame
+        .panels
+        .iter()
+        .any(|panel| panel.state == panel_kit_core::WinState::Maximized)
+    {
         "ws maxed"
     } else if frame.mode == Mode::Tiling {
         "ws tiling"
@@ -296,7 +309,11 @@ fn App() -> Element {
         let initial_active = initial_state.0.active.clone();
         move || restore_view_snapshot(&initial_active, &catalog, current_viewport())
     });
-    let scratch = use_hook(|| Rc::new(RefCell::new(ProjectionBuffer::<Panel>::with_panel_capacity(3))));
+    let scratch = use_hook(|| {
+        Rc::new(RefCell::new(
+            ProjectionBuffer::<Panel>::with_panel_capacity(3),
+        ))
+    });
     let mut draft = use_signal(String::new);
     let err = use_signal(|| initial_state.1.clone().unwrap_or_default());
     let migration_observation = use_signal(String::new);
@@ -311,7 +328,10 @@ fn App() -> Element {
         let catalog = catalog.clone();
         move |viewport| {
             reduce_and_persist(
-                WorkspaceEvent::ViewportChanged { size: viewport, policy: ResizePolicy::ScaleFloating },
+                WorkspaceEvent::ViewportChanged {
+                    size: viewport,
+                    policy: ResizePolicy::ScaleFloating,
+                },
                 snapshot,
                 registry,
                 catalog.clone(),
@@ -329,19 +349,27 @@ fn App() -> Element {
     let tile = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
     let mut scratch_ref = scratch.borrow_mut();
     let frame = project_into(
-        ProjectionInput { snapshot: &snapshot_now, surface, chrome: &chrome, clamp: &Clamp::WEB, tile: &tile },
+        ProjectionInput {
+            snapshot: &snapshot_now,
+            surface,
+            chrome: &chrome,
+            clamp: &Clamp::WEB,
+            tile: &tile,
+        },
         &mut scratch_ref,
     );
     let root_class = root::root_class(&frame);
     let ws_class = workspace_class(&frame);
     let surface_label = surface_label(frame.surface.class);
-    let ws_style = frame.tile_grid.map(root::tile_grid_style).unwrap_or_default();
+    let ws_style = frame
+        .tile_grid
+        .map(root::tile_grid_style)
+        .unwrap_or_default();
     let key_catalog = catalog.clone();
     let create_catalog = catalog.clone();
     let delete_catalog = catalog.clone();
     let reset_catalog = catalog.clone();
     let migrate_catalog = catalog.clone();
-
 
     rsx! {
         style { {CSS} }
@@ -397,7 +425,7 @@ fn App() -> Element {
                     {render_panel(projected, &catalog, emit, &registry_now, &migration_observation)}
                 }
             }
-            {dock::dock(frame.dock, &catalog, emit)}
+            {dock::dock(frame.dock, &catalog, emit, None)}
         }
     }
 }
@@ -430,7 +458,9 @@ fn render_panel(
     registry: &SavedViews,
     migration_observation: &Signal<String>,
 ) -> Element {
-    let Some(meta) = catalog.get(projected.key) else { return rsx! {} };
+    let Some(meta) = catalog.get(projected.key) else {
+        return rsx! {};
+    };
     let class = format!("panel-{}", meta.slug);
     let controls = panel::traffic_lights(projected, emit);
     let chrome = panel::panel_chrome_with_controls(projected, meta, Some(controls), None);
@@ -440,7 +470,11 @@ fn render_panel(
 }
 
 /// Render app-owned panel bodies; the library owns only the panel surfaces.
-fn panel_body(panel: Panel, registry: &SavedViews, migration_observation: &Signal<String>) -> Element {
+fn panel_body(
+    panel: Panel,
+    registry: &SavedViews,
+    migration_observation: &Signal<String>,
+) -> Element {
     match panel {
         Panel::Notes => rsx! {
             p { "Arrange this view, then switch away and back — every view keeps its own V2 layout." }
@@ -460,7 +494,11 @@ fn status_body(registry: &SavedViews, migration_observation: &Signal<String>) ->
         .views
         .iter()
         .map(|name| {
-            let marker = if *name == registry.active { " (active)" } else { "" };
+            let marker = if *name == registry.active {
+                " (active)"
+            } else {
+                ""
+            };
             let key = view_layout_key(BASE_KEY, name);
             format!("{name} → {key} [{}]{marker}", stored_schema(&key))
         })
@@ -614,16 +652,24 @@ fn seed_v1_view(
     let name = next_migration_name(&registry.read().views);
     create_raw_view(&name, registry, err, snapshot, catalog.clone());
     let key = view_layout_key(BASE_KEY, &name);
-    let legacy = SavedLayout { panels: default_layout(), tiling: true };
+    let legacy = SavedLayout {
+        panels: default_layout(),
+        tiling: true,
+    };
     if let Err(error) = LocalStorage::set(&key, legacy) {
         report(err, storage_failure("seed V1 view layout", &key, error));
         return;
     }
-    observation.set(format!("Seeded V1 at {key}; switching through the production reader…"));
+    observation.set(format!(
+        "Seeded V1 at {key}; switching through the production reader…"
+    ));
     report(err, switch_view(&name, registry, snapshot, catalog));
     spawn(async move {
         gloo_timers::future::TimeoutFuture::new(75).await;
-        observation.set(format!("After read and settle: {key} is observed as {}.", stored_schema(&key)));
+        observation.set(format!(
+            "After read and settle: {key} is observed as {}.",
+            stored_schema(&key)
+        ));
     });
 }
 
@@ -668,13 +714,23 @@ mod tests {
     fn view_keys_use_the_core_scheme() {
         let registry = SavedViews::new(&["Main", "Focus"]);
 
-        assert_eq!(views_registry_key(BASE_KEY), "panel_kit_example_views:views");
-        assert_eq!(view_layout_key(BASE_KEY, &registry.active), "panel_kit_example_views:view:Main");
+        assert_eq!(
+            views_registry_key(BASE_KEY),
+            "panel_kit_example_views:views"
+        );
+        assert_eq!(
+            view_layout_key(BASE_KEY, &registry.active),
+            "panel_kit_example_views:view:Main"
+        );
     }
 
     #[test]
     fn reset_snapshot_keeps_the_existing_viewport() {
-        let viewport = Viewport { width: 900.0, height: 700.0, units: Units::CssPx };
+        let viewport = Viewport {
+            width: 900.0,
+            height: 700.0,
+            units: Units::CssPx,
+        };
         let snapshot = Snapshot::from_defaults(default_layout(), Mode::Floating, viewport);
 
         assert_eq!(snapshot.viewport, viewport);
@@ -713,8 +769,12 @@ mod tests {
 
     #[test]
     fn storage_failures_are_ready_for_the_visible_report_path() {
-        let message = storage_failure("seed V1 view layout", "demo:view:Migration", "quota exceeded")
-            .expect_err("storage failures must report through the error signal");
+        let message = storage_failure(
+            "seed V1 view layout",
+            "demo:view:Migration",
+            "quota exceeded",
+        )
+        .expect_err("storage failures must report through the error signal");
 
         assert!(message.contains("seed V1 view layout"));
         assert!(message.contains("demo:view:Migration"));

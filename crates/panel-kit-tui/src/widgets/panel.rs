@@ -27,7 +27,9 @@ pub fn draw_panel_surface<K: PanelKey>(
     let body = rect_from_region(panel.chrome.body);
 
     frame.render_widget(Clear, outer);
-    frame.buffer_mut().set_style(body, Style::default().bg(theme.panel));
+    frame
+        .buffer_mut()
+        .set_style(body, Style::default().bg(theme.panel));
     hits.record_panel_surface(panel.key, panel.source_index, outer, body);
 
     body
@@ -83,12 +85,27 @@ pub fn draw_traffic_lights<K: PanelKey>(
 ) {
     for (part, region, color) in [
         (PanelPart::ModeControl, panel.chrome.mode_hit, theme.blue),
-        (PanelPart::MinimizeControl, panel.chrome.minimize_hit, theme.yellow),
-        (PanelPart::MaximizeControl, panel.chrome.maximize_hit, theme.pink),
+        (
+            PanelPart::MinimizeControl,
+            panel.chrome.minimize_hit,
+            theme.yellow,
+        ),
+        (
+            PanelPart::MaximizeControl,
+            panel.chrome.maximize_hit,
+            theme.pink,
+        ),
     ] {
         draw_light(
             frame,
-            TrafficLight { panel, part, region, hover, color, charset },
+            TrafficLight {
+                panel,
+                part,
+                region,
+                hover,
+                color,
+                charset,
+            },
             hits,
         );
     }
@@ -107,7 +124,10 @@ pub fn draw_resize_grip<K: PanelKey>(
 
     if hover.is_some_and(|point| region.contains(point)) {
         let glyph = Rect::new(region.right().saturating_sub(1), region.y, 1, 1);
-        frame.render_widget(Paragraph::new("+").style(Style::default().fg(theme.accent)), glyph);
+        frame.render_widget(
+            Paragraph::new("+").style(Style::default().fg(theme.accent)),
+            glyph,
+        );
     }
 
     Some(region)
@@ -123,7 +143,13 @@ pub fn tiled_cell_rect(
     workspace: Rect,
     scroll: f64,
 ) -> Option<Rect> {
-    let Placement::Tiled { column, row, column_span, row_span } = placement else {
+    let Placement::Tiled {
+        column,
+        row,
+        column_span,
+        row_span,
+    } = placement
+    else {
         return None;
     };
 
@@ -151,16 +177,17 @@ struct TrafficLight<K: PanelKey> {
 }
 
 /// Record and render one panel traffic-light control.
-fn draw_light<K: PanelKey>(
-    frame: &mut Frame,
-    light: TrafficLight<K>,
-    hits: &mut TuiHitBuffer<K>,
-) {
+fn draw_light<K: PanelKey>(frame: &mut Frame, light: TrafficLight<K>, hits: &mut TuiHitBuffer<K>) {
     let Some(region) = light.region.map(rect_from_region) else {
         return;
     };
 
-    hits.record_panel_part(light.panel.key, light.panel.source_index, light.part, region);
+    hits.record_panel_part(
+        light.panel.key,
+        light.panel.source_index,
+        light.part,
+        region,
+    );
     if region.width == 0 || region.height == 0 {
         return;
     }

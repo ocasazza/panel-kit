@@ -133,21 +133,49 @@ mod tests {
     fn five_num_matches_tui_fixed_vector_parity() {
         assert_eq!(
             five_num(&[7.0, 1.0, 3.0, 9.0, 5.0]),
-            Some(FiveNum { min: 1.0, q1: 3.0, median: 5.0, q3: 7.0, max: 9.0 })
+            Some(FiveNum {
+                min: 1.0,
+                q1: 3.0,
+                median: 5.0,
+                q3: 7.0,
+                max: 9.0
+            })
         );
         assert_eq!(
             five_num(&[10.0, 30.0, 20.0, 40.0]),
-            Some(FiveNum { min: 10.0, q1: 17.5, median: 25.0, q3: 32.5, max: 40.0 })
+            Some(FiveNum {
+                min: 10.0,
+                q1: 17.5,
+                median: 25.0,
+                q3: 32.5,
+                max: 40.0
+            })
         );
         assert_eq!(five_num(&[]), None);
     }
 
     #[test]
     fn chart_models_keep_renderer_neutral_data() {
-        let series = SeriesModel { name: "latency".into(), points: vec![(0.0, 10.0), (1.0, 12.5)] };
-        let gauge = GaugeModel { label: "queue".into(), ratio: 0.75, text: "75%".into() };
-        let flame = FlameSpanModel { label: "root".into(), depth: 0, value: 12.0, color: None };
-        let box_item = BoxItemModel { label: "p95".into(), samples: vec![1.0, 2.0], color: Some((1, 2, 3)) };
+        let series = SeriesModel {
+            name: "latency".into(),
+            points: vec![(0.0, 10.0), (1.0, 12.5)],
+        };
+        let gauge = GaugeModel {
+            label: "queue".into(),
+            ratio: 0.75,
+            text: "75%".into(),
+        };
+        let flame = FlameSpanModel {
+            label: "root".into(),
+            depth: 0,
+            value: 12.0,
+            color: None,
+        };
+        let box_item = BoxItemModel {
+            label: "p95".into(),
+            samples: vec![1.0, 2.0],
+            color: Some((1, 2, 3)),
+        };
 
         assert_eq!(series.points.len(), 2);
         assert_eq!(gauge.ratio, 0.75);

@@ -33,7 +33,12 @@ pub fn draw_dock<K: PanelKey>(
     context: DockRenderContext<'_, K>,
     hits: &mut TuiHitBuffer<K>,
 ) {
-    draw_border(frame, area, context.charset, Style::default().fg(context.theme.line2));
+    draw_border(
+        frame,
+        area,
+        context.charset,
+        Style::default().fg(context.theme.line2),
+    );
     let inner = Rect::new(
         area.x.saturating_add(1),
         area.y.saturating_add(1),
@@ -42,7 +47,13 @@ pub fn draw_dock<K: PanelKey>(
     );
 
     let mut x = inner.x;
-    write_text(frame, &mut x, inner, context.label, Style::default().fg(context.theme.dim));
+    write_text(
+        frame,
+        &mut x,
+        inner,
+        context.label,
+        Style::default().fg(context.theme.dim),
+    );
     if dock.is_empty() {
         write_text(
             frame,
@@ -55,8 +66,19 @@ pub fn draw_dock<K: PanelKey>(
     }
 
     for entry in dock.iter().copied() {
-        hits.record_dock(entry.key, entry.source_index, rect_from_region(entry.region));
-        write_dock_chip(frame, &mut x, inner, context.catalog, entry.key, context.theme);
+        hits.record_dock(
+            entry.key,
+            entry.source_index,
+            rect_from_region(entry.region),
+        );
+        write_dock_chip(
+            frame,
+            &mut x,
+            inner,
+            context.catalog,
+            entry.key,
+            context.theme,
+        );
     }
 }
 
@@ -73,7 +95,13 @@ fn write_dock_chip<K: PanelKey>(
     };
 
     write_text(frame, x, area, " [", Style::default().fg(theme.fg));
-    write_text(frame, x, area, meta.title.as_ref(), Style::default().fg(theme.fg));
+    write_text(
+        frame,
+        x,
+        area,
+        meta.title.as_ref(),
+        Style::default().fg(theme.fg),
+    );
     write_text(frame, x, area, "]", Style::default().fg(theme.fg));
 }
 
@@ -84,6 +112,7 @@ fn write_text(frame: &mut Frame, x: &mut u16, area: Rect, text: &str, style: Sty
 
     let max_width = area.right().saturating_sub(*x);
     write_header_text(frame, *x, area.y, max_width, text, style);
-    *x = x.saturating_add(text.chars().count() as u16).min(area.right());
+    *x = x
+        .saturating_add(text.chars().count() as u16)
+        .min(area.right());
 }
-

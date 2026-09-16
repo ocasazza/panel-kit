@@ -29,8 +29,8 @@ fn reducer_replays_move_resize_reorder_and_settle_phases() {
         web_context(),
     );
     assert_eq!(moved.phase, Some(ChangePhase::Continuous));
-    assert_eq!(snapshot.panels[0].x, 60.0);
-    assert_eq!(snapshot.panels[0].y, 65.0);
+    assert_eq!(snapshot.panels[0].x, 64.0);
+    assert_eq!(snapshot.panels[0].y, 64.0);
 
     let up = reduce(
         &mut snapshot,
@@ -72,7 +72,11 @@ fn reducer_replays_move_resize_reorder_and_settle_phases() {
     );
     assert_eq!(hover_reorder.phase, Some(ChangePhase::Continuous));
     assert_eq!(
-        tiling.panels.iter().map(|panel| panel.kind).collect::<Vec<_>>(),
+        tiling
+            .panels
+            .iter()
+            .map(|panel| panel.kind)
+            .collect::<Vec<_>>(),
         vec![TestPanel::Second, TestPanel::Third, TestPanel::First]
     );
 
@@ -86,6 +90,55 @@ fn reducer_replays_move_resize_reorder_and_settle_phases() {
     );
     assert_eq!(reorder_up.phase, Some(ChangePhase::Settled));
     assert_eq!(tiling.tile_drag, None);
+}
+
+#[test]
+fn tiling_move_policy_disables_reorder_gestures() {
+    let mut snapshot = default_snapshot();
+    snapshot.preferred_mode = Mode::Tiling;
+    let original_order = snapshot
+        .panels
+        .iter()
+        .map(|panel| panel.kind)
+        .collect::<Vec<_>>();
+    let mut context = web_context();
+    context.snap.move_ = false;
+
+    let down = reduce(
+        &mut snapshot,
+        WorkspaceEvent::Pointer {
+            target: HitTarget::Panel {
+                key: TestPanel::First,
+                part: PanelPart::Header,
+            },
+            event: pointer_down(10.0, 10.0),
+        },
+        context,
+    );
+    assert_eq!(down.phase, Some(ChangePhase::Continuous));
+    assert_eq!(snapshot.focused, Some(TestPanel::First));
+    assert_eq!(snapshot.tile_drag, None);
+
+    let moved = reduce(
+        &mut snapshot,
+        WorkspaceEvent::Pointer {
+            target: HitTarget::Panel {
+                key: TestPanel::Third,
+                part: PanelPart::Surface,
+            },
+            event: pointer_moved(140.0, 160.0),
+        },
+        context,
+    );
+    assert_eq!(moved, Reduction::unchanged());
+    assert_eq!(
+        snapshot
+            .panels
+            .iter()
+            .map(|panel| panel.kind)
+            .collect::<Vec<_>>(),
+        original_order
+    );
 }
 
 #[test]

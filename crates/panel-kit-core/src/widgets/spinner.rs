@@ -31,7 +31,9 @@ mod tests {
 
     #[test]
     fn spinner_model_carries_optional_label() {
-        let spinner = SpinnerModel { label: Some("loading".into()) };
+        let spinner = SpinnerModel {
+            label: Some("loading".into()),
+        };
 
         assert_eq!(spinner.label.as_deref(), Some("loading"));
     }

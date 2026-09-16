@@ -21,9 +21,12 @@ pub(crate) fn panel_ids_from_manifest_json(
     let value = serde_json::from_str(text)?;
     let manifest = BindingManifest::from_json_value(value)?;
 
-    Ok(manifest.panels.into_iter().map(|provider| provider.panel_id).collect())
+    Ok(manifest
+        .panels
+        .into_iter()
+        .map(|provider| provider.panel_id)
+        .collect())
 }
-
 
 /// Compare Nix-authored panel IDs with Rust provider IDs in both directions.
 pub(crate) fn compare_panel_ids(
@@ -65,7 +68,11 @@ fn append_ordered_panel_diffs(lines: &mut Vec<String>, nix_ids: &[String], rust_
     }
 
     if nix_ids.len() != rust_ids.len() {
-        lines.push(format!("/panels/length: nix={}, rust={}", nix_ids.len(), rust_ids.len()));
+        lines.push(format!(
+            "/panels/length: nix={}, rust={}",
+            nix_ids.len(),
+            rust_ids.len()
+        ));
     }
 }
 
@@ -115,7 +122,6 @@ mod tests {
             .collect()
     }
 
-
     #[test]
     fn spec_parity_rejects_live_seven_vs_nine_canary() {
         let nix = panel_ids_from_saved_layout(include_str!("../fixtures/live-seven-layout.json"))
@@ -125,10 +131,19 @@ mod tests {
         let report = compare_panel_ids("workspace-canary", &nix, &rust)
             .expect_err("historical seven-vs-nine drift must be rejected");
 
-        assert_eq!(report.to_string(), include_str!("../fixtures/initial-red.txt"));
-        assert!(report.to_string().contains("missing from Nix: Flame, Distribution"));
-        assert!(report.to_string().contains("/panels/2/id: nix=\"Notes\", rust=\"Flame\""));
-        assert!(report.to_string().contains("/panels/7/id: nix=<missing>, rust=\"Distribution\""));
+        assert_eq!(
+            report.to_string(),
+            include_str!("../fixtures/initial-red.txt")
+        );
+        assert!(report
+            .to_string()
+            .contains("missing from Nix: Flame, Distribution"));
+        assert!(report
+            .to_string()
+            .contains("/panels/2/id: nix=\"Notes\", rust=\"Flame\""));
+        assert!(report
+            .to_string()
+            .contains("/panels/7/id: nix=<missing>, rust=\"Distribution\""));
     }
 
     #[test]
@@ -149,7 +164,9 @@ mod tests {
         let report = compare_panel_ids("workspace-canary", &spec, &providers)
             .expect_err("bidirectional provider drift must be rejected");
 
-        assert!(report.to_string().contains("/panels/1/id: nix=\"Nodes\", rust=\"Flame\""));
+        assert!(report
+            .to_string()
+            .contains("/panels/1/id: nix=\"Nodes\", rust=\"Flame\""));
         assert!(report.to_string().contains("missing from Nix: Flame"));
         assert!(report.to_string().contains("missing from Rust: Nodes"));
     }

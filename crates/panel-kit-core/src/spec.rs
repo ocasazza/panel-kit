@@ -426,7 +426,8 @@ impl WorkspaceSpec {
     /// Decode from JSON text with all strict diagnostics accumulated first.
     #[cfg(feature = "spec-json")]
     pub fn from_json_str(text: &str) -> Result<Self, SpecErrors> {
-        let value = serde_json::from_str(text).map_err(|error| SpecErrors::one("", error.to_string()))?;
+        let value =
+            serde_json::from_str(text).map_err(|error| SpecErrors::one("", error.to_string()))?;
         Self::from_json_value(value)
     }
 
@@ -454,8 +455,13 @@ impl WorkspaceSpec {
                 slug: panel.slug.clone().into_boxed_str(),
             })
             .collect();
-        let catalog = PanelCatalog::try_new(entries).map_err(|error| SpecErrors::one("/panels", error.to_string()))?;
-        let initial = Snapshot::from_defaults(self.panel_windows(), self.layout.preferred_mode, self.viewport());
+        let catalog = PanelCatalog::try_new(entries)
+            .map_err(|error| SpecErrors::one("/panels", error.to_string()))?;
+        let initial = Snapshot::from_defaults(
+            self.panel_windows(),
+            self.layout.preferred_mode,
+            self.viewport(),
+        );
 
         Ok(ResolvedWorkspace {
             spec_version: self.spec_version,
@@ -573,7 +579,9 @@ pub(super) struct ErrorSink {
 
 impl ErrorSink {
     fn new() -> Self {
-        Self { diagnostics: Vec::new() }
+        Self {
+            diagnostics: Vec::new(),
+        }
     }
 
     pub(super) fn push(&mut self, pointer: impl Into<String>, message: impl Into<String>) {
@@ -587,15 +595,20 @@ impl ErrorSink {
         if self.diagnostics.is_empty() {
             Ok(())
         } else {
-            Err(SpecErrors { diagnostics: self.diagnostics })
+            Err(SpecErrors {
+                diagnostics: self.diagnostics,
+            })
         }
     }
 }
 
-
 fn validate_workspace(spec: &WorkspaceSpec, errors: &mut ErrorSink) {
-    if spec.spec_version != WORKSPACE_SPEC_VERSION { errors.push("/spec_version", "unsupported workspace spec version"); }
-    if spec.id.is_empty() { errors.push("/id", "workspace id must not be empty"); }
+    if spec.spec_version != WORKSPACE_SPEC_VERSION {
+        errors.push("/spec_version", "unsupported workspace spec version");
+    }
+    if spec.id.is_empty() {
+        errors.push("/id", "workspace id must not be empty");
+    }
     validate_layout(&spec.layout, errors);
     validate_surface(&spec.surface, errors);
     validate_input(&spec.input, errors);
@@ -604,22 +617,54 @@ fn validate_workspace(spec: &WorkspaceSpec, errors: &mut ErrorSink) {
 
 fn validate_layout(layout: &LayoutSpec, errors: &mut ErrorSink) {
     for (index, dimension) in layout.viewport.iter().enumerate() {
-        if !dimension.is_finite() || *dimension <= 0.0 { errors.push(format!("/layout/viewport/{index}"), "viewport dimension must be finite and positive"); }
+        if !dimension.is_finite() || *dimension <= 0.0 {
+            errors.push(
+                format!("/layout/viewport/{index}"),
+                "viewport dimension must be finite and positive",
+            );
+        }
     }
-    if layout.tile.row_min <= 0.0 || !layout.tile.row_min.is_finite() { errors.push("/layout/tile/row_min", "row_min must be finite and positive"); }
-    if layout.tile.gap < 0.0 || !layout.tile.gap.is_finite() { errors.push("/layout/tile/gap", "gap must be finite and non-negative"); }
-    if layout.tile.padding < 0.0 || !layout.tile.padding.is_finite() { errors.push("/layout/tile/padding", "padding must be finite and non-negative"); }
+    if layout.tile.row_min <= 0.0 || !layout.tile.row_min.is_finite() {
+        errors.push(
+            "/layout/tile/row_min",
+            "row_min must be finite and positive",
+        );
+    }
+    if layout.tile.gap < 0.0 || !layout.tile.gap.is_finite() {
+        errors.push("/layout/tile/gap", "gap must be finite and non-negative");
+    }
+    if layout.tile.padding < 0.0 || !layout.tile.padding.is_finite() {
+        errors.push(
+            "/layout/tile/padding",
+            "padding must be finite and non-negative",
+        );
+    }
 }
 
 fn validate_surface(surface: &SurfaceSpec, errors: &mut ErrorSink) {
-    if surface.compact_max <= 0.0 || !surface.compact_max.is_finite() { errors.push("/surface/compact_max", "compact_max must be finite and positive"); }
-    if surface.tablet_max <= surface.compact_max || !surface.tablet_max.is_finite() { errors.push("/surface/tablet_max", "tablet_max must be finite and greater than compact_max"); }
+    if surface.compact_max <= 0.0 || !surface.compact_max.is_finite() {
+        errors.push(
+            "/surface/compact_max",
+            "compact_max must be finite and positive",
+        );
+    }
+    if surface.tablet_max <= surface.compact_max || !surface.tablet_max.is_finite() {
+        errors.push(
+            "/surface/tablet_max",
+            "tablet_max must be finite and greater than compact_max",
+        );
+    }
 }
 
 fn validate_input(input: &InputSpec, errors: &mut ErrorSink) {
     let mut seen = HashSet::new();
     for (index, binding) in input.bindings.iter().enumerate() {
-        if !seen.insert(binding.chord) { errors.push(format!("/input/bindings/{index}/chord"), "duplicate key chord"); }
+        if !seen.insert(binding.chord) {
+            errors.push(
+                format!("/input/bindings/{index}/chord"),
+                "duplicate key chord",
+            );
+        }
     }
 }
 
@@ -629,33 +674,72 @@ fn validate_panels(panels: &[PanelSpec], errors: &mut ErrorSink) {
     let mut maximized = None;
     for (index, panel) in panels.iter().enumerate() {
         let base = format!("/panels/{index}");
-        if panel.id.is_empty() { errors.push(format!("{base}/id"), "panel id must not be empty"); }
-        if !ids.insert(panel.id.as_str()) { errors.push(format!("{base}/id"), "duplicate panel id"); }
-        if panel.slug.is_empty() { errors.push(format!("{base}/slug"), "panel slug must not be empty"); }
-        if !slugs.insert(panel.slug.as_str()) { errors.push(format!("{base}/slug"), "duplicate panel slug"); }
+        if panel.id.is_empty() {
+            errors.push(format!("{base}/id"), "panel id must not be empty");
+        }
+        if !ids.insert(panel.id.as_str()) {
+            errors.push(format!("{base}/id"), "duplicate panel id");
+        }
+        if panel.slug.is_empty() {
+            errors.push(format!("{base}/slug"), "panel slug must not be empty");
+        }
+        if !slugs.insert(panel.slug.as_str()) {
+            errors.push(format!("{base}/slug"), "duplicate panel slug");
+        }
         validate_window(&panel.window, &format!("{base}/window"), errors);
         if panel.window.state == WinState::Maximized && maximized.replace(index).is_some() {
-            errors.push(format!("{base}/window/state"), "only one panel may start maximized");
+            errors.push(
+                format!("{base}/window/state"),
+                "only one panel may start maximized",
+            );
         }
     }
 }
 
 fn validate_window(window: &WindowSpec, pointer: &str, errors: &mut ErrorSink) {
-    for (field, value) in [("x", window.x), ("y", window.y), ("w", window.w), ("h", window.h)] {
-        if !value.is_finite() { errors.push(format!("{pointer}/{field}"), "window dimension must be finite"); }
+    for (field, value) in [
+        ("x", window.x),
+        ("y", window.y),
+        ("w", window.w),
+        ("h", window.h),
+    ] {
+        if !value.is_finite() {
+            errors.push(
+                format!("{pointer}/{field}"),
+                "window dimension must be finite",
+            );
+        }
     }
-    if window.w <= 0.0 { errors.push(format!("{pointer}/w"), "window width must be positive"); }
-    if window.h <= 0.0 { errors.push(format!("{pointer}/h"), "window height must be positive"); }
-    if !(1..=TILE_W_MAX).contains(&window.tile_w) { errors.push(format!("{pointer}/tile_w"), "tile_w must be in 1..=4"); }
-    if !(1..=TILE_H_MAX).contains(&window.tile_h) { errors.push(format!("{pointer}/tile_h"), "tile_h must be in 1..=6"); }
+    if window.w <= 0.0 {
+        errors.push(format!("{pointer}/w"), "window width must be positive");
+    }
+    if window.h <= 0.0 {
+        errors.push(format!("{pointer}/h"), "window height must be positive");
+    }
+    if !(1..=TILE_W_MAX).contains(&window.tile_w) {
+        errors.push(format!("{pointer}/tile_w"), "tile_w must be in 1..=4");
+    }
+    if !(1..=TILE_H_MAX).contains(&window.tile_h) {
+        errors.push(format!("{pointer}/tile_h"), "tile_h must be in 1..=6");
+    }
 }
 
 fn validate_manifest(manifest: &BindingManifest) -> Result<(), SpecErrors> {
     let mut errors = ErrorSink::new();
     let mut seen = HashSet::new();
     for (index, panel) in manifest.panels.iter().enumerate() {
-        if panel.panel_id.is_empty() { errors.push(format!("/panels/{index}/panel_id"), "provider panel_id must not be empty"); }
-        if !seen.insert(panel.panel_id.as_str()) { errors.push(format!("/panels/{index}/panel_id"), "duplicate provider panel_id"); }
+        if panel.panel_id.is_empty() {
+            errors.push(
+                format!("/panels/{index}/panel_id"),
+                "provider panel_id must not be empty",
+            );
+        }
+        if !seen.insert(panel.panel_id.as_str()) {
+            errors.push(
+                format!("/panels/{index}/panel_id"),
+                "duplicate provider panel_id",
+            );
+        }
     }
     errors.finish()
 }
@@ -663,22 +747,29 @@ fn validate_manifest(manifest: &BindingManifest) -> Result<(), SpecErrors> {
 fn validate_providers(spec: &WorkspaceSpec, providers: &BindingManifest) -> Result<(), SpecErrors> {
     let mut errors = ErrorSink::new();
     let mut provider_by_panel = HashMap::new();
-    for provider in &providers.panels { provider_by_panel.insert(provider.panel_id.as_str(), provider); }
+    for provider in &providers.panels {
+        provider_by_panel.insert(provider.panel_id.as_str(), provider);
+    }
 
     for (index, panel) in spec.panels.iter().enumerate() {
         match provider_by_panel.remove(panel.id.as_str()) {
             Some(provider) if provider.content_kind == ContentKind::from_spec(&panel.content) => {}
-            Some(_) => errors.push(format!("/panels/{index}/content/kind"), "provider content kind disagrees with spec"),
+            Some(_) => errors.push(
+                format!("/panels/{index}/content/kind"),
+                "provider content kind disagrees with spec",
+            ),
             None => errors.push(format!("/panels/{index}/id"), "provider missing for panel"),
         }
     }
 
     for provider in provider_by_panel.values() {
-        errors.push("/panels", format!("provider {:?} is not referenced", provider.panel_id));
+        errors.push(
+            "/panels",
+            format!("provider {:?} is not referenced", provider.panel_id),
+        );
     }
     errors.finish()
 }
-
 
 #[cfg(all(test, feature = "spec-json"))]
 mod tests {
@@ -757,9 +848,15 @@ mod tests {
     fn valid_content_json(kind: &str) -> serde_json::Value {
         match kind {
             "custom" => json!({ "kind": "custom", "binding": "canary.custom" }),
-            "text" => json!({ "kind": "text", "source": { "source": "inline", "value": { "text": "hello" } }, "scroll": "wrap" }),
-            "editor" => json!({ "kind": "editor", "binding": "canary.editor", "multiline": true, "placeholder": "Write" }),
-            "badges" => json!({ "kind": "badges", "source": { "source": "inline", "value": [valid_badge_json()] } }),
+            "text" => {
+                json!({ "kind": "text", "source": { "source": "inline", "value": { "text": "hello" } }, "scroll": "wrap" })
+            }
+            "editor" => {
+                json!({ "kind": "editor", "binding": "canary.editor", "multiline": true, "placeholder": "Write" })
+            }
+            "badges" => {
+                json!({ "kind": "badges", "source": { "source": "inline", "value": [valid_badge_json()] } })
+            }
             "table" => json!({
                 "kind": "table",
                 "source": {
@@ -770,13 +867,27 @@ mod tests {
                     }
                 }
             }),
-            "time_series" => json!({ "kind": "time_series", "source": { "source": "inline", "value": [{ "name": "load", "points": [[0.0, 1.0]] }] }, "unit": "req/s" }),
-            "gauges" => json!({ "kind": "gauges", "source": { "source": "inline", "value": [{ "label": "cpu", "ratio": 0.42, "text": "42%" }] } }),
-            "flamegraph" => json!({ "kind": "flamegraph", "source": { "source": "inline", "value": [{ "label": "root", "depth": 0, "value": 1.0, "color": null }] } }),
-            "boxplot" => json!({ "kind": "boxplot", "source": { "source": "inline", "value": [{ "label": "latency", "samples": [1.0, 2.0, 3.0], "color": null }] } }),
-            "meter" => json!({ "kind": "meter", "source": { "source": "inline", "value": { "label": "memory", "ratio": 0.5, "text": "50%", "color": null } } }),
-            "status" => json!({ "kind": "status", "source": { "source": "inline", "value": { "label": "build", "state": "ok", "color": [39, 201, 63] } } }),
-            "spinner" => json!({ "kind": "spinner", "label": { "source": "inline", "value": "Loading" } }),
+            "time_series" => {
+                json!({ "kind": "time_series", "source": { "source": "inline", "value": [{ "name": "load", "points": [[0.0, 1.0]] }] }, "unit": "req/s" })
+            }
+            "gauges" => {
+                json!({ "kind": "gauges", "source": { "source": "inline", "value": [{ "label": "cpu", "ratio": 0.42, "text": "42%" }] } })
+            }
+            "flamegraph" => {
+                json!({ "kind": "flamegraph", "source": { "source": "inline", "value": [{ "label": "root", "depth": 0, "value": 1.0, "color": null }] } })
+            }
+            "boxplot" => {
+                json!({ "kind": "boxplot", "source": { "source": "inline", "value": [{ "label": "latency", "samples": [1.0, 2.0, 3.0], "color": null }] } })
+            }
+            "meter" => {
+                json!({ "kind": "meter", "source": { "source": "inline", "value": { "label": "memory", "ratio": 0.5, "text": "50%", "color": null } } })
+            }
+            "status" => {
+                json!({ "kind": "status", "source": { "source": "inline", "value": { "label": "build", "state": "ok", "color": [39, 201, 63] } } })
+            }
+            "spinner" => {
+                json!({ "kind": "spinner", "label": { "source": "inline", "value": "Loading" } })
+            }
             _ => panic!("unknown content kind fixture: {kind}"),
         }
     }
@@ -881,7 +992,10 @@ mod tests {
             "kind": "spinner",
             "label": { "source": "binding", "id": "canary.spinner", "value": "ambiguous" }
         });
-        doc["panels"].as_array_mut().unwrap().extend([second, third]);
+        doc["panels"]
+            .as_array_mut()
+            .unwrap()
+            .extend([second, third]);
 
         let pointers = decode_error_pointers(doc);
 
@@ -907,10 +1021,16 @@ mod tests {
         duplicate["title"] = json!("Notes");
         doc["panels"].as_array_mut().unwrap().push(duplicate);
         let duplicate_binding = doc["input"]["bindings"][0].clone();
-        doc["input"]["bindings"].as_array_mut().unwrap().push(duplicate_binding);
+        doc["input"]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .push(duplicate_binding);
 
         let errors = WorkspaceSpec::from_json_value(doc).expect_err("invalid spec reports errors");
-        let diagnostics: Vec<_> = errors.iter().map(|error| (error.pointer(), error.message())).collect();
+        let diagnostics: Vec<_> = errors
+            .iter()
+            .map(|error| (error.pointer(), error.message()))
+            .collect();
 
         assert_eq!(diagnostics[0].0, "/layout/viewport/0");
         assert_eq!(diagnostics[1].0, "/surface/tablet_max");
@@ -934,7 +1054,8 @@ mod tests {
             "backend": "web",
             "panels": [{ "panel_id": "notes", "content_kind": "text" }]
         });
-        let errors = BindingManifest::from_json_value(missing).expect_err("missing nullable field is rejected");
+        let errors = BindingManifest::from_json_value(missing)
+            .expect_err("missing nullable field is rejected");
         assert_eq!(errors.iter().next().unwrap().pointer(), "/panels/0/binding");
     }
 
@@ -945,10 +1066,26 @@ mod tests {
         assert!(WorkspaceSpec::from_json_value(spec.clone()).is_ok());
 
         spec["theme"]["colors"]["accent"] = json!("#5EF38C");
-        assert_eq!(WorkspaceSpec::from_json_value(spec.clone()).unwrap_err().iter().next().unwrap().pointer(), "/theme/colors/accent");
+        assert_eq!(
+            WorkspaceSpec::from_json_value(spec.clone())
+                .unwrap_err()
+                .iter()
+                .next()
+                .unwrap()
+                .pointer(),
+            "/theme/colors/accent"
+        );
 
         spec["theme"]["colors"]["accent"] = json!("fff");
-        assert_eq!(WorkspaceSpec::from_json_value(spec).unwrap_err().iter().next().unwrap().pointer(), "/theme/colors/accent");
+        assert_eq!(
+            WorkspaceSpec::from_json_value(spec)
+                .unwrap_err()
+                .iter()
+                .next()
+                .unwrap()
+                .pointer(),
+            "/theme/colors/accent"
+        );
     }
 
     #[test]
@@ -965,7 +1102,11 @@ mod tests {
         let spec = WorkspaceSpec::from_json_value(valid_spec_json()).expect("valid spec decodes");
         let providers = BindingManifest {
             backend: BackendKind::Web,
-            panels: vec![PanelProviderDeclaration { panel_id: "notes".into(), content_kind: ContentKind::Text, binding: None }],
+            panels: vec![PanelProviderDeclaration {
+                panel_id: "notes".into(),
+                content_kind: ContentKind::Text,
+                binding: None,
+            }],
         };
         let resolved = spec.resolve(&providers).expect("providers match spec");
 
@@ -979,13 +1120,20 @@ mod tests {
             Ok(_) => panic!("provider kind drift is rejected"),
             Err(errors) => errors,
         };
-        assert_eq!(errors.iter().next().unwrap().pointer(), "/panels/0/content/kind");
+        assert_eq!(
+            errors.iter().next().unwrap().pointer(),
+            "/panels/0/content/kind"
+        );
     }
 
     #[test]
     fn plain_rust_enum_path_has_no_spec_schema_dependency() {
         let content = ContentSpec::Text {
-            source: DataSource::Inline { value: TextModel { text: "plain".into() } },
+            source: DataSource::Inline {
+                value: TextModel {
+                    text: "plain".into(),
+                },
+            },
             scroll: crate::widgets::ScrollPolicy::Clip,
         };
 

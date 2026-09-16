@@ -1,6 +1,6 @@
 use crate::reducer::Viewport;
 use crate::{
-    effective_mode, effective_rect, PanelKey, PanelWin, Region, TILE_H_MAX, TILE_W_MAX, WinState,
+    effective_mode, effective_rect, PanelKey, PanelWin, Region, WinState, TILE_H_MAX, TILE_W_MAX,
 };
 
 use super::chrome::{panel_chrome, PanelChromeMetrics};
@@ -12,7 +12,10 @@ use super::{DockProjection, PanelProjection, PanelProjectionInput, Placement};
 ///
 /// When `chrome.dock` is disabled the workspace occupies the full root region
 /// and the dock region is empty, so standalone surfaces get no implicit dock.
-pub fn project_chrome(viewport: Viewport, chrome: &super::ChromeProjectionInput) -> crate::WorkspaceChrome {
+pub fn project_chrome(
+    viewport: Viewport,
+    chrome: &super::ChromeProjectionInput,
+) -> crate::WorkspaceChrome {
     let mut metrics = chrome.metrics;
     if !chrome.dock {
         metrics.dock_h = 0.0;

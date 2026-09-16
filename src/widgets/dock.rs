@@ -8,12 +8,17 @@ use panel_kit_core::{PanelCommand, PanelKey};
 
 /// Paint a dock from projected minimized-panel entries.
 ///
+/// `extras` is a host-owned trailing slot for workspace policy controls such
+/// as snap toggles and layout reset. Pass `None` when no trailing controls are
+/// needed; the dock never owns or persists their state.
+///
 /// The dock is replace-only composition: it does not mount panels, chrome, or a
 /// controller. Clicks translate to core restore commands for the host reducer.
 pub fn dock<K: PanelKey>(
     items: &[DockProjection<K>],
     catalog: &PanelCatalog<K>,
     emit: EventHandler<WorkspaceEvent<K>>,
+    extras: Option<Element>,
 ) -> Element {
     rsx! {
         footer { class: "dock",
@@ -23,6 +28,9 @@ pub fn dock<K: PanelKey>(
             }
             for item in items.iter().copied() {
                 {dock_chip(item, catalog, emit)}
+            }
+            if let Some(extra) = extras {
+                div { class: "dock-extras", {extra} }
             }
         }
     }

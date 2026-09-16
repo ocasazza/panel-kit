@@ -1,6 +1,8 @@
 use dioxus::events::{KeyboardEvent, PointerEvent as DioxusPointerEvent, WheelEvent};
 use dioxus::prelude::*;
-use panel_kit::input::{clear_selection, keyboard_event, pointer_event, release_pointer, wheel_event};
+use panel_kit::input::{
+    clear_selection, keyboard_event, pointer_event, release_pointer, wheel_event,
+};
 use panel_kit_core::persist::apply_save_decision;
 use panel_kit_core::reducer::{reduce, HitTarget, ReduceContext, WorkspaceEvent};
 use panel_kit_core::{
@@ -85,7 +87,9 @@ pub(super) fn reduce_workspace_event<K: PanelKind>(
     let decision = workspace.save_policy.decide(&reduction);
     let changed = reduction.changed;
 
-    if let Err(error) = apply_save_decision(decision, &*workspace.store, &snapshot, &workspace.catalog) {
+    if let Err(error) =
+        apply_save_decision(decision, &*workspace.store, &snapshot, &workspace.catalog)
+    {
         log_layout_error("save layout", workspace.storage_key, &error);
     }
 
@@ -98,5 +102,6 @@ fn reduce_context(surface: panel_kit_core::SurfaceProfile) -> ReduceContext<'sta
         clamp: &Clamp::WEB,
         command_step: CommandStep::WEB,
         tile: &TileMetrics::WEB,
+        snap: panel_kit_core::SnapPolicy::default(),
     }
 }

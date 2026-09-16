@@ -22,6 +22,7 @@ use panel_kit_core::frame::Placement;
 use panel_kit_core::persist::SavePolicy;
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 #[path = "support/composable_workspace.rs"]
 mod composable_workspace;
 
@@ -36,7 +37,6 @@ const DEMO_CSS: &str = "
 ///
 /// Stable `Panel` serde IDs are unchanged: `Swatches`, `About`.
 const STORAGE_KEY: &str = "panel_kit_example_theming";
-
 
 /// Every color variable, overridden to a warm light palette.
 ///
@@ -240,18 +240,18 @@ fn App() -> Element {
                                 {panel_kit::widgets::panel::panel_chrome_with_events(
                                     panel,
                                     meta,
-                                    emit.clone(),
-                                    Some(panel_kit::widgets::panel::traffic_lights(panel, emit.clone())),
+                                    emit,
+                                    Some(panel_kit::widgets::panel::traffic_lights(panel, emit)),
                                     None,
                                 )}
                                 {panel_kit::widgets::panel::panel_body(body(panel.key, maximized))}
-                                {panel_kit::widgets::panel::resize_grip(panel, emit.clone())}
+                                {panel_kit::widgets::panel::resize_grip(panel, emit)}
                             })
                         }
                     }
                 }
             }
-            {panel_kit::widgets::dock::dock(frame.dock, &workspace.catalog, emit.clone())}
+            {panel_kit::widgets::dock::dock(frame.dock, &workspace.catalog, emit, None)}
         }
     }
 }

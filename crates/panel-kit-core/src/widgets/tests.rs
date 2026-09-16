@@ -35,7 +35,11 @@ fn content_spec_kind_names_are_derived_from_variants() {
 
 #[test]
 fn runtime_content_views_borrow_their_buffers() {
-    let badges = [crate::badge::BadgeSpec::new("tag", "alpha", crate::badge::BadgeKind::Tag)];
+    let badges = [crate::badge::BadgeSpec::new(
+        "tag",
+        "alpha",
+        crate::badge::BadgeKind::Tag,
+    )];
     let view = ContentView::Badges(&badges);
 
     assert_eq!(view.kind(), "badges");
@@ -44,8 +48,12 @@ fn runtime_content_views_borrow_their_buffers() {
 
 #[test]
 fn data_source_preserves_inline_and_binding_sources() {
-    let inline = DataSource::Inline { value: "hello".to_string() };
-    let binding: DataSource<String> = DataSource::Binding { id: "notes.body".into() };
+    let inline = DataSource::Inline {
+        value: "hello".to_string(),
+    };
+    let binding: DataSource<String> = DataSource::Binding {
+        id: "notes.body".into(),
+    };
 
     assert!(inline.is_inline());
     assert_eq!(binding.binding_id(), Some("notes.body"));
@@ -53,9 +61,15 @@ fn data_source_preserves_inline_and_binding_sources() {
 
 fn all_content_spec_variants() -> [ContentSpec; 12] {
     [
-        ContentSpec::Custom { binding: "native.panel".into() },
+        ContentSpec::Custom {
+            binding: "native.panel".into(),
+        },
         ContentSpec::Text {
-            source: DataSource::Inline { value: TextModel { text: "hello".into() } },
+            source: DataSource::Inline {
+                value: TextModel {
+                    text: "hello".into(),
+                },
+            },
             scroll: ScrollPolicy::Wrap,
         },
         ContentSpec::Editor {
@@ -65,7 +79,11 @@ fn all_content_spec_variants() -> [ContentSpec; 12] {
         },
         ContentSpec::Badges {
             source: DataSource::Inline {
-                value: vec![crate::badge::BadgeSpec::new("tag", "alpha", crate::badge::BadgeKind::Tag)],
+                value: vec![crate::badge::BadgeSpec::new(
+                    "tag",
+                    "alpha",
+                    crate::badge::BadgeKind::Tag,
+                )],
             },
         },
         ContentSpec::Table {
@@ -140,7 +158,9 @@ fn all_content_spec_variants() -> [ContentSpec; 12] {
             },
         },
         ContentSpec::Spinner {
-            label: DataSource::Inline { value: "loading".into() },
+            label: DataSource::Inline {
+                value: "loading".into(),
+            },
         },
     ]
 }

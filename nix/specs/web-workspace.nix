@@ -39,6 +39,7 @@ mkWorkspaceSpec {
       edge = 8.0;
       min_w = 180.0;
       min_h = 120.0;
+      max_frac = 0.75;
     };
     tile = {
       resize = { row = 150.0; col_floor = 180.0; outer = 0.0; };

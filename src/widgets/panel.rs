@@ -7,8 +7,8 @@ use panel_kit_core::panel::PanelMeta;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WorkspaceEvent};
 use panel_kit_core::{PanelCommand, PanelKey, PointerButton, PointerEventKind};
 
-pub use super::panel_layout::panel_style;
 use super::panel_layout::panel_class;
+pub use super::panel_layout::panel_style;
 use crate::input::{capture_pointer, core_pointer_event, keyboard_event, release_pointer};
 
 /// Paint the positioned panel container and caller-selected child parts.
@@ -160,16 +160,30 @@ pub fn panel_chrome_with_events<K: PanelKey>(
     }
 }
 
-
 /// Paint the mode/minimize/maximize controls for a projected panel.
 pub fn traffic_lights<K: PanelKey>(
     panel: PanelProjection<K>,
     emit: EventHandler<WorkspaceEvent<K>>,
 ) -> Element {
     let lights = [
-        (panel.chrome.mode_hit.is_some(), "light mode", "tiling / floating", PanelCommand::ToggleMode),
-        (panel.chrome.minimize_hit.is_some(), "light yellow", "minimize", PanelCommand::Minimize),
-        (panel.chrome.maximize_hit.is_some(), "light max", "maximize / restore", PanelCommand::Maximize),
+        (
+            panel.chrome.mode_hit.is_some(),
+            "light mode",
+            "tiling / floating",
+            PanelCommand::ToggleMode,
+        ),
+        (
+            panel.chrome.minimize_hit.is_some(),
+            "light yellow",
+            "minimize",
+            PanelCommand::Minimize,
+        ),
+        (
+            panel.chrome.maximize_hit.is_some(),
+            "light max",
+            "maximize / restore",
+            PanelCommand::Maximize,
+        ),
     ];
 
     rsx! {
@@ -226,7 +240,6 @@ pub fn resize_grip<K: PanelKey>(
     }
 }
 
-
 fn pointer_workspace_event<K: PanelKey>(
     key: K,
     part: PanelPart,
@@ -234,10 +247,7 @@ fn pointer_workspace_event<K: PanelKey>(
     event: &DioxusPointerEvent,
 ) -> WorkspaceEvent<K> {
     WorkspaceEvent::Pointer {
-        target: HitTarget::Panel {
-            key,
-            part,
-        },
+        target: HitTarget::Panel { key, part },
         event: core_pointer_event(event, kind),
     }
 }

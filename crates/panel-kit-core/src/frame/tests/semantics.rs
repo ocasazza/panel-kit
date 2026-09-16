@@ -1,11 +1,13 @@
 use crate::frame::{
-    hit_test, project_chrome, project_dock_into, project_panel, ChromeProjectionInput,
-    FrameStatus, PanelProjectionInput, Placement,
+    hit_test, project_chrome, project_dock_into, project_panel, ChromeProjectionInput, FrameStatus,
+    PanelProjectionInput, Placement,
 };
 use crate::reducer::{HitTarget, PanelPart, Viewport};
 use crate::{ChromeMetrics, Clamp, Mode, Region, WinState};
 
-use super::fixtures::{assert_rect_clean, center, keys, project_snapshot, scratch_for, semantic_snapshot, TestPanel};
+use super::fixtures::{
+    assert_rect_clean, center, keys, project_snapshot, scratch_for, semantic_snapshot, TestPanel,
+};
 
 #[test]
 fn projected_frame_resolves_all_semantic_regions() {
@@ -15,10 +17,20 @@ fn projected_frame_resolves_all_semantic_regions() {
 
     assert_eq!(frame.status, FrameStatus::Ready);
     assert_eq!(frame.mode, Mode::Floating);
-    assert_eq!(keys(frame.panels), vec![TestPanel::Beta, TestPanel::Alpha, TestPanel::Gamma]);
-    assert_eq!(frame.dock.iter().map(|entry| entry.key).collect::<Vec<_>>(), vec![TestPanel::Docked]);
+    assert_eq!(
+        keys(frame.panels),
+        vec![TestPanel::Beta, TestPanel::Alpha, TestPanel::Gamma]
+    );
+    assert_eq!(
+        frame.dock.iter().map(|entry| entry.key).collect::<Vec<_>>(),
+        vec![TestPanel::Docked]
+    );
 
-    let gamma = frame.panels.iter().find(|panel| panel.key == TestPanel::Gamma).unwrap();
+    let gamma = frame
+        .panels
+        .iter()
+        .find(|panel| panel.key == TestPanel::Gamma)
+        .unwrap();
     assert_eq!(gamma.placement, Placement::Floating);
     assert_eq!(gamma.z, 30);
     assert!(gamma.state == WinState::Floating);
@@ -33,9 +45,26 @@ fn projected_frame_resolves_all_semantic_regions() {
     assert!(gamma.chrome.maximize_hit.is_some());
     assert!(gamma.chrome.resize_hit.is_some());
 
-    assert_eq!(hit_test(&frame, center(gamma.chrome.body)), Some(HitTarget::Panel { key: TestPanel::Gamma, part: PanelPart::Surface }));
-    assert_eq!(hit_test(&frame, center(gamma.chrome.mode_hit.unwrap())), Some(HitTarget::Panel { key: TestPanel::Gamma, part: PanelPart::ModeControl }));
-    assert_eq!(hit_test(&frame, center(frame.dock[0].region)), Some(HitTarget::Dock { key: TestPanel::Docked }));
+    assert_eq!(
+        hit_test(&frame, center(gamma.chrome.body)),
+        Some(HitTarget::Panel {
+            key: TestPanel::Gamma,
+            part: PanelPart::Surface
+        })
+    );
+    assert_eq!(
+        hit_test(&frame, center(gamma.chrome.mode_hit.unwrap())),
+        Some(HitTarget::Panel {
+            key: TestPanel::Gamma,
+            part: PanelPart::ModeControl
+        })
+    );
+    assert_eq!(
+        hit_test(&frame, center(frame.dock[0].region)),
+        Some(HitTarget::Dock {
+            key: TestPanel::Docked
+        })
+    );
     assert!(frame.content_extent.h >= 230.0);
 }
 
@@ -66,14 +95,35 @@ fn paint_order_and_visibility_follow_each_mode() {
     let floating_snapshot = semantic_snapshot(Mode::Floating);
     let mut floating_scratch = scratch_for(&floating_snapshot);
     let floating = project_snapshot(&floating_snapshot, &mut floating_scratch);
-    assert_eq!(keys(floating.panels), vec![TestPanel::Beta, TestPanel::Alpha, TestPanel::Gamma]);
-    assert_eq!(floating.dock.iter().map(|entry| entry.key).collect::<Vec<_>>(), vec![TestPanel::Docked]);
+    assert_eq!(
+        keys(floating.panels),
+        vec![TestPanel::Beta, TestPanel::Alpha, TestPanel::Gamma]
+    );
+    assert_eq!(
+        floating
+            .dock
+            .iter()
+            .map(|entry| entry.key)
+            .collect::<Vec<_>>(),
+        vec![TestPanel::Docked]
+    );
 
     let tiling_snapshot = semantic_snapshot(Mode::Tiling);
     let mut tiling_scratch = scratch_for(&tiling_snapshot);
     let tiling = project_snapshot(&tiling_snapshot, &mut tiling_scratch);
-    assert_eq!(keys(tiling.panels), vec![TestPanel::Alpha, TestPanel::Beta, TestPanel::Gamma]);
-    assert!(matches!(tiling.panels[1].placement, Placement::Tiled { column: 0, row: 2, column_span: 2, row_span: 1 }));
+    assert_eq!(
+        keys(tiling.panels),
+        vec![TestPanel::Alpha, TestPanel::Beta, TestPanel::Gamma]
+    );
+    assert!(matches!(
+        tiling.panels[1].placement,
+        Placement::Tiled {
+            column: 0,
+            row: 2,
+            column_span: 2,
+            row_span: 1
+        }
+    ));
 
     let mut maxed = semantic_snapshot(Mode::Floating);
     maxed.panels[0].state = WinState::Maximized;
@@ -89,14 +139,57 @@ fn hit_test_resolves_body_and_controls_with_fixed_vectors() {
     let snapshot = semantic_snapshot(Mode::Floating);
     let mut scratch = scratch_for(&snapshot);
     let frame = project_snapshot(&snapshot, &mut scratch);
-    let gamma = frame.panels.iter().find(|panel| panel.key == TestPanel::Gamma).unwrap();
+    let gamma = frame
+        .panels
+        .iter()
+        .find(|panel| panel.key == TestPanel::Gamma)
+        .unwrap();
 
-    assert_eq!(hit_test(&frame, center(gamma.chrome.body)), Some(HitTarget::Panel { key: TestPanel::Gamma, part: PanelPart::Surface }));
-    assert_eq!(hit_test(&frame, center(gamma.chrome.header_hit)), Some(HitTarget::Panel { key: TestPanel::Gamma, part: PanelPart::Header }));
-    assert_eq!(hit_test(&frame, center(gamma.chrome.minimize_hit.unwrap())), Some(HitTarget::Panel { key: TestPanel::Gamma, part: PanelPart::MinimizeControl }));
-    assert_eq!(hit_test(&frame, center(gamma.chrome.maximize_hit.unwrap())), Some(HitTarget::Panel { key: TestPanel::Gamma, part: PanelPart::MaximizeControl }));
-    assert_eq!(hit_test(&frame, center(gamma.chrome.resize_hit.unwrap())), Some(HitTarget::Panel { key: TestPanel::Gamma, part: PanelPart::ResizeGrip }));
-    assert_eq!(hit_test(&frame, (frame.chrome.workspace.x + 1.0, frame.chrome.workspace.y + 1.0)), Some(HitTarget::Workspace));
+    assert_eq!(
+        hit_test(&frame, center(gamma.chrome.body)),
+        Some(HitTarget::Panel {
+            key: TestPanel::Gamma,
+            part: PanelPart::Surface
+        })
+    );
+    assert_eq!(
+        hit_test(&frame, center(gamma.chrome.header_hit)),
+        Some(HitTarget::Panel {
+            key: TestPanel::Gamma,
+            part: PanelPart::Header
+        })
+    );
+    assert_eq!(
+        hit_test(&frame, center(gamma.chrome.minimize_hit.unwrap())),
+        Some(HitTarget::Panel {
+            key: TestPanel::Gamma,
+            part: PanelPart::MinimizeControl
+        })
+    );
+    assert_eq!(
+        hit_test(&frame, center(gamma.chrome.maximize_hit.unwrap())),
+        Some(HitTarget::Panel {
+            key: TestPanel::Gamma,
+            part: PanelPart::MaximizeControl
+        })
+    );
+    assert_eq!(
+        hit_test(&frame, center(gamma.chrome.resize_hit.unwrap())),
+        Some(HitTarget::Panel {
+            key: TestPanel::Gamma,
+            part: PanelPart::ResizeGrip
+        })
+    );
+    assert_eq!(
+        hit_test(
+            &frame,
+            (
+                frame.chrome.workspace.x + 1.0,
+                frame.chrome.workspace.y + 1.0
+            )
+        ),
+        Some(HitTarget::Workspace)
+    );
 }
 
 #[test]
@@ -133,7 +226,11 @@ fn project_panel_requires_no_snapshot_catalog_store_or_dock() {
 fn standalone_surface_has_no_implicit_chrome() {
     let snapshot = semantic_snapshot(Mode::Floating);
     let chrome = ChromeProjectionInput::surface_only(ChromeMetrics::WEB);
-    let viewport = Viewport { width: 800.0, height: 600.0, units: crate::Units::CssPx };
+    let viewport = Viewport {
+        width: 800.0,
+        height: 600.0,
+        units: crate::Units::CssPx,
+    };
     let workspace_chrome = project_chrome(viewport, &chrome);
     let input = PanelProjectionInput {
         viewport: workspace_chrome.workspace,
@@ -168,7 +265,11 @@ fn partial_projectors_match_full_frame_regions() {
     let floating_snapshot = semantic_snapshot(Mode::Floating);
     let mut floating_scratch = scratch_for(&floating_snapshot);
     let floating_frame = project_snapshot(&floating_snapshot, &mut floating_scratch);
-    let floating_panel = floating_frame.panels.iter().find(|panel| panel.key == TestPanel::Gamma).unwrap();
+    let floating_panel = floating_frame
+        .panels
+        .iter()
+        .find(|panel| panel.key == TestPanel::Gamma)
+        .unwrap();
     let floating_chrome = ChromeProjectionInput::full(ChromeMetrics::WEB);
     let floating_partial = project_panel(
         &floating_snapshot.panels[floating_panel.source_index],
@@ -193,7 +294,11 @@ fn partial_projectors_match_full_frame_regions() {
     let tiling_snapshot = semantic_snapshot(Mode::Tiling);
     let mut tiling_scratch = scratch_for(&tiling_snapshot);
     let tiling_frame = project_snapshot(&tiling_snapshot, &mut tiling_scratch);
-    let tiled_panel = tiling_frame.panels.iter().find(|panel| panel.key == TestPanel::Beta).unwrap();
+    let tiled_panel = tiling_frame
+        .panels
+        .iter()
+        .find(|panel| panel.key == TestPanel::Beta)
+        .unwrap();
     let Placement::Tiled { column, row, .. } = tiled_panel.placement else {
         panic!("expected tiled placement");
     };

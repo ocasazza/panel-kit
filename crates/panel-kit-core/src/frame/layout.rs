@@ -48,6 +48,16 @@ pub struct PanelChromeProjection {
     pub resize_hit: Option<Region>,
 }
 
+/// Order in which panels claim cells in the bounded tile grid.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TileFillOrder {
+    /// Fill each row from left to right before starting the next row.
+    #[default]
+    RowMajor,
+    /// Fill each column from top to bottom before starting the next column.
+    ColumnMajor,
+}
+
 /// Tiling metrics used by projection and future backend painters.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TileLayoutMetrics {
@@ -63,6 +73,8 @@ pub struct TileLayoutMetrics {
     pub padding: f64,
     /// Whether tracks expand to fill the workspace band.
     pub fill_viewport: bool,
+    /// Order in which panels claim grid cells.
+    pub fill_order: TileFillOrder,
 }
 
 impl TileLayoutMetrics {
@@ -75,7 +87,14 @@ impl TileLayoutMetrics {
             gap: 0.0,
             padding: 0.0,
             fill_viewport: false,
+            fill_order: TileFillOrder::RowMajor,
         }
+    }
+
+    /// Return metrics using the requested panel fill order.
+    pub fn with_fill_order(mut self, fill_order: TileFillOrder) -> Self {
+        self.fill_order = fill_order;
+        self
     }
 }
 

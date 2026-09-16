@@ -10,9 +10,9 @@ mod codec;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::reducer::{ChangePhase, Reduction};
 #[cfg(feature = "spec-json")]
 use crate::reducer::Snapshot;
+use crate::reducer::{ChangePhase, Reduction};
 #[cfg(feature = "spec-json")]
 use crate::PanelCatalog;
 use crate::{CatalogError, PanelKey, Units};
@@ -130,7 +130,11 @@ impl fmt::Display for LayoutError {
                 write!(f, "unsupported layout schema version {version}")
             }
             Self::InvalidViewport { viewport } => {
-                write!(f, "invalid saved layout viewport ({}, {})", viewport.0, viewport.1)
+                write!(
+                    f,
+                    "invalid saved layout viewport ({}, {})",
+                    viewport.0, viewport.1
+                )
             }
             Self::MissingStableId => f.write_str("panel key is missing from the panel catalog"),
         }

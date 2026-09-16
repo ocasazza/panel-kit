@@ -67,10 +67,21 @@ pub fn use_demo_workspace<K: PanelKind>(
     });
     let scratch = use_hook({
         let panel_count = snapshot.peek().panels.len();
-        move || Rc::new(RefCell::new(ProjectionBuffer::with_panel_capacity(panel_count)))
+        move || {
+            Rc::new(RefCell::new(ProjectionBuffer::with_panel_capacity(
+                panel_count,
+            )))
+        }
     });
 
-    DemoPanelState { storage_key, save_policy, snapshot, catalog, scratch, store }
+    DemoPanelState {
+        storage_key,
+        save_policy,
+        snapshot,
+        catalog,
+        scratch,
+        store,
+    }
 }
 
 /// Subscribe the host-owned workspace to browser viewport changes.
@@ -94,14 +105,24 @@ pub fn project_workspace<'frame, K: PanelKind>(
     let tile = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
 
     project_into(
-        ProjectionInput { snapshot, surface, chrome: &chrome, clamp: &Clamp::WEB, tile: &tile },
+        ProjectionInput {
+            snapshot,
+            surface,
+            chrome: &chrome,
+            clamp: &Clamp::WEB,
+            tile: &tile,
+        },
         scratch,
     )
 }
 
 /// CSS class for the `.ws` area that contains projected panels.
 pub fn workspace_area_class<K: PanelKind>(frame: &ProjectedFrame<'_, K>) -> &'static str {
-    if frame.panels.iter().any(|panel| matches!(panel.placement, Placement::Maximized)) {
+    if frame
+        .panels
+        .iter()
+        .any(|panel| matches!(panel.placement, Placement::Maximized))
+    {
         "ws maxed"
     } else if frame.mode == Mode::Tiling {
         "ws tiling"
@@ -112,7 +133,11 @@ pub fn workspace_area_class<K: PanelKind>(frame: &ProjectedFrame<'_, K>) -> &'st
 
 fn initial_viewport() -> Viewport {
     let (width, height) = viewport_size();
-    Viewport { width, height, units: Units::CssPx }
+    Viewport {
+        width,
+        height,
+        units: Units::CssPx,
+    }
 }
 
 fn restore_or_default<K: PanelKind>(
@@ -280,9 +305,15 @@ pub mod web_canary {
 
     fn render_content(spec: &PanelSpec, maximized: bool, header_clicks: u32) -> Element {
         match &spec.content {
-            ContentSpec::Custom { binding } => render_custom(binding, spec, maximized, header_clicks),
+            ContentSpec::Custom { binding } => {
+                render_custom(binding, spec, maximized, header_clicks)
+            }
             ContentSpec::Text { source, scroll } => render_text(source, *scroll),
-            ContentSpec::Editor { binding, multiline, placeholder } => rsx! {
+            ContentSpec::Editor {
+                binding,
+                multiline,
+                placeholder,
+            } => rsx! {
                 textarea {
                     class: "pk-editor",
                     aria_label: "editor binding {binding}",
@@ -302,7 +333,12 @@ pub mod web_canary {
         }
     }
 
-    fn render_custom(binding: &str, spec: &PanelSpec, maximized: bool, header_clicks: u32) -> Element {
+    fn render_custom(
+        binding: &str,
+        spec: &PanelSpec,
+        maximized: bool,
+        header_clicks: u32,
+    ) -> Element {
         match binding {
             "canary.workspace" => rsx! {
                 section { class: "pk-custom-card", role: "group", aria_label: "workspace summary",
@@ -321,28 +357,47 @@ pub mod web_canary {
                     }
                 }
             },
-            _ => panel_kit::widgets::content_view(ContentView::Custom { binding }, 0, noop_badge_action()),
+            _ => panel_kit::widgets::content_view(
+                ContentView::Custom { binding },
+                0,
+                noop_badge_action(),
+            ),
         }
     }
 
     fn render_text(source: &DataSource<TextModel>, scroll: ScrollPolicy) -> Element {
         match source {
-            DataSource::Inline { value } => {
-                panel_kit::widgets::content_view(ContentView::Text { text: &value.text, scroll }, 0, noop_badge_action())
-            }
+            DataSource::Inline { value } => panel_kit::widgets::content_view(
+                ContentView::Text {
+                    text: &value.text,
+                    scroll,
+                },
+                0,
+                noop_badge_action(),
+            ),
             DataSource::Binding { id } => {
                 let text = bound_text(id);
-                panel_kit::widgets::content_view(ContentView::Text { text, scroll }, 0, noop_badge_action())
+                panel_kit::widgets::content_view(
+                    ContentView::Text { text, scroll },
+                    0,
+                    noop_badge_action(),
+                )
             }
         }
     }
 
     fn render_badges(source: &DataSource<Vec<BadgeSpec>>) -> Element {
         match source {
-            DataSource::Inline { value } => panel_kit::widgets::content_view(ContentView::Badges(value), 0, noop_badge_action()),
+            DataSource::Inline { value } => {
+                panel_kit::widgets::content_view(ContentView::Badges(value), 0, noop_badge_action())
+            }
             DataSource::Binding { id } => {
                 let badges = bound_badges(id);
-                panel_kit::widgets::content_view(ContentView::Badges(&badges), 0, noop_badge_action())
+                panel_kit::widgets::content_view(
+                    ContentView::Badges(&badges),
+                    0,
+                    noop_badge_action(),
+                )
             }
         }
     }
@@ -356,7 +411,10 @@ pub mod web_canary {
 
     fn render_table_model(table: &TableModel) -> Element {
         panel_kit::widgets::content_view(
-            ContentView::Table(TableView { columns: &table.columns, rows: &table.rows }),
+            ContentView::Table(TableView {
+                columns: &table.columns,
+                rows: &table.rows,
+            }),
             0,
             noop_badge_action(),
         )
@@ -372,27 +430,51 @@ pub mod web_canary {
     fn render_series_models(series: &[SeriesModel], unit: &str) -> Element {
         let views: Vec<SeriesView<'_>> = series
             .iter()
-            .map(|model| SeriesView { name: &model.name, points: &model.points })
+            .map(|model| SeriesView {
+                name: &model.name,
+                points: &model.points,
+            })
             .collect();
-        panel_kit::widgets::content_view(ContentView::TimeSeries { series: &views, unit }, 0, noop_badge_action())
+        panel_kit::widgets::content_view(
+            ContentView::TimeSeries {
+                series: &views,
+                unit,
+            },
+            0,
+            noop_badge_action(),
+        )
     }
 
     fn render_gauges(source: &DataSource<Vec<GaugeModel>>) -> Element {
         match source {
-            DataSource::Inline { value } => panel_kit::widgets::content_view(ContentView::Gauges(value), 0, noop_badge_action()),
+            DataSource::Inline { value } => {
+                panel_kit::widgets::content_view(ContentView::Gauges(value), 0, noop_badge_action())
+            }
             DataSource::Binding { id } => {
                 let gauges = bound_gauges(id);
-                panel_kit::widgets::content_view(ContentView::Gauges(&gauges), 0, noop_badge_action())
+                panel_kit::widgets::content_view(
+                    ContentView::Gauges(&gauges),
+                    0,
+                    noop_badge_action(),
+                )
             }
         }
     }
 
     fn render_flamegraph(source: &DataSource<Vec<FlameSpanModel>>) -> Element {
         match source {
-            DataSource::Inline { value } => panel_kit::widgets::content_view(ContentView::Flamegraph(value), 0, noop_badge_action()),
+            DataSource::Inline { value } => panel_kit::widgets::content_view(
+                ContentView::Flamegraph(value),
+                0,
+                noop_badge_action(),
+            ),
             DataSource::Binding { id } => {
                 let spans = bound_flamegraph(id);
-                panel_kit::widgets::content_view(ContentView::Flamegraph(&spans), 0, noop_badge_action())
+                panel_kit::widgets::content_view(
+                    ContentView::Flamegraph(&spans),
+                    0,
+                    noop_badge_action(),
+                )
             }
         }
     }
@@ -411,7 +493,9 @@ pub mod web_canary {
 
     fn render_meter(source: &DataSource<MeterModel>) -> Element {
         match source {
-            DataSource::Inline { value } => panel_kit::widgets::content_view(ContentView::Meter(value), 0, noop_badge_action()),
+            DataSource::Inline { value } => {
+                panel_kit::widgets::content_view(ContentView::Meter(value), 0, noop_badge_action())
+            }
             DataSource::Binding { id } => {
                 let meter = bound_meter(id);
                 panel_kit::widgets::content_view(ContentView::Meter(&meter), 0, noop_badge_action())
@@ -421,10 +505,16 @@ pub mod web_canary {
 
     fn render_status(source: &DataSource<StatusModel>) -> Element {
         match source {
-            DataSource::Inline { value } => panel_kit::widgets::content_view(ContentView::Status(value), 0, noop_badge_action()),
+            DataSource::Inline { value } => {
+                panel_kit::widgets::content_view(ContentView::Status(value), 0, noop_badge_action())
+            }
             DataSource::Binding { id } => {
                 let status = bound_status(id);
-                panel_kit::widgets::content_view(ContentView::Status(&status), 0, noop_badge_action())
+                panel_kit::widgets::content_view(
+                    ContentView::Status(&status),
+                    0,
+                    noop_badge_action(),
+                )
             }
         }
     }
@@ -432,13 +522,19 @@ pub mod web_canary {
     fn render_spinner(label: &DataSource<String>) -> Element {
         match label {
             DataSource::Inline { value } => panel_kit::widgets::content_view(
-                ContentView::Spinner { label: value.as_str() },
+                ContentView::Spinner {
+                    label: value.as_str(),
+                },
                 0,
                 noop_badge_action(),
             ),
             DataSource::Binding { id } => {
                 let label = bound_spinner_label(id);
-                panel_kit::widgets::content_view(ContentView::Spinner { label }, 0, noop_badge_action())
+                panel_kit::widgets::content_view(
+                    ContentView::Spinner { label },
+                    0,
+                    noop_badge_action(),
+                )
             }
         }
     }
@@ -479,60 +575,139 @@ pub mod web_canary {
     fn bound_table(_id: &str) -> TableModel {
         TableModel {
             columns: vec![
-                TableColumn { key: "node".into(), title: "Node".into(), width: ColumnWidth::Flex { weight: 2 }, align: TextAlign::Left },
-                TableColumn { key: "health".into(), title: "Health".into(), width: ColumnWidth::Fixed { value: 8 }, align: TextAlign::Center },
-                TableColumn { key: "load".into(), title: "Load".into(), width: ColumnWidth::Fixed { value: 10 }, align: TextAlign::Right },
+                TableColumn {
+                    key: "node".into(),
+                    title: "Node".into(),
+                    width: ColumnWidth::Flex { weight: 2 },
+                    align: TextAlign::Left,
+                },
+                TableColumn {
+                    key: "health".into(),
+                    title: "Health".into(),
+                    width: ColumnWidth::Fixed { value: 8 },
+                    align: TextAlign::Center,
+                },
+                TableColumn {
+                    key: "load".into(),
+                    title: "Load".into(),
+                    width: ColumnWidth::Fixed { value: 10 },
+                    align: TextAlign::Right,
+                },
             ],
             rows: vec![
-                TableRow { cells: vec![
-                    TableCell::Text("api".into()),
-                    TableCell::Status { label: "ok".into(), color: (39, 201, 63) },
-                    TableCell::Meter { ratio: 0.42, text: "42%".into(), color: Some((94, 243, 140)) },
-                ] },
-                TableRow { cells: vec![
-                    TableCell::Text("worker".into()),
-                    TableCell::Status { label: "warn".into(), color: (255, 189, 46) },
-                    TableCell::Meter { ratio: 0.68, text: "68%".into(), color: Some((255, 189, 46)) },
-                ] },
+                TableRow {
+                    cells: vec![
+                        TableCell::Text("api".into()),
+                        TableCell::Status {
+                            label: "ok".into(),
+                            color: (39, 201, 63),
+                        },
+                        TableCell::Meter {
+                            ratio: 0.42,
+                            text: "42%".into(),
+                            color: Some((94, 243, 140)),
+                        },
+                    ],
+                },
+                TableRow {
+                    cells: vec![
+                        TableCell::Text("worker".into()),
+                        TableCell::Status {
+                            label: "warn".into(),
+                            color: (255, 189, 46),
+                        },
+                        TableCell::Meter {
+                            ratio: 0.68,
+                            text: "68%".into(),
+                            color: Some((255, 189, 46)),
+                        },
+                    ],
+                },
             ],
         }
     }
 
     fn bound_series(_id: &str) -> Vec<SeriesModel> {
         vec![
-            SeriesModel { name: "p50".into(), points: vec![(0.0, 12.0), (1.0, 18.0), (2.0, 15.0)] },
-            SeriesModel { name: "p95".into(), points: vec![(0.0, 35.0), (1.0, 42.0), (2.0, 39.0)] },
+            SeriesModel {
+                name: "p50".into(),
+                points: vec![(0.0, 12.0), (1.0, 18.0), (2.0, 15.0)],
+            },
+            SeriesModel {
+                name: "p95".into(),
+                points: vec![(0.0, 35.0), (1.0, 42.0), (2.0, 39.0)],
+            },
         ]
     }
 
     fn bound_gauges(_id: &str) -> Vec<GaugeModel> {
         vec![
-            GaugeModel { label: "CPU".into(), ratio: 0.64, text: "64%".into() },
-            GaugeModel { label: "Queue".into(), ratio: 0.28, text: "7 / 25".into() },
+            GaugeModel {
+                label: "CPU".into(),
+                ratio: 0.64,
+                text: "64%".into(),
+            },
+            GaugeModel {
+                label: "Queue".into(),
+                ratio: 0.28,
+                text: "7 / 25".into(),
+            },
         ]
     }
 
     fn bound_flamegraph(_id: &str) -> Vec<FlameSpanModel> {
         vec![
-            FlameSpanModel { label: "root".into(), depth: 0, value: 100.0, color: Some((94, 243, 140)) },
-            FlameSpanModel { label: "decode".into(), depth: 1, value: 34.0, color: Some((59, 155, 255)) },
-            FlameSpanModel { label: "paint".into(), depth: 1, value: 21.0, color: Some((255, 95, 195)) },
+            FlameSpanModel {
+                label: "root".into(),
+                depth: 0,
+                value: 100.0,
+                color: Some((94, 243, 140)),
+            },
+            FlameSpanModel {
+                label: "decode".into(),
+                depth: 1,
+                value: 34.0,
+                color: Some((59, 155, 255)),
+            },
+            FlameSpanModel {
+                label: "paint".into(),
+                depth: 1,
+                value: 21.0,
+                color: Some((255, 95, 195)),
+            },
         ]
     }
 
     fn bound_boxplot(_id: &str) -> Vec<BoxItemModel> {
         vec![
-            BoxItemModel { label: "latency".into(), samples: vec![14.0, 18.0, 21.0, 28.0, 35.0], color: Some((131, 183, 204)) },
-            BoxItemModel { label: "queue".into(), samples: vec![1.0, 4.0, 8.0, 10.0, 14.0], color: None },
+            BoxItemModel {
+                label: "latency".into(),
+                samples: vec![14.0, 18.0, 21.0, 28.0, 35.0],
+                color: Some((131, 183, 204)),
+            },
+            BoxItemModel {
+                label: "queue".into(),
+                samples: vec![1.0, 4.0, 8.0, 10.0, 14.0],
+                color: None,
+            },
         ]
     }
 
     fn bound_meter(_id: &str) -> MeterModel {
-        MeterModel { label: "memory".into(), ratio: 0.57, text: "57%".into(), color: Some((94, 243, 140)) }
+        MeterModel {
+            label: "memory".into(),
+            ratio: 0.57,
+            text: "57%".into(),
+            color: Some((94, 243, 140)),
+        }
     }
 
     fn bound_status(_id: &str) -> StatusModel {
-        StatusModel { label: "deploy".into(), state: StatusState::Ok, color: (39, 201, 63) }
+        StatusModel {
+            label: "deploy".into(),
+            state: StatusState::Ok,
+            color: (39, 201, 63),
+        }
     }
 
     fn bound_spinner_label(_id: &str) -> &'static str {

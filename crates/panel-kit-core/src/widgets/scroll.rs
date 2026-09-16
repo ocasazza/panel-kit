@@ -12,7 +12,10 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
         return vec![text.to_string()];
     }
 
-    chars.chunks(width).map(|chunk| chunk.iter().collect()).collect()
+    chars
+        .chunks(width)
+        .map(|chunk| chunk.iter().collect())
+        .collect()
 }
 
 #[cfg(test)]

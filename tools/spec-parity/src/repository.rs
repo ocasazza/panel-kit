@@ -36,7 +36,10 @@ pub(crate) fn check_repository() -> Result<(), Box<dyn Error>> {
 
 /// Evaluate the authoritative Nix WorkspaceSpec canary to JSON.
 fn evaluate_workspace_canary_spec() -> Result<String, Box<dyn Error>> {
-    json_text_from_env_or_else(WORKSPACE_CANARY_JSON_ENV, evaluate_workspace_canary_spec_with_nix)
+    json_text_from_env_or_else(
+        WORKSPACE_CANARY_JSON_ENV,
+        evaluate_workspace_canary_spec_with_nix,
+    )
 }
 
 /// Prove the authoritative canary spec matches the Rust provider manifest.
@@ -60,7 +63,10 @@ fn check_workspace_spec_plan_fixture() -> Result<(), Box<dyn Error>> {
 
 /// Evaluate the schema-driven `mkWorkspaceSpec` fixture to normalized JSON.
 fn evaluate_workspace_spec_fixture() -> Result<String, Box<dyn Error>> {
-    json_text_from_env_or_else(WORKSPACE_REFERENCE_JSON_ENV, evaluate_workspace_spec_fixture_with_nix)
+    json_text_from_env_or_else(
+        WORKSPACE_REFERENCE_JSON_ENV,
+        evaluate_workspace_spec_fixture_with_nix,
+    )
 }
 
 /// Evaluate the web WorkspaceSpec canary to JSON from Nix or an env override.

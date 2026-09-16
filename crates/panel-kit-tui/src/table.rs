@@ -18,10 +18,15 @@ use crate::ResolvedTuiTheme;
 
 /// Render a themed semantic table from a borrowed core [`TableView`].
 pub fn table(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, view: TableView<'_>) {
-    let widths = view.columns.iter().map(|column| width_constraint(column.width));
-    let header = Row::new(view.columns.iter().map(|column| {
-        Cell::from(align_line(Line::from(column.title.as_str()), column.align))
-    }))
+    let widths = view
+        .columns
+        .iter()
+        .map(|column| width_constraint(column.width));
+    let header = Row::new(
+        view.columns
+            .iter()
+            .map(|column| Cell::from(align_line(Line::from(column.title.as_str()), column.align))),
+    )
     .style(Style::default().fg(t.dim));
     let rows = view.rows.iter().map(|row| {
         Row::new(row.cells.iter().enumerate().map(|(index, cell)| {
@@ -59,9 +64,7 @@ pub fn table_native(
 fn semantic_line<'a>(cell: &'a TableCell, t: &ResolvedTuiTheme) -> Line<'a> {
     match cell {
         TableCell::Text(text) => Line::from(text.as_str()),
-        TableCell::Status { label, color } => {
-            crate::status::labeled_borrowed(*color, label)
-        }
+        TableCell::Status { label, color } => crate::status::labeled_borrowed(*color, label),
         TableCell::Meter { ratio, text, color } => {
             let span = match color {
                 Some(color) => crate::meter::span(*ratio, 8, *color),
@@ -91,4 +94,3 @@ fn width_constraint(width: ColumnWidth) -> Constraint {
         ColumnWidth::Flex { weight } => Constraint::Fill(weight),
     }
 }
-

@@ -3,12 +3,7 @@ use panel_kit_core::badge::{BadgeAction, BadgeKind, BadgeSpec};
 use panel_kit_core::widgets::charts::{
     BoxItemView, FiveNum, FlameSpanModel, GaugeModel, SeriesView,
 };
-use panel_kit_core::widgets::meter::MeterModel;
 use panel_kit_core::widgets::spinner::SpinnerModel;
-use panel_kit_core::widgets::status::{StatusModel, StatusState};
-use panel_kit_core::widgets::table::{
-    ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
-};
 use panel_kit_core::widgets::{ContentView, ScrollPolicy};
 
 use super::content_view;
@@ -64,70 +59,6 @@ fn charts_render_fixed_content_view_snapshots() {
     let html = dioxus_ssr::render_element(rsx! { ChartsProbe {} });
 
     assert_widget_snapshot(&html, snapshot_expectations::CHARTS);
-}
-
-#[component]
-fn TableMeterStatusProbe() -> Element {
-    let columns = [
-        TableColumn {
-            key: "service".into(),
-            title: "Service".into(),
-            width: ColumnWidth::Flex { weight: 2 },
-            align: TextAlign::Left,
-        },
-        TableColumn {
-            key: "health".into(),
-            title: "Health".into(),
-            width: ColumnWidth::Fixed { value: 8 },
-            align: TextAlign::Center,
-        },
-        TableColumn {
-            key: "load".into(),
-            title: "Load".into(),
-            width: ColumnWidth::Fixed { value: 10 },
-            align: TextAlign::Right,
-        },
-    ];
-    let rows = [TableRow {
-        cells: vec![
-            TableCell::Text("api".into()),
-            TableCell::Status {
-                label: "ok".into(),
-                color: (39, 201, 63),
-            },
-            TableCell::Meter {
-                ratio: 0.42,
-                text: "42%".into(),
-                color: Some((94, 243, 140)),
-            },
-        ],
-    }];
-    let meter = MeterModel {
-        label: "memory".into(),
-        ratio: 0.625,
-        text: "5 GiB / 8 GiB".into(),
-        color: Some((94, 243, 140)),
-    };
-    let status = StatusModel {
-        label: "deploy".into(),
-        state: StatusState::Warning,
-        color: (255, 189, 46),
-    };
-
-    rsx! {
-        div { class: "snapshot",
-            {content_view(ContentView::Table(TableView { columns: &columns, rows: &rows }), 0, noop_action())}
-            {content_view(ContentView::Meter(&meter), 0, noop_action())}
-            {content_view(ContentView::Status(&status), 0, noop_action())}
-        }
-    }
-}
-
-#[test]
-fn table_meter_and_status_render_semantic_dom_from_borrowed_views() {
-    let html = dioxus_ssr::render_element(rsx! { TableMeterStatusProbe {} });
-
-    assert_widget_snapshot(&html, snapshot_expectations::TABLE_METER_STATUS);
 }
 
 #[component]

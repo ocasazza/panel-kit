@@ -1,6 +1,6 @@
 use crate::reducer::{ReduceContext, Snapshot, Viewport};
 use crate::{
-    Clamp, CommandStep, Key, KeyChord, LayoutBuilder, Mode, PanelKind, PanelWin,
+    Clamp, CommandStep, Key, KeyChord, LayoutBuilder, Mode, PanelKind, PanelWin, SnapPolicy,
     SurfaceCapabilities, SurfaceProfile, TileMetrics, Units, WEB_COMPACT_MAX, WEB_TABLET_MAX,
 };
 use serde::{Deserialize, Serialize};
@@ -56,6 +56,7 @@ pub(super) fn web_context() -> ReduceContext<'static> {
         clamp: &Clamp::WEB,
         command_step: CommandStep::WEB,
         tile: &TileMetrics::WEB,
+        snap: SnapPolicy::default(),
     }
 }
 

@@ -15,6 +15,7 @@ use panel_kit::{LayoutBuilder, PanelKind, PanelWin};
 use panel_kit_core::persist::SavePolicy;
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 #[path = "support/composable_workspace.rs"]
 mod composable_workspace;
 
@@ -35,7 +36,6 @@ const DEMO_CSS: &str = "
 ///
 /// Stable `Panel` serde ID is unchanged: `Handoff`.
 const STORAGE_KEY: &str = "panel_kit_loading_workspace_demo";
-
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 enum Panel {
@@ -169,8 +169,8 @@ fn App() -> Element {
                                     {panel_kit::widgets::panel::panel_chrome_with_events(
                                         panel,
                                         meta,
-                                        emit.clone(),
-                                        Some(panel_kit::widgets::panel::traffic_lights(panel, emit.clone())),
+                                        emit,
+                                        Some(panel_kit::widgets::panel::traffic_lights(panel, emit)),
                                         None,
                                     )}
                                     {panel_kit::widgets::panel::panel_body(match panel.key {
@@ -183,13 +183,13 @@ fn App() -> Element {
                                             }
                                         },
                                     })}
-                                    {panel_kit::widgets::panel::resize_grip(panel, emit.clone())}
+                                    {panel_kit::widgets::panel::resize_grip(panel, emit)}
                                 })
                             }
                         }
                     }
                 }
-                {panel_kit::widgets::dock::dock(frame.dock, &workspace.catalog, emit.clone())}
+                {panel_kit::widgets::dock::dock(frame.dock, &workspace.catalog, emit, None)}
             }
         }
     }

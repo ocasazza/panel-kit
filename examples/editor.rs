@@ -32,6 +32,7 @@ use panel_kit_core::frame::Placement;
 use panel_kit_core::persist::SavePolicy;
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 #[path = "support/composable_workspace.rs"]
 mod composable_workspace;
 
@@ -56,7 +57,6 @@ const DEMO_CSS: &str = "
 ///
 /// Stable `Panel` serde IDs are unchanged: `Editor`, `Controls`, `Mirror`.
 const STORAGE_KEY: &str = "panel_kit_example_editor";
-
 
 const SAMPLE_PEST: &str = r##"// pest grammar for a line graph
 line_graph = { SOI ~ line* ~ EOI }
@@ -326,18 +326,18 @@ fn App() -> Element {
                                 {panel_kit::widgets::panel::panel_chrome_with_events(
                                     panel,
                                     meta,
-                                    emit.clone(),
-                                    Some(panel_kit::widgets::panel::traffic_lights(panel, emit.clone())),
+                                    emit,
+                                    Some(panel_kit::widgets::panel::traffic_lights(panel, emit)),
                                     None,
                                 )}
                                 {panel_kit::widgets::panel::panel_body(body(panel.key, maximized))}
-                                {panel_kit::widgets::panel::resize_grip(panel, emit.clone())}
+                                {panel_kit::widgets::panel::resize_grip(panel, emit)}
                             })
                         }
                     }
                 }
             }
-            {panel_kit::widgets::dock::dock(frame.dock, &workspace.catalog, emit.clone())}
+            {panel_kit::widgets::dock::dock(frame.dock, &workspace.catalog, emit, None)}
         }
     }
 }

@@ -3,7 +3,9 @@ use crate::{effective_mode, front_z, Clamp, Mode, PanelKey, Region, WinState};
 
 use super::chrome::{panel_chrome, PanelChromeMetrics};
 use super::scratch::ProjectionBuffer;
-use super::tiling::{content_extent, panel_region, project_tiles, projected_scroll, PanelRegionContext};
+use super::tiling::{
+    content_extent, panel_region, project_tiles, projected_scroll, PanelRegionContext,
+};
 use super::{FrameStatus, PanelProjection, ProjectedFrame, ProjectionInput};
 
 ///
@@ -88,10 +90,17 @@ pub fn project_into<'frame, K: PanelKey>(
     if input.chrome.dock {
         super::project_dock_into(&snapshot.panels, chrome.dock, &mut scratch.dock);
     }
-    let tile_grid = (mode == Mode::Tiling).then(|| project_tiles(snapshot, chrome.workspace, input.tile, scratch));
+    let tile_grid = (mode == Mode::Tiling)
+        .then(|| project_tiles(snapshot, chrome.workspace, input.tile, scratch));
     let scroll = projected_scroll(snapshot, mode, chrome.workspace, tile_grid, scratch);
     project_panels(input, chrome.workspace, mode, tile_grid, scroll, scratch);
-    let content_extent = content_extent(snapshot, mode, chrome.workspace, tile_grid, scratch.panel_order.as_slice());
+    let content_extent = content_extent(
+        snapshot,
+        mode,
+        chrome.workspace,
+        tile_grid,
+        scratch.panel_order.as_slice(),
+    );
 
     ProjectedFrame {
         status,
@@ -106,7 +115,11 @@ pub fn project_into<'frame, K: PanelKey>(
     }
 }
 
-fn frame_status<K: PanelKey>(snapshot: &Snapshot<K>, clamp: &Clamp, workspace: Region) -> FrameStatus {
+fn frame_status<K: PanelKey>(
+    snapshot: &Snapshot<K>,
+    clamp: &Clamp,
+    workspace: Region,
+) -> FrameStatus {
     let finite = snapshot.viewport.width.is_finite()
         && snapshot.viewport.height.is_finite()
         && workspace.x.is_finite()
@@ -137,13 +150,26 @@ fn project_panels<K: PanelKey>(
         let (region, placement) = panel_region(
             panel,
             source_index,
-            PanelRegionContext { workspace, mode, tile_grid, scroll, input, tile_rows: &scratch.tile_rows },
+            PanelRegionContext {
+                workspace,
+                mode,
+                tile_grid,
+                scroll,
+                input,
+                tile_rows: &scratch.tile_rows,
+            },
         );
         if region.w <= 0.0 || region.h <= 0.0 {
             continue;
         }
 
-        let chrome = panel_chrome(region, panel.state, input.surface, input.chrome, PanelChromeMetrics::for_input(input.chrome, input.surface));
+        let chrome = panel_chrome(
+            region,
+            panel.state,
+            input.surface,
+            input.chrome,
+            PanelChromeMetrics::for_input(input.chrome, input.surface),
+        );
         scratch.panels.push(PanelProjection {
             source_index,
             key: panel.kind,
@@ -165,9 +191,13 @@ fn fill_panel_order<K: PanelKey>(snapshot: &Snapshot<K>, mode: Mode, out: &mut V
         return;
     }
 
-    out.extend(snapshot.panels.iter().enumerate().filter_map(|(index, panel)| {
-        (panel.state != WinState::Minimized).then_some(index)
-    }));
+    out.extend(
+        snapshot
+            .panels
+            .iter()
+            .enumerate()
+            .filter_map(|(index, panel)| (panel.state != WinState::Minimized).then_some(index)),
+    );
     if mode == Mode::Floating {
         out.sort_by_key(|&index| (snapshot.panels[index].z, index));
     }

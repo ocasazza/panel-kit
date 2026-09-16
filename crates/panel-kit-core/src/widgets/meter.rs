@@ -42,7 +42,12 @@ mod tests {
 
     #[test]
     fn meter_model_carries_semantic_fields() {
-        let model = MeterModel { label: "cpu".into(), ratio: 0.42, text: "42%".into(), color: Some((10, 20, 30)) };
+        let model = MeterModel {
+            label: "cpu".into(),
+            ratio: 0.42,
+            text: "42%".into(),
+            color: Some((10, 20, 30)),
+        };
 
         assert_eq!(model.label, "cpu");
         assert_eq!(model.color, Some((10, 20, 30)));

@@ -12,9 +12,9 @@ use std::collections::HashSet;
 use panel_kit_core::spec::{BackendKind, BindingManifest, WorkspaceSpec};
 use serde_json::Value;
 
-pub(crate) use backend_disposition::{tui_field_dispositions, web_field_dispositions};
 #[cfg(test)]
 pub(crate) use backend_disposition::FieldDisposition;
+pub(crate) use backend_disposition::{tui_field_dispositions, web_field_dispositions};
 pub(crate) use leaf_pointers::schema_leaf_pointers;
 
 use crate::diagnostics::DiagnosticReport;

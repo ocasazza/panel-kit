@@ -1,6 +1,4 @@
-use panel_kit_core::spec::{
-    BackendKind, BindingManifest, ContentKind, PanelProviderDeclaration,
-};
+use panel_kit_core::spec::{BackendKind, BindingManifest, ContentKind, PanelProviderDeclaration};
 
 #[cfg(feature = "spec-plan")]
 use panel_kit_core::badge::{tag_hue, BadgeKind, BadgeSpec};
@@ -353,7 +351,9 @@ pub mod content {
 
     use panel_kit_core::badge::{BadgeKind, BadgeSpec};
     use panel_kit_core::reducer::Snapshot;
-    use panel_kit_core::widgets::charts::{five_num, BoxItemModel, BoxItemView, SeriesModel, SeriesView};
+    use panel_kit_core::widgets::charts::{
+        five_num, BoxItemModel, BoxItemView, SeriesModel, SeriesView,
+    };
     use panel_kit_core::widgets::meter::MeterModel;
     use panel_kit_core::widgets::status::StatusModel;
     use panel_kit_core::widgets::table::{TableModel, TableView};
@@ -422,34 +422,70 @@ pub mod content {
     ) {
         content_kinds.insert(content.kind());
         match content {
-            ContentSpec::Custom { binding } if binding == "canary.workspace" => render_workspace_intro(frame, area, context),
-            ContentSpec::Custom { binding } if binding == "canary.theme" => render_theme_panel(frame, area, context.theme, demo),
-            ContentSpec::Custom { binding } => render_binding_placeholder(frame, area, context.theme, binding),
-            ContentSpec::Text { source, scroll } => render_text(frame, area, context.theme, source, *scroll, demo),
-            ContentSpec::Editor { binding, placeholder, .. } => render_editor_binding(frame, area, binding, placeholder),
-            ContentSpec::Badges { source } => render_badges(frame, area, context.theme, source, demo),
+            ContentSpec::Custom { binding } if binding == "canary.workspace" => {
+                render_workspace_intro(frame, area, context)
+            }
+            ContentSpec::Custom { binding } if binding == "canary.theme" => {
+                render_theme_panel(frame, area, context.theme, demo)
+            }
+            ContentSpec::Custom { binding } => {
+                render_binding_placeholder(frame, area, context.theme, binding)
+            }
+            ContentSpec::Text { source, scroll } => {
+                render_text(frame, area, context.theme, source, *scroll, demo)
+            }
+            ContentSpec::Editor {
+                binding,
+                placeholder,
+                ..
+            } => render_editor_binding(frame, area, binding, placeholder),
+            ContentSpec::Badges { source } => {
+                render_badges(frame, area, context.theme, source, demo)
+            }
             ContentSpec::Table { source } => render_table(frame, area, context.theme, source),
-            ContentSpec::TimeSeries { source, unit } => render_time_series(frame, area, context.theme, source, unit, demo),
+            ContentSpec::TimeSeries { source, unit } => {
+                render_time_series(frame, area, context.theme, source, unit, demo)
+            }
             ContentSpec::Gauges { source } => render_gauges(frame, area, context.theme, source),
-            ContentSpec::Flamegraph { source } => render_flame(frame, area, context.theme, source, demo),
-            ContentSpec::Boxplot { source } => render_boxplot(frame, area, context.theme, source, demo),
+            ContentSpec::Flamegraph { source } => {
+                render_flame(frame, area, context.theme, source, demo)
+            }
+            ContentSpec::Boxplot { source } => {
+                render_boxplot(frame, area, context.theme, source, demo)
+            }
             ContentSpec::Meter { source } => render_meter(frame, area, context.theme, source),
             ContentSpec::Status { source } => render_status(frame, area, source),
-            ContentSpec::Spinner { label } => render_spinner(frame, area, context.theme, label, demo.tick),
+            ContentSpec::Spinner { label } => {
+                render_spinner(frame, area, context.theme, label, demo.tick)
+            }
         }
     }
 
-    fn render_workspace_intro(frame: &mut ratatui::Frame, area: Rect, context: ContentRenderContext<'_>) {
+    fn render_workspace_intro(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        context: ContentRenderContext<'_>,
+    ) {
         let mode = match context.snapshot.preferred_mode {
             panel_kit_core::Mode::Floating => "floating",
             panel_kit_core::Mode::Tiling => "tiling",
         };
         frame.render_widget(
             Paragraph::new(vec![
-                Line::from(Span::styled("panel-kit-tui workspace-spec canary", Style::default().fg(context.theme.fg))),
+                Line::from(Span::styled(
+                    "panel-kit-tui workspace-spec canary",
+                    Style::default().fg(context.theme.fg),
+                )),
                 Line::from(""),
-                Line::from("Host owns Snapshot, reducer effects, projection scratch, and render order."),
-                Line::from(format!("Spec: {} · mode: {mode} · cells: {:.0}×{:.0}", context.resolved.id, context.snapshot.viewport.width, context.snapshot.viewport.height)),
+                Line::from(
+                    "Host owns Snapshot, reducer effects, projection scratch, and render order.",
+                ),
+                Line::from(format!(
+                    "Spec: {} · mode: {mode} · cells: {:.0}×{:.0}",
+                    context.resolved.id,
+                    context.snapshot.viewport.width,
+                    context.snapshot.viewport.height
+                )),
                 Line::from("Input: crossterm → tui::input → core reduce → SavePolicy."),
             ])
             .style(Style::default().fg(context.theme.dim)),
@@ -457,12 +493,32 @@ pub mod content {
         );
     }
 
-    fn render_binding_placeholder(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, binding: &str) {
-        frame.render_widget(Paragraph::new(format!("native binding: {binding}")).style(Style::default().fg(theme.dim)), area);
+    fn render_binding_placeholder(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        binding: &str,
+    ) {
+        frame.render_widget(
+            Paragraph::new(format!("native binding: {binding}"))
+                .style(Style::default().fg(theme.dim)),
+            area,
+        );
     }
 
-    fn render_editor_binding(frame: &mut ratatui::Frame, area: Rect, binding: &str, placeholder: &str) {
-        frame.render_widget(Paragraph::new(vec![Line::from(format!("editor binding: {binding}")), Line::from(placeholder)]), area);
+    fn render_editor_binding(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        binding: &str,
+        placeholder: &str,
+    ) {
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(format!("editor binding: {binding}")),
+                Line::from(placeholder),
+            ]),
+            area,
+        );
     }
 
     fn render_text(
@@ -483,11 +539,19 @@ pub mod content {
                 frame.render_widget(Paragraph::new(lines), area);
                 demo.notes_scroll
             }
-            ScrollPolicy::Wrap | ScrollPolicy::Auto => panel_kit_tui::scroll::lines(frame, area, theme, lines, demo.notes_scroll),
+            ScrollPolicy::Wrap | ScrollPolicy::Auto => {
+                panel_kit_tui::scroll::lines(frame, area, theme, lines, demo.notes_scroll)
+            }
         };
     }
 
-    fn render_badges(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, source: &DataSource<Vec<BadgeSpec>>, demo: &mut DemoData) {
+    fn render_badges(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        source: &DataSource<Vec<BadgeSpec>>,
+        demo: &mut DemoData,
+    ) {
         let owned;
         let badges = match source {
             DataSource::Inline { value } => value.as_slice(),
@@ -502,24 +566,56 @@ pub mod content {
             if row as u16 >= area.height.saturating_sub(4) {
                 break;
             }
-            let rect = Rect::new(area.x, area.y + row as u16, panel_kit_tui::badge::width(badge).min(area.width), 1);
+            let rect = Rect::new(
+                area.x,
+                area.y + row as u16,
+                panel_kit_tui::badge::width(badge).min(area.width),
+                1,
+            );
             if source.binding_id() == Some("canary.badges") {
                 demo.badge_zones.push((rect, index));
             }
-            frame.render_widget(Paragraph::new(Line::from(panel_kit_tui::badge::spans(badge, theme))), rect);
+            frame.render_widget(
+                Paragraph::new(Line::from(panel_kit_tui::badge::spans(badge, theme))),
+                rect,
+            );
         }
         render_recent_actions(frame, area, theme, demo);
     }
 
-    fn render_recent_actions(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, demo: &DemoData) {
+    fn render_recent_actions(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        demo: &DemoData,
+    ) {
         let log_y = area.y + area.height.saturating_sub(3);
-        let recent = demo.actions.iter().rev().take(3).map(|action| Line::from(Span::styled(action.as_str(), Style::default().fg(theme.badge_info)))).collect::<Vec<_>>();
+        let recent = demo
+            .actions
+            .iter()
+            .rev()
+            .take(3)
+            .map(|action| {
+                Line::from(Span::styled(
+                    action.as_str(),
+                    Style::default().fg(theme.badge_info),
+                ))
+            })
+            .collect::<Vec<_>>();
         if log_y > area.y {
-            frame.render_widget(Paragraph::new(recent), Rect::new(area.x, log_y, area.width, 3.min(area.height)));
+            frame.render_widget(
+                Paragraph::new(recent),
+                Rect::new(area.x, log_y, area.width, 3.min(area.height)),
+            );
         }
     }
 
-    fn render_table(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, source: &DataSource<TableModel>) {
+    fn render_table(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        source: &DataSource<TableModel>,
+    ) {
         let owned;
         let model = match source {
             DataSource::Inline { value } => value,
@@ -529,10 +625,25 @@ pub mod content {
             }
             DataSource::Binding { .. } => return,
         };
-        panel_kit_tui::table::table(frame, area, theme, TableView { columns: &model.columns, rows: &model.rows });
+        panel_kit_tui::table::table(
+            frame,
+            area,
+            theme,
+            TableView {
+                columns: &model.columns,
+                rows: &model.rows,
+            },
+        );
     }
 
-    fn render_time_series(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, source: &DataSource<Vec<SeriesModel>>, unit: &str, demo: &DemoData) {
+    fn render_time_series(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        source: &DataSource<Vec<SeriesModel>>,
+        unit: &str,
+        demo: &DemoData,
+    ) {
         let inline_views;
         let live_series;
         let series = match source {
@@ -549,7 +660,12 @@ pub mod content {
         time_series(frame, area, theme, unit, series);
     }
 
-    fn render_gauges(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, source: &DataSource<Vec<panel_kit_core::widgets::charts::GaugeModel>>) {
+    fn render_gauges(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        source: &DataSource<Vec<panel_kit_core::widgets::charts::GaugeModel>>,
+    ) {
         let owned;
         let gauges_data = match source {
             DataSource::Inline { value } => value.as_slice(),
@@ -562,7 +678,13 @@ pub mod content {
         gauges(frame, area, theme, gauges_data);
     }
 
-    fn render_flame(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, source: &DataSource<Vec<panel_kit_core::widgets::charts::FlameSpanModel>>, demo: &DemoData) {
+    fn render_flame(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        source: &DataSource<Vec<panel_kit_core::widgets::charts::FlameSpanModel>>,
+        demo: &DemoData,
+    ) {
         let owned;
         let spans = match source {
             DataSource::Inline { value } => value.as_slice(),
@@ -575,7 +697,13 @@ pub mod content {
         flame(frame, area, theme, spans);
     }
 
-    fn render_boxplot(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, source: &DataSource<Vec<BoxItemModel>>, demo: &DemoData) {
+    fn render_boxplot(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        source: &DataSource<Vec<BoxItemModel>>,
+        demo: &DemoData,
+    ) {
         let inline_items;
         let live_items;
         let items = match source {
@@ -592,34 +720,90 @@ pub mod content {
         boxplot(frame, area, theme, items);
     }
 
-    fn render_meter(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, source: &DataSource<MeterModel>) {
-        if let Some(model) = inline_or_default(source, MeterModel { label: "meter".into(), ratio: 0.5, text: "50%".into(), color: None }) {
-            frame.render_widget(Paragraph::new(Line::from(vec![Span::styled(model.label.as_str(), Style::default().fg(theme.fg)), Span::raw(" "), panel_kit_tui::meter::span_model(&model, 12), Span::raw(" "), Span::raw(model.text.as_str())])), area);
+    fn render_meter(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        source: &DataSource<MeterModel>,
+    ) {
+        if let Some(model) = inline_or_default(
+            source,
+            MeterModel {
+                label: "meter".into(),
+                ratio: 0.5,
+                text: "50%".into(),
+                color: None,
+            },
+        ) {
+            frame.render_widget(
+                Paragraph::new(Line::from(vec![
+                    Span::styled(model.label.as_str(), Style::default().fg(theme.fg)),
+                    Span::raw(" "),
+                    panel_kit_tui::meter::span_model(&model, 12),
+                    Span::raw(" "),
+                    Span::raw(model.text.as_str()),
+                ])),
+                area,
+            );
         }
     }
 
     fn render_status(frame: &mut ratatui::Frame, area: Rect, source: &DataSource<StatusModel>) {
-        if let Some(model) = inline_or_default(source, StatusModel { label: "status".into(), state: panel_kit_core::widgets::status::StatusState::Info, color: (131, 183, 204) }) {
+        if let Some(model) = inline_or_default(
+            source,
+            StatusModel {
+                label: "status".into(),
+                state: panel_kit_core::widgets::status::StatusState::Info,
+                color: (131, 183, 204),
+            },
+        ) {
             frame.render_widget(Paragraph::new(panel_kit_tui::status::line(&model)), area);
         }
     }
 
-    fn render_spinner(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, label: &DataSource<String>, tick: u64) {
+    fn render_spinner(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        label: &DataSource<String>,
+        tick: u64,
+    ) {
         let fallback = String::from("spinner");
         let text = match label {
             DataSource::Inline { value } => value.as_str(),
             DataSource::Binding { id } => id.as_str(),
         };
-        let text = if text.is_empty() { fallback.as_str() } else { text };
+        let text = if text.is_empty() {
+            fallback.as_str()
+        } else {
+            text
+        };
         frame.render_widget(Paragraph::new(spinner(tick, text, theme)), area);
     }
 
-    fn render_theme_panel(frame: &mut ratatui::Frame, area: Rect, theme: &ResolvedTuiTheme, demo: &mut DemoData) {
+    fn render_theme_panel(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        demo: &mut DemoData,
+    ) {
         demo.theme_zone = area;
-        let swatch = |color, name: &'static str| Line::from(vec![Span::styled("## ", Style::default().fg(color)), Span::styled(name, Style::default().fg(theme.dim))]);
+        let swatch = |color, name: &'static str| {
+            Line::from(vec![
+                Span::styled("## ", Style::default().fg(color)),
+                Span::styled(name, Style::default().fg(theme.dim)),
+            ])
+        };
         frame.render_widget(
             Paragraph::new(vec![
-                Line::from(Span::styled(if demo.paper { "preset: paper (press p)" } else { "preset: spec default (press p)" }, Style::default().fg(theme.fg))),
+                Line::from(Span::styled(
+                    if demo.paper {
+                        "preset: paper (press p)"
+                    } else {
+                        "preset: spec default (press p)"
+                    },
+                    Style::default().fg(theme.fg),
+                )),
                 swatch(theme.blue, "blue · mode light"),
                 swatch(theme.yellow, "yellow · minimize"),
                 swatch(theme.pink, "pink · maximize"),
@@ -642,11 +826,26 @@ pub mod content {
     }
 
     fn series_views(series: &[SeriesModel]) -> Vec<SeriesView<'_>> {
-        series.iter().map(|item| SeriesView { name: item.name.as_str(), points: &item.points }).collect()
+        series
+            .iter()
+            .map(|item| SeriesView {
+                name: item.name.as_str(),
+                points: &item.points,
+            })
+            .collect()
     }
 
     fn box_item_views(items: &[BoxItemModel]) -> Vec<BoxItemView<'_>> {
-        items.iter().filter_map(|item| five_num(&item.samples).map(|summary| BoxItemView { label: item.label.as_str(), summary, color: item.color })).collect()
+        items
+            .iter()
+            .filter_map(|item| {
+                five_num(&item.samples).map(|summary| BoxItemView {
+                    label: item.label.as_str(),
+                    summary,
+                    color: item.color,
+                })
+            })
+            .collect()
     }
 
     fn inline_or_default<T: Clone>(source: &DataSource<T>, fallback: T) -> Option<T> {

@@ -73,7 +73,9 @@ mod tests {
 
     #[test]
     fn scroll_math_reuses_core_semantics() {
-        assert_eq!(max_offset(10, 4), panel_kit_core::widgets::scroll::max_offset(10, 4));
+        assert_eq!(
+            max_offset(10, 4),
+            panel_kit_core::widgets::scroll::max_offset(10, 4)
+        );
     }
 }
-

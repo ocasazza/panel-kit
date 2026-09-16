@@ -18,8 +18,8 @@
 //! - the web `:root` block, terminal palette, and `DESIGN.md` token region
 //!   are generated consumers of the emitters in this module.
 
-mod emitter;
 mod color;
+mod emitter;
 mod presets;
 mod schema;
 mod semantic;

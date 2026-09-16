@@ -1,9 +1,8 @@
+#[path = "support/legacy_chart_painters.rs"]
+mod legacy_chart_painters;
 #[allow(dead_code)]
 #[path = "../examples/workspace_canary.rs"]
 mod workspace_canary;
-#[path = "support/legacy_chart_painters.rs"]
-mod legacy_chart_painters;
-
 
 use panel_kit_core::badge::{display_label, BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec};
 use panel_kit_core::widgets::charts::{
@@ -122,7 +121,6 @@ fn canary_provider_widgets_are_buffer_identical_after_core_model_switch() {
 
     assert_eq!(core_model_buffer, legacy_buffer);
 }
-
 
 #[test]
 fn widget_painters_render_core_models_to_test_backend() {
@@ -247,7 +245,9 @@ fn render_to_buffer_size(
 ) -> ratatui::buffer::Buffer {
     let mut terminal =
         Terminal::new(TestBackend::new(width, height)).expect("test backend initializes");
-    terminal.draw(|frame| render(frame)).expect("render succeeds");
+    terminal
+        .draw(|frame| render(frame))
+        .expect("render succeeds");
     terminal.backend().buffer().clone()
 }
 
@@ -297,7 +297,13 @@ fn render_core_canary_provider_buffer() -> ratatui::buffer::Buffer {
     };
 
     render_to_buffer_size(96, 24, |frame| {
-        render_badges(frame, Rect::new(0, 0, 36, 11), &theme, &badges, badge::spans);
+        render_badges(
+            frame,
+            Rect::new(0, 0, 36, 11),
+            &theme,
+            &badges,
+            badge::spans,
+        );
         charts::time_series(frame, Rect::new(38, 0, 30, 7), &theme, "ms", &series);
         charts::gauges(frame, Rect::new(70, 0, 25, 4), &theme, &capacity);
         charts::flame(frame, Rect::new(38, 8, 40, 4), &theme, &flame);
@@ -335,20 +341,9 @@ fn render_legacy_canary_provider_buffer() -> ratatui::buffer::Buffer {
             &badges,
             legacy_badge_spans,
         );
-        legacy_chart_painters::time_series(
-            frame,
-            Rect::new(38, 0, 30, 7),
-            &theme,
-            "ms",
-            &series,
-        );
+        legacy_chart_painters::time_series(frame, Rect::new(38, 0, 30, 7), &theme, "ms", &series);
         legacy_chart_painters::gauges(frame, Rect::new(70, 0, 25, 4), &theme, &capacity);
-        legacy_chart_painters::flame(
-            frame,
-            Rect::new(38, 8, 40, 4),
-            &theme,
-            &flame,
-        );
+        legacy_chart_painters::flame(frame, Rect::new(38, 8, 40, 4), &theme, &flame);
         table::table_native(
             frame,
             Rect::new(0, 12, 38, 5),
@@ -357,12 +352,7 @@ fn render_legacy_canary_provider_buffer() -> ratatui::buffer::Buffer {
             &widths,
             rows.clone(),
         );
-        legacy_chart_painters::boxplot(
-            frame,
-            Rect::new(40, 13, 50, 7),
-            &theme,
-            &boxes,
-        );
+        legacy_chart_painters::boxplot(frame, Rect::new(40, 13, 50, 7), &theme, &boxes);
     })
 }
 

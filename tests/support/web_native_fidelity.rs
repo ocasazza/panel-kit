@@ -15,7 +15,10 @@ pub fn assert_controller_era_panel_semantics(html: &str) {
     let actual = semantic_nodes(html);
     let expected = controller_era_panel_semantics();
 
-    assert_eq!(actual, expected, "SSR native panel semantics drifted.\nHTML:\n{html}");
+    assert_eq!(
+        actual, expected,
+        "SSR native panel semantics drifted.\nHTML:\n{html}"
+    );
 }
 
 macro_rules! node {
@@ -93,7 +96,9 @@ fn semantic_nodes(html: &str) -> Vec<SemanticNode> {
 fn split_tag(source: &str) -> (&str, &str) {
     source
         .split_once(char::is_whitespace)
-        .map_or((source.trim_end_matches('/'), ""), |(tag, attrs)| (tag, attrs))
+        .map_or((source.trim_end_matches('/'), ""), |(tag, attrs)| {
+            (tag, attrs)
+        })
 }
 
 fn attr(attrs: &str, name: &str) -> Option<String> {
@@ -110,11 +115,21 @@ fn node_descriptor(tag: &str, class: Option<&str>) -> String {
 fn is_native_panel_node(node: &SemanticNode) -> bool {
     matches!(
         node.class.as_deref(),
-        Some("panel panel-nodes focused" | "panel-body" | "panel-head" | "panel-title" | "panel-head-actions" | "lights" | "light mode" | "light yellow" | "light max" | "resize")
+        Some(
+            "panel panel-nodes focused"
+                | "panel-body"
+                | "panel-head"
+                | "panel-title"
+                | "panel-head-actions"
+                | "lights"
+                | "light mode"
+                | "light yellow"
+                | "light max"
+                | "resize"
+        )
     )
 }
 
 fn optional(value: Option<&str>) -> Option<String> {
     value.map(ToString::to_string)
 }
-

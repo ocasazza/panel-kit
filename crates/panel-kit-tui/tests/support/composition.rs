@@ -1,7 +1,4 @@
 #![allow(dead_code)]
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::cell::Cell;
-use std::sync::{atomic::{AtomicUsize, Ordering}, Mutex};
 use panel_kit_core::frame::{
     project_into, ChromeProjectionInput, ProjectionBuffer, ProjectionInput, TileLayoutMetrics,
 };
@@ -17,6 +14,12 @@ use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 use ratatui::Terminal;
 use serde::{Deserialize, Serialize};
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Mutex,
+};
 
 pub(crate) struct CountingAllocator;
 
@@ -71,9 +74,15 @@ impl PanelKind for TestPanel {
 pub(crate) fn fixed_snapshot(mode: Mode) -> (Snapshot<TestPanel>, PanelCatalog<TestPanel>) {
     let mut layout = LayoutBuilder::new();
     let mut panels = vec![
-        layout.at(TestPanel::Alpha, 2.0, 1.0, 20.0, 7.0).with_tile(1, 1),
-        layout.at(TestPanel::Beta, 24.0, 2.0, 20.0, 7.0).with_tile(1, 1),
-        layout.at(TestPanel::Docked, 46.0, 2.0, 20.0, 7.0).with_tile(1, 1),
+        layout
+            .at(TestPanel::Alpha, 2.0, 1.0, 20.0, 7.0)
+            .with_tile(1, 1),
+        layout
+            .at(TestPanel::Beta, 24.0, 2.0, 20.0, 7.0)
+            .with_tile(1, 1),
+        layout
+            .at(TestPanel::Docked, 46.0, 2.0, 20.0, 7.0)
+            .with_tile(1, 1),
     ];
     panels[0].z = 20;
     panels[1].z = 10;
@@ -84,7 +93,11 @@ pub(crate) fn fixed_snapshot(mode: Mode) -> (Snapshot<TestPanel>, PanelCatalog<T
         Snapshot {
             panels,
             preferred_mode: mode,
-            viewport: Viewport { width: 80.0, height: 24.0, units: Units::Cells },
+            viewport: Viewport {
+                width: 80.0,
+                height: 24.0,
+                units: Units::Cells,
+            },
             focused: Some(TestPanel::Alpha),
             drag: None,
             tile_drag: None,
@@ -124,12 +137,27 @@ pub(crate) fn draw_composed_workspace(
         .draw(|frame| {
             let projected = project_cells(snapshot, projection);
             hits.clear();
-            widgets::root::draw_root(frame, rect_from_region(projected.chrome.root), &theme, Charset::Ascii);
+            widgets::root::draw_root(
+                frame,
+                rect_from_region(projected.chrome.root),
+                &theme,
+                Charset::Ascii,
+            );
             for panel in projected.panels.iter().copied() {
-                let meta = catalog.get(panel.key).expect("projected panel metadata exists");
+                let meta = catalog
+                    .get(panel.key)
+                    .expect("projected panel metadata exists");
                 widgets::panel::draw_panel_surface(frame, panel, &theme, Charset::Ascii, hits);
                 widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, Charset::Ascii, hits);
-                widgets::panel::draw_traffic_lights(frame, panel, projected.mode, None, &theme, Charset::Ascii, hits);
+                widgets::panel::draw_traffic_lights(
+                    frame,
+                    panel,
+                    projected.mode,
+                    None,
+                    &theme,
+                    Charset::Ascii,
+                    hits,
+                );
                 widgets::panel::draw_resize_grip(frame, panel, None, &theme, hits);
             }
             widgets::dock::draw_dock(
@@ -154,12 +182,21 @@ pub(crate) fn regular_cells_surface() -> SurfaceProfile {
         80.0,
         CELLS_COMPACT_MAX,
         CELLS_TABLET_MAX,
-        SurfaceCapabilities { coarse_pointer: false, hover: true, keyboard: true },
+        SurfaceCapabilities {
+            coarse_pointer: false,
+            hover: true,
+            keyboard: true,
+        },
     )
 }
 
 pub(crate) fn rect_from_region(region: Region) -> Rect {
-    Rect::new(region.x as u16, region.y as u16, region.w as u16, region.h as u16)
+    Rect::new(
+        region.x as u16,
+        region.y as u16,
+        region.w as u16,
+        region.h as u16,
+    )
 }
 
 pub(crate) fn render_to_buffer(
@@ -167,8 +204,11 @@ pub(crate) fn render_to_buffer(
     height: u16,
     mut render: impl FnMut(&mut ratatui::Frame),
 ) -> ratatui::buffer::Buffer {
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend initializes");
-    terminal.draw(|frame| render(frame)).expect("render succeeds");
+    let mut terminal =
+        Terminal::new(TestBackend::new(width, height)).expect("test backend initializes");
+    terminal
+        .draw(|frame| render(frame))
+        .expect("render succeeds");
     terminal.backend().buffer().clone()
 }
 

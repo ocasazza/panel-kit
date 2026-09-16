@@ -64,7 +64,10 @@ pub fn wheel_event_from_parts<K: PanelKey>(
     } else {
         WheelDisposition::BubbleToWorkspace
     };
-    WorkspaceEvent::Wheel { delta_y, disposition }
+    WorkspaceEvent::Wheel {
+        delta_y,
+        disposition,
+    }
 }
 
 /// Translate a Dioxus wheel delta into a core wheel event.
@@ -76,7 +79,11 @@ pub fn wheel_event<K: PanelKey>(event: &dioxus::events::WheelEvent) -> Workspace
 /// Convert a Dioxus pointer event into renderer-neutral coordinates.
 pub fn core_pointer_event(event: &DioxusPointerEvent, kind: PointerEventKind) -> PointerEvent {
     let coordinates = event.client_coordinates();
-    PointerEvent { kind, x: coordinates.x, y: coordinates.y }
+    PointerEvent {
+        kind,
+        x: coordinates.x,
+        y: coordinates.y,
+    }
 }
 
 /// Capture the browser pointer for a drag gesture, if the event exposes one.
@@ -126,7 +133,9 @@ pub fn release_pointer(event: &DioxusPointerEvent) {
 /// Clear browser text selection after a drag gesture.
 pub fn clear_selection() {
     #[cfg(target_arch = "wasm32")]
-    if let Some(selection) = web_sys::window().and_then(|window| window.get_selection().ok().flatten()) {
+    if let Some(selection) =
+        web_sys::window().and_then(|window| window.get_selection().ok().flatten())
+    {
         let _ = selection.remove_all_ranges();
     }
 }
@@ -171,7 +180,11 @@ pub fn panel_body_absorbs_wheel(delta_y: f64) -> bool {
         let Ok(hovered) = document.query_selector_all(".panel-body:hover") else {
             return false;
         };
-        let Some(node) = hovered.length().checked_sub(1).and_then(|index| hovered.item(index)) else {
+        let Some(node) = hovered
+            .length()
+            .checked_sub(1)
+            .and_then(|index| hovered.item(index))
+        else {
             return false;
         };
         let Ok(element) = node.dyn_into::<web_sys::Element>() else {

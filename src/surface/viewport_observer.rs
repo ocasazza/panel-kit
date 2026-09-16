@@ -41,7 +41,10 @@ impl ViewportObserverStatus {
     /// Whether both viewport change mechanisms registered successfully.
     pub fn is_fully_registered(&self) -> bool {
         matches!(self.resize_observer, ViewportObserverState::Registered)
-            && matches!(self.window_resize_listener, ViewportObserverState::Registered)
+            && matches!(
+                self.window_resize_listener,
+                ViewportObserverState::Registered
+            )
     }
 }
 
@@ -97,10 +100,9 @@ struct WindowResizeListener {
 
 impl Drop for WindowResizeListener {
     fn drop(&mut self) {
-        let _ = self.window.remove_event_listener_with_callback(
-            "resize",
-            self.callback.as_ref().unchecked_ref(),
-        );
+        let _ = self
+            .window
+            .remove_event_listener_with_callback("resize", self.callback.as_ref().unchecked_ref());
     }
 }
 

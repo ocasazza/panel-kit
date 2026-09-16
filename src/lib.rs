@@ -7,11 +7,15 @@
 //! renderer-neutral contracts in `panel-kit-core`.
 //!
 //! The crate also ships standalone widgets: the [`badge`] module (a clickable
-//! metadata chip), [`Spinner`], the [`editor`] module (a Monaco code editor
-//! with a `.pest` grammar language), the [`loading`] module (store-shaped async
-//! hydration: [`LoadingGate`], [`ProgressBar`], [`GlobalLoadingBar`]), and a
+//! metadata chip), [`Spinner`], grouped [`widgets::Dropdown`] and
+//! [`widgets::CascadingDropdown`] selectors, the interactive
+//! [`widgets::table`] painter, the [`editor`] and [`ide`] editors, the
+//! [`grafana`] embeds, the [`loading`] module (store-shaped async hydration:
+//! [`LoadingGate`], [`ProgressBar`], [`GlobalLoadingBar`]), and a
 //! [`LoadingWorkspace`] whose static HTML/CSS twin can paint before an app's
-//! WASM bundle finishes loading.
+//! WASM bundle finishes loading. The opt-in `bevy` feature adds `BevyCanvas`,
+//! while [`keepalive`] provides host-policy DOM retention for
+//! imperative panel bodies.
 //!
 //! [`LoadingGate`]: loading::LoadingGate
 //! [`ProgressBar`]: loading::ProgressBar
@@ -139,6 +143,12 @@
 //! - `badge` — every [`badge::BadgeKind`], every prop, and an event log
 //!   proving each [`badge::BadgeAction`] variant fires.
 //! - `spinner` — [`Spinner`] with and without a label.
+//! - `dropdown` — grouped search, keyboard navigation, and host-owned popup
+//!   and selection state through [`widgets::Dropdown`].
+//! - `cascade` — N-level Miller columns that retain host-owned navigation
+//!   state across parent rerenders.
+//! - `table` — host-owned row selection, dense mode, full-value tooltips, and
+//!   the empty-state row over core table models.
 //! - `loading` — the full hydration arc: staged [`LoadingWorkspace`]
 //!   percentage, per-panel [`loading::LoadingGate`]s behind stores, and the
 //!   [`loading::GlobalLoadingBar`] aggregate.
@@ -151,10 +161,18 @@
 
 #[cfg(feature = "web-runtime")]
 pub mod badge;
+#[cfg(feature = "bevy")]
+pub mod bevy;
 #[cfg(feature = "web-runtime")]
 pub mod editor;
 #[cfg(feature = "web-runtime")]
+pub mod grafana;
+#[cfg(feature = "web-runtime")]
+pub mod ide;
+#[cfg(feature = "web-runtime")]
 pub mod input;
+#[cfg(feature = "web-runtime")]
+pub mod keepalive;
 #[cfg(feature = "web-runtime")]
 pub mod loading;
 #[cfg(feature = "spec-plan")]
@@ -167,7 +185,8 @@ pub mod surface;
 pub mod theme;
 #[cfg(feature = "web-runtime")]
 pub mod widgets;
-
+#[cfg(feature = "bevy")]
+pub use bevy::{get_bevy_handle, BevyCanvas, BEVY_CSS};
 
 #[cfg(feature = "web-runtime")]
 use dioxus::events::{KeyboardEvent, PointerEvent as DioxusPointerEvent};
@@ -178,7 +197,7 @@ pub use panel_kit_core::{
     apply_command, command_for, effective_mode, migrate_v1, reconcile_units, Clamp, CommandStep,
     Drag, DragKind, FocusContext, Key, KeyChord, LayoutBuilder, Mode, PanelCommand, PanelKind,
     PanelWin, PointerButton, PointerEvent, PointerEventKind, SavedLayout, SavedLayoutV2,
-    StoredLayout, SurfaceCapabilities, SurfaceClass, SurfaceProfile, Units, WinState,
+    SnapPolicy, StoredLayout, SurfaceCapabilities, SurfaceClass, SurfaceProfile, Units, WinState,
     CELLS_COMPACT_MAX, CELLS_TABLET_MAX, LAYOUT_SCHEMA_VERSION, TILE_ROW_PX, TILE_W_MAX,
     WEB_COMPACT_MAX, WEB_TABLET_MAX,
 };
@@ -322,7 +341,6 @@ pub fn PanelHeaderButton(
 // above. This crate stays the Dioxus adapter: browser input translation, CSS,
 // localStorage transport, and native DOM painters.
 
-
 /// True while an `<input>` or `<textarea>` has focus.
 ///
 /// Re-exported at the crate root for applications that decide whether the
@@ -332,7 +350,6 @@ pub fn PanelHeaderButton(
 pub fn is_editing() -> bool {
     input::is_editing()
 }
-
 
 /// Reusable spinner — a small rotating ring with an optional label.
 ///

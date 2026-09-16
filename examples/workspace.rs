@@ -11,11 +11,11 @@ use dioxus::events::PointerEvent as DioxusPointerEvent;
 use dioxus::prelude::*;
 use panel_kit::CSS;
 
-#[path = "support/spec_workspace.rs"]
-mod spec_workspace;
 #[allow(dead_code, unused_imports)]
 #[path = "support/composable_workspace.rs"]
 mod composable_workspace;
+#[path = "support/spec_workspace.rs"]
+mod spec_workspace;
 
 const SPEC_JSON: &str = include_str!(env!("PANEL_KIT_WORKSPACE_SPEC"));
 
@@ -45,6 +45,9 @@ fn App() -> Element {
     spec_workspace::mount_viewport_observer(&workspace);
     let emit = spec_workspace::workspace_event_handler(&workspace);
     let header_clicks = use_signal(|| 0_u32);
+    let snap_policy = (workspace.snap)();
+    let mut move_snap = workspace.snap;
+    let mut resize_snap = workspace.snap;
 
     let snapshot = workspace.snapshot.read();
     let mut scratch = workspace.scratch.borrow_mut();
@@ -64,7 +67,8 @@ fn App() -> Element {
     let pointer_cancel_workspace = workspace.clone();
     let key_workspace = workspace.clone();
     let wheel_workspace = workspace.clone();
-    let reset_workspace = workspace.clone();
+    let header_reset_workspace = workspace.clone();
+    let dock_reset_workspace = workspace.clone();
 
     rsx! {
         style { {CSS} }
@@ -89,7 +93,7 @@ fn App() -> Element {
                 }
                 span { class: "coverage", "content: {kinds}" }
                 button {
-                    onclick: move |_| spec_workspace::reset_workspace(&reset_workspace),
+                    onclick: move |_| spec_workspace::reset_workspace(&header_reset_workspace),
                     "reset authored layout"
                 }
             }
@@ -100,7 +104,53 @@ fn App() -> Element {
                 {composable_workspace::web_canary::workspace_contents(&frame, &workspace.resolved, emit, header_clicks)}
             }
             if workspace.resolved.chrome.dock {
-                {panel_kit::widgets::dock::dock(frame.dock, &workspace.resolved.catalog, emit)}
+                {panel_kit::widgets::dock::dock(
+                    frame.dock,
+                    &workspace.resolved.catalog,
+                    emit,
+                    Some(rsx! {
+                        div {
+                            class: "snap-toggle",
+                            role: "group",
+                            aria_label: "Pointer snap policy",
+                            button {
+                                r#type: "button",
+                                class: if snap_policy.move_ { "on" } else { "off" },
+                                aria_pressed: snap_policy.move_,
+                                title: "Toggle move snapping",
+                                onclick: move |_| {
+                                    move_snap.with_mut(|policy| policy.move_ = !policy.move_);
+                                },
+                                span { class: "snap-toggle-glyph", aria_hidden: "true",
+                                    if snap_policy.move_ { "●" } else { "○" }
+                                }
+                                " move"
+                            }
+                            button {
+                                r#type: "button",
+                                class: if snap_policy.resize { "on" } else { "off" },
+                                aria_pressed: snap_policy.resize,
+                                title: "Toggle resize snapping",
+                                onclick: move |_| {
+                                    resize_snap.with_mut(|policy| policy.resize = !policy.resize);
+                                },
+                                span { class: "snap-toggle-glyph", aria_hidden: "true",
+                                    if snap_policy.resize { "●" } else { "○" }
+                                }
+                                " resize"
+                            }
+                            button {
+                                r#type: "button",
+                                class: "reset",
+                                title: "Clear saved layout and restore authored geometry",
+                                onclick: move |_| {
+                                    spec_workspace::reset_workspace(&dock_reset_workspace);
+                                },
+                                "reset layout"
+                            }
+                        }
+                    }),
+                )}
             }
         }
     }

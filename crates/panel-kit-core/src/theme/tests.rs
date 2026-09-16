@@ -99,7 +99,11 @@ fn dark_theme_emits_every_web_and_tui_token() {
     let mut keys: Vec<_> = ThemeColor::ALL.iter().map(|slot| slot.key()).collect();
     keys.sort_unstable();
     keys.dedup();
-    assert_eq!(keys.len(), ThemeColor::ALL.len(), "duplicate ThemeColor keys");
+    assert_eq!(
+        keys.len(),
+        ThemeColor::ALL.len(),
+        "duplicate ThemeColor keys"
+    );
 }
 
 /// The non-colour tokens are seeded from the documented canonical values

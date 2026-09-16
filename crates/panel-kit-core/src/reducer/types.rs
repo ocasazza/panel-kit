@@ -1,6 +1,6 @@
 use crate::{
     Clamp, CommandStep, Drag, FocusContext, KeyChord, Mode, PanelCommand, PanelKey, PanelWin,
-    PointerEvent, SurfaceProfile, TileMetrics, Units,
+    PointerEvent, SnapPolicy, SurfaceProfile, TileMetrics, Units,
 };
 use serde::{Deserialize, Serialize};
 
@@ -190,6 +190,8 @@ pub struct ReduceContext<'a> {
     pub command_step: CommandStep,
     /// Tiling span metrics in the host's units.
     pub tile: &'a TileMetrics,
+    /// Session-owned snapping and tiling-reorder policy.
+    pub snap: SnapPolicy,
 }
 
 /// When a reduction's change should be observed by a persistence policy.

@@ -67,7 +67,9 @@ fn require_nullable_schema_fields(schema: &mut Value) -> Result<(), Box<dyn Erro
         let required = object
             .get_mut("required")
             .and_then(Value::as_array_mut)
-            .ok_or_else(|| format!("workspace spec schema is missing $defs/{definition}/required"))?;
+            .ok_or_else(|| {
+                format!("workspace spec schema is missing $defs/{definition}/required")
+            })?;
 
         for &field in fields {
             let required_field = Value::String(field.to_owned());
@@ -106,8 +108,10 @@ mod tests {
     #[test]
     fn workspace_spec_schema_matches_committed_schema() {
         let generated = workspace_spec_schema_json().expect("schema exports");
-        let committed = canonical_json_text(include_str!("../../../nix/schema/workspace-spec.schema.json"))
-            .expect("committed schema is canonicalizable JSON");
+        let committed = canonical_json_text(include_str!(
+            "../../../nix/schema/workspace-spec.schema.json"
+        ))
+        .expect("committed schema is canonicalizable JSON");
 
         assert_eq!(generated, committed);
     }
@@ -139,11 +143,13 @@ mod tests {
 
     #[test]
     fn nix_only_field_is_rejected_by_strict_decode() {
-        let mut doc: Value = serde_json::from_str(include_str!("../fixtures/workspace-spec-reference.json"))
-            .expect("reference spec fixture is JSON");
+        let mut doc: Value =
+            serde_json::from_str(include_str!("../fixtures/workspace-spec-reference.json"))
+                .expect("reference spec fixture is JSON");
         doc["chrome"]["new_field"] = Value::Bool(true);
 
-        let errors = WorkspaceSpec::from_json_value(doc).expect_err("unknown Nix-only field is rejected");
+        let errors =
+            WorkspaceSpec::from_json_value(doc).expect_err("unknown Nix-only field is rejected");
         let first = errors.iter().next().expect("diagnostic exists");
 
         assert_eq!(first.pointer(), "/chrome/new_field");
@@ -157,6 +163,9 @@ mod tests {
             "a": { "b": 2, "a": 1 },
         });
 
-        assert_eq!(canonical_json(&value).unwrap(), r#"{"a":{"a":1,"b":2},"z":1}"#);
+        assert_eq!(
+            canonical_json(&value).unwrap(),
+            r#"{"a":{"a":1,"b":2},"z":1}"#
+        );
     }
 }

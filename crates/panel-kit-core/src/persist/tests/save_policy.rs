@@ -19,8 +19,13 @@ fn save_policy_fake_store_write_counts() {
     assert_reset_clear_does_not_resave();
 }
 
-fn save_policy_cases() -> [(&'static str, SavePolicy, Reduction<TestPanel>, SaveDecision, usize); 9]
-{
+fn save_policy_cases() -> [(
+    &'static str,
+    SavePolicy,
+    Reduction<TestPanel>,
+    SaveDecision,
+    usize,
+); 9] {
     [
         (
             "Manual continuous",
@@ -101,11 +106,19 @@ fn unchanged() -> Reduction<TestPanel> {
 }
 
 fn reduction(changed: bool, phase: Option<ChangePhase>) -> Reduction<TestPanel> {
-    Reduction { changed, phase, focus_request: None }
+    Reduction {
+        changed,
+        phase,
+        focus_request: None,
+    }
 }
 
 fn assert_reset_clear_does_not_resave() {
-    for policy in [SavePolicy::Manual, SavePolicy::OnSettle, SavePolicy::OnChange] {
+    for policy in [
+        SavePolicy::Manual,
+        SavePolicy::OnSettle,
+        SavePolicy::OnChange,
+    ] {
         let store = MemoryStore::seeded(v2_unknown_json());
 
         let decision = policy.reset_decision();
@@ -113,7 +126,14 @@ fn assert_reset_clear_does_not_resave() {
         apply_save_decision(decision, &store, &defaults(), &catalog()).unwrap();
 
         assert_eq!(store.clear_calls(), 1, "{policy:?} clear count");
-        assert!(store.save_calls().is_empty(), "{policy:?} reset should not save");
-        assert_eq!(store.load().unwrap(), None, "{policy:?} clear remains visible");
+        assert!(
+            store.save_calls().is_empty(),
+            "{policy:?} reset should not save"
+        );
+        assert_eq!(
+            store.load().unwrap(),
+            None,
+            "{policy:?} clear remains visible"
+        );
     }
 }

@@ -59,7 +59,10 @@ impl<K: PanelKey> TuiHitBuffer<K> {
 
         for panel in self.panels.iter().rev() {
             if let Some(part) = panel.hit_test(point) {
-                return Some(HitTarget::Panel { key: panel.key, part });
+                return Some(HitTarget::Panel {
+                    key: panel.key,
+                    part,
+                });
             }
         }
 
@@ -73,7 +76,8 @@ impl<K: PanelKey> TuiHitBuffer<K> {
         outer: Rect,
         body: Rect,
     ) {
-        self.panel_hit_mut(key, source_index).record_surface(outer, body);
+        self.panel_hit_mut(key, source_index)
+            .record_surface(outer, body);
     }
 
     pub(crate) fn record_panel_header(&mut self, key: K, source_index: usize, header: Rect) {
@@ -87,7 +91,8 @@ impl<K: PanelKey> TuiHitBuffer<K> {
         part: PanelPart,
         region: Rect,
     ) {
-        self.panel_hit_mut(key, source_index).record_part(part, region);
+        self.panel_hit_mut(key, source_index)
+            .record_part(part, region);
     }
 
     pub(crate) fn record_dock(&mut self, key: K, source_index: usize, region: Rect) {
@@ -193,8 +198,5 @@ fn visible_rect(rect: Rect) -> Option<Rect> {
 }
 
 fn contains(rect: Rect, (x, y): (f64, f64)) -> bool {
-    x >= rect.x as f64
-        && y >= rect.y as f64
-        && x < rect.right() as f64
-        && y < rect.bottom() as f64
+    x >= rect.x as f64 && y >= rect.y as f64 && x < rect.right() as f64 && y < rect.bottom() as f64
 }

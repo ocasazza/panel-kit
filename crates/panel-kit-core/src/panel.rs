@@ -9,10 +9,10 @@
 //! otherwise) cannot use a `&'static str` title enum, so their panel IDs are
 //! validated and interned once into ordered [`SpecPanelId`] indices.
 
-use std::collections::HashMap;
-use std::fmt;
 use serde::ser::{Error as SerdeError, Impossible, Serializer};
 use serde::Serialize;
+use std::collections::HashMap;
+use std::fmt;
 
 use crate::{kind_slug, PanelKind, PanelWin};
 
@@ -67,7 +67,6 @@ impl SpecPanelId {
         self.0
     }
 }
-
 
 /// Identity and presentation metadata for one panel in a [`PanelCatalog`].
 #[derive(Clone, Debug, PartialEq, Eq)]

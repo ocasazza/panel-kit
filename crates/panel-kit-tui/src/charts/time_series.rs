@@ -95,7 +95,10 @@ fn time_y_axis(bounds: TimeBounds, unit: &str, t: &ResolvedTuiTheme) -> Axis<'st
                 format!("{:.0}", bounds.y_top / 2.0),
                 Style::default().fg(t.dim),
             ),
-            Span::styled(format!("{:.0} {unit}", bounds.y_top), Style::default().fg(t.dim)),
+            Span::styled(
+                format!("{:.0} {unit}", bounds.y_top),
+                Style::default().fg(t.dim),
+            ),
         ])
         .style(Style::default().fg(t.line2))
 }

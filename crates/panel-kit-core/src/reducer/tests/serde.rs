@@ -35,7 +35,11 @@ fn panel_command_serde_is_internally_tagged_snake_case() {
     ];
     for command in every_command {
         let json = serde_json::to_string(&command).unwrap();
-        assert_eq!(serde_json::from_str::<PanelCommand>(&json).unwrap(), command, "{json}");
+        assert_eq!(
+            serde_json::from_str::<PanelCommand>(&json).unwrap(),
+            command,
+            "{json}"
+        );
     }
 
     // Spellings outside the authored contract are rejected rather than
@@ -48,8 +52,14 @@ fn panel_command_serde_is_internally_tagged_snake_case() {
 /// `{ "char": "m" }`.
 #[test]
 fn key_serde_is_external_snake_case_strings_and_char_objects() {
-    assert_eq!(serde_json::to_value(Key::Left).unwrap(), serde_json::json!("left"));
-    assert_eq!(serde_json::to_value(Key::Enter).unwrap(), serde_json::json!("enter"));
+    assert_eq!(
+        serde_json::to_value(Key::Left).unwrap(),
+        serde_json::json!("left")
+    );
+    assert_eq!(
+        serde_json::to_value(Key::Enter).unwrap(),
+        serde_json::json!("enter")
+    );
     assert_eq!(
         serde_json::to_value(Key::Char('m')).unwrap(),
         serde_json::json!({ "char": "m" }),

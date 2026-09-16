@@ -41,9 +41,9 @@ pub mod persist;
 pub mod reducer;
 pub mod spec;
 pub mod theme;
-pub mod widgets;
 pub mod tokens;
 pub mod views;
+pub mod widgets;
 
 use serde::{Deserialize, Serialize};
 
@@ -638,6 +638,10 @@ impl LayoutBuilder {
     }
 }
 
+fn default_max_frac() -> f64 {
+    1.0
+}
+
 /// Viewport-clamp parameters for [`effective_rect`] — the unit-dependent
 /// knobs that turn a raw viewport into a workspace area and keep panels
 /// visible inside it.
@@ -661,6 +665,12 @@ pub struct Clamp {
     pub min_w: f64,
     /// Minimum panel height.
     pub min_h: f64,
+    /// Maximum floating size as a fraction of the workspace on each axis.
+    ///
+    /// This render-time cap preserves stored geometry. Maximize bypasses it
+    /// because maximized panels project directly to the whole workspace.
+    #[serde(default = "default_max_frac")]
+    pub max_frac: f64,
 }
 
 impl Clamp {
@@ -674,6 +684,7 @@ impl Clamp {
         edge: 6.0,
         min_w: 180.0,
         min_h: 110.0,
+        max_frac: 0.75,
     };
 
     /// Character-cell defaults for terminal shells.
@@ -686,7 +697,34 @@ impl Clamp {
         edge: 0.0,
         min_w: 20.0,
         min_h: 5.0,
+        max_frac: 0.75,
     };
+}
+
+/// Host-owned pointer snapping policy.
+///
+/// This is session UI policy rather than persisted layout state, so hosts pass
+/// it through [`reducer::ReduceContext`] instead of storing it in a snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct SnapPolicy {
+    /// Quantize floating resize dimensions to [`SnapPolicy::grid`].
+    pub resize: bool,
+    /// Quantize floating move coordinates and permit tiling reorder gestures.
+    pub move_: bool,
+    /// Floating snap interval in renderer units.
+    pub grid: f64,
+}
+
+impl Default for SnapPolicy {
+    fn default() -> Self {
+        Self {
+            resize: true,
+            move_: true,
+            grid: 32.0,
+        }
+    }
 }
 
 /// Tiling-mode metrics: how pointer deltas snap to tile spans.
@@ -736,8 +774,8 @@ pub fn front_z<K>(ps: &[PanelWin<K>]) -> i32 {
 pub fn effective_rect<K>(p: &PanelWin<K>, vw: f64, vh: f64, c: &Clamp) -> (f64, f64, f64, f64) {
     let ws_w = (vw - c.outer_w).max(c.floor_w);
     let ws_h = (vh - c.outer_h).max(c.floor_h);
-    let w = p.w.min(ws_w - c.inner).max(c.min_w);
-    let h = p.h.min(ws_h - c.inner).max(c.min_h);
+    let w = p.w.min(ws_w - c.inner).min(ws_w * c.max_frac).max(c.min_w);
+    let h = p.h.min(ws_h - c.inner).min(ws_h * c.max_frac).max(c.min_h);
     let x = p.x.min(ws_w - w - c.edge).max(0.0);
     let y = p.y.min(ws_h - h - c.edge).max(0.0);
     (x, y, w, h)
@@ -830,9 +868,9 @@ pub fn begin_tile_resize<K>(panels: &[PanelWin<K>], idx: usize, mx: f64, my: f64
 
 /// Apply the in-flight [`Drag`] for a pointer now at `(mx, my)`.
 ///
-/// `tiling` selects span-snapped resize (see [`begin_tile_resize`]); moves
-/// follow the pointer and floating resizes clamp to [`Clamp::min_w`]/
-/// [`Clamp::min_h`].
+/// `tiling` exclusively selects span resize captured by
+/// [`begin_tile_resize`]. Floating moves and resizes quantize to
+/// [`SnapPolicy::grid`] when their corresponding policy flag is enabled.
 #[allow(clippy::too_many_arguments)]
 pub fn apply_drag<K>(
     panels: &mut [PanelWin<K>],
@@ -840,6 +878,7 @@ pub fn apply_drag<K>(
     mx: f64,
     my: f64,
     tiling: bool,
+    snap: SnapPolicy,
     vw: f64,
     c: &Clamp,
     t: &TileMetrics,
@@ -847,10 +886,19 @@ pub fn apply_drag<K>(
     let Some(p) = panels.get_mut(d.idx) else {
         return;
     };
+    let quantize = |value: f64| {
+        if snap.grid.is_finite() && snap.grid > 0.0 {
+            (value / snap.grid).round() * snap.grid
+        } else {
+            value
+        }
+    };
     match d.kind {
         DragKind::Move => {
-            p.x = (d.start_x + (mx - d.start_mx)).max(0.0);
-            p.y = (d.start_y + (my - d.start_my)).max(0.0);
+            let x = (d.start_x + (mx - d.start_mx)).max(0.0);
+            let y = (d.start_y + (my - d.start_my)).max(0.0);
+            p.x = if snap.move_ { quantize(x) } else { x };
+            p.y = if snap.move_ { quantize(y) } else { y };
         }
         DragKind::Resize if tiling => {
             let col = ((vw - t.outer) / TILE_W_MAX as f64).max(t.col_floor);
@@ -860,8 +908,10 @@ pub fn apply_drag<K>(
             p.tile_h = (d.start_h + dh).clamp(1.0, TILE_H_MAX as f64) as u8;
         }
         DragKind::Resize => {
-            p.w = (d.start_w + (mx - d.start_mx)).max(c.min_w);
-            p.h = (d.start_h + (my - d.start_my)).max(c.min_h);
+            let w = (d.start_w + (mx - d.start_mx)).max(c.min_w);
+            let h = (d.start_h + (my - d.start_my)).max(c.min_h);
+            p.w = if snap.resize { quantize(w) } else { w };
+            p.h = if snap.resize { quantize(h) } else { h };
         }
     }
 }
@@ -1195,6 +1245,156 @@ mod tests {
             tile_w: 2,
             tile_h: 3,
         }
+    }
+
+    #[test]
+    fn effective_rect_caps_at_max_frac() {
+        let mut layout = LayoutBuilder::new();
+        let oversized = layout.at(TestPanel::First, 0.0, 0.0, 5000.0, 5000.0);
+        let (_, _, w, h) = effective_rect(&oversized, 1000.0, 1000.0, &Clamp::WEB);
+
+        assert!(w <= 996.0 * 0.75 + f64::EPSILON, "w={w}");
+        assert!(h <= 934.0 * 0.75 + f64::EPSILON, "h={h}");
+
+        let regular = layout.at(TestPanel::Second, 10.0, 10.0, 300.0, 200.0);
+        let (_, _, w, h) = effective_rect(&regular, 1000.0, 1000.0, &Clamp::WEB);
+        assert_eq!((w, h), (300.0, 200.0));
+    }
+
+    #[test]
+    fn clamp_without_max_frac_deserializes_as_uncapped() {
+        let json = r#"{
+            "outer_w": 4.0,
+            "outer_h": 66.0,
+            "floor_w": 220.0,
+            "floor_h": 180.0,
+            "inner": 12.0,
+            "edge": 6.0,
+            "min_w": 180.0,
+            "min_h": 110.0
+        }"#;
+
+        let clamp: Clamp = serde_json::from_str(json).unwrap();
+        assert_eq!(clamp.max_frac, 1.0);
+    }
+
+    #[test]
+    fn floating_move_quantizes_only_when_enabled() {
+        let initial = panel(TestPanel::First);
+        let drag = Drag {
+            idx: 0,
+            kind: DragKind::Move,
+            start_mx: 0.0,
+            start_my: 0.0,
+            start_x: initial.x,
+            start_y: initial.y,
+            start_w: initial.w,
+            start_h: initial.h,
+        };
+        let mut snapped = [initial];
+        let mut free = [initial];
+
+        apply_drag(
+            &mut snapped,
+            &drag,
+            45.0,
+            50.0,
+            false,
+            SnapPolicy::default(),
+            1000.0,
+            &Clamp::WEB,
+            &TileMetrics::WEB,
+        );
+        apply_drag(
+            &mut free,
+            &drag,
+            45.0,
+            50.0,
+            false,
+            SnapPolicy {
+                move_: false,
+                ..SnapPolicy::default()
+            },
+            1000.0,
+            &Clamp::WEB,
+            &TileMetrics::WEB,
+        );
+
+        assert_eq!((snapped[0].x, snapped[0].y), (64.0, 64.0));
+        assert_eq!((free[0].x, free[0].y), (55.0, 70.0));
+    }
+
+    #[test]
+    fn floating_resize_quantizes_only_when_enabled() {
+        let mut initial = panel(TestPanel::First);
+        initial.w = 300.0;
+        initial.h = 200.0;
+        let drag = Drag {
+            idx: 0,
+            kind: DragKind::Resize,
+            start_mx: 0.0,
+            start_my: 0.0,
+            start_x: initial.x,
+            start_y: initial.y,
+            start_w: initial.w,
+            start_h: initial.h,
+        };
+        let mut snapped = [initial];
+        let mut free = [initial];
+
+        apply_drag(
+            &mut snapped,
+            &drag,
+            45.0,
+            50.0,
+            false,
+            SnapPolicy::default(),
+            1000.0,
+            &Clamp::WEB,
+            &TileMetrics::WEB,
+        );
+        apply_drag(
+            &mut free,
+            &drag,
+            45.0,
+            50.0,
+            false,
+            SnapPolicy {
+                resize: false,
+                ..SnapPolicy::default()
+            },
+            1000.0,
+            &Clamp::WEB,
+            &TileMetrics::WEB,
+        );
+
+        assert_eq!((snapped[0].w, snapped[0].h), (352.0, 256.0));
+        assert_eq!((free[0].w, free[0].h), (345.0, 250.0));
+    }
+
+    #[test]
+    fn tiling_resize_uses_tile_spans_when_floating_snap_is_disabled() {
+        let initial = panel(TestPanel::First);
+        let drag = begin_tile_resize(&[initial], 0, 0.0, 0.0).unwrap();
+        let mut panels = [initial];
+
+        apply_drag(
+            &mut panels,
+            &drag,
+            250.0,
+            150.0,
+            true,
+            SnapPolicy {
+                resize: false,
+                ..SnapPolicy::default()
+            },
+            1000.0,
+            &Clamp::WEB,
+            &TileMetrics::WEB,
+        );
+
+        assert_eq!((panels[0].tile_w, panels[0].tile_h), (3, 4));
+        assert_eq!((panels[0].w, panels[0].h), (30.0, 40.0));
     }
 
     #[test]

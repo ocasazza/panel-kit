@@ -51,7 +51,10 @@ fn panel_catalog_resolves_spec_ids_once_and_rejects_duplicate_stable_ids() {
     assert_eq!(&*badges.title, "Badges");
 
     // Stable ID -> meta: the interned index comes back, not a new one.
-    assert_eq!(catalog.get_by_stable_id("Badges").unwrap().key, SpecPanelId(1));
+    assert_eq!(
+        catalog.get_by_stable_id("Badges").unwrap().key,
+        SpecPanelId(1)
+    );
 
     // Key -> stable ID agrees with the entry lookup.
     assert_eq!(catalog.stable_id(SpecPanelId(2)), Some("Notes"));
@@ -73,8 +76,8 @@ fn panel_catalog_resolves_spec_ids_once_and_rejects_duplicate_stable_ids() {
     assert_eq!(error, CatalogError::DuplicateStableId("Badges".into()));
 
     // An empty catalog is constructible and resolves nothing.
-    let empty = PanelCatalog::<SpecPanelId>::try_new(Vec::new())
-        .expect("no entries cannot conflict");
+    let empty =
+        PanelCatalog::<SpecPanelId>::try_new(Vec::new()).expect("no entries cannot conflict");
     assert!(empty.is_empty());
     assert_eq!(empty.len(), 0);
     assert!(empty.get_by_stable_id("Workspace").is_none());

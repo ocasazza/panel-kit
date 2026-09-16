@@ -115,16 +115,28 @@ fn tag_hue_deterministic() {
 
 #[test]
 fn wikilink_label_prefixed() {
-    let k = BadgeKind::Wikilink { resolved: true, target: "Page".into() };
+    let k = BadgeKind::Wikilink {
+        resolved: true,
+        target: "Page".into(),
+    };
 
     assert_eq!(display_label(&k, "Page"), "\u{27F6} Page");
 }
 
 #[test]
 fn url_label_prefers_host() {
-    let k = BadgeKind::Url { href: "https://example.com/x".into(), host: "example.com".into() };
-    let bare = BadgeKind::Url { href: "https://example.com".into(), host: String::new() };
+    let k = BadgeKind::Url {
+        href: "https://example.com/x".into(),
+        host: "example.com".into(),
+    };
+    let bare = BadgeKind::Url {
+        href: "https://example.com".into(),
+        host: String::new(),
+    };
 
     assert_eq!(display_label(&k, "https://example.com/x"), "example.com");
-    assert_eq!(display_label(&bare, "https://example.com"), "https://example.com");
+    assert_eq!(
+        display_label(&bare, "https://example.com"),
+        "https://example.com"
+    );
 }

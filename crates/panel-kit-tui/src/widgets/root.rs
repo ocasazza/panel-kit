@@ -49,4 +49,3 @@ pub fn draw_workspace_scrollbar<K: PanelKey>(
         &mut state,
     );
 }
-

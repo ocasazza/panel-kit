@@ -4,12 +4,12 @@
 //! first refusal. The functions translate platform events into core
 //! `WorkspaceEvent` values; all state transitions remain in `panel-kit-core`.
 
+use crate::widgets::TuiHitBuffer;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
 use panel_kit_core::{
     FocusContext, Key, KeyChord, PanelCommand, PanelKey, PointerButton, PointerEvent,
     PointerEventKind,
 };
-use crate::widgets::TuiHitBuffer;
 
 /// Wrap a renderer-neutral key chord as a workspace event.
 pub fn workspace_event_from_key<K: PanelKey>(
@@ -36,7 +36,9 @@ pub fn workspace_event_from_pointer<K: PanelKey>(
         });
     }
 
-    let target = hits.hit_test((event.x, event.y)).unwrap_or(HitTarget::Workspace);
+    let target = hits
+        .hit_test((event.x, event.y))
+        .unwrap_or(HitTarget::Workspace);
     control_command(target, event).or(Some(WorkspaceEvent::Pointer { target, event }))
 }
 
@@ -59,7 +61,8 @@ pub fn crossterm_key_chord(event: crossterm::event::KeyEvent) -> Option<KeyChord
 
     Some(KeyChord {
         key,
-        shift: event.modifiers.contains(KeyModifiers::SHIFT) || matches!(event.code, KeyCode::BackTab),
+        shift: event.modifiers.contains(KeyModifiers::SHIFT)
+            || matches!(event.code, KeyCode::BackTab),
         alt: event.modifiers.contains(KeyModifiers::ALT),
         ctrl: event.modifiers.contains(KeyModifiers::CONTROL),
         meta: event.modifiers.contains(KeyModifiers::SUPER),
@@ -129,10 +132,7 @@ impl RatzillaPointerTranslator {
     }
 
     /// Convert one ratzilla mouse event into a renderer-neutral pointer event.
-    pub fn pointer_event(
-        &mut self,
-        event: ratzilla::event::MouseEvent,
-    ) -> Option<PointerEvent> {
+    pub fn pointer_event(&mut self, event: ratzilla::event::MouseEvent) -> Option<PointerEvent> {
         use ratzilla::event::{MouseButton, MouseEventKind};
 
         let kind = match event.kind {
@@ -144,9 +144,13 @@ impl RatzillaPointerTranslator {
                 self.primary_down = false;
                 PointerEventKind::Up(PointerButton::Primary)
             }
-            MouseEventKind::Moved if self.primary_down => PointerEventKind::Drag(PointerButton::Primary),
+            MouseEventKind::Moved if self.primary_down => {
+                PointerEventKind::Drag(PointerButton::Primary)
+            }
             MouseEventKind::Moved => PointerEventKind::Moved,
-            MouseEventKind::SingleClick(MouseButton::Left) => PointerEventKind::Up(PointerButton::Primary),
+            MouseEventKind::SingleClick(MouseButton::Left) => {
+                PointerEventKind::Up(PointerButton::Primary)
+            }
             _ => return None,
         };
 

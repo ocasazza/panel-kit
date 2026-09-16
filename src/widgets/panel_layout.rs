@@ -34,8 +34,16 @@ pub fn panel_style<K: PanelKey>(panel: PanelProjection<K>) -> String {
 
 pub(super) fn panel_class<K: PanelKey>(panel: PanelProjection<K>, class: Option<&str>) -> String {
     let extra = class.filter(|extra| !extra.is_empty()).unwrap_or_default();
-    let tile_dragging = if panel.tile_dragging { " tile-dragging" } else { "" };
-    let pointer_dragging = if panel.pointer_dragging { " dragging" } else { "" };
+    let tile_dragging = if panel.tile_dragging {
+        " tile-dragging"
+    } else {
+        ""
+    };
+    let pointer_dragging = if panel.pointer_dragging {
+        " dragging"
+    } else {
+        ""
+    };
     let focused = if panel.focused { " focused" } else { "" };
 
     if extra.is_empty() {

@@ -26,9 +26,25 @@ pub(super) fn draw_item(
     t: &ResolvedTuiTheme,
 ) {
     let rows = summary_rows(scale, item.summary);
-    draw_whisker(f, area, scale.plot_bottom, geometry.center_x, rows.min, rows.max, t);
+    draw_whisker(
+        f,
+        area,
+        scale.plot_bottom,
+        geometry.center_x,
+        rows.min,
+        rows.max,
+        t,
+    );
     draw_caps(f, area, scale.plot_bottom, geometry, rows.min, rows.max, t);
-    draw_iqr(f, area, scale.plot_bottom, geometry, rows.q1, rows.q3, color);
+    draw_iqr(
+        f,
+        area,
+        scale.plot_bottom,
+        geometry,
+        rows.q1,
+        rows.q3,
+        color,
+    );
     draw_median(f, area, scale.plot_bottom, geometry, rows.median, color, t);
     draw_label(f, area, scale.plot_bottom, geometry, item.label, t);
 }

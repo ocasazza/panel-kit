@@ -19,7 +19,9 @@ use crate::panel_compare::{
     compare_panel_ids, panel_ids_from_manifest_json, panel_ids_from_saved_layout,
 };
 use crate::repository::check_repository;
-use crate::schema::{check_committed_schema, decode_workspace_spec_text, workspace_spec_schema_json};
+use crate::schema::{
+    check_committed_schema, decode_workspace_spec_text, workspace_spec_schema_json,
+};
 
 const USAGE: &str = "\
 usage: spec-parity [check]
@@ -140,7 +142,6 @@ fn split_csv_pointers(text: &str) -> Vec<&str> {
 
     text.split(',').collect()
 }
-
 
 /// Read JSON from stdin, a path, or an inline command argument.
 fn read_json_argument(input: &str) -> Result<String, Box<dyn Error>> {

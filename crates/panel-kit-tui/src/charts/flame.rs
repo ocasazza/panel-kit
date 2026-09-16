@@ -175,15 +175,7 @@ fn paint_background(f: &mut Frame, row: u16, x0: u16, width: u16, color: Color) 
     }
 }
 
-fn paint_label(
-    f: &mut Frame,
-    row: u16,
-    x0: u16,
-    width: u16,
-    bg: Color,
-    fg: Color,
-    label: &str,
-) {
+fn paint_label(f: &mut Frame, row: u16, x0: u16, width: u16, bg: Color, fg: Color, label: &str) {
     let style = Style::default().fg(fg).bg(bg);
     for (offset, ch) in label.chars().take(width as usize).enumerate() {
         f.buffer_mut()[(x0 + offset as u16, row)]
@@ -191,4 +183,3 @@ fn paint_label(
             .set_style(style);
     }
 }
-

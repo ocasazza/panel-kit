@@ -8,8 +8,8 @@
 use dioxus::prelude::*;
 
 use panel_kit_core::badge::display_label;
-use panel_kit_core::widgets::badge::{perceived_brightness, tint_over};
 pub use panel_kit_core::badge::{tag_hue, BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec, Rgb};
+use panel_kit_core::widgets::badge::{perceived_brightness, tint_over};
 
 fn kind_class(kind: &BadgeKind) -> &'static str {
     match kind {
@@ -19,7 +19,9 @@ fn kind_class(kind: &BadgeKind) -> &'static str {
         BadgeKind::Author => "badge-author",
         BadgeKind::Entity { .. } => "badge-entity",
         BadgeKind::Wikilink { resolved: true, .. } => "badge-wikilink",
-        BadgeKind::Wikilink { resolved: false, .. } => "badge-wikilink badge-unresolved",
+        BadgeKind::Wikilink {
+            resolved: false, ..
+        } => "badge-wikilink badge-unresolved",
         BadgeKind::Url { .. } => "badge-url",
         BadgeKind::Date => "badge-date",
         BadgeKind::Status => "badge-status",
@@ -46,7 +48,11 @@ fn style_for(spec: &BadgeSpec, accent_color: Option<&str>) -> String {
     let mut style = String::new();
     if let Some(c) = spec.override_color {
         let (br, bg, bb) = tint_over(c, (255, 255, 255), 0.30);
-        let fg = if perceived_brightness(c) < 0.55 { "var(--fg)" } else { "var(--bg)" };
+        let fg = if perceived_brightness(c) < 0.55 {
+            "var(--fg)"
+        } else {
+            "var(--bg)"
+        };
         style.push_str(&format!(
             "--badge-bg:{};--badge-c:rgb({br},{bg},{bb});--badge-fg:{fg};",
             rgb_css(c)
@@ -199,7 +205,13 @@ mod tests {
 
     #[component]
     fn BadgeProbe() -> Element {
-        let spec = BadgeSpec { active: true, with_plus: true, with_x: true, accent_color: Some((94, 243, 140)), ..BadgeSpec::new("tag", "alpha", BadgeKind::Tag) };
+        let spec = BadgeSpec {
+            active: true,
+            with_plus: true,
+            with_x: true,
+            accent_color: Some((94, 243, 140)),
+            ..BadgeSpec::new("tag", "alpha", BadgeKind::Tag)
+        };
 
         rsx! {
             Badge { spec, accent_color: Some("var(--accent)".to_string()), on_action: move |_| {} }
@@ -221,10 +233,32 @@ mod tests {
 
     #[test]
     fn badge_actions_match_across_backends() {
-        let tag = BadgeSpec { with_plus: true, with_x: true, emit_hover: true, ..BadgeSpec::new("tag", "alpha", BadgeKind::Tag) };
-        let clicked = BadgeSpec { click_kind: BadgeClickKind::Clicked, ..BadgeSpec::new("tag", "alpha", BadgeKind::Tag) };
-        let link = BadgeSpec::new("link", "Panel Kit", BadgeKind::Wikilink { resolved: true, target: "Panel Kit".into() });
-        let url = BadgeSpec::new("url", "panel-kit", BadgeKind::Url { href: "https://example.com/panel-kit".into(), host: "example.com".into() });
+        let tag = BadgeSpec {
+            with_plus: true,
+            with_x: true,
+            emit_hover: true,
+            ..BadgeSpec::new("tag", "alpha", BadgeKind::Tag)
+        };
+        let clicked = BadgeSpec {
+            click_kind: BadgeClickKind::Clicked,
+            ..BadgeSpec::new("tag", "alpha", BadgeKind::Tag)
+        };
+        let link = BadgeSpec::new(
+            "link",
+            "Panel Kit",
+            BadgeKind::Wikilink {
+                resolved: true,
+                target: "Panel Kit".into(),
+            },
+        );
+        let url = BadgeSpec::new(
+            "url",
+            "panel-kit",
+            BadgeKind::Url {
+                href: "https://example.com/panel-kit".into(),
+                host: "example.com".into(),
+            },
+        );
 
         assert_eq!(body_action(&tag), tag.primary_action());
         assert_eq!(body_action(&clicked), clicked.primary_action());

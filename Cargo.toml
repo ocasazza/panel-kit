@@ -38,6 +38,7 @@ web-runtime = [
     "dep:web-sys",
     "panel-kit-core/spec-json",
 ]
+bevy = ["web-runtime"]
 spec-plan = ["dep:serde", "dep:serde_json", "panel-kit-core/spec-json"]
 
 [dependencies]

@@ -65,7 +65,9 @@ mod browser {
             match stable_id {
                 "Workspace" => draw_workspace_body(frame, rect, context),
                 "Badges" => draw_badges_body(frame, rect, context),
-                "Activity" => time_series(frame, rect, &context.theme, "ms", &context.metrics.series()),
+                "Activity" => {
+                    time_series(frame, rect, &context.theme, "ms", &context.metrics.series())
+                }
                 "Capacity" => gauges(frame, rect, &context.theme, &capacity_items()),
                 "Flame" => flame(frame, rect, &context.theme, &context.metrics.flame()),
                 "Distribution" => boxplot(frame, rect, &context.theme, &context.metrics.boxes()),
@@ -76,7 +78,11 @@ mod browser {
             }
         }
 
-        fn draw_workspace_body(frame: &mut ratatui::Frame, rect: Rect, context: &BodyDrawContext<'_>) {
+        fn draw_workspace_body(
+            frame: &mut ratatui::Frame,
+            rect: Rect,
+            context: &BodyDrawContext<'_>,
+        ) {
             let mode = match context.mode {
                 Mode::Floating => "floating",
                 Mode::Tiling => "tiling",
@@ -96,7 +102,9 @@ mod browser {
                     Line::from("Persistence: schema V2 · Units::Cells · browser localStorage."),
                     Line::from(""),
                     Line::from("Mouse: drag headers/grip, click lights; wheel scrolls workspace."),
-                    Line::from("Keys: arrows move, Shift resizes, Alt fine-moves; m/f/t, Tab, Enter."),
+                    Line::from(
+                        "Keys: arrows move, Shift resizes, Alt fine-moves; m/f/t, Tab, Enter.",
+                    ),
                     Line::from("Palette: p · restore: 1-9 · workspace scroll: PgUp/PgDn."),
                 ])
                 .style(Style::default().fg(context.theme.dim)),
@@ -104,7 +112,11 @@ mod browser {
             );
         }
 
-        fn draw_badges_body(frame: &mut ratatui::Frame, rect: Rect, context: &mut BodyDrawContext<'_>) {
+        fn draw_badges_body(
+            frame: &mut ratatui::Frame,
+            rect: Rect,
+            context: &mut BodyDrawContext<'_>,
+        ) {
             for (row, (i, badge_spec)) in context.badges.iter().enumerate().enumerate() {
                 if row as u16 >= rect.height.saturating_sub(4) {
                     break;
@@ -124,7 +136,12 @@ mod browser {
                 .iter()
                 .rev()
                 .take(3)
-                .map(|action| Line::from(Span::styled(action.as_str(), Style::default().fg(context.theme.badge_info))))
+                .map(|action| {
+                    Line::from(Span::styled(
+                        action.as_str(),
+                        Style::default().fg(context.theme.badge_info),
+                    ))
+                })
                 .collect();
             if log_y > rect.y {
                 frame.render_widget(
@@ -147,7 +164,11 @@ mod browser {
             );
         }
 
-        fn draw_notes_body(frame: &mut ratatui::Frame, rect: Rect, context: &mut BodyDrawContext<'_>) {
+        fn draw_notes_body(
+            frame: &mut ratatui::Frame,
+            rect: Rect,
+            context: &mut BodyDrawContext<'_>,
+        ) {
             let mut lines = vec![
                 Line::from(Span::styled(
                     "docs-as-code canary",
@@ -168,16 +189,15 @@ mod browser {
             }
             lines.push(Line::from(""));
             lines.push(spinner(context.tick, "TUI canary running", &context.theme));
-            *context.notes_scroll = scroll::lines(
-                frame,
-                rect,
-                &context.theme,
-                lines,
-                *context.notes_scroll,
-            );
+            *context.notes_scroll =
+                scroll::lines(frame, rect, &context.theme, lines, *context.notes_scroll);
         }
 
-        fn draw_theme_body(frame: &mut ratatui::Frame, rect: Rect, context: &mut BodyDrawContext<'_>) {
+        fn draw_theme_body(
+            frame: &mut ratatui::Frame,
+            rect: Rect,
+            context: &mut BodyDrawContext<'_>,
+        ) {
             *context.theme_zone = rect;
             let sw = |color, name: &'static str| {
                 Line::from(vec![
@@ -327,7 +347,6 @@ mod browser {
         "Distribution",
     ];
 
-
     struct App {
         catalog: PanelCatalog<SpecPanelId>,
         snapshot: Snapshot<SpecPanelId>,
@@ -357,8 +376,9 @@ mod browser {
 
     impl App {
         fn new() -> Result<Self, Box<dyn std::error::Error>> {
-            let resolved = WorkspaceSpec::from_json_str(WORKSPACE_SPEC_JSON)?
-                .resolve(&crate::workspace_canary::provider_manifest(BackendKind::BrowserTui))?;
+            let resolved = WorkspaceSpec::from_json_str(WORKSPACE_SPEC_JSON)?.resolve(
+                &crate::workspace_canary::provider_manifest(BackendKind::BrowserTui),
+            )?;
             let panel_count = resolved.catalog.len();
             let charset = tui_charset(resolved.glyphs);
             let save_policy = resolved.persistence.save_policy;
@@ -552,7 +572,11 @@ mod browser {
             let Some(stable_id) = RESTORE_IDS.get(index as usize) else {
                 return;
             };
-            let Some(key) = self.catalog.get_by_stable_id(stable_id).map(|meta| meta.key) else {
+            let Some(key) = self
+                .catalog
+                .get_by_stable_id(stable_id)
+                .map(|meta| meta.key)
+            else {
                 return;
             };
             self.reduce_workspace_event(WorkspaceEvent::Pointer {
@@ -574,6 +598,7 @@ mod browser {
                 clamp: &clamp,
                 command_step: self.input.steps,
                 tile: &tile,
+                snap: panel_kit_core::SnapPolicy::default(),
             };
             let reduction = reduce(&mut self.snapshot, event, context);
             if !self.layout_ready {
@@ -651,6 +676,7 @@ mod browser {
                 gap: self.layout.tile.gap,
                 padding: self.layout.tile.padding,
                 fill_viewport: self.layout.tile.fill_viewport,
+                fill_order: panel_kit_core::frame::TileFillOrder::RowMajor,
             }
         }
 
@@ -669,7 +695,6 @@ mod browser {
             }
         }
     }
-
 
     fn tui_charset(charset: panel_kit_core::Charset) -> Charset {
         match charset {
@@ -700,10 +725,11 @@ mod browser {
                 .and_then(|value| value.as_f64())
                 .unwrap_or(0.0);
             if delta != 0.0 {
-                app.borrow_mut().reduce_workspace_event(WorkspaceEvent::Wheel {
-                    delta_y: delta.signum() * 3.0,
-                    disposition: WheelDisposition::BubbleToWorkspace,
-                });
+                app.borrow_mut()
+                    .reduce_workspace_event(WorkspaceEvent::Wheel {
+                        delta_y: delta.signum() * 3.0,
+                        disposition: WheelDisposition::BubbleToWorkspace,
+                    });
             }
             if let Ok(prevent_default) = Reflect::get(&event, &JsValue::from_str("preventDefault"))
                 .and_then(|value| value.dyn_into::<Function>())

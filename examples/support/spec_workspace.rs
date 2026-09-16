@@ -10,20 +10,20 @@ use std::rc::Rc;
 
 use dioxus::events::{KeyboardEvent, PointerEvent as DioxusPointerEvent, WheelEvent};
 use dioxus::prelude::*;
-use panel_kit::input::{clear_selection, keyboard_event, pointer_event, release_pointer, wheel_event};
+use panel_kit::input::{
+    clear_selection, keyboard_event, pointer_event, release_pointer, wheel_event,
+};
 use panel_kit::store::LocalStorageLayoutStore;
 use panel_kit::surface::{browser_capabilities, observe_viewport};
 use panel_kit_core::frame::{
     project_into, ChromeProjectionInput, Placement, ProjectedFrame, ProjectionBuffer,
     ProjectionInput, TileLayoutMetrics,
 };
-use panel_kit_core::persist::{
-    apply_save_decision, restore_snapshot, LayoutError, RestoreContext,
-};
+use panel_kit_core::persist::{apply_save_decision, restore_snapshot, LayoutError, RestoreContext};
 use panel_kit_core::reducer::{reduce, HitTarget, Snapshot, Viewport, WorkspaceEvent};
 use panel_kit_core::spec::{BackendKind, BindingManifest, ResolvedWorkspace, WorkspaceSpec};
 use panel_kit_core::{
-    FocusContext, Mode, PointerButton, PointerEventKind, SpecPanelId, SurfaceProfile,
+    FocusContext, Mode, PointerButton, PointerEventKind, SnapPolicy, SpecPanelId, SurfaceProfile,
 };
 
 /// Host-owned state and ports for one spec-resolved web workspace.
@@ -33,6 +33,8 @@ pub struct SpecWorkspaceState {
     pub resolved: Rc<ResolvedWorkspace>,
     /// Plain reducer state owned by the Dioxus host.
     pub snapshot: Signal<Snapshot<SpecPanelId>>,
+    /// Session policy for pointer move and resize snapping.
+    pub snap: Signal<SnapPolicy>,
     /// Reusable caller-owned projection scratch.
     pub scratch: Rc<RefCell<ProjectionBuffer<SpecPanelId>>>,
     store: Rc<LocalStorageLayoutStore>,
@@ -50,12 +52,23 @@ pub fn use_spec_workspace(spec_json: &'static str) -> SpecWorkspaceState {
         let store = store.clone();
         move || restore_or_default(&resolved, &store)
     });
+    let snap = use_signal(SnapPolicy::default);
     let scratch = use_hook({
         let panel_count = snapshot.peek().panels.len();
-        move || Rc::new(RefCell::new(ProjectionBuffer::with_panel_capacity(panel_count)))
+        move || {
+            Rc::new(RefCell::new(ProjectionBuffer::with_panel_capacity(
+                panel_count,
+            )))
+        }
     });
 
-    SpecWorkspaceState { resolved, snapshot, scratch, store }
+    SpecWorkspaceState {
+        resolved,
+        snapshot,
+        snap,
+        scratch,
+        store,
+    }
 }
 
 /// Subscribe the host-owned workspace to browser viewport changes.
@@ -78,14 +91,24 @@ pub fn project_workspace<'frame>(
     let tile = tile_metrics(&workspace.resolved, surface);
 
     project_into(
-        ProjectionInput { snapshot, surface, chrome: &chrome, clamp: &workspace.resolved.layout.clamp, tile: &tile },
+        ProjectionInput {
+            snapshot,
+            surface,
+            chrome: &chrome,
+            clamp: &workspace.resolved.layout.clamp,
+            tile: &tile,
+        },
         scratch,
     )
 }
 
 /// CSS class for the `.ws` area that contains projected panels.
 pub fn workspace_area_class(frame: &ProjectedFrame<'_, SpecPanelId>) -> &'static str {
-    if frame.panels.iter().any(|panel| matches!(panel.placement, Placement::Maximized)) {
+    if frame
+        .panels
+        .iter()
+        .any(|panel| matches!(panel.placement, Placement::Maximized))
+    {
         "ws maxed"
     } else if frame.mode == Mode::Tiling {
         "ws tiling"
@@ -137,7 +160,11 @@ pub fn handle_pointer_up(workspace: &SpecWorkspaceState, event: &DioxusPointerEv
     release_pointer(event);
     let changed = reduce_workspace_event(
         workspace,
-        pointer_event(HitTarget::Workspace, event, PointerEventKind::Up(PointerButton::Primary)),
+        pointer_event(
+            HitTarget::Workspace,
+            event,
+            PointerEventKind::Up(PointerButton::Primary),
+        ),
     );
     if changed {
         clear_selection();
@@ -171,7 +198,11 @@ fn resolve_workspace_spec(spec_json: &str) -> ResolvedWorkspace {
         .expect("PANEL_KIT_WORKSPACE_SPEC must contain strict WorkspaceSpec JSON");
     let providers = BindingManifest {
         backend: BackendKind::Web,
-        panels: spec.panels.iter().map(|panel| panel.provider_declaration()).collect(),
+        panels: spec
+            .panels
+            .iter()
+            .map(|panel| panel.provider_declaration())
+            .collect(),
     };
 
     spec.resolve(&providers)
@@ -188,7 +219,10 @@ fn restore_or_default(
 
     let context = RestoreContext {
         units: resolved.initial.viewport.units,
-        viewport: (resolved.initial.viewport.width, resolved.initial.viewport.height),
+        viewport: (
+            resolved.initial.viewport.width,
+            resolved.initial.viewport.height,
+        ),
     };
 
     match restore_snapshot(store, resolved.initial.clone(), &resolved.catalog, context) {
@@ -212,12 +246,22 @@ fn reduce_workspace_event(
         clamp: &workspace.resolved.layout.clamp,
         command_step: workspace.resolved.input.steps,
         tile: &workspace.resolved.layout.tile.resize,
+        snap: (workspace.snap)(),
     };
     let reduction = reduce(&mut snapshot, event, context);
-    let decision = workspace.resolved.persistence.save_policy.decide(&reduction);
+    let decision = workspace
+        .resolved
+        .persistence
+        .save_policy
+        .decide(&reduction);
     let changed = reduction.changed;
 
-    if let Err(error) = apply_save_decision(decision, &*workspace.store, &snapshot, &workspace.resolved.catalog) {
+    if let Err(error) = apply_save_decision(
+        decision,
+        &*workspace.store,
+        &snapshot,
+        &workspace.resolved.catalog,
+    ) {
         log_layout_error("save layout", &workspace.resolved.persistence.key, &error);
     }
 
@@ -258,6 +302,7 @@ fn tile_metrics(resolved: &ResolvedWorkspace, surface: SurfaceProfile) -> TileLa
         gap: tile.gap,
         padding: tile.padding,
         fill_viewport: tile.fill_viewport,
+        fill_order: panel_kit_core::frame::TileFillOrder::RowMajor,
     }
 }
 

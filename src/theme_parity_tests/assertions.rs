@@ -58,14 +58,17 @@ fn assert_typography_tokens(
     assert_tui_typography(name, tui);
 }
 
-fn assert_css_typography(
-    typography: &TypographyTokens,
-    css_values: &BTreeMap<String, String>,
-) {
+fn assert_css_typography(typography: &TypographyTokens, css_values: &BTreeMap<String, String>) {
     assert_eq!(css_values.get("mono"), Some(&typography.family));
     assert_eq!(css_values.get("body-size"), Some(&px(typography.body_size)));
-    assert_eq!(css_values.get("body-line-height"), Some(&number(typography.body_line_height)));
-    assert_eq!(css_values.get("label-size"), Some(&rem(typography.label_size)));
+    assert_eq!(
+        css_values.get("body-line-height"),
+        Some(&number(typography.body_line_height))
+    );
+    assert_eq!(
+        css_values.get("label-size"),
+        Some(&rem(typography.label_size))
+    );
     assert_eq!(
         css_values.get("label-weight"),
         Some(&typography.label_weight.to_string())
@@ -144,8 +147,14 @@ fn assert_density_tokens(
 }
 
 fn assert_css_density(density: &DensityTokens, css_values: &BTreeMap<String, String>) {
-    assert_eq!(css_values.get("panel-radius"), Some(&px(density.panel_radius)));
-    assert_eq!(css_values.get("badge-radius"), Some(&px(density.badge_radius)));
+    assert_eq!(
+        css_values.get("panel-radius"),
+        Some(&px(density.panel_radius))
+    );
+    assert_eq!(
+        css_values.get("badge-radius"),
+        Some(&px(density.badge_radius))
+    );
     assert_eq!(css_values.get("space-xs"), Some(&px(density.spacing_xs)));
     assert_eq!(css_values.get("space-sm"), Some(&px(density.spacing_sm)));
     assert_eq!(css_values.get("space-md"), Some(&px(density.spacing_md)));
@@ -162,9 +171,18 @@ fn assert_design_density(density: &DensityTokens, design_values: &BTreeMap<Strin
         design_values.get("rounded.pill"),
         Some(&px(density.badge_radius))
     );
-    assert_eq!(design_values.get("spacing.xs"), Some(&px(density.spacing_xs)));
-    assert_eq!(design_values.get("spacing.sm"), Some(&px(density.spacing_sm)));
-    assert_eq!(design_values.get("spacing.md"), Some(&px(density.spacing_md)));
+    assert_eq!(
+        design_values.get("spacing.xs"),
+        Some(&px(density.spacing_xs))
+    );
+    assert_eq!(
+        design_values.get("spacing.sm"),
+        Some(&px(density.spacing_sm))
+    );
+    assert_eq!(
+        design_values.get("spacing.md"),
+        Some(&px(density.spacing_md))
+    );
 }
 
 fn assert_tui_density(name: &str, tui: &ResolvedTuiTheme) {
