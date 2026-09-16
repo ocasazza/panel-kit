@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/ocasazza/panel-kit/compare/v1.0.0...v1.1.0) (2026-09-16)
+
+
+### Features
+
+* port fork widgets and policies; fix inset-chrome regression ([e216fa6](https://github.com/ocasazza/panel-kit/commit/e216fa6ddbf2f4783af1fbcb76c61d5cb9b3d23b))
+
 # [1.0.0](https://github.com/ocasazza/panel-kit/compare/v0.3.0...v1.0.0) (2026-09-14)
 
 
