@@ -1,3 +1,12 @@
+## [1.1.1](https://github.com/ocasazza/panel-kit/compare/v1.1.0...v1.1.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* **core:** restore expanding tiling tracks and click-to-raise stacking ([2bea80c](https://github.com/ocasazza/panel-kit/commit/2bea80cc5e6c68a434a64acd0767fce34fffbc55))
+* **core:** use minimal row count for column-major tile fills ([58e0be3](https://github.com/ocasazza/panel-kit/commit/58e0be34ce39f6a273ea8ed0a24ef569872a127a))
+* **web:** wire panel body presses to focus/raise through the reducer ([83d0b41](https://github.com/ocasazza/panel-kit/commit/83d0b41c6e45b87590e5ad2f78d0278fdcb20a90))
+
 # [1.1.0](https://github.com/ocasazza/panel-kit/compare/v1.0.0...v1.1.0) (2026-09-16)
 
 
