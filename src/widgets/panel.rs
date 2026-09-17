@@ -33,6 +33,39 @@ pub fn panel_shell<K: PanelKey>(
     }
 }
 
+/// Paint the positioned panel container wired for host-owned event loops:
+/// a primary pointer press on the panel surface emits a reducer event that
+/// focuses the panel and, in floating mode, raises it to the front — the
+/// window-manager behavior every controller-era workspace had. Chrome parts
+/// (header, grip, lights) stop propagation, so only genuine body presses
+/// reach this handler. [`panel_shell`] remains the passive painter for
+/// static snapshots and SSR probes.
+pub fn panel_shell_with_events<K: PanelKey>(
+    panel: PanelProjection<K>,
+    class: Option<&str>,
+    children: Element,
+    emit: EventHandler<WorkspaceEvent<K>>,
+) -> Element {
+    let class = panel_class(panel, class);
+    let style = panel_style(panel);
+
+    rsx! {
+        section {
+            class: "{class}",
+            style: "{style}",
+            onpointerdown: move |event: DioxusPointerEvent| {
+                emit.call(pointer_workspace_event(
+                    panel.key,
+                    PanelPart::Surface,
+                    PointerEventKind::Down(PointerButton::Primary),
+                    &event,
+                ));
+            },
+            {children}
+        }
+    }
+}
+
 /// Paint the native-overflow body for one projected panel.
 pub fn panel_body(body: Element) -> Element {
     rsx! {
@@ -129,6 +162,7 @@ pub fn panel_chrome_with_events<K: PanelKey>(
                 }
             },
             onpointerdown: move |event: DioxusPointerEvent| {
+                event.stop_propagation();
                 event.prevent_default();
                 emit.call(pointer_workspace_event(
                     panel.key,
@@ -221,6 +255,7 @@ pub fn resize_grip<K: PanelKey>(
             aria_label: "Resize panel",
             tabindex: "0",
             onpointerdown: move |event: DioxusPointerEvent| {
+                event.stop_propagation();
                 event.prevent_default();
                 capture_pointer(&event);
                 emit.call(pointer_workspace_event(panel.key, PanelPart::ResizeGrip, PointerEventKind::Down(PointerButton::Primary), &event));
