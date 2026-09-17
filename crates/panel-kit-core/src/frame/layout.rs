@@ -86,7 +86,7 @@ impl TileLayoutMetrics {
             row_min: resize.row,
             gap: 0.0,
             padding: 0.0,
-            fill_viewport: false,
+            fill_viewport: true,
             fill_order: TileFillOrder::RowMajor,
         }
     }

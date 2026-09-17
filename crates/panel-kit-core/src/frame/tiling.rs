@@ -395,4 +395,57 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn default_tile_metrics_expand_tracks_to_fill_the_workspace_band() {
+        // The pre-1.0 tiling renderer sized rows with `1fr`: tiles always
+        // expanded to fill the screen. Hosts build metrics through
+        // `TileLayoutMetrics::from_tile_metrics`, so that constructor's
+        // default must preserve the expanding behavior — fixed `row_min`
+        // tracks leave panels huddled at the top of the viewport.
+        let mut layout = LayoutBuilder::new();
+        let panels = vec![
+            layout
+                .at(TestPanel::One, 0.0, 0.0, 20.0, 10.0)
+                .with_tile(4, 1),
+            layout
+                .at(TestPanel::Two, 0.0, 0.0, 20.0, 10.0)
+                .with_tile(4, 1),
+        ];
+        let snapshot = Snapshot::from_defaults(
+            panels,
+            Mode::Tiling,
+            Viewport {
+                width: 1000.0,
+                height: 600.0,
+                units: Units::CssPx,
+            },
+        );
+        let surface = SurfaceProfile::from_logical_width(
+            1000.0,
+            crate::WEB_COMPACT_MAX,
+            crate::WEB_TABLET_MAX,
+            SurfaceCapabilities {
+                coarse_pointer: false,
+                hover: true,
+                keyboard: true,
+            },
+        );
+        let metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+        let workspace = Region::new(0.0, 0.0, 1000.0, 600.0);
+        let mut scratch = ProjectionBuffer::with_panel_capacity(snapshot.panels.len());
+        let grid = project_tiles(&snapshot, workspace, &metrics, &mut scratch);
+        assert_eq!(grid.rows, 2);
+
+        let heights = scratch
+            .tile_rows
+            .iter()
+            .map(|placement| tile_region(workspace, grid, *placement, 0.0).0.h)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            heights,
+            vec![300.0, 300.0],
+            "default metrics must stretch tile tracks to fill the workspace band"
+        );
+    }
 }

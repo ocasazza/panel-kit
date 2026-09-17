@@ -73,6 +73,10 @@ fn assert_pointer_transition_delegation() {
         },
         web_context(),
     );
+    // The floating pointer-down transition raises the panel to the front
+    // before the drag begins; the direct hand-roll mirrors that step.
+    let front = crate::front_z(&direct.panels);
+    direct.panels[0].z = front;
     direct.drag = begin_drag(
         &mut direct.panels,
         0,

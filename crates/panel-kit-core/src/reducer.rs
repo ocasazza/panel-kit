@@ -170,7 +170,11 @@ fn reduce_panel_pointer_down<K: PanelKey>(
         PanelPart::Surface
         | PanelPart::ModeControl
         | PanelPart::MinimizeControl
-        | PanelPart::MaximizeControl => focus_panel(snapshot, key),
+        | PanelPart::MaximizeControl => focus_panel(
+            snapshot,
+            key,
+            effective_mode(snapshot.preferred_mode, &context.surface),
+        ),
     }
 }
 
@@ -200,6 +204,7 @@ fn begin_panel_drag<K: PanelKey>(
             snapshot.focused = Some(key);
         }
     } else {
+        raise_to_front(&mut snapshot.panels, key);
         snapshot.drag = begin_drag(
             &mut snapshot.panels,
             index,
@@ -226,14 +231,36 @@ fn begin_panel_drag<K: PanelKey>(
     changed(ChangePhase::Continuous, None)
 }
 
-/// Focus a pointer-targeted panel without inventing geometry behavior.
-fn focus_panel<K: PanelKey>(snapshot: &mut Snapshot<K>, key: K) -> Reduction<K> {
-    if snapshot.focused == Some(key) {
+/// Focus a pointer-targeted panel. In floating mode a click also raises the
+/// panel to the front of the stacking order — the window-manager behavior
+/// every backend shared before the reducer recomposition. Tiling leaves
+/// stacking untouched: z only matters when panels overlap, and mutating it
+/// would re-render and swallow clicks on panel content.
+fn focus_panel<K: PanelKey>(snapshot: &mut Snapshot<K>, key: K, mode: Mode) -> Reduction<K> {
+    let focused_before = snapshot.focused;
+    let raised = mode == Mode::Floating && raise_to_front(&mut snapshot.panels, key);
+
+    snapshot.focused = Some(key);
+
+    if snapshot.focused == focused_before && !raised {
         return Reduction::unchanged();
     }
 
-    snapshot.focused = Some(key);
     changed(ChangePhase::Continuous, None)
+}
+
+/// Bring a floating panel to the front of the stacking order, reporting
+/// whether stacking changed. No-op when the panel already sits on top.
+fn raise_to_front<K: PanelKey>(panels: &mut [PanelWin<K>], key: K) -> bool {
+    let top = panels.iter().map(|panel| panel.z).max().unwrap_or(0);
+    let Some(panel) = panels.iter_mut().find(|panel| panel.kind == key) else {
+        return false;
+    };
+    if panel.z >= top {
+        return false;
+    }
+    panel.z = top + 1;
+    true
 }
 
 /// Apply in-flight drag/reorder motion through the core drag/reorder helpers.
