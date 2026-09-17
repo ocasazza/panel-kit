@@ -94,7 +94,7 @@ fn project_column_major<K: PanelKey>(
     columns: u8,
     scratch: &mut ProjectionBuffer<K>,
 ) -> u16 {
-    let mut rows = row_major_rows(snapshot, columns);
+    let mut rows = column_major_rows_lower_bound(snapshot, columns);
     while column_major_columns(snapshot, rows, columns) > columns as u16 && rows < u16::MAX {
         rows += 1;
     }
@@ -128,28 +128,27 @@ fn project_column_major<K: PanelKey>(
     rows
 }
 
-fn row_major_rows<K: PanelKey>(snapshot: &Snapshot<K>, columns: u8) -> u16 {
-    let mut used = 0_u8;
-    let mut row = 0_u16;
-    let mut row_h = 0_u16;
+/// Smallest row count a column-major fill could need: every panel must fit
+/// inside one column, and the total cell area must fit the grid. The fit
+/// loop in [`project_column_major`] raises it until the packing closes.
+fn column_major_rows_lower_bound<K: PanelKey>(snapshot: &Snapshot<K>, columns: u8) -> u16 {
+    let mut tallest = 0_u16;
+    let mut area = 0_u32;
 
     for panel in &snapshot.panels {
         if panel.state != WinState::Floating {
             continue;
         }
-        let column_span = panel.tile_w.clamp(1, columns);
-        let row_span = panel.tile_h.clamp(1, TILE_H_MAX) as u16;
-        if used + column_span > columns {
-            row = row.saturating_add(row_h.max(1));
-            used = 0;
-            row_h = 0;
-        }
-        used += column_span;
-        row_h = row_h.max(row_span);
+        let column_span = panel.tile_w.clamp(1, columns) as u32;
+        let row_span = panel.tile_h.clamp(1, TILE_H_MAX) as u32;
+        tallest = tallest.max(row_span as u16);
+        area += column_span * row_span;
     }
 
-    row.saturating_add(row_h).max(1)
+    let by_area = area.div_ceil(columns.max(1) as u32) as u16;
+    tallest.max(by_area).max(1)
 }
+
 
 fn column_major_columns<K: PanelKey>(snapshot: &Snapshot<K>, rows: u16, columns: u8) -> u16 {
     let mut column = 0_u16;
@@ -447,5 +446,214 @@ mod tests {
             vec![300.0, 300.0],
             "default metrics must stretch tile tracks to fill the workspace band"
         );
+    }
+
+    /// One projected layout expectation: the grid row count plus each
+    /// visible panel's region, in panel order.
+    struct LayoutCase {
+        name: &'static str,
+        /// `(tile_w, tile_h)` spans per panel.
+        panels: &'static [(u8, u8)],
+        /// Panel indices minimized before projection (excluded from track
+        /// math).
+        minimized: &'static [usize],
+        fill_order: TileFillOrder,
+        fill_viewport: bool,
+        expected_rows: u16,
+        /// `(x, y, w, h)` per visible panel, in panel order.
+        expected_regions: &'static [(f64, f64, f64, f64)],
+    }
+
+    /// The layout contract, exercised as a table: every case projects the
+    /// same 1200x900 four-column band with web metrics (150px natural rows,
+    /// no gap or padding). These pin the behaviors that regressed on the
+    /// path to 1.0 — expanding tracks, minimal column-major row counts,
+    /// overflow scrolling, span clamping, and minimized-panel exclusion.
+    #[test]
+    fn tiling_layout_cases() {
+        const ROW_MAJOR: TileFillOrder = TileFillOrder::RowMajor;
+        const COLUMN_MAJOR: TileFillOrder = TileFillOrder::ColumnMajor;
+
+        let cases = [
+            LayoutCase {
+                name: "row-major/side-by-side shares one stretched row",
+                panels: &[(2, 1), (2, 1)],
+                minimized: &[],
+                fill_order: ROW_MAJOR,
+                fill_viewport: true,
+                expected_rows: 1,
+                expected_regions: &[(0.0, 0.0, 600.0, 900.0), (600.0, 0.0, 600.0, 900.0)],
+            },
+            LayoutCase {
+                name: "row-major/overflowing spans wrap to the next row",
+                panels: &[(3, 1), (2, 1)],
+                minimized: &[],
+                fill_order: ROW_MAJOR,
+                fill_viewport: true,
+                expected_rows: 2,
+                expected_regions: &[(0.0, 0.0, 900.0, 450.0), (0.0, 450.0, 600.0, 450.0)],
+            },
+            LayoutCase {
+                name: "row-major/tall panel raises its row, later panels wrap",
+                panels: &[(2, 2), (2, 1), (2, 1)],
+                minimized: &[],
+                fill_order: ROW_MAJOR,
+                fill_viewport: true,
+                expected_rows: 3,
+                expected_regions: &[
+                    (0.0, 0.0, 600.0, 600.0),
+                    (600.0, 0.0, 600.0, 300.0),
+                    (0.0, 600.0, 600.0, 300.0),
+                ],
+            },
+            LayoutCase {
+                name: "row-major/single full-width panel fills the band",
+                panels: &[(4, 1)],
+                minimized: &[],
+                fill_order: ROW_MAJOR,
+                fill_viewport: true,
+                expected_rows: 1,
+                expected_regions: &[(0.0, 0.0, 1200.0, 900.0)],
+            },
+            LayoutCase {
+                name: "row-major/fill never squashes overflowing content",
+                panels: &[(4, 2), (4, 2), (4, 2), (4, 2)],
+                minimized: &[],
+                fill_order: ROW_MAJOR,
+                fill_viewport: true,
+                expected_rows: 8,
+                expected_regions: &[
+                    (0.0, 0.0, 1200.0, 300.0),
+                    (0.0, 300.0, 1200.0, 300.0),
+                    (0.0, 600.0, 1200.0, 300.0),
+                    (0.0, 900.0, 1200.0, 300.0),
+                ],
+            },
+            LayoutCase {
+                name: "row-major/fill disabled keeps natural track heights",
+                panels: &[(4, 1), (4, 1)],
+                minimized: &[],
+                fill_order: ROW_MAJOR,
+                fill_viewport: false,
+                expected_rows: 2,
+                expected_regions: &[(0.0, 0.0, 1200.0, 150.0), (0.0, 150.0, 1200.0, 150.0)],
+            },
+            LayoutCase {
+                name: "column-major/sidebar plus full-height neighbor uses minimal rows",
+                panels: &[(2, 2), (2, 1), (2, 3)],
+                minimized: &[],
+                fill_order: COLUMN_MAJOR,
+                fill_viewport: true,
+                expected_rows: 3,
+                expected_regions: &[
+                    (0.0, 0.0, 600.0, 600.0),
+                    (0.0, 600.0, 600.0, 300.0),
+                    (600.0, 0.0, 600.0, 900.0),
+                ],
+            },
+            LayoutCase {
+                name: "column-major/grows rows until the packing closes",
+                panels: &[(2, 2), (2, 2), (2, 2)],
+                minimized: &[],
+                fill_order: COLUMN_MAJOR,
+                fill_viewport: true,
+                expected_rows: 4,
+                expected_regions: &[
+                    (0.0, 0.0, 600.0, 450.0),
+                    (0.0, 450.0, 600.0, 450.0),
+                    (600.0, 0.0, 600.0, 450.0),
+                ],
+            },
+            LayoutCase {
+                name: "column-major/single panel fills its columns",
+                panels: &[(2, 2)],
+                minimized: &[],
+                fill_order: COLUMN_MAJOR,
+                fill_viewport: true,
+                expected_rows: 2,
+                expected_regions: &[(0.0, 0.0, 600.0, 900.0)],
+            },
+            LayoutCase {
+                name: "spans/clamp to the grid maxima",
+                panels: &[(9, 9)],
+                minimized: &[],
+                fill_order: ROW_MAJOR,
+                fill_viewport: true,
+                expected_rows: 6,
+                expected_regions: &[(0.0, 0.0, 1200.0, 900.0)],
+            },
+            LayoutCase {
+                name: "minimized/panels are excluded from track math",
+                panels: &[(4, 1), (4, 1)],
+                minimized: &[1],
+                fill_order: ROW_MAJOR,
+                fill_viewport: true,
+                expected_rows: 1,
+                expected_regions: &[(0.0, 0.0, 1200.0, 900.0)],
+            },
+        ];
+
+        let surface = SurfaceProfile::from_logical_width(
+            1200.0,
+            crate::WEB_COMPACT_MAX,
+            crate::WEB_TABLET_MAX,
+            SurfaceCapabilities {
+                coarse_pointer: false,
+                hover: true,
+                keyboard: true,
+            },
+        );
+        let workspace = Region::new(0.0, 0.0, 1200.0, 900.0);
+
+        for case in cases {
+            let mut layout = LayoutBuilder::new();
+            let kinds = [TestPanel::One, TestPanel::Two, TestPanel::Three, TestPanel::Four];
+            let mut panels = case
+                .panels
+                .iter()
+                .enumerate()
+                .map(|(index, &(w, h))| {
+                    layout
+                        .at(kinds[index], 0.0, 0.0, 20.0, 10.0)
+                        .with_tile(w, h)
+                })
+                .collect::<Vec<_>>();
+            for &index in case.minimized {
+                panels[index].state = crate::WinState::Minimized;
+            }
+            let snapshot = Snapshot::from_defaults(
+                panels,
+                Mode::Tiling,
+                Viewport {
+                    width: 1200.0,
+                    height: 900.0,
+                    units: Units::CssPx,
+                },
+            );
+            let mut metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+            metrics.fill_viewport = case.fill_viewport;
+            metrics.fill_order = case.fill_order;
+
+            let mut scratch = ProjectionBuffer::with_panel_capacity(snapshot.panels.len());
+            let grid = project_tiles(&snapshot, workspace, &metrics, &mut scratch);
+            assert_eq!(
+                grid.rows, case.expected_rows,
+                "{}: grid rows",
+                case.name
+            );
+
+            let regions = scratch
+                .tile_rows
+                .iter()
+                .map(|placement| tile_region(workspace, grid, *placement, 0.0).0)
+                .map(|region| (region.x, region.y, region.w, region.h))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                regions,
+                case.expected_regions.to_vec(),
+                "{}: panel regions",
+                case.name
+            );
+        }
     }
 }
