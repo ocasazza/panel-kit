@@ -125,11 +125,20 @@ pub fn draw_resize_grip<K: PanelKey>(
     theme: &ResolvedTuiTheme,
     hits: &mut TuiHitBuffer<K>,
 ) -> Option<Rect> {
-    let region = panel.chrome.resize_hit.map(rect_from_region)?;
+    let outer = rect_from_region(panel.chrome.outer);
+    if outer.width == 0 || outer.height == 0 {
+        return None;
+    }
+    let region = Rect::new(
+        outer.right().saturating_sub(2),
+        outer.bottom().saturating_sub(1),
+        2.min(outer.width),
+        1,
+    );
     hits.record_panel_part(panel.key, panel.source_index, PanelPart::ResizeGrip, region);
 
     if hover.is_some_and(|point| region.contains(point)) {
-        let glyph = Rect::new(region.right().saturating_sub(1), region.y, 1, 1);
+        let glyph = Rect::new(outer.right().saturating_sub(1), outer.bottom().saturating_sub(1), 1, 1);
         frame.render_widget(
             Paragraph::new("+").style(Style::default().fg(theme.accent)),
             glyph,

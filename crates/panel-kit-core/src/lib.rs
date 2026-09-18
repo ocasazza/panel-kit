@@ -697,7 +697,7 @@ impl Clamp {
         edge: 0.0,
         min_w: 20.0,
         min_h: 5.0,
-        max_frac: 0.75,
+        max_frac: 1.0,
     };
 }
 

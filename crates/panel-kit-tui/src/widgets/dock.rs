@@ -66,11 +66,7 @@ pub fn draw_dock<K: PanelKey>(
     }
 
     for entry in dock.iter().copied() {
-        hits.record_dock(
-            entry.key,
-            entry.source_index,
-            rect_from_region(entry.region),
-        );
+        let chip_start = x;
         write_dock_chip(
             frame,
             &mut x,
@@ -78,6 +74,12 @@ pub fn draw_dock<K: PanelKey>(
             context.catalog,
             entry.key,
             context.theme,
+        );
+        let chip_width = x.saturating_sub(chip_start);
+        hits.record_dock(
+            entry.key,
+            entry.source_index,
+            Rect::new(chip_start, inner.y, chip_width, inner.height.max(1)),
         );
     }
 }
