@@ -118,7 +118,7 @@ fn presets_carry_the_canonical_typography_and_density() {
         assert_eq!(theme.typography.label_size, 0.72);
         assert_eq!(theme.typography.label_weight, 700);
         assert_eq!(theme.typography.label_tracking, 0.06);
-        assert_eq!(theme.density.panel_radius, 4.0);
+        assert_eq!(theme.density.panel_radius, 0.0);
         assert_eq!(theme.density.badge_radius, 999.0);
         assert_eq!(theme.density.spacing_xs, 4.0);
         assert_eq!(theme.density.spacing_sm, 6.0);

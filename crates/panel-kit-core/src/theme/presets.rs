@@ -68,7 +68,7 @@ pub(super) fn typography() -> TypographyTokens {
 /// The documented canonical density tokens.
 pub(super) fn density() -> DensityTokens {
     DensityTokens {
-        panel_radius: 4.0,
+        panel_radius: 0.0,
         badge_radius: 999.0,
         spacing_xs: 4.0,
         spacing_sm: 6.0,

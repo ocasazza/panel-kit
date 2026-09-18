@@ -26,7 +26,7 @@
   --label-size: 0.72rem;
   --label-weight: 700;
   --label-tracking: 0.06em;
-  --panel-radius: 4px;
+  --panel-radius: 0px;
   --badge-radius: 999px;
   --space-xs: 4px;
   --space-sm: 6px;
@@ -49,9 +49,11 @@ body, html, #main {
   font-family:var(--mono); font-size:var(--body-size); line-height:var(--body-line-height);
   -webkit-font-smoothing:antialiased; overflow:hidden;
 }
+* { scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
 ::selection { background:var(--inv-bg); color:var(--inv-fg); }
-::-webkit-scrollbar { width:9px; height:9px; }
+::-webkit-scrollbar { width:4px; height:4px; }
 ::-webkit-scrollbar-thumb { background:var(--line2); }
+::-webkit-scrollbar-thumb:hover { background:var(--dim); }
 ::-webkit-scrollbar-track { background:transparent; }
 button { font-family:var(--mono); }
 .ws-root :focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
@@ -120,7 +122,7 @@ button { font-family:var(--mono); }
 .panel-head-actions { display:flex; align-items:center; gap:3px; flex:0 0 auto; min-width:0; }
 .panel-head-actions:empty { display:none; }
 .panel-head-action { position:relative; height:17px; min-width:20px; padding:0 4px;
-  border:1px solid var(--line2); border-radius:3px; background:var(--bg); color:var(--dim);
+  border:1px solid var(--line2); border-radius:0; background:var(--bg); color:var(--dim);
   font-size:.65rem; line-height:15px; cursor:pointer; white-space:nowrap; }
 .panel-head-action::before { content:""; position:absolute; left:50%; top:50%;
   width:max(100%, var(--hit-min)); height:var(--hit-min); transform:translate(-50%, -50%); }
@@ -128,7 +130,7 @@ button { font-family:var(--mono); }
 .panel-head-action.active { border-color:var(--accent); color:var(--accent); }
 .panel-head-action:disabled { opacity:.4; cursor:not-allowed; }
 .panel-body { flex:1; min-height:0; overflow:auto;
-  padding:calc(var(--panel-head-h) + var(--space-sm)) .55rem .55rem; }
+  padding:calc(var(--panel-head-h) + var(--space-sm)) var(--space-md) var(--space-md); }
 
 /* Traffic lights */
 .lights { display:flex; align-items:center; gap:6px; }
@@ -170,7 +172,7 @@ button { font-family:var(--mono); }
 .dock-empty { color:var(--dim); font-size:.7rem; }
 .dock-chip { min-width:var(--hit-min); min-height:var(--hit-min);
   background:var(--bg); color:var(--fg);
-  border:1px solid var(--line2); border-radius:3px; padding:.35rem .5rem;
+  border:1px solid var(--line2); border-radius:0; padding:.35rem .5rem;
   font-size:.72rem; cursor:pointer; white-space:nowrap; }
 .dock-chip:hover { border-color:var(--fg); }
 
@@ -202,7 +204,7 @@ button { font-family:var(--mono); }
    grid can express. --bg on --panel is the same recessed read and survives
    translation. */
 .pk-progress-track { height:.55rem; background:var(--bg);
-  border:1px solid var(--line2); border-radius:3px; overflow:hidden; }
+  border:1px solid var(--line2); border-radius:0; overflow:hidden; }
 .pk-progress-fill { height:100%; background:var(--accent);
   transition:width .4s ease; }
 .pk-progress-fill.indeterminate { width:40%;
@@ -245,7 +247,7 @@ button { font-family:var(--mono); }
 
 /* Fixed info-tooltip overlay (viewport-placed at the app root) */
 .tip-overlay { position:fixed; width:228px; z-index:6000; background:var(--panel);
-  border:1px solid var(--line2); border-radius:5px; padding:.5rem .6rem;
+  border:1px solid var(--line2); border-radius:0; padding:.5rem .6rem;
   box-shadow:0 10px 30px #000c; }
 
 /* Compact shell — single-column stack. Window-management chrome is withheld
@@ -350,7 +352,7 @@ button { font-family:var(--mono); }
 .pk-dropdown { position:relative; display:inline-block; min-width:0; }
 .pk-dropdown-btn { display:flex; align-items:center; gap:.5rem; width:100%;
   background:color-mix(in srgb, var(--fg) 7%, var(--bg)); color:var(--fg);
-  border:1px solid var(--line2); border-radius:6px; padding:.3rem .55rem;
+  border:1px solid var(--line2); border-radius:0; padding:.3rem .55rem;
   font-family:var(--mono); font-size:12px; cursor:pointer; text-align:left;
   transition:border-color .12s, background .12s; }
 .pk-dropdown-btn:hover, .pk-dropdown-btn:focus-visible {
@@ -364,7 +366,7 @@ button { font-family:var(--mono); }
   transform:rotate(180deg); opacity:1; color:var(--accent); }
 .pk-dropdown-popup { position:absolute; z-index:100; top:calc(100% + 4px); left:0;
   min-width:100%; max-width:min(70vw, 480px); background:var(--bg);
-  border:1px solid var(--border,#2a2a2a); border-radius:6px; outline:none;
+  border:1px solid var(--border,#2a2a2a); border-radius:0; outline:none;
   box-shadow:0 8px 24px rgba(0,0,0,.5); }
 .pk-dropdown-search { width:100%; box-sizing:border-box; background:var(--bg);
   color:var(--fg); border:0; border-bottom:1px solid var(--border,#2a2a2a);
