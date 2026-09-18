@@ -780,5 +780,9 @@ mod browser {
 
 #[cfg(target_arch = "wasm32")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    browser::main()
+    if let Err(e) = browser::main() {
+        ratzilla::web_sys::console::error_1(&format!("browser_tui error: {e:?}").into());
+        return Err(e);
+    }
+    Ok(())
 }
