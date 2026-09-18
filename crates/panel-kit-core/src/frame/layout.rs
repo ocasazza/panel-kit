@@ -84,8 +84,8 @@ impl TileLayoutMetrics {
             resize,
             columns: surface.tile_columns(),
             row_min: resize.row,
-            gap: 0.0,
-            padding: 0.0,
+            gap: resize.gap,
+            padding: resize.padding,
             fill_viewport: true,
             fill_order: TileFillOrder::RowMajor,
         }

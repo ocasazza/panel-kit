@@ -739,6 +739,10 @@ pub struct TileMetrics {
     /// Horizontal chrome subtracted from the viewport before computing the
     /// column width.
     pub outer: f64,
+    /// Gap left between projected tile tracks.
+    pub gap: f64,
+    /// Padding inset around the tile grid.
+    pub padding: f64,
 }
 
 impl TileMetrics {
@@ -747,6 +751,8 @@ impl TileMetrics {
         row: TILE_ROW_PX,
         col_floor: 80.0,
         outer: 16.0,
+        gap: 1.0,
+        padding: 1.0,
     };
 
     /// Character-cell defaults for terminal shells. The row height is
@@ -756,6 +762,8 @@ impl TileMetrics {
         row: 4.0,
         col_floor: 12.0,
         outer: 0.0,
+        gap: 0.0,
+        padding: 0.0,
     };
 }
 

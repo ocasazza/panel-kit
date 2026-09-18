@@ -443,8 +443,189 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             heights,
-            vec![300.0, 300.0],
-            "default metrics must stretch tile tracks to fill the workspace band"
+            vec![298.5, 298.5],
+            "default metrics must stretch tile tracks to fill the workspace band \
+             inside the default 1px gap and padding"
+        );
+    }
+
+    #[test]
+    fn web_tile_metrics_default_to_a_one_pixel_gap_and_padding() {
+        let surface = SurfaceProfile::from_logical_width(
+            1400.0,
+            crate::WEB_COMPACT_MAX,
+            crate::WEB_TABLET_MAX,
+            SurfaceCapabilities {
+                coarse_pointer: false,
+                hover: true,
+                keyboard: true,
+            },
+        );
+        let metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+        assert_eq!(metrics.gap, 1.0, "web tiles must not ship flush against each other");
+        assert_eq!(metrics.padding, 1.0, "web tiles must not ship flush against the band edges");
+    }
+
+    #[test]
+    fn cell_tile_metrics_default_to_no_gap_or_padding() {
+        let surface = SurfaceProfile::from_logical_width(
+            120.0,
+            CELLS_COMPACT_MAX,
+            CELLS_TABLET_MAX,
+            SurfaceCapabilities {
+                coarse_pointer: false,
+                hover: true,
+                keyboard: true,
+            },
+        );
+        let metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::CELLS, surface);
+        assert_eq!(metrics.gap, 0.0, "cell borders already separate terminal tiles");
+        assert_eq!(metrics.padding, 0.0);
+    }
+
+    #[test]
+    fn default_gap_and_padding_inset_tracks_from_the_band_edges() {
+        let surface = SurfaceProfile::from_logical_width(
+            1400.0,
+            crate::WEB_COMPACT_MAX,
+            crate::WEB_TABLET_MAX,
+            SurfaceCapabilities {
+                coarse_pointer: false,
+                hover: true,
+                keyboard: true,
+            },
+        );
+        let mut layout = LayoutBuilder::new();
+        let panels = vec![
+            layout.at(TestPanel::One, 0.0, 0.0, 20.0, 10.0).with_tile(1, 1),
+            layout.at(TestPanel::Two, 0.0, 0.0, 20.0, 10.0).with_tile(1, 1),
+        ];
+        let snapshot = Snapshot::from_defaults(
+            panels,
+            Mode::Tiling,
+            Viewport {
+                width: 1400.0,
+                height: 900.0,
+                units: Units::CssPx,
+            },
+        );
+        let metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+        let mut scratch = ProjectionBuffer::with_panel_capacity(2);
+        let workspace = Region::new(0.0, 0.0, 1400.0, 900.0);
+        let grid = project_tiles(&snapshot, workspace, &metrics, &mut scratch);
+
+        assert_eq!(grid.padding, 1.0);
+        assert_eq!(grid.gap, 1.0);
+        let first = tile_region(workspace, grid, scratch.tile_rows[0], 0.0).0;
+        assert_eq!(
+            (first.x, first.y),
+            (1.0, 1.0),
+            "the first tile must sit one pixel inside the band"
+        );
+    }
+
+    #[test]
+    fn parameterized_surface_classes_stack_equal_rows_and_fill_the_band() {
+        let cases = [
+            ("mobile", 400.0, 1_u8),
+            ("tablet", 900.0, 2_u8),
+            ("desktop", 1400.0, crate::TILE_W_MAX),
+        ];
+        let workspace = Region::new(0.0, 0.0, 1400.0, 900.0);
+
+        for (name, width, expected_columns) in cases {
+            let surface = SurfaceProfile::from_logical_width(
+                width,
+                crate::WEB_COMPACT_MAX,
+                crate::WEB_TABLET_MAX,
+                SurfaceCapabilities {
+                    coarse_pointer: false,
+                    hover: true,
+                    keyboard: true,
+                },
+            );
+            let mut layout = LayoutBuilder::new();
+            let panels = vec![
+                layout.at(TestPanel::One, 0.0, 0.0, 20.0, 10.0).with_tile(4, 1),
+                layout.at(TestPanel::Two, 0.0, 0.0, 20.0, 10.0).with_tile(4, 1),
+            ];
+            let snapshot = Snapshot::from_defaults(
+                panels,
+                Mode::Tiling,
+                Viewport {
+                    width,
+                    height: workspace.h,
+                    units: Units::CssPx,
+                },
+            );
+            let metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+            let mut scratch = ProjectionBuffer::with_panel_capacity(2);
+            let grid = project_tiles(&snapshot, workspace, &metrics, &mut scratch);
+            let regions = scratch
+                .tile_rows
+                .iter()
+                .map(|placement| tile_region(workspace, grid, *placement, 0.0).0)
+                .collect::<Vec<_>>();
+
+            assert_eq!(grid.columns, expected_columns, "{name}: column policy");
+            assert_eq!(grid.rows, 2, "{name}: two equal rows");
+            assert_eq!(regions.len(), 2, "{name}: both panels are visible");
+            assert_eq!(regions[0].x, 1.0, "{name}: leading padding");
+            assert_eq!(regions[0].y, 1.0, "{name}: leading padding");
+            assert_eq!(regions[0].w, regions[1].w, "{name}: equal widths");
+            assert_eq!(regions[0].h, regions[1].h, "{name}: equal heights");
+            assert!(
+                (regions[0].h * 2.0 + grid.gap + grid.padding * 2.0 - workspace.h).abs() < 1e-9,
+                "{name}: rows fill the band"
+            );
+        }
+    }
+    #[test]
+    fn multi_column_asymmetric_spans_match_total_height() {
+        // Column 0: two stacked panels of span (2, 1) and (2, 1) -> total 2 rows.
+        // Column 1: single panel of span (2, 2) -> total 2 rows.
+        // Both columns must project to identical total height filling the workspace band.
+        let workspace = Region::new(0.0, 0.0, 1400.0, 900.0);
+        let surface = SurfaceProfile::from_logical_width(
+            1400.0,
+            crate::WEB_COMPACT_MAX,
+            crate::WEB_TABLET_MAX,
+            SurfaceCapabilities {
+                coarse_pointer: false,
+                hover: true,
+                keyboard: true,
+            },
+        );
+        let mut layout = LayoutBuilder::new();
+        let panels = vec![
+            layout.at(TestPanel::One, 0.0, 0.0, 20.0, 10.0).with_tile(2, 1),
+            layout.at(TestPanel::Two, 0.0, 0.0, 20.0, 10.0).with_tile(2, 1),
+            layout.at(TestPanel::Three, 0.0, 0.0, 20.0, 10.0).with_tile(2, 2),
+        ];
+        let snapshot = Snapshot::from_defaults(
+            panels,
+            Mode::Tiling,
+            Viewport {
+                width: 1400.0,
+                height: 900.0,
+                units: Units::CssPx,
+            },
+        );
+        let metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+        let mut scratch = ProjectionBuffer::with_panel_capacity(3);
+        let grid = project_tiles(&snapshot, workspace, &metrics, &mut scratch);
+        let regions = scratch
+            .tile_rows
+            .iter()
+            .map(|placement| tile_region(workspace, grid, *placement, 0.0).0)
+            .collect::<Vec<_>>();
+
+        assert_eq!(grid.rows, 3);
+        // Panel 3 spans both rows: its height should equal regions[0].h + grid.gap + regions[1].h
+        let col0_total_h = regions[0].h + grid.gap + regions[1].h;
+        assert!(
+            (regions[2].h - col0_total_h).abs() < 1e-9,
+            "asymmetric multi-column total heights must match"
         );
     }
 
@@ -631,6 +812,10 @@ mod tests {
                 },
             );
             let mut metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+            // This table isolates span packing. Default spacing has its own
+            // contract tests above.
+            metrics.gap = 0.0;
+            metrics.padding = 0.0;
             metrics.fill_viewport = case.fill_viewport;
             metrics.fill_order = case.fill_order;
 

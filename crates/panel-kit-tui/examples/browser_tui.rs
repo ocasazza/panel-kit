@@ -749,7 +749,6 @@ mod browser {
                 .grid_id("panel-kit-tui")
                 .cursor_shape(CursorShape::None)
                 .canvas_padding_color(Color::Black)
-                .disable_auto_css_resize()
                 .font_atlas_config(FontAtlasConfig::dynamic(
                     &["Fira Code", "JetBrains Mono", "monospace"],
                     16.0,

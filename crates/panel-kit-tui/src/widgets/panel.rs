@@ -55,12 +55,18 @@ pub fn draw_panel_chrome<K: PanelKey>(
         return rect_from_region(panel.chrome.body);
     }
 
+    let title_text = if panel.chrome.mode_hit.is_some() || panel.chrome.minimize_hit.is_some() {
+        format!("        {}", meta.title.as_ref())
+    } else {
+        meta.title.as_ref().to_string()
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_set(charset.border())
         .border_style(panel_border_style(panel, theme))
         .title(Line::from(Span::styled(
-            meta.title.as_ref(),
+            title_text,
             Style::default().fg(theme.fg),
         )));
     let inner = block.inner(outer);
