@@ -26,10 +26,17 @@ pub fn draw_panel_surface<K: PanelKey>(
     let outer = rect_from_region(panel.chrome.outer);
     let body = rect_from_region(panel.chrome.body);
 
-    frame.render_widget(Clear, outer);
-    frame
-        .buffer_mut()
-        .set_style(body, Style::default().bg(theme.panel));
+    let clipped_outer = outer.intersection(frame.area());
+    let clipped_body = body.intersection(frame.area());
+
+    if clipped_outer.width > 0 && clipped_outer.height > 0 {
+        frame.render_widget(Clear, clipped_outer);
+    }
+    if clipped_body.width > 0 && clipped_body.height > 0 {
+        frame
+            .buffer_mut()
+            .set_style(clipped_body, Style::default().bg(theme.panel));
+    }
     hits.record_panel_surface(panel.key, panel.source_index, outer, body);
 
     body
@@ -55,25 +62,31 @@ pub fn draw_panel_chrome<K: PanelKey>(
         return rect_from_region(panel.chrome.body);
     }
 
-    let title = if panel.chrome.mode_hit.is_some() || panel.chrome.minimize_hit.is_some() {
-        Line::from(vec![
-            Span::raw("        "),
-            Span::styled(meta.title.as_ref(), Style::default().fg(theme.fg)),
-        ])
-    } else {
-        Line::from(Span::styled(
-            meta.title.as_ref(),
-            Style::default().fg(theme.fg),
-        ))
-    };
+    let clipped_outer = outer.intersection(frame.area());
+    let inner = if clipped_outer.width > 0 && clipped_outer.height > 0 {
+        let title = if panel.chrome.mode_hit.is_some() || panel.chrome.minimize_hit.is_some() {
+            Line::from(vec![
+                Span::raw("        "),
+                Span::styled(meta.title.as_ref(), Style::default().fg(theme.fg)),
+            ])
+        } else {
+            Line::from(Span::styled(
+                meta.title.as_ref(),
+                Style::default().fg(theme.fg),
+            ))
+        };
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_set(charset.border())
-        .border_style(panel_border_style(panel, theme))
-        .title(title);
-    let inner = block.inner(outer);
-    frame.render_widget(block, outer);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_set(charset.border())
+            .border_style(panel_border_style(panel, theme))
+            .title(title);
+        let inner = block.inner(clipped_outer);
+        frame.render_widget(block, clipped_outer);
+        inner
+    } else {
+        rect_from_region(panel.chrome.body)
+    };
     hits.record_panel_header(panel.key, panel.source_index, header);
 
     inner
@@ -141,11 +154,15 @@ pub fn draw_resize_grip<K: PanelKey>(
     hits.record_panel_part(panel.key, panel.source_index, PanelPart::ResizeGrip, region);
 
     if hover.is_some_and(|point| region.contains(point)) {
-        let glyph = Rect::new(outer.right().saturating_sub(1), outer.bottom().saturating_sub(1), 1, 1);
-        frame.render_widget(
-            Paragraph::new("+").style(Style::default().fg(theme.accent)),
-            glyph,
-        );
+        let glyph_x = outer.right().saturating_sub(1);
+        let glyph_y = outer.bottom().saturating_sub(1);
+        if glyph_x < frame.area().right() && glyph_y < frame.area().bottom() {
+            let glyph = Rect::new(glyph_x, glyph_y, 1, 1);
+            frame.render_widget(
+                Paragraph::new("+").style(Style::default().fg(theme.accent)),
+                glyph,
+            );
+        }
     }
 
     Some(region)
@@ -210,10 +227,12 @@ fn draw_light<K: PanelKey>(frame: &mut Frame, light: TrafficLight<K>, hits: &mut
         return;
     }
 
-    let hovered = light.hover.is_some_and(|point| region.contains(point));
-    frame.buffer_mut()[(region.x, region.y)]
-        .set_char(light.charset.light(hovered))
-        .set_style(Style::default().fg(light.color));
+    if region.x < frame.area().right() && region.y < frame.area().bottom() {
+        let hovered = light.hover.is_some_and(|point| region.contains(point));
+        frame.buffer_mut()[(region.x, region.y)]
+            .set_char(light.charset.light(hovered))
+            .set_style(Style::default().fg(light.color));
+    }
 }
 
 fn has_frame<K: PanelKey>(panel: PanelProjection<K>) -> bool {

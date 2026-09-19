@@ -292,6 +292,41 @@ fn parameterized_resize_grip_aligns_across_modes_and_dimensions() {
 }
 
 #[test]
+fn panels_extending_below_or_outside_frame_area_never_panic() {
+    let mut layout = LayoutBuilder::new();
+    // Panel Beta extends down to y = 35 + 15 = 50, well past the 39-row buffer limit
+    let panels = vec![
+        layout.at(TestPanel::Alpha, 2.0, 1.0, 30.0, 10.0),
+        layout.at(TestPanel::Beta, 2.0, 35.0, 30.0, 15.0),
+    ];
+    let snapshot = Snapshot::from_defaults(
+        panels,
+        Mode::Floating,
+        Viewport {
+            width: 67.0,
+            height: 39.0,
+            units: Units::Cells,
+        },
+    );
+    let mut scratch = ProjectionBuffer::with_panel_capacity(2);
+    let projected = project_cells(&snapshot, &mut scratch);
+    let catalog = PanelCatalog::from_panel_kind_layout(&snapshot.panels).unwrap();
+    let mut hit_buffer = TuiHitBuffer::with_capacity(2, 0);
+    let theme = ResolvedTuiTheme::default();
+
+    // Render into the exact buffer size from the panic (width: 67, height: 39)
+    render_to_buffer(67, 39, |frame| {
+        for panel in projected.panels.iter().copied() {
+            let meta = catalog.get(panel.key).unwrap();
+            widgets::panel::draw_panel_surface(frame, panel, &theme, Charset::Ascii, &mut hit_buffer);
+            widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, Charset::Ascii, &mut hit_buffer);
+            widgets::panel::draw_traffic_lights(frame, panel, projected.mode, None, &theme, Charset::Ascii, &mut hit_buffer);
+            widgets::panel::draw_resize_grip(frame, panel, None, &theme, &mut hit_buffer);
+        }
+    });
+}
+
+#[test]
 fn web_and_tui_use_same_tile_grid_projection() {
     let grid = TileGridProjection {
         columns: 4,
