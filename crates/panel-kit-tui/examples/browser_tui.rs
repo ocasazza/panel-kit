@@ -728,11 +728,12 @@ mod browser {
                 .and_then(|value| value.as_f64())
                 .unwrap_or(0.0);
             if delta != 0.0 {
-                app.borrow_mut()
-                    .reduce_workspace_event(WorkspaceEvent::Wheel {
+                if let Ok(mut app) = app.try_borrow_mut() {
+                    app.reduce_workspace_event(WorkspaceEvent::Wheel {
                         delta_y: delta.signum() * 3.0,
                         disposition: WheelDisposition::BubbleToWorkspace,
                     });
+                }
             }
             if let Ok(prevent_default) = Reflect::get(&event, &JsValue::from_str("preventDefault"))
                 .and_then(|value| value.dyn_into::<Function>())
@@ -764,15 +765,27 @@ mod browser {
             .map_err(|error| std::io::Error::other(format!("{error:?}")))?;
         terminal.on_key_event({
             let app = app.clone();
-            move |key| app.borrow_mut().handle_key(key)
+            move |key| {
+                if let Ok(mut app) = app.try_borrow_mut() {
+                    app.handle_key(key);
+                }
+            }
         })?;
 
         terminal.on_mouse_event({
             let app = app.clone();
-            move |event| app.borrow_mut().handle_mouse(event)
+            move |event| {
+                if let Ok(mut app) = app.try_borrow_mut() {
+                    app.handle_mouse(event);
+                }
+            }
         })?;
 
-        terminal.draw_web(move |frame| app.borrow_mut().draw(frame));
+        terminal.draw_web(move |frame| {
+            if let Ok(mut app) = app.try_borrow_mut() {
+                app.draw(frame);
+            }
+        });
         Ok(())
     }
 

@@ -28,6 +28,11 @@ pub fn time_series(
     unit: &str,
     series: &[SeriesView<'_>],
 ) {
+    let area = area.intersection(f.area());
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+
     let colors = series_colors(t);
     let bounds = time_bounds(series);
     let chart = Chart::new(time_series_datasets(series, &colors))

@@ -12,6 +12,10 @@ use crate::ResolvedTuiTheme;
 /// This paints the "current vs max" allocation idiom used for memory buffers,
 /// queue depth, and disk capacity.
 pub fn gauges(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, items: &[GaugeModel]) {
+    let area = area.intersection(f.area());
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
     let label_w = gauge_label_width(area, items);
 
     for (row, item) in items.iter().enumerate() {

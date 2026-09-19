@@ -462,3 +462,36 @@ fn scroll_lines_safely_handles_buffer_overflow_boundaries() {
         }
     }
 }
+
+#[test]
+fn gauges_safely_handles_buffer_overflow_boundaries() {
+    let theme = ResolvedTuiTheme::default();
+    let items = workspace_canary::capacity_items();
+
+    for (buf_w, buf_h) in [(95, 15), (40, 5), (80, 24)] {
+        for (area_y, area_h) in [(0, 15), (1, 15), (2, 15), (5, 20)] {
+            let mut terminal = Terminal::new(TestBackend::new(buf_w, buf_h)).unwrap();
+            terminal.draw(|f| {
+                let rect = Rect::new(0, area_y, buf_w, area_h);
+                charts::gauges(f, rect, &theme, &items);
+            }).expect("gauges must never panic when area overflows frame buffer");
+        }
+    }
+}
+
+#[test]
+fn time_series_safely_handles_buffer_overflow_boundaries() {
+    let metrics = workspace_canary::Metrics::new();
+    let series = metrics.series();
+    let theme = ResolvedTuiTheme::default();
+
+    for (buf_w, buf_h) in [(95, 15), (40, 5), (80, 24)] {
+        for (area_y, area_h) in [(0, 15), (1, 15), (2, 15), (5, 20)] {
+            let mut terminal = Terminal::new(TestBackend::new(buf_w, buf_h)).unwrap();
+            terminal.draw(|f| {
+                let rect = Rect::new(0, area_y, buf_w, area_h);
+                charts::time_series(f, rect, &theme, "ms", &series);
+            }).expect("time_series must never panic when area overflows frame buffer");
+        }
+    }
+}
