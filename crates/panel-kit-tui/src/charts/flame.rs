@@ -140,18 +140,23 @@ fn paint_span(
     span: &FlameSpanModel,
     band: FlameBand,
 ) {
+    let frame_area = f.area();
     let row = area.y + span.depth;
-    if row >= area.bottom() {
+    if row >= area.bottom() || row >= frame_area.bottom() {
         return;
     }
 
     let cell_x0 = area.x + band.x0.floor() as u16;
+    if cell_x0 >= area.right() || cell_x0 >= frame_area.right() {
+        return;
+    }
     let cell_w = (band.x1.floor() - band.x0.floor()).max(0.0) as u16;
-    let cell_w = cell_w.min(area.right().saturating_sub(cell_x0));
+    let cell_w = cell_w
+        .min(area.right().saturating_sub(cell_x0))
+        .min(frame_area.right().saturating_sub(cell_x0));
     if cell_w == 0 {
         return;
     }
-
     let color = span.color.map(rgb_color).unwrap_or_else(|| {
         let base = colors[span.depth as usize % colors.len()];
         mix(base, t.bg, (span.depth as f64 * 0.08).min(0.45))
@@ -169,17 +174,30 @@ fn paint_span(
 }
 
 fn paint_background(f: &mut Frame, row: u16, x0: u16, width: u16, color: Color) {
+    let frame_area = f.area();
+    if row >= frame_area.bottom() {
+        return;
+    }
+    let max_x = (x0 + width).min(frame_area.right());
     let style = Style::default().bg(color);
-    for x in x0..x0 + width {
+    for x in x0..max_x {
         f.buffer_mut()[(x, row)].set_char(' ').set_style(style);
     }
 }
 
 fn paint_label(f: &mut Frame, row: u16, x0: u16, width: u16, bg: Color, fg: Color, label: &str) {
+    let frame_area = f.area();
+    if row >= frame_area.bottom() {
+        return;
+    }
+    let max_width = width.min(frame_area.right().saturating_sub(x0));
     let style = Style::default().fg(fg).bg(bg);
-    for (offset, ch) in label.chars().take(width as usize).enumerate() {
-        f.buffer_mut()[(x0 + offset as u16, row)]
-            .set_char(ch)
-            .set_style(style);
+    for (offset, ch) in label.chars().take(max_width as usize).enumerate() {
+        let x = x0 + offset as u16;
+        if x < frame_area.right() {
+            f.buffer_mut()[(x, row)]
+                .set_char(ch)
+                .set_style(style);
+        }
     }
 }
