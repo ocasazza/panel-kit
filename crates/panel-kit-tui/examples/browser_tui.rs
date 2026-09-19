@@ -527,7 +527,10 @@ mod browser {
                     &mut self.hits,
                 );
                 draw_resize_grip(frame, panel, self.hover, &self.theme, &mut self.hits);
-                draw_panel_body(frame, body_rect, meta.stable_id.as_ref(), &mut body);
+                let body_rect = body_rect.intersection(frame.area());
+                if body_rect.width > 0 && body_rect.height > 0 {
+                    draw_panel_body(frame, body_rect, meta.stable_id.as_ref(), &mut body);
+                }
             }
 
             draw_dock(

@@ -445,3 +445,20 @@ fn boxplot_chart_safely_handles_buffer_overflow_boundaries() {
         }
     }
 }
+
+#[test]
+fn scroll_lines_safely_handles_buffer_overflow_boundaries() {
+    let theme = ResolvedTuiTheme::default();
+    let lines_content: Vec<Line> = (0..50).map(|i| Line::from(format!("Line {i}"))).collect();
+
+    // Reproduce the exact boundary from the panic: buffer is 95x15, area exceeds frame buffer (e.g. y=1, h=15 -> bottom=16)
+    for (buf_w, buf_h) in [(95, 15), (40, 5), (80, 24)] {
+        for (area_y, area_h) in [(0, 15), (1, 15), (2, 15), (5, 20)] {
+            let mut terminal = Terminal::new(TestBackend::new(buf_w, buf_h)).unwrap();
+            terminal.draw(|f| {
+                let rect = Rect::new(0, area_y, buf_w, area_h);
+                panel_kit_tui::scroll::lines(f, rect, &theme, lines_content.clone(), 0);
+            }).expect("scroll::lines must never panic when area overflows frame buffer");
+        }
+    }
+}

@@ -30,6 +30,11 @@ pub fn lines(
     content: Vec<Line>,
     offset: usize,
 ) -> usize {
+    let area = area.intersection(f.area());
+    if area.width == 0 || area.height == 0 {
+        return offset;
+    }
+
     let total = content.len();
     let view = area.height;
     let max = max_offset(total, view);
