@@ -76,3 +76,6 @@ inherits = "dev"
 
 [profile.android-dev]
 inherits = "dev"
+
+[patch.crates-io]
+beamterm-renderer = { path = "crates/beamterm-renderer" }

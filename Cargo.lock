@@ -107,8 +107,6 @@ dependencies = [
 [[package]]
 name = "beamterm-renderer"
 version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8db76d04d575a0534ad5dba63acc05ccbe69597f977f11c59a612cbea199112"
 dependencies = [
  "beamterm-core",
  "beamterm-data",
