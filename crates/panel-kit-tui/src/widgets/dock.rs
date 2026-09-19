@@ -7,7 +7,7 @@ use ratatui::style::Style;
 use ratatui::Frame;
 
 use crate::widgets::{draw_border, TuiHitBuffer};
-use crate::{rect_from_region, write_header_text, Charset, ResolvedTuiTheme};
+use crate::{write_header_text, Charset, ResolvedTuiTheme};
 
 /// Dependencies shared by dock rendering and hit recording.
 pub struct DockRenderContext<'a, K: PanelKey> {

@@ -52,7 +52,7 @@ typography:
     letterSpacing: "normal"
 rounded:
   chip: "3px"
-  panel: "4px"
+  panel: "0px"
   overlay: "5px"
   pill: "999px"
   dot: "50%"

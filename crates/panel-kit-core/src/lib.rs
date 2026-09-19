@@ -740,8 +740,10 @@ pub struct TileMetrics {
     /// column width.
     pub outer: f64,
     /// Gap left between projected tile tracks.
+    #[serde(default)]
     pub gap: f64,
     /// Padding inset around the tile grid.
+    #[serde(default)]
     pub padding: f64,
 }
 
