@@ -24,7 +24,7 @@ pub use types::{
 use crate::{
     apply_command, apply_drag, begin_drag, begin_tile_resize, clamp_scroll, command_for,
     effective_mode, reorder_tile, restore, DragKind, FocusContext, KeyChord, Mode, PanelCommand,
-    PanelKey, PanelWin, PointerButton, PointerEvent, PointerEventKind, WinState,
+    PanelKey, PanelWin, PointerButton, PointerEvent, PointerEventKind, Units, WinState,
 };
 
 /// Reduce one workspace event against host-owned state, purely.
