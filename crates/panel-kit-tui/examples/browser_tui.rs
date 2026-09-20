@@ -458,7 +458,9 @@ mod browser {
 
         fn draw(&mut self, frame: &mut ratatui::Frame) {
             self.tick += 1;
-            self.metrics.tick();
+            if self.tick % 6 == 0 {
+                self.metrics.tick();
+            }
             self.badge_zones.clear();
             self.hits.clear();
             self.sync_viewport(frame.area());
@@ -601,7 +603,7 @@ mod browser {
                 clamp: &clamp,
                 command_step: self.input.steps,
                 tile: &tile,
-                snap: panel_kit_core::SnapPolicy::default(),
+                snap: panel_kit_core::SnapPolicy::CELLS,
             };
             let reduction = reduce(&mut self.snapshot, event, context);
             if !self.layout_ready {

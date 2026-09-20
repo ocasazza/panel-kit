@@ -727,6 +727,22 @@ impl Default for SnapPolicy {
     }
 }
 
+impl SnapPolicy {
+    /// Snap policy for character-cell terminal backends: 1-cell increments.
+    pub const CELLS: SnapPolicy = SnapPolicy {
+        resize: true,
+        move_: true,
+        grid: 1.0,
+    };
+
+    /// Snap policy for web (CSS pixel) backends: 16px increments.
+    pub const WEB: SnapPolicy = SnapPolicy {
+        resize: true,
+        move_: true,
+        grid: 16.0,
+    };
+}
+
 /// Tiling-mode metrics: how pointer deltas snap to tile spans.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
@@ -1332,6 +1348,38 @@ mod tests {
 
         assert_eq!((snapped[0].x, snapped[0].y), (64.0, 64.0));
         assert_eq!((free[0].x, free[0].y), (55.0, 70.0));
+    }
+
+    #[test]
+    fn floating_move_in_cells_snaps_smoothly_to_single_cells() {
+        let initial = panel(TestPanel::First);
+        let drag = Drag {
+            idx: 0,
+            kind: DragKind::Move,
+            start_mx: 0.0,
+            start_my: 0.0,
+            start_x: initial.x,
+            start_y: initial.y,
+            start_w: initial.w,
+            start_h: initial.h,
+        };
+        let mut panels = [initial];
+
+        // Move by 3 cells in x and 2 cells in y with SnapPolicy::CELLS
+        apply_drag(
+            &mut panels,
+            &drag,
+            3.0,
+            2.0,
+            false,
+            SnapPolicy::CELLS,
+            80.0,
+            &Clamp::CELLS,
+            &TileMetrics::CELLS,
+        );
+
+        assert_eq!(panels[0].x, initial.x + 3.0);
+        assert_eq!(panels[0].y, initial.y + 2.0);
     }
 
     #[test]
