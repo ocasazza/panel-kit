@@ -366,11 +366,22 @@ fn reduce_wheel<K: PanelKey>(
     if disposition == WheelDisposition::ContentConsumed || !delta_y.is_finite() {
         return Reduction::unchanged();
     }
-    if effective_mode(snapshot.preferred_mode, &context.surface) != Mode::Floating {
+    let is_floating = effective_mode(snapshot.preferred_mode, &context.surface) == Mode::Floating;
+    if !is_floating && snapshot.viewport.units != Units::Cells {
         return Reduction::unchanged();
     }
 
-    let content_h = floating_scroll_extent(&snapshot.panels);
+    let content_h = if is_floating {
+        floating_scroll_extent(&snapshot.panels)
+    } else {
+        let mut tallest_row = 0.0f64;
+        for p in &snapshot.panels {
+            if p.state == WinState::Floating {
+                tallest_row = tallest_row.max(p.tile_h as f64 * context.tile.row);
+            }
+        }
+        tallest_row.max(snapshot.panels.len() as f64 * context.tile.row)
+    };
     let view_h = workspace_height(snapshot.viewport.height, context.clamp);
     let next = clamp_scroll(snapshot.workspace_scroll + delta_y, content_h, view_h);
     if next == snapshot.workspace_scroll {

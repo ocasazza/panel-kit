@@ -89,8 +89,11 @@ pub fn BevyCanvas(
     let current_state = state.read().clone();
 
     rsx! {
-        div { class: "bevy-canvas-container",
+        div {
+            key: "{canvas_id}-wrap",
+            class: "bevy-canvas-container",
             canvas {
+                key: "{canvas_id}",
                 id: "{canvas_id}",
                 class: "bevy-canvas",
             }
