@@ -14,7 +14,7 @@
 
 use dioxus::prelude::*;
 use panel_kit_core::frame::{PanelChromeProjection, PanelProjection, Placement, ProjectedFrame};
-use panel_kit_core::panel::{PanelCatalog, PanelMeta};
+use panel_kit_core::panel::PanelCatalog;
 use panel_kit_core::reducer::Snapshot;
 use panel_kit_core::{PanelKey, PanelWin, Region};
 
@@ -105,43 +105,27 @@ where
                     .all(|projected| projected.source_index != *source_index)
         })
         .map(|(source_index, panel)| (hidden_projection(snapshot, source_index, panel), true));
+    let panels: Vec<_> = visible
+        .chain(hidden)
+        .filter_map(|(panel, hidden)| {
+            catalog.get(panel.key).map(|meta| (panel, meta, hidden))
+        })
+        .collect();
 
     rsx! {
-        for (panel, hidden) in visible.chain(hidden) {
-            if let Some(meta) = catalog.get(panel.key) {
-                {keepalive_panel(
-                    panel,
-                    meta,
-                    hidden,
-                    body(panel.key, panel.placement == Placement::Maximized),
-                )}
+        for (panel, meta, hidden) in panels {
+            div {
+                key: "{meta.stable_id}",
+                class: if hidden {
+                    "pk-keepalive-slot pk-keepalive-hidden"
+                } else {
+                    "pk-keepalive-slot"
+                },
+                {panel_shell(panel, Some(&format!("panel-{}", meta.slug)), rsx! {
+                    {panel_chrome(panel, meta, None)}
+                    {panel_body(body(panel.key, panel.placement == Placement::Maximized))}
+                })}
             }
-        }
-    }
-}
-
-fn keepalive_panel<K: PanelKey>(
-    panel: PanelProjection<K>,
-    meta: &PanelMeta<K>,
-    hidden: bool,
-    body: Element,
-) -> Element {
-    let key = meta.stable_id.as_ref();
-    let panel_class = format!("panel-{}", meta.slug);
-    let slot_class = if hidden {
-        "pk-keepalive-slot pk-keepalive-hidden"
-    } else {
-        "pk-keepalive-slot"
-    };
-
-    rsx! {
-        div {
-            key: "{key}",
-            class: "{slot_class}",
-            {panel_shell(panel, Some(&panel_class), rsx! {
-                {panel_chrome(panel, meta, None)}
-                {panel_body(body)}
-            })}
         }
     }
 }
