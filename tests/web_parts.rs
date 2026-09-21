@@ -332,3 +332,87 @@ fn surface_registration_status_reports_failures() {
 
     assert!(!status.is_fully_registered());
 }
+
+#[test]
+fn tiling_drag_to_swap_reorders_panels_via_surface_pointer_motion() {
+    use panel_kit_core::reducer::{reduce, ChangePhase, ReduceContext, Snapshot, Viewport};
+    use panel_kit_core::{Clamp, CommandStep, LayoutBuilder, Mode, SnapPolicy, TileMetrics, Units};
+    let mut layout = LayoutBuilder::new();
+    let panels = vec![
+        layout.at(ProbePanel::Nodes, 16.0, 16.0, 360.0, 360.0).with_tile(2, 1),
+        layout.at(ProbePanel::Logs, 16.0, 392.0, 360.0, 260.0).with_tile(2, 1),
+    ];
+    let mut snapshot = Snapshot::from_defaults(
+        panels,
+        Mode::Tiling,
+        Viewport { width: 1400.0, height: 900.0, units: Units::CssPx },
+    );
+
+    let context = ReduceContext {
+        surface: panel_kit::surface::surface_profile(1400.0),
+        clamp: &Clamp::WEB,
+        command_step: CommandStep::WEB,
+        tile: &TileMetrics::WEB,
+        snap: SnapPolicy::default(),
+    };
+
+    // 1. Pointer down on Nodes header starts tile drag
+    let down = reduce(
+        &mut snapshot,
+        WorkspaceEvent::Pointer {
+            target: HitTarget::Panel {
+                key: ProbePanel::Nodes,
+                part: PanelPart::Header,
+            },
+            event: PointerEvent {
+                kind: PointerEventKind::Down(PointerButton::Primary),
+                x: 100.0,
+                y: 20.0,
+            },
+        },
+        context,
+    );
+    assert_eq!(down.phase, Some(ChangePhase::Continuous));
+    assert_eq!(snapshot.tile_drag, Some(ProbePanel::Nodes));
+
+    // 2. Dragging pointer over Logs surface (via onpointerenter/motion) triggers tile swap
+    let motion = reduce(
+        &mut snapshot,
+        WorkspaceEvent::Pointer {
+            target: HitTarget::Panel {
+                key: ProbePanel::Logs,
+                part: PanelPart::Surface,
+            },
+            event: PointerEvent {
+                kind: PointerEventKind::Moved,
+                x: 100.0,
+                y: 450.0,
+            },
+        },
+        context,
+    );
+    assert_eq!(motion.phase, Some(ChangePhase::Continuous));
+    assert_eq!(
+        snapshot.panels.iter().map(|p| p.kind).collect::<Vec<_>>(),
+        vec![ProbePanel::Logs, ProbePanel::Nodes]
+    );
+
+    // 3. Pointer up settles the gesture
+    let up = reduce(
+        &mut snapshot,
+        WorkspaceEvent::Pointer {
+            target: HitTarget::Panel {
+                key: ProbePanel::Nodes,
+                part: PanelPart::Header,
+            },
+            event: PointerEvent {
+                kind: PointerEventKind::Up(PointerButton::Primary),
+                x: 100.0,
+                y: 450.0,
+            },
+        },
+        context,
+    );
+    assert_eq!(up.phase, Some(ChangePhase::Settled));
+    assert_eq!(snapshot.tile_drag, None);
+}

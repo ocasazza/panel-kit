@@ -61,6 +61,22 @@ pub fn panel_shell_with_events<K: PanelKey>(
                     &event,
                 ));
             },
+            onpointerenter: move |event: DioxusPointerEvent| {
+                emit.call(pointer_workspace_event(
+                    panel.key,
+                    PanelPart::Surface,
+                    PointerEventKind::Moved,
+                    &event,
+                ));
+            },
+            onpointerup: move |event: DioxusPointerEvent| {
+                emit.call(pointer_workspace_event(
+                    panel.key,
+                    PanelPart::Surface,
+                    PointerEventKind::Up(PointerButton::Primary),
+                    &event,
+                ));
+            },
             {children}
         }
     }
@@ -176,6 +192,14 @@ pub fn panel_chrome_with_events<K: PanelKey>(
                     panel.key,
                     PanelPart::Header,
                     PointerEventKind::Moved,
+                    &event,
+                ));
+            },
+            onpointerup: move |event: DioxusPointerEvent| {
+                emit.call(pointer_workspace_event(
+                    panel.key,
+                    PanelPart::Header,
+                    PointerEventKind::Up(PointerButton::Primary),
                     &event,
                 ));
             },
