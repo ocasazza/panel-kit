@@ -6,6 +6,7 @@
 pub mod badge;
 pub mod cascade;
 pub mod charts;
+pub mod data_table;
 pub mod dock;
 pub mod dropdown;
 pub mod meter;
@@ -18,6 +19,7 @@ pub mod status;
 pub mod table;
 
 pub use cascade::{CascadeAction, CascadeItem, CascadeState, CascadingDropdown};
+pub use data_table::{DataColumnSpec, DataRow, DataTable, SortKey};
 pub use dropdown::{Dropdown, DropdownAction, DropdownItem, DropdownState};
 
 use dioxus::prelude::*;

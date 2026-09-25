@@ -509,6 +509,27 @@ button { font-family:var(--mono); }
   background:color-mix(in srgb, var(--accent) 8%, var(--bg)); }
 .pk-table-empty { padding:.5rem .55rem; color:var(--dim); text-align:center; }
 
+/* === data table: filter, sort, column visibility === */
+.pk-dt { display:flex; flex-direction:column; gap:.3rem; min-height:0; }
+.pk-dt-bar { display:flex; align-items:center; gap:.5rem; }
+.pk-dt-filter { flex:1; min-width:0; background:var(--bg); color:var(--fg);
+  border:1px solid var(--line2); font-family:var(--mono); font-size:12px; padding:.15rem .35rem; }
+.pk-dt-filter:focus-visible { outline:1px solid var(--focus-ring); }
+.pk-dt-count { color:var(--dim); font-size:.7rem; white-space:nowrap; }
+.pk-dt-cols { position:relative; }
+.pk-dt-cols-btn { background:var(--bg); color:var(--dim); border:1px solid var(--line2);
+  font-family:var(--mono); font-size:.7rem; padding:.1rem .4rem; cursor:pointer; white-space:nowrap; }
+.pk-dt-cols-btn:hover, .pk-dt-cols-btn[aria-expanded="true"] { color:var(--fg); border-color:var(--fg); }
+.pk-dt-cols-menu { position:absolute; right:0; top:calc(100% + 2px); z-index:5; min-width:12rem;
+  background:var(--panel); border:1px solid var(--line2); padding:.3rem .5rem;
+  display:flex; flex-direction:column; gap:.15rem; box-shadow:0 6px 18px #0008; }
+.pk-dt-col-opt { display:flex; align-items:center; gap:.3rem; font-size:.72rem; color:var(--fg);
+  white-space:nowrap; cursor:pointer; }
+.pk-dt-wrap { max-height:none; }
+.pk-dt th.pk-dt-sortable { cursor:pointer; user-select:none; }
+.pk-dt th.pk-dt-sortable:hover { color:var(--fg); }
+.pk-dt td.pk-dt-num { text-align:right; font-variant-numeric:tabular-nums; }
+
 /* === host-owned dock policy controls === */
 .dock-extras { display:flex; align-items:center; margin-left:auto; }
 .snap-toggle { display:flex; align-items:center; justify-content:flex-end; gap:.25rem;
