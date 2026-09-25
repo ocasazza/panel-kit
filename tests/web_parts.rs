@@ -339,13 +339,21 @@ fn tiling_drag_to_swap_reorders_panels_via_surface_pointer_motion() {
     use panel_kit_core::{Clamp, CommandStep, LayoutBuilder, Mode, SnapPolicy, TileMetrics, Units};
     let mut layout = LayoutBuilder::new();
     let panels = vec![
-        layout.at(ProbePanel::Nodes, 16.0, 16.0, 360.0, 360.0).with_tile(2, 1),
-        layout.at(ProbePanel::Logs, 16.0, 392.0, 360.0, 260.0).with_tile(2, 1),
+        layout
+            .at(ProbePanel::Nodes, 16.0, 16.0, 360.0, 360.0)
+            .with_tile(2, 1),
+        layout
+            .at(ProbePanel::Logs, 16.0, 392.0, 360.0, 260.0)
+            .with_tile(2, 1),
     ];
     let mut snapshot = Snapshot::from_defaults(
         panels,
         Mode::Tiling,
-        Viewport { width: 1400.0, height: 900.0, units: Units::CssPx },
+        Viewport {
+            width: 1400.0,
+            height: 900.0,
+            units: Units::CssPx,
+        },
     );
 
     let context = ReduceContext {
@@ -415,4 +423,55 @@ fn tiling_drag_to_swap_reorders_panels_via_surface_pointer_motion() {
     );
     assert_eq!(up.phase, Some(ChangePhase::Settled));
     assert_eq!(snapshot.tile_drag, None);
+}
+
+#[component]
+fn DataTableProbe() -> Element {
+    use panel_kit::widgets::{DataColumnSpec, DataRow, DataTable};
+    use panel_kit_core::widgets::data_table::{SortDir, TableQuery};
+    let columns = vec![
+        DataColumnSpec::new("name", "Name").pinned(),
+        DataColumnSpec::new("score", "Score"),
+        DataColumnSpec::new("cost", "Cost").hidden(),
+    ];
+    let rows = vec![
+        DataRow::new("a")
+            .text("alpha")
+            .num(Some(1.0), "1")
+            .num(Some(9.0), "cost-a"),
+        DataRow::new("b")
+            .text("beta")
+            .num(Some(3.0), "3")
+            .num(Some(8.0), "cost-b"),
+        DataRow::new("c")
+            .text("gamma")
+            .num(None, "-")
+            .num(None, "cost-c"),
+    ];
+    rsx! {
+        DataTable { columns, rows, initial: TableQuery::sorted("score", SortDir::Desc) }
+    }
+}
+
+#[test]
+fn data_table_sorts_hides_default_hidden_columns_and_counts_rows() {
+    let html = dioxus_ssr::render_element(rsx! { DataTableProbe {} });
+
+    let beta = html.find("beta").expect("beta row");
+    let alpha = html.find("alpha").expect("alpha row");
+    let gamma = html.find("gamma").expect("gamma row");
+    assert!(
+        beta < alpha && alpha < gamma,
+        "desc by score, missing last: {html}"
+    );
+    assert!(
+        !html.contains("cost-a"),
+        "hidden-by-default column painted: {html}"
+    );
+    assert!(
+        !html.contains(">Cost<"),
+        "hidden column header painted: {html}"
+    );
+    assert!(html.contains("aria-sort=\"descending\""), "{html}");
+    assert!(html.contains("class=\"pk-dt-count\">3<"), "{html}");
 }
