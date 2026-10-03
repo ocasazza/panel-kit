@@ -112,11 +112,21 @@
         webWorkspace = import ./nix/specs/web-workspace.nix {
           inherit (pkgs) lib;
         };
+        toposCanary = import ./nix/specs/topos-canary.nix {
+          lib = nixpkgs.lib;
+        };
+        toposWeb = import ./nix/specs/topos-web.nix {
+          lib = nixpkgs.lib;
+        };
         web-workspace = pkgs.writeText "panel-kit-web-workspace.json"
           webWorkspace.json;
         web-workspace-provider-manifest = pkgs.writeText
           "panel-kit-web-workspace-provider-manifest.json"
           (builtins.readFile ./tools/spec-parity/fixtures/web-workspace-provider-manifest.json);
+        topos-canary-spec = pkgs.writeText "panel-kit-topos-canary.json"
+          (builtins.toJSON toposCanary);
+        topos-web-spec = pkgs.writeText "panel-kit-topos-web.json"
+          (builtins.toJSON toposWeb);
         onePanelWorkspace = mkWorkspaceSpecLib.mkWorkspaceSpec (workspaceCanary.value // {
           id = "workspace-canary-one-panel";
           chrome = workspaceCanary.value.chrome // {
@@ -158,9 +168,15 @@
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example workspace --target wasm32-unknown-unknown -- -D warnings";
         });
+        multiSpecExampleClippy = wasmCraneLib.cargoClippy (commonArgs // (workspaceSpecEnv topos-canary-spec) // {
+          inherit cargoArtifacts;
+          PANEL_KIT_TOPOS_SPEC_B = "${topos-web-spec}";
+          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example multi_spec --target wasm32-unknown-unknown -- -D warnings";
+        });
         clippy = pkgs.runCommand "panel-kit-clippy" { } ''
           mkdir -p "$out"
           ln -s ${hostClippy} "$out/host"
+          ln -s ${multiSpecExampleClippy} "$out/multi-spec"
           ln -s ${webExampleClippy} "$out/web-example"
         '';
         workspaceSpecEnv = spec: {
@@ -186,6 +202,11 @@
           ln -s ${workspace-spec-web-remainder-wasm} "$out/web-workspace"
           ln -s ${workspace-spec-web-one-panel-wasm} "$out/one-panel"
         '';
+        workspace-spec-topos-wasm = wasmCraneLib.buildPackage (commonArgs // (workspaceSpecEnv topos-canary-spec) // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "--example multi_spec";
+          PANEL_KIT_TOPOS_SPEC_B = "${topos-web-spec}";
+        });
         workspace-spec-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // workspaceSpecAsciiBuildEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_tui";
@@ -204,6 +225,7 @@
         packages.web-workspace = web-workspace;
         packages.workspace-one-panel = workspace-one-panel;
         packages.workspace-spec-web-wasm = workspace-spec-web-wasm;
+        packages.workspace-spec-topos-wasm = workspace-spec-topos-wasm;
         packages.workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
         packages.workspace-spec-tui-native = workspace-spec-tui-native;
 
@@ -261,6 +283,7 @@
             cargoTestExtraArgs = "-p panel-kit --features web-runtime theme_parity";
           });
           workspace-spec-web-wasm = workspace-spec-web-wasm;
+          workspace-spec-topos-wasm = workspace-spec-topos-wasm;
           workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
           workspace-spec-tui-native = pkgs.runCommand "panel-kit-workspace-spec-tui-native-check" { } ''
             ${workspace-spec-tui-native}/bin/workspace --check-offscreen
