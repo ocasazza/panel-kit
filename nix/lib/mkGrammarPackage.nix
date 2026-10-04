@@ -8,7 +8,10 @@
 #     limits   = { grammar_bytes; input_bytes; nodes; edges; };
 #     parser   = { engine = "pest"; root_rule; grammar; captures; line_records; };
 #                # line_records (optional): input is whole-line records, final newline optional
-#     emitter  = { engine = "json"; };   # optional; required by section edits
+#     parser   = { engine = "json"; nodes; edges; node; edge; };
+#     parser   = { engine = "okf"; kinds; default_kind; link_rules; body_links;
+#                  fields; bundle_kind; contains_kind; };  # OKF rules as data
+#     emitter  = { engine = "json"; };   # optional; required by section edits; okf declares none
 #   };
 #   # grammar.value -> the GrammarPackage attrset
 #   # grammar.json  -> the JSON string (pkgs.writeText'd by the flake)

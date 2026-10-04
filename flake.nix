@@ -197,6 +197,18 @@
           (import ./nix/grammars/autoloop-trace.nix { inherit (pkgs) lib; }).json;
         grammar-autoloop-control = pkgs.writeText "panel-kit-grammar-autoloop-control.json"
           (import ./nix/grammars/autoloop-control.nix { inherit (pkgs) lib; }).json;
+        # The pinned OKF corpus as one JSON envelope, plus the grammar
+        # package whose rules are data over it. The grammar crate's tests
+        # read both from the environment, so the snapshot is canaried by
+        # `cargo test -p panel-kit-grammar` rather than by a Rust fixture.
+        okf-knowledge-catalog = pkgs.writeText "panel-kit-okf-knowledge-catalog.json"
+          (import ./nix/data/okf-knowledge-catalog.nix { inherit pkgs; inherit (pkgs) lib; });
+        grammar-okf = pkgs.writeText "panel-kit-grammar-okf.json"
+          (import ./nix/grammars/okf.nix { inherit (pkgs) lib; }).json;
+        okfEnv = {
+          PANEL_KIT_OKF_DATA = "${okf-knowledge-catalog}";
+          PANEL_KIT_OKF_GRAMMAR = "${grammar-okf}";
+        };
         autoloopEnv = {
           PANEL_KIT_TOPOS_PHYSICS = "${topos-physics}";
           PANEL_KIT_AUTOLOOP_TOPOS_TRACE = "${topos-autoloop-trace-web}";
@@ -341,6 +353,13 @@
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example workspace";
           doCheck = false;
         });
+        # The OKF engine is canaried against the pinned corpus itself: the
+        # snapshot is only ever read through these two environment
+        # variables, so the test asserts real counts, not a fixture.
+        okf-grammar-test = hostCraneLib.cargoTest (hostArgs // okfEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit-grammar";
+        });
       in {
         packages.default = panel-kit;
         packages.panel-kit = panel-kit;
@@ -368,6 +387,8 @@
         packages.morphism-autoloop-control-physics = morphism-autoloop-control-physics;
         packages.grammar-autoloop-trace = grammar-autoloop-trace;
         packages.grammar-autoloop-control = grammar-autoloop-control;
+        packages.grammar-okf = grammar-okf;
+        packages.okf-knowledge-catalog = okf-knowledge-catalog;
         packages.topos-web-wasm = topos-web-wasm;
         packages.autoloop-web-wasm = autoloop-web-wasm;
         packages.topos-tui-native = topos-tui-native;
@@ -438,6 +459,7 @@
           topos-browser-tui-wasm = topos-browser-tui-wasm;
           topos-grammar-test = topos-grammar-test;
           topos-autoloop-test = topos-autoloop-test;
+          okf-grammar-test = okf-grammar-test;
           workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
           workspace-spec-tui-native = pkgs.runCommand "panel-kit-workspace-spec-tui-native-check" { } ''
             ${workspace-spec-tui-native}/bin/workspace --check-offscreen

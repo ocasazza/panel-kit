@@ -1,17 +1,20 @@
 //! Grammar packages: the declarative, JSON-authored import description shared
-//! by both engines, plus the compiled handle that parses input into a [`Site`].
+//! by every engine, plus the compiled handle that parses input into a [`Site`].
 //!
-//! A package is engine-tagged (`pest` or `json`). The envelope (metadata,
-//! limits) is identical across engines; the `parser` body is engine-specific.
-//! Limits are clamped to [`HARD_LIMITS`] at compile time and enforced while
-//! mapping — records are rejected, never truncated. A pest package that declares
-//! `line_records` also lets [`CompiledGrammar::parse_append`] parse only an appended suffix.
+//! A package is engine-tagged (`pest`, `json`, or `okf`). The envelope
+//! (metadata, limits) is identical across engines; the `parser` body is
+//! engine-specific. Limits are clamped to [`HARD_LIMITS`] at compile time and
+//! enforced while mapping — records are rejected, never truncated. A pest
+//! package that declares `line_records` also lets
+//! [`CompiledGrammar::parse_append`] parse only an appended suffix.
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::GrammarError;
 use crate::site::Site;
-use crate::{emitter, json_engine, pest_engine};
+use crate::{emitter, json_engine, okf, pest_engine};
 
 /// Supported package format version.
 pub const FORMAT_VERSION: u32 = 1;
@@ -145,6 +148,8 @@ pub enum ParserSpec {
     Pest(PestSpec),
     /// Declarative JSON pointer + field map.
     Json(JsonSpec),
+    /// OKF bundles (YAML frontmatter + CommonMark) with data-declared rules.
+    Okf(OkfSpec),
 }
 
 /// Pest engine configuration.
@@ -266,6 +271,31 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
+/// OKF engine configuration. OKF's rules are data, not grammar text: this
+/// table is what the engine reads, bounded like an inline pest grammar by
+/// [`Limits::grammar_bytes`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OkfSpec {
+    /// Frontmatter `type` → site kind; an unmapped type takes `default_kind`.
+    pub kinds: BTreeMap<String, String>,
+    /// Site kind for a `type` the map does not name.
+    pub default_kind: String,
+    /// Frontmatter pointer → morphism kind. `sources[*].resource` walks each
+    /// element of a sequence; `executor.resource` walks a mapping; a bare
+    /// segment reads a scalar.
+    pub link_rules: BTreeMap<String, String>,
+    /// Morphism kind for CommonMark links in the body.
+    pub body_links: String,
+    /// Frontmatter keys projected into `Object.fields`; `trust` is always
+    /// derived and cannot be projected.
+    pub fields: Vec<String>,
+    /// Site kind for a bundle object.
+    pub bundle_kind: String,
+    /// Morphism kind from a bundle to each of its concepts.
+    pub contains_kind: String,
+}
+
 impl GrammarPackage {
     /// Decode a package from JSON, rejecting unknown keys.
     pub fn from_json_str(text: &str) -> Result<Self, GrammarError> {
@@ -286,6 +316,7 @@ impl GrammarPackage {
                 CompiledEngine::Pest(pest_engine::compile(spec, limits.grammar_bytes)?)
             }
             ParserSpec::Json(spec) => CompiledEngine::Json(json_engine::compile(spec)),
+            ParserSpec::Okf(spec) => CompiledEngine::Okf(okf::compile(spec, limits.grammar_bytes)?),
         };
         let emitter = match (&self.parser, &self.emitter, &engine) {
             (_, None, _) => None,
@@ -300,6 +331,7 @@ impl GrammarPackage {
                     parser: match parser {
                         ParserSpec::Pest(_) => "pest",
                         ParserSpec::Json(_) => "json",
+                        ParserSpec::Okf(_) => "okf",
                     },
                     emitter: match spec {
                         EmitterSpec::Pest(_) => "pest",
@@ -337,6 +369,7 @@ pub struct CompiledGrammar {
 enum CompiledEngine {
     Pest(pest_engine::CompiledPest),
     Json(json_engine::CompiledJson),
+    Okf(okf::CompiledOkf),
 }
 
 enum CompiledEmitter {
@@ -370,16 +403,27 @@ impl CompiledGrammar {
 
     /// Parse one UTF-8 input into a [`Site`], enforcing limits.
     pub fn parse(&self, input: &str) -> Result<Site, GrammarError> {
+        self.parse_reported(input).map(|report| report.site)
+    }
+
+    /// Parse one UTF-8 input, also reporting what the engine could not
+    /// resolve. Malformed records stay fatal; a reference that names no
+    /// concept is counted here rather than failing the parse.
+    pub fn parse_reported(&self, input: &str) -> Result<ParseReport, GrammarError> {
         if input.len() > self.limits.input_bytes {
             return Err(GrammarError::InputTooLarge {
                 actual: input.len(),
                 max: self.limits.input_bytes,
             });
         }
-        match &self.engine {
-            CompiledEngine::Pest(engine) => engine.parse(input, &self.limits),
-            CompiledEngine::Json(engine) => engine.parse(input, &self.limits),
-        }
+        Ok(match &self.engine {
+            CompiledEngine::Pest(engine) => ParseReport { site: engine.parse(input, &self.limits)?, unresolved_links: 0 },
+            CompiledEngine::Json(engine) => ParseReport { site: engine.parse(input, &self.limits)?, unresolved_links: 0 },
+            CompiledEngine::Okf(engine) => {
+                let okf::OkfParse { site, unresolved_links } = engine.parse(input, &self.limits)?;
+                ParseReport { site, unresolved_links }
+            }
+        })
     }
 
     /// Extend `site`, the parse of `prefix`, by the lines of `suffix`: the parse of `prefix` and
@@ -417,7 +461,16 @@ impl CompiledGrammar {
     pub(crate) fn extension(&self, site: &Site, suffix: &str) -> Option<pest_engine::Mapped> {
         match &self.engine {
             CompiledEngine::Pest(engine) => engine.extension(site, suffix, &self.limits),
-            CompiledEngine::Json(_) => None,
+            CompiledEngine::Json(_) | CompiledEngine::Okf(_) => None,
         }
     }
+}
+
+/// A parse together with the references the engine resolved to nothing.
+/// Engines whose grammar declares no internal references report zero.
+pub struct ParseReport {
+    /// The mapped site.
+    pub site: Site,
+    /// References whose target names a concept the site does not carry.
+    pub unresolved_links: usize,
 }
