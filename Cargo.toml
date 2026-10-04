@@ -1,7 +1,9 @@
 [workspace]
 members = ["crates/panel-kit-core", "crates/panel-kit-grammar", "crates/panel-kit-tui", "crates/panel-kit-bevy", "tools/spec-parity", "tools/visual-parity"]
-# Patched crates.io copy, wired in by [patch]; not a workspace member.
-exclude = ["crates/beamterm-renderer"]
+# crates/beamterm-renderer: patched crates.io copy, wired in by [patch].
+# vendor: third-party crates (vendor/*/VENDORED.md) build as path
+# dependencies, outside this workspace's members and lint gates.
+exclude = ["crates/beamterm-renderer", "vendor"]
 
 [package]
 name = "panel-kit"
@@ -78,8 +80,9 @@ panel-kit-tui = { version = "1.2.0", path = "crates/panel-kit-tui" }
 panel-kit-grammar = { version = "1.2.0", path = "crates/panel-kit-grammar" }
 # Fetch for the auto-loop host example (examples/autoloop.rs).
 web-sys = { version = "0.3", features = ["Headers", "Request", "RequestInit", "Response"] }
-# jump-cannon's graph view (renderer + canvas) for the auto-loop host's graph panel.
-jump-cannon-graph-view = { path = "/tmp/jc-graph-view/app/graph-view" }
+# jump-cannon's graph view (renderer + canvas) for the auto-loop host's graph
+# panel, vendored: vendor/jump-cannon/VENDORED.md.
+jump-cannon-graph-view = { path = "vendor/jump-cannon/graph-view" }
 
 # Injected by dioxus-cli on first `dx build` — dx builds the example demos
 # under these profiles.

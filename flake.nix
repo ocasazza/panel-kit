@@ -56,6 +56,7 @@
             ./assets # panel-kit.css + panel-kit-boot.css.in, include_str!'d/generated
             ./tools # workspace member manifest only; wasm builds still target panel-kit
             ./examples # one browser demo per component, clippy'd by checks
+            ./vendor # vendored third-party crates (vendor/*/VENDORED.md), incl. their WGSL
           ];
         };
         hostSrc = pkgs.lib.fileset.toSource {
@@ -72,6 +73,7 @@
             ./tools
             ./tests # integration tests run by the native test lanes
             ./nix # schema, producer, and repository specs used by native parity/tool tests
+            ./vendor
           ];
         };
         commonArgs = {
