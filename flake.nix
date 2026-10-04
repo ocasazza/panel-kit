@@ -367,7 +367,8 @@
             spec-parity check
             touch "$out"
           '';
-          theme-parity = hostCraneLib.cargoTest (hostArgs // {
+          # Filtering by test name still compiles every test target, including topos_grammar.
+          theme-parity = hostCraneLib.cargoTest (hostArgs // toposWebEnv // {
             cargoArtifacts = hostCargoArtifacts;
             cargoTestExtraArgs = "-p panel-kit --features web-runtime theme_parity";
           });
