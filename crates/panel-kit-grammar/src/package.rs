@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::GrammarError;
 use crate::site::Site;
-use crate::{json_engine, pest_engine};
+use crate::{emitter, json_engine, pest_engine};
 
 /// Supported package format version.
 pub const FORMAT_VERSION: u32 = 1;
@@ -36,6 +36,54 @@ pub struct GrammarPackage {
     pub limits: Limits,
     /// Engine-specific parser configuration.
     pub parser: ParserSpec,
+    /// The export side: serializes objects so they parse back unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emitter: Option<EmitterSpec>,
+}
+
+/// Engine-tagged emitter configuration; the engine must match the parser's.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "engine", rename_all = "snake_case")]
+pub enum EmitterSpec {
+    /// Pest line templates.
+    Pest(PestEmitter),
+    /// Records at the parser's object pointer, through its member map.
+    Json(JsonEmitter),
+}
+
+/// JSON emitter: no settings; the parser's pointer and member map invert.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JsonEmitter {}
+
+/// Pest emitter: one line per object from a template with `{id}`, `{title}`,
+/// `{kind}`, `{tags}` and `{fields}` holes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PestEmitter {
+    /// Object line template.
+    pub object: String,
+    /// Joins tags in `{tags}`.
+    #[serde(default = "default_tags_separator")]
+    pub tags_separator: String,
+    /// Joins `key<assign>value` pairs in `{fields}`, in key order.
+    #[serde(default = "default_fields_separator")]
+    pub fields_separator: String,
+    /// Between a field's key and value.
+    #[serde(default = "default_field_assign")]
+    pub field_assign: String,
+}
+
+fn default_tags_separator() -> String {
+    ",".to_owned()
+}
+
+fn default_fields_separator() -> String {
+    ";".to_owned()
+}
+
+fn default_field_assign() -> String {
+    "=".to_owned()
 }
 
 /// Identity and release metadata.
@@ -228,10 +276,32 @@ impl GrammarPackage {
             }
             ParserSpec::Json(spec) => CompiledEngine::Json(json_engine::compile(spec)),
         };
+        let emitter = match (&self.parser, &self.emitter, &engine) {
+            (_, None, _) => None,
+            (ParserSpec::Json(spec), Some(EmitterSpec::Json(_)), _) => Some(CompiledEmitter::Json(spec.clone())),
+            (ParserSpec::Pest(_), Some(EmitterSpec::Pest(spec)), CompiledEngine::Pest(parser)) => {
+                let template = emitter::compile_template(spec)?;
+                template.check_round_trip(parser, &limits)?;
+                Some(CompiledEmitter::Pest(template))
+            }
+            (parser, Some(spec), _) => {
+                return Err(GrammarError::EmitterEngine {
+                    parser: match parser {
+                        ParserSpec::Pest(_) => "pest",
+                        ParserSpec::Json(_) => "json",
+                    },
+                    emitter: match spec {
+                        EmitterSpec::Pest(_) => "pest",
+                        EmitterSpec::Json(_) => "json",
+                    },
+                })
+            }
+        };
         Ok(CompiledGrammar {
             id: self.metadata.id.clone(),
             limits,
             engine,
+            emitter,
         })
     }
 }
@@ -241,6 +311,7 @@ pub struct CompiledGrammar {
     id: String,
     limits: Limits,
     engine: CompiledEngine,
+    emitter: Option<CompiledEmitter>,
 }
 
 enum CompiledEngine {
@@ -248,10 +319,26 @@ enum CompiledEngine {
     Json(json_engine::CompiledJson),
 }
 
+enum CompiledEmitter {
+    Pest(emitter::CompiledTemplate),
+    Json(JsonSpec),
+}
+
 impl CompiledGrammar {
     /// The compiled package id.
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// Serialize the `support` objects of `site` so that parsing the bytes with
+    /// this grammar yields exactly those objects, in site order.
+    pub fn emit(&self, site: &Site, support: &std::collections::BTreeSet<String>) -> Result<Vec<u8>, GrammarError> {
+        let emitter = self.emitter.as_ref().ok_or(GrammarError::NoEmitter)?;
+        let objects = emitter::support_objects(site, support)?;
+        match emitter {
+            CompiledEmitter::Pest(template) => Ok(template.emit(&objects)),
+            CompiledEmitter::Json(spec) => emitter::emit_json(spec, &objects),
+        }
     }
 
     /// Parse one UTF-8 input into a [`Site`], enforcing limits.

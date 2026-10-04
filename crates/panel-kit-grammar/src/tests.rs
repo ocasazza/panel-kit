@@ -680,3 +680,356 @@ fn assembly_orders_components_and_counts_stages() {
     assert_eq!(components[1].representative, "v4");
     assert_eq!(components[1].stage, Stage::Ring);
 }
+
+// --- Restriction -----------------------------------------------------------
+
+fn identity(kinds: &[&str]) -> BTreeMap<String, String> {
+    kinds.iter().map(|kind| ((*kind).to_owned(), (*kind).to_owned())).collect()
+}
+
+const E_MOR: [&str; 3] = ["continues", "shares", "consolidates"];
+
+#[test]
+fn object_restriction_composes_by_intersection_and_is_identity_on_all_sorts() {
+    let site = site_from_lines();
+    let sorting = identity(&E_OBJ);
+    for u in subsets(&E_OBJ) {
+        for v in subsets(&E_OBJ) {
+            let both: BTreeSet<String> = u.intersection(&v).cloned().collect();
+            assert_eq!(
+                site.restrict_objects(&sorting, &u).restrict_objects(&sorting, &v),
+                site.restrict_objects(&sorting, &both),
+                "U={u:?} V={v:?}"
+            );
+        }
+    }
+    let all: BTreeSet<String> = E_OBJ.iter().map(|sort| (*sort).to_owned()).collect();
+    assert_eq!(site.restrict_objects(&sorting, &all), site);
+}
+
+#[test]
+fn morphism_restriction_composes_by_intersection_and_is_identity_on_all_sorts() {
+    let site = site_from_lines();
+    let sorting = identity(&E_MOR);
+    for u in subsets(&E_MOR) {
+        for v in subsets(&E_MOR) {
+            let both: BTreeSet<String> = u.intersection(&v).cloned().collect();
+            assert_eq!(
+                site.restrict_morphisms(&sorting, &u).restrict_morphisms(&sorting, &v),
+                site.restrict_morphisms(&sorting, &both),
+                "U={u:?} V={v:?}"
+            );
+        }
+    }
+    let all: BTreeSet<String> = E_MOR.iter().map(|sort| (*sort).to_owned()).collect();
+    assert_eq!(site.restrict_morphisms(&sorting, &all), site);
+}
+
+/// The inline workspace with its `load` panel bound as a table.
+fn table_workspace() -> String {
+    WS_MIN.replace(r#""kind":"gauges""#, r#""kind":"table""#)
+}
+
+fn table_topos(load: &str, edits: &str) -> Topos {
+    let json = format!(
+        r##"{{"spec_version":1,"id":"topos-agentic","regime":"Agentic traces","object_sorting":{AGENTIC_OSORT},"morphism_sorting":{AGENTIC_MSORT},"stalks":{AGENTIC_STALKS},"sheaves":{{"legend":{{"kind":"text","heading":"Legend"}},"load":{load}}},"edits":{edits},"workspace":{ws}}}"##,
+        ws = table_workspace(),
+    );
+    Topos::from_json_str(&json).unwrap()
+}
+
+fn table_rows(topos: &Topos, site: &Site) -> Vec<String> {
+    match topos.global_sections(site, &physics_a()).unwrap().get("load").unwrap() {
+        Section::Table(table) => table.rows.iter().map(|row| cell_text(&row.cells[0]).to_owned()).collect(),
+        other => panic!("load is not a table: {other:?}"),
+    }
+}
+
+#[test]
+fn a_restricted_table_has_rows_only_for_its_sorts() {
+    let topos = table_topos(
+        r##"{"kind":"table","scope":"objects","restrict":["coder","reviewer"],"columns":[{"key":"id","title":"Id","width":{"flex":{"weight":1}},"align":"left","cell":{"cell":"text","expr":"id"}}]}"##,
+        "{}",
+    );
+    topos.validate().unwrap();
+    assert_eq!(table_rows(&topos, &demo_site()), ["c1", "r1"]);
+}
+
+#[test]
+fn a_morphism_table_restricts_by_morphism_sort() {
+    let topos = table_topos(
+        r##"{"kind":"table","scope":"morphisms","restrict":["shares"],"columns":[{"key":"s","title":"S","width":{"flex":{"weight":1}},"align":"left","cell":{"cell":"text","expr":"source"}}]}"##,
+        "{}",
+    );
+    topos.validate().unwrap();
+    assert_eq!(table_rows(&topos, &demo_site()), ["c1"]);
+}
+
+#[test]
+fn validate_rejects_a_restriction_to_an_undeclared_sort() {
+    let topos = table_topos(
+        r##"{"kind":"table","scope":"objects","restrict":["head"],"columns":[]}"##,
+        "{}",
+    );
+    assert_eq!(
+        topos.validate(),
+        Err(ToposError::RestrictOutsideSorts { binding: "load".to_owned(), sort: "head".to_owned() })
+    );
+    let morphisms = table_topos(
+        r##"{"kind":"table","scope":"morphisms","restrict":["coder"],"columns":[]}"##,
+        "{}",
+    );
+    assert!(matches!(morphisms.validate(), Err(ToposError::RestrictOutsideSorts { .. })));
+}
+
+#[test]
+fn a_restricted_flamegraph_drops_roots_and_traversed_objects_outside_its_sorts() {
+    // p1 -continues-> c1 -continues-> r1: restricted to {coder, reviewer}, p1 is
+    // gone, so c1 roots the only remaining chain.
+    let site = Site {
+        objects: vec![object("p1", "planner", "1"), object("c1", "coder", "2"), object("r1", "reviewer", "3")],
+        morphisms: vec![typed("p1", "c1", "continues"), typed("c1", "r1", "continues")],
+    };
+    let sheaves = r##"{"flame":{"kind":"flamegraph","morphism_kind":"continues","value":"field:energy","restrict":["coder","reviewer"]}}"##;
+    let topos = agentic_topos(sheaves);
+    let Section::Flamegraph(spans) = topos.global_sections(&site, &physics_a()).unwrap().get("flame").unwrap().clone() else {
+        panic!("not a flamegraph");
+    };
+    let frames: Vec<(&str, u16)> = spans.iter().map(|span| (span.label.as_str(), span.depth)).collect();
+    assert_eq!(frames, [("C1", 0), ("R1", 1)]);
+}
+
+#[test]
+fn restricted_badges_count_only_their_sorts() {
+    let sheaves = r##"{"roles":{"kind":"badges","group":"kinds","restrict":["memory"]}}"##;
+    let topos = agentic_topos(sheaves);
+    let Section::Badges(badges) = topos.global_sections(&demo_site(), &physics_a()).unwrap().get("roles").unwrap().clone() else {
+        panic!("not badges");
+    };
+    assert_eq!(badges.len(), 1);
+}
+
+// --- Gluing ----------------------------------------------------------------
+
+fn anchored(id: &str, kind: &str) -> Object {
+    Object { id: id.to_owned(), title: id.to_owned(), kind: kind.to_owned(), tags: Vec::new(), fields: BTreeMap::new() }
+}
+
+fn side(objects: Vec<Object>, morphisms: Vec<Morphism>) -> Site {
+    Site { objects, morphisms }
+}
+
+#[test]
+fn glue_is_associative() {
+    let a = side(vec![anchored("r1", "repo"), anchored("s1", "session")], vec![typed("s1", "r1", "in_repo")]);
+    let b = side(vec![anchored("r1", "repo"), anchored("p1", "policy")], vec![typed("p1", "r1", "governs")]);
+    let c = side(vec![anchored("r1", "repo"), anchored("r2", "repo"), anchored("q1", "queued")], vec![typed("q1", "r2", "targets")]);
+    let left = a.glue(&b, "repo").unwrap().glue(&c, "repo").unwrap();
+    let right = a.glue(&b.glue(&c, "repo").unwrap(), "repo").unwrap();
+    assert_eq!(left, right);
+    assert_eq!(left.objects.iter().filter(|object| object.id == "r1").count(), 1);
+}
+
+#[test]
+fn restricting_the_glued_site_to_one_sides_kinds_returns_that_side() {
+    let trace = side(vec![anchored("r1", "repo"), anchored("s1", "session")], vec![typed("s1", "r1", "in_repo")]);
+    let control = side(vec![anchored("p1", "policy"), anchored("r1", "repo")], vec![typed("p1", "r1", "governs")]);
+    let glued = trace.glue(&control, "repo").unwrap();
+
+    let trace_kinds: BTreeSet<String> = ["repo", "session"].map(str::to_owned).into();
+    let restricted = glued.restrict_objects(&identity(&["repo", "session", "policy"]), &trace_kinds);
+    assert_eq!(restricted, trace);
+
+    let control_kinds: BTreeSet<String> = ["repo", "policy"].map(str::to_owned).into();
+    let restricted = glued.restrict_objects(&identity(&["repo", "session", "policy"]), &control_kinds);
+    assert_eq!(restricted.morphisms, control.morphisms);
+    let mut objects = restricted.objects.clone();
+    objects.sort_by(|x, y| x.id.cmp(&y.id));
+    let mut expected = control.objects.clone();
+    expected.sort_by(|x, y| x.id.cmp(&y.id));
+    assert_eq!(objects, expected);
+}
+
+#[test]
+fn glue_refuses_disagreeing_identified_objects_and_other_collisions() {
+    let a = side(vec![anchored("r1", "repo")], Vec::new());
+    let mut differing = anchored("r1", "repo");
+    differing.title = "elsewhere".to_owned();
+    assert_eq!(
+        a.glue(&side(vec![differing], Vec::new()), "repo"),
+        Err(crate::SiteError::GlueDisagrees { id: "r1".to_owned() })
+    );
+    assert_eq!(
+        a.glue(&side(vec![anchored("r1", "session")], Vec::new()), "repo"),
+        Err(crate::SiteError::IdCollision { id: "r1".to_owned() })
+    );
+}
+
+// --- Emitters --------------------------------------------------------------
+
+const LINES_EMITTER: &str = r##"{"engine":"pest","object":"N|{id}|{title}|{kind}|{tags}|{fields}"}"##;
+
+fn with_emitter(package: &str, emitter: &str) -> Result<CompiledGrammar, GrammarError> {
+    let mut package = GrammarPackage::from_json_str(package).unwrap();
+    package.emitter = Some(serde_json::from_str(emitter).unwrap());
+    package.compile()
+}
+
+fn assert_emitter_laws(grammar: &CompiledGrammar, site: &Site) {
+    let mut supports: Vec<BTreeSet<String>> = site.objects.iter().map(|object| BTreeSet::from([object.id.clone()])).collect();
+    supports.push(site.objects.iter().map(|object| object.id.clone()).collect());
+    for support in supports {
+        let bytes = grammar.emit(site, &support).unwrap();
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        let parsed = grammar.parse(&text).unwrap();
+        let expected: Vec<Object> = site.objects.iter().filter(|object| support.contains(&object.id)).cloned().collect();
+        assert_eq!(parsed.objects, expected, "round trip on {support:?}");
+        assert_eq!(grammar.emit(&parsed, &support).unwrap(), bytes, "idempotent on {support:?}");
+    }
+}
+
+#[test]
+fn pest_emitter_round_trips_and_is_idempotent() {
+    let grammar = with_emitter(GRAMMAR_LINES, LINES_EMITTER).unwrap();
+    assert_emitter_laws(&grammar, &tagged(site_from_lines()));
+}
+
+/// The fixtures carry no tags; the laws must also hold for objects that do.
+fn tagged(mut site: Site) -> Site {
+    site.objects[0].tags = vec!["hot".to_owned(), "x2".to_owned()];
+    site.objects[1].tags = vec!["cold".to_owned()];
+    site
+}
+
+#[test]
+fn json_emitter_round_trips_and_is_idempotent() {
+    let grammar = with_emitter(GRAMMAR_JSON, r##"{"engine":"json"}"##).unwrap();
+    let site = tagged(grammar.parse(DATA_JSON).unwrap());
+    assert_emitter_laws(&grammar, &site);
+}
+
+#[test]
+fn a_template_that_loses_data_or_names_an_unknown_hole_is_rejected() {
+    let no_fields = r##"{"engine":"pest","object":"N|{id}|{title}|{kind}|{tags}|"}"##;
+    assert!(matches!(with_emitter(GRAMMAR_LINES, no_fields), Err(GrammarError::EmitterLosesData(_))));
+    let unknown = r##"{"engine":"pest","object":"N|{id}|{name}"}"##;
+    assert!(matches!(with_emitter(GRAMMAR_LINES, unknown), Err(GrammarError::InvalidTemplate(_))));
+    assert!(matches!(
+        with_emitter(GRAMMAR_LINES, r##"{"engine":"json"}"##),
+        Err(GrammarError::EmitterEngine { parser: "pest", emitter: "json" })
+    ));
+}
+
+#[test]
+fn the_json_emitter_refuses_a_field_its_map_does_not_carry() {
+    let grammar = with_emitter(GRAMMAR_JSON, r##"{"engine":"json"}"##).unwrap();
+    let mut site = grammar.parse(DATA_JSON).unwrap();
+    site.objects[0].fields.insert("unmapped".to_owned(), "x".to_owned());
+    let support = BTreeSet::from([site.objects[0].id.clone()]);
+    assert!(matches!(grammar.emit(&site, &support), Err(GrammarError::EmitterLosesData(_))));
+    assert_eq!(
+        grammar.emit(&site, &BTreeSet::from(["nope".to_owned()])),
+        Err(GrammarError::UnknownSupportObject("nope".to_owned()))
+    );
+}
+
+// --- Section edits ---------------------------------------------------------
+
+const STATUS_EDIT: &str = r##"{"triage":{"label":"Triage","sorts":["coder","reviewer"],"set":{"status":{"type":"enum","values":["ok","error"]},"energy":{"type":"int","min":0,"max":500}},"grammar":"trace-json"}}"##;
+const EDIT_TABLE: &str = r##"{"kind":"table","scope":"objects","edits":["triage"],"columns":[{"key":"id","title":"Id","width":{"flex":{"weight":1}},"align":"left","cell":{"cell":"text","expr":"id"}}]}"##;
+
+fn input(object: &str, values: &[(&str, &str)]) -> crate::EditInput {
+    crate::EditInput {
+        object: object.to_owned(),
+        values: values.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect(),
+    }
+}
+
+#[test]
+fn a_set_only_revision_changes_one_objects_data_and_nothing_else() {
+    let topos = table_topos(EDIT_TABLE, STATUS_EDIT);
+    topos.validate().unwrap();
+    let site = site_from_lines();
+    let (revised, revision) = topos.revise(&site, "triage", &input("c1", &[("status", "ok"), ("energy", " 07 ")])).unwrap();
+
+    assert_eq!(revision.support, BTreeSet::from(["c1".to_owned()]));
+    assert_eq!(revised.morphisms, site.morphisms);
+    for (before, after) in site.objects.iter().zip(&revised.objects) {
+        if before.id == "c1" {
+            assert_eq!(after.fields["status"], "ok");
+            assert_eq!(after.fields["energy"], "7");
+            assert_eq!((&after.title, &after.kind, &after.tags), (&before.title, &before.kind, &before.tags));
+        } else {
+            assert_eq!(after, before);
+        }
+    }
+
+    // Setting values already present is the identity revision.
+    let (again, unchanged) = topos.revise(&revised, "triage", &input("c1", &[("status", "ok")])).unwrap();
+    assert_eq!(again, revised);
+    assert!(unchanged.support.is_empty());
+}
+
+#[test]
+fn revise_refuses_bad_input_and_leaves_the_site_alone() {
+    let topos = table_topos(EDIT_TABLE, STATUS_EDIT);
+    let site = site_from_lines();
+    let refused = [
+        (topos.revise(&site, "nope", &input("c1", &[("status", "ok")])), "unknown edit"),
+        (topos.revise(&site, "triage", &input("zz", &[("status", "ok")])), "unknown object"),
+        (topos.revise(&site, "triage", &input("p1", &[("status", "ok")])), "planner is not a triage sort"),
+        (topos.revise(&site, "triage", &input("c1", &[("t", "1")])), "undeclared field"),
+        (topos.revise(&site, "triage", &input("c1", &[("status", "fine")])), "outside the enum"),
+        (topos.revise(&site, "triage", &input("c1", &[("energy", "900")])), "outside the int range"),
+        (topos.revise(&site, "triage", &input("c1", &[])), "no fields"),
+    ];
+    for (result, case) in refused {
+        assert!(result.is_err(), "{case} should be refused");
+    }
+    assert_eq!(site, site_from_lines());
+}
+
+#[test]
+fn each_row_offers_only_the_edits_for_its_objects_sort() {
+    let topos = table_topos(EDIT_TABLE, STATUS_EDIT);
+    let sections = topos.global_sections(&demo_site(), &physics_a()).unwrap();
+    let offered: Vec<(&str, Vec<&str>)> = sections
+        .row_edits("load")
+        .unwrap()
+        .iter()
+        .map(|row| (row.object.as_str(), row.edits.iter().map(String::as_str).collect()))
+        .collect();
+    assert_eq!(offered, [("p1", vec![]), ("c1", vec!["triage"]), ("r1", vec!["triage"]), ("m1", vec![])]);
+    assert_eq!(sections.row_edits("legend"), None);
+}
+
+#[test]
+fn validate_rejects_malformed_or_misplaced_edits() {
+    let bad_sort = r##"{"triage":{"label":"T","sorts":["head"],"set":{"status":{"type":"text","max":5}},"grammar":"g"}}"##;
+    assert!(matches!(table_topos(EDIT_TABLE, bad_sort).validate(), Err(ToposError::InvalidEdit { .. })));
+    let empty_enum = r##"{"triage":{"label":"T","sorts":["coder"],"set":{"status":{"type":"enum","values":[]}},"grammar":"g"}}"##;
+    assert!(matches!(table_topos(EDIT_TABLE, empty_enum).validate(), Err(ToposError::InvalidEdit { .. })));
+    let missing = r##"{"kind":"table","scope":"objects","edits":["nope"],"columns":[]}"##;
+    assert_eq!(
+        table_topos(missing, "{}").validate(),
+        Err(ToposError::UnknownEdit { binding: "load".to_owned(), edit: "nope".to_owned() })
+    );
+    let on_morphisms = r##"{"kind":"table","scope":"morphisms","edits":["triage"],"columns":[]}"##;
+    assert!(matches!(table_topos(on_morphisms, STATUS_EDIT).validate(), Err(ToposError::InvalidEdit { .. })));
+}
+
+#[test]
+fn a_write_intent_parses_back_to_the_revised_object() {
+    let topos = table_topos(EDIT_TABLE, STATUS_EDIT);
+    let grammar = with_emitter(GRAMMAR_JSON, r##"{"engine":"json"}"##).unwrap();
+    let site = grammar.parse(DATA_JSON).unwrap();
+    let (revised, revision) = topos.revise(&site, "triage", &input("c1", &[("status", "ok")])).unwrap();
+    let intent = topos.write_intent(&grammar, &revised, &revision).unwrap();
+    assert_eq!((intent.grammar.as_str(), intent.edit.as_str()), ("trace-json", "triage"));
+    let written = grammar.parse(std::str::from_utf8(&intent.bytes).unwrap()).unwrap();
+    assert_eq!(written.objects.len(), 1);
+    assert_eq!(written.objects[0].fields["status"], "ok");
+
+    let lines = with_emitter(GRAMMAR_LINES, LINES_EMITTER).unwrap();
+    assert!(matches!(topos.write_intent(&lines, &revised, &revision), Err(crate::EditError::GrammarMismatch { .. })));
+}

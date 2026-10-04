@@ -23,20 +23,23 @@
 pub mod error;
 pub mod morphism;
 pub mod site;
+pub mod edit;
+mod emitter;
 mod json_engine;
 pub mod package;
 mod pest_engine;
 pub mod sheaf;
 pub mod topos;
 
-pub use error::{GrammarError, MorphismError, SheafError, ToposError};
+pub use edit::{EditInput, FieldType, RowEdits, SectionEdit, SiteRevision, WriteIntent};
+pub use error::{EditError, GrammarError, MorphismError, SheafError, SiteError, ToposError};
 pub use morphism::{
     BaseStalks, BaseTopos, EngineMorphismStalk, EngineObjectStalk, GeometricMorphism,
     MorphismTuning, ObjectTuning, Physics,
 };
 pub use package::{
-    CaptureRules, CompiledGrammar, GrammarPackage, JsonEdgeMap, JsonNodeMap, JsonSpec, Limits,
-    Metadata, ParserSpec, PestSpec, FORMAT_VERSION, HARD_LIMITS,
+    CaptureRules, CompiledGrammar, EmitterSpec, GrammarPackage, JsonEdgeMap, JsonEmitter, JsonNodeMap,
+    JsonSpec, Limits, Metadata, ParserSpec, PestEmitter, PestSpec, FORMAT_VERSION, HARD_LIMITS,
 };
 pub use site::{Morphism, Object, Site};
 pub use sheaf::{
