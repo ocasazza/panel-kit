@@ -1,4 +1,4 @@
-# Single source of truth for the physics base stalks and the three geometric
+# Single source of truth for the physics base stalks and the geometric
 # morphisms, so topos-physics.nix, the morphism-*.nix docs, and the regime
 # "Morphism" text sheaves never drift. p_membrane . f = p_agentic on sorts.
 
@@ -35,6 +35,30 @@ rec {
     object_sorts = { head = "hydrophilic"; tail = "hydrophobic"; solvent = "solvent"; };
     morphism_sorts = { tail_bond = "stiff"; lateral = "lateral"; solvation = "weak"; };
   };
+
+  # p_trace: topos-autoloop-trace -> topos-physics. Sessions assemble; their
+  # repo, goal and gate anchors face outward; events are solvent.
+  autoloopTraceToPhysics = {
+    object_sorts = {
+      session = "hydrophobic"; goal = "hydrophilic"; repo = "hydrophilic"; gate = "hydrophilic";
+      event = "solvent"; elsewhere = "solvent";
+    };
+    morphism_sorts = {
+      next = "stiff"; emitted = "stiff"; spawned = "stiff"; in_repo = "lateral"; pursues = "lateral";
+      runs_gate = "weak"; elsewhere = "weak";
+    };
+  };
+
+  # p_control: topos-autoloop-control -> topos-physics. Control state has no
+  # assembly of its own: every sort is solvent, every bond weak.
+  autoloopControlToPhysics =
+    let
+      all = value: names: builtins.listToAttrs (map (name: { inherit name value; }) names);
+    in
+    {
+      object_sorts = all "solvent" [ "claim" "proposal" "queued_goal" "repo" "repo_policy" "term" "param" "prompt" "elsewhere" ];
+      morphism_sorts = all "weak" [ "targets" "governs" "revises" "elsewhere" ];
+    };
 
   # Shortest decimal (trim trailing zeros) for prose; Nix toString pads to 6.
   fmtNum = x:

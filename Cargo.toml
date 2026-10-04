@@ -66,6 +66,8 @@ gloo-timers = { version = "0.3", features = ["futures"] }
 panel-kit-tui = { version = "1.1.1", path = "crates/panel-kit-tui" }
 # Topos/grammar demo façade (examples/support/topos_demo.rs) and its test.
 panel-kit-grammar = { version = "1.1.1", path = "crates/panel-kit-grammar" }
+# Fetch for the auto-loop host example (examples/autoloop.rs).
+web-sys = { version = "0.3", features = ["Headers", "Request", "RequestInit", "Response"] }
 
 # Injected by dioxus-cli on first `dx build` — dx builds the example demos
 # under these profiles.

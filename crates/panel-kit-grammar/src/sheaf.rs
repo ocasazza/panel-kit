@@ -3,7 +3,8 @@
 //! bindable content kind. Value expressions are strings:
 //!
 //! - object text/number: `id`, `title`, `kind` (regime sort label), `tag:<i>`,
-//!   `field:<name>`, `degree`, `in_degree`, `out_degree`, `repulsion`, `mass`,
+//!   `field:<name>` (missing is an error), `field?:<name>` (missing reads
+//!   empty), `degree`, `in_degree`, `out_degree`, `repulsion`, `mass`,
 //!   `weighted:<field>` (= `field` * `repulsion`); physics values resolve
 //!   through the base.
 //! - morphism: `source`, `target`, `edge_kind` (regime sort label), `weight`,
@@ -24,19 +25,28 @@ use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableM
 use panel_kit_core::widgets::TextModel;
 
 use crate::error::SheafError;
+use crate::edit::RowEdits;
 use crate::site::{Morphism, Object, Site};
 use crate::topos::{Resolver, Stages};
 
-/// Resolved content keyed by binding id.
+/// Resolved content keyed by binding id, plus the object and offered edits
+/// behind each row of object-scoped tables that declare edits.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct GlobalSections {
     map: BTreeMap<String, Section>,
+    rows: BTreeMap<String, Vec<RowEdits>>,
 }
 
 impl GlobalSections {
-    /// Build from a resolved binding map.
-    pub(crate) fn from_map(map: BTreeMap<String, Section>) -> Self {
-        Self { map }
+    /// Build from resolved content and per-table row edits.
+    pub(crate) fn from_parts(map: BTreeMap<String, Section>, rows: BTreeMap<String, Vec<RowEdits>>) -> Self {
+        Self { map, rows }
+    }
+
+    /// The object and offered edits behind each row of a table binding, in row
+    /// order; `None` when the binding's sheaf declares no edits.
+    pub fn row_edits(&self, id: &str) -> Option<&[RowEdits]> {
+        self.rows.get(id).map(Vec::as_slice)
     }
 
     /// Content for a binding id, or `None` when unbound.
@@ -149,7 +159,11 @@ impl Sheaf {
         }
     }
 
+    /// Γ over this sheaf's subobject: the site restricted to `restrict` (when
+    /// set) and then evaluated.
     pub(crate) fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
+        let restricted = self.restricted_site(resolver.object_sorting, resolver.morphism_sorting, site);
+        let site = restricted.as_ref().unwrap_or(site);
         match self {
             Self::Text(sheaf) => sheaf.evaluate(resolver),
             Self::Badges(sheaf) => sheaf.evaluate(resolver, site),
@@ -165,6 +179,47 @@ impl Sheaf {
             Self::Physics(sheaf) => sheaf.evaluate(resolver, site),
         }
     }
+
+    /// The site restricted to this sheaf's subobject, or `None` when the sheaf
+    /// is unrestricted.
+    pub(crate) fn restricted_site(
+        &self,
+        object_sorting: &BTreeMap<String, String>,
+        morphism_sorting: &BTreeMap<String, String>,
+        site: &Site,
+    ) -> Option<Site> {
+        self.restriction().map(|(sorts, space)| match space {
+            SortSpace::Objects => site.restrict_objects(object_sorting, sorts),
+            SortSpace::Morphisms => site.restrict_morphisms(morphism_sorting, sorts),
+        })
+    }
+
+    /// The subobject `U` this sheaf's sections are taken over, and whether `U`
+    /// names object or morphism sorts.
+    pub(crate) fn restriction(&self) -> Option<(&BTreeSet<String>, SortSpace)> {
+        match self {
+            Self::Table(sheaf) => sheaf.restrict.as_ref().map(|sorts| {
+                let space = match sheaf.scope {
+                    RowScope::Objects => SortSpace::Objects,
+                    RowScope::Morphisms => SortSpace::Morphisms,
+                };
+                (sorts, space)
+            }),
+            Self::Badges(BadgesSheaf { restrict, .. })
+            | Self::Flamegraph(FlamegraphSheaf { restrict, .. })
+            | Self::Status(StatusSheaf { restrict, .. }) => restrict.as_ref().map(|sorts| (sorts, SortSpace::Objects)),
+            _ => None,
+        }
+    }
+}
+
+/// Whether a restriction names object sorts or morphism sorts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SortSpace {
+    /// Regime object sorts.
+    Objects,
+    /// Regime morphism sorts.
+    Morphisms,
 }
 
 /// Text sheaf: heading, authored preface lines, and an optional per-sort stalks
@@ -206,6 +261,9 @@ impl TextSheaf {
 pub struct BadgesSheaf {
     /// Whether one badge is emitted per sort or per object.
     pub group: BadgeGroup,
+    /// Regime object sorts to restrict to; absent means every object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restrict: Option<BTreeSet<String>>,
 }
 
 /// Badge grouping.
@@ -253,6 +311,13 @@ pub struct TableSheaf {
     pub scope: RowScope,
     /// Column definitions in order.
     pub columns: Vec<ColumnSpec>,
+    /// Regime sorts to restrict to (object sorts, or morphism sorts for a
+    /// morphism-scoped table); absent means every row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restrict: Option<BTreeSet<String>>,
+    /// Section edits offered on each row's object (object scope only).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub edits: Vec<String>,
 }
 
 /// Table row source.
@@ -573,6 +638,9 @@ pub struct FlamegraphSheaf {
     /// Root object id; when absent, every source with no in-kind parent roots.
     #[serde(default)]
     pub root: Option<String>,
+    /// Regime object sorts to restrict roots and traversed objects to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restrict: Option<BTreeSet<String>>,
 }
 
 impl FlamegraphSheaf {
@@ -759,6 +827,9 @@ pub struct StatusSheaf {
     pub label: String,
     /// Expression yielding each object's status word.
     pub from: String,
+    /// Regime object sorts to restrict to; absent means every object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restrict: Option<BTreeSet<String>>,
 }
 
 impl StatusSheaf {
@@ -1190,6 +1261,8 @@ fn object_value(expr: &str, object: &Object, site: &Site, resolver: &Resolver) -
                     .parse()
                     .map_err(|_| SheafError::BadExpression(expr.to_owned()))?;
                 Ok(Value::Str(object.tags.get(index).cloned().unwrap_or_default()))
+            } else if let Some(name) = expr.strip_prefix("field?:") {
+                Ok(Value::Str(object.fields.get(name).cloned().unwrap_or_default()))
             } else if let Some(name) = expr.strip_prefix("field:") {
                 let value = object.fields.get(name).ok_or_else(|| SheafError::MissingField {
                     object: object.id.clone(),
@@ -1324,6 +1397,7 @@ mod tests {
             morphism_kind: "continues".to_owned(),
             value: "field:cost".to_owned(),
             root: None,
+            restrict: None,
         };
         let Section::Flamegraph(spans) = sheaf.evaluate(&resolver, &site).unwrap() else {
             panic!("not a flamegraph");

@@ -105,6 +105,21 @@ pub enum GrammarError {
     },
     /// A JSON pointer did not resolve, or resolved to the wrong JSON type.
     JsonShape(String),
+    /// `emit` was called on a package that declares no emitter.
+    NoEmitter,
+    /// The emitter is for a different engine than the parser.
+    EmitterEngine {
+        /// Parser engine.
+        parser: &'static str,
+        /// Emitter engine.
+        emitter: &'static str,
+    },
+    /// A pest emitter template names an unknown hole or is malformed.
+    InvalidTemplate(String),
+    /// Emitted output would not parse back to the emitted objects.
+    EmitterLosesData(String),
+    /// A support id names no object of the site being emitted.
+    UnknownSupportObject(String),
 }
 
 impl fmt::Display for GrammarError {
@@ -151,6 +166,15 @@ impl fmt::Display for GrammarError {
                 write!(f, "edge '{source}' -> '{target}' has missing {missing}")
             }
             Self::JsonShape(message) => write!(f, "json engine: {message}"),
+            Self::NoEmitter => write!(f, "grammar package declares no emitter"),
+            Self::EmitterEngine { parser, emitter } => {
+                write!(f, "emitter engine '{emitter}' does not match parser engine '{parser}'")
+            }
+            Self::InvalidTemplate(message) => write!(f, "invalid emitter template: {message}"),
+            Self::EmitterLosesData(message) => {
+                write!(f, "emitted output does not parse back to the emitted objects: {message}")
+            }
+            Self::UnknownSupportObject(id) => write!(f, "support object '{id}' is not in the site"),
         }
     }
 }
@@ -190,6 +214,27 @@ pub enum ToposError {
         /// The sheaf's output kind.
         sheaf_kind: &'static str,
     },
+    /// A sheaf restricts to a sort the regime does not declare.
+    RestrictOutsideSorts {
+        /// Sheaf binding id.
+        binding: String,
+        /// The undeclared sort.
+        sort: String,
+    },
+    /// A section edit is malformed.
+    InvalidEdit {
+        /// Edit id.
+        edit: String,
+        /// What is wrong.
+        detail: String,
+    },
+    /// A sheaf references an edit the topos does not declare.
+    UnknownEdit {
+        /// Sheaf binding id.
+        binding: String,
+        /// The undeclared edit id.
+        edit: String,
+    },
 }
 
 impl fmt::Display for ToposError {
@@ -211,6 +256,13 @@ impl fmt::Display for ToposError {
                 f,
                 "binding '{binding}' is authored as content kind '{content_kind}' but its sheaf produces '{sheaf_kind}'"
             ),
+            Self::RestrictOutsideSorts { binding, sort } => {
+                write!(f, "sheaf '{binding}' restricts to undeclared sort '{sort}'")
+            }
+            Self::InvalidEdit { edit, detail } => write!(f, "edit '{edit}': {detail}"),
+            Self::UnknownEdit { binding, edit } => {
+                write!(f, "sheaf '{binding}' references undeclared edit '{edit}'")
+            }
         }
     }
 }
@@ -405,3 +457,109 @@ impl fmt::Display for MorphismError {
 }
 
 impl std::error::Error for MorphismError {}
+
+/// Site construction failures (gluing).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SiteError {
+    /// Two objects identified by the gluing differ.
+    GlueDisagrees {
+        /// Object id.
+        id: String,
+    },
+    /// Two objects share an id outside the gluing kind.
+    IdCollision {
+        /// Object id.
+        id: String,
+    },
+    /// Both sites carry the same morphism between identified objects; the
+    /// pushout over a discrete site would keep two copies of it.
+    DuplicateMorphism {
+        /// Domain object id.
+        domain: String,
+        /// Codomain object id.
+        codomain: String,
+    },
+}
+
+impl fmt::Display for SiteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GlueDisagrees { id } => write!(f, "glued object '{id}' differs between the two sites"),
+            Self::IdCollision { id } => write!(f, "object id '{id}' occurs in both sites outside the gluing kind"),
+            Self::DuplicateMorphism { domain, codomain } => {
+                write!(f, "both sites carry the morphism '{domain}' -> '{codomain}' between glued objects")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SiteError {}
+
+/// Section edit failures: applying an edit, or building its write intent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EditError {
+    /// The topos declares no edit with this id.
+    UnknownEdit(String),
+    /// The site has no object with this id.
+    UnknownObject(String),
+    /// The object's regime sort is not one the edit applies to.
+    NotApplicable {
+        /// Edit id.
+        edit: String,
+        /// Object id.
+        object: String,
+        /// The object's regime sort.
+        sort: String,
+    },
+    /// The input sets a field the edit does not declare.
+    UnknownField {
+        /// Edit id.
+        edit: String,
+        /// Field name.
+        field: String,
+    },
+    /// A value does not satisfy its field type.
+    InvalidValue {
+        /// Field name.
+        field: String,
+        /// What is wrong.
+        detail: String,
+    },
+    /// The input sets no fields.
+    EmptyEdit(String),
+    /// The edit is bound to a different grammar than the one given.
+    GrammarMismatch {
+        /// Edit id.
+        edit: String,
+        /// Grammar the edit names.
+        expected: String,
+        /// Grammar supplied.
+        actual: String,
+    },
+    /// The grammar could not emit the revised objects.
+    Emit(GrammarError),
+    /// The revision changed nothing, so there is nothing to write.
+    NothingToWrite(String),
+}
+
+impl fmt::Display for EditError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownEdit(edit) => write!(f, "no edit '{edit}'"),
+            Self::UnknownObject(id) => write!(f, "no object '{id}'"),
+            Self::NotApplicable { edit, object, sort } => {
+                write!(f, "edit '{edit}' does not apply to object '{object}' of sort '{sort}'")
+            }
+            Self::UnknownField { edit, field } => write!(f, "edit '{edit}' declares no field '{field}'"),
+            Self::InvalidValue { field, detail } => write!(f, "field '{field}': {detail}"),
+            Self::EmptyEdit(edit) => write!(f, "edit '{edit}' was given no fields to set"),
+            Self::GrammarMismatch { edit, expected, actual } => {
+                write!(f, "edit '{edit}' is bound to grammar '{expected}', not '{actual}'")
+            }
+            Self::Emit(error) => write!(f, "{error}"),
+            Self::NothingToWrite(edit) => write!(f, "edit '{edit}' changed nothing; there is nothing to write"),
+        }
+    }
+}
+
+impl std::error::Error for EditError {}

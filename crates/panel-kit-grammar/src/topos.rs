@@ -15,9 +15,11 @@ use serde::{Deserialize, Serialize};
 use panel_kit_core::spec::WorkspaceSpec;
 use panel_kit_core::widgets::ContentSpec;
 
-use crate::error::{SheafError, ToposError};
+use crate::edit::{EditInput, RowEdits, SectionEdit, SiteRevision, WriteIntent};
+use crate::error::{EditError, SheafError, ToposError};
 use crate::morphism::Physics;
-use crate::sheaf::{GlobalSections, Sheaf};
+use crate::package::CompiledGrammar;
+use crate::sheaf::{GlobalSections, RowScope, Sheaf, SortSpace};
 use crate::site::Site;
 
 /// Supported topos spec version.
@@ -41,6 +43,9 @@ pub struct Topos {
     pub stalks: Stalks,
     /// Panel-binding id to sheaf map.
     pub sheaves: BTreeMap<String, Sheaf>,
+    /// Edit id to section edit; table sheaves offer them per row.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub edits: BTreeMap<String, SectionEdit>,
     /// The workspace (panels + layout) this topos presents.
     pub workspace: WorkspaceSpec,
 }
@@ -157,10 +162,115 @@ impl Topos {
         self.check_site(site)?;
         let resolver = self.resolver(physics);
         let mut map = BTreeMap::new();
+        let mut rows = BTreeMap::new();
         for (id, sheaf) in &self.sheaves {
             map.insert(id.clone(), sheaf.evaluate(&resolver, site)?);
+            if let Sheaf::Table(table) = sheaf {
+                if !table.edits.is_empty() && table.scope == RowScope::Objects {
+                    let restricted = sheaf.restricted_site(&self.object_sorting, &self.morphism_sorting, site);
+                    let objects = &restricted.as_ref().unwrap_or(site).objects;
+                    let offered = objects
+                        .iter()
+                        .map(|object| RowEdits {
+                            object: object.id.clone(),
+                            edits: table
+                                .edits
+                                .iter()
+                                .filter(|edit| self.applies(edit, &object.kind))
+                                .cloned()
+                                .collect(),
+                        })
+                        .collect();
+                    rows.insert(id.clone(), offered);
+                }
+            }
         }
-        Ok(GlobalSections::from_map(map))
+        Ok(GlobalSections::from_parts(map, rows))
+    }
+
+    /// Whether edit `edit` applies to objects of site kind `kind`.
+    fn applies(&self, edit: &str, kind: &str) -> bool {
+        let sort = self.object_sorting.get(kind);
+        self.edits
+            .get(edit)
+            .is_some_and(|edit| sort.is_some_and(|sort| edit.sorts.contains(sort)))
+    }
+
+    /// Apply a set-only edit. Morphisms and every other object are unchanged;
+    /// the support is the edited object when a value changed, else empty.
+    pub fn revise(&self, site: &Site, edit_id: &str, input: &EditInput) -> Result<(Site, SiteRevision), EditError> {
+        let edit = self
+            .edits
+            .get(edit_id)
+            .ok_or_else(|| EditError::UnknownEdit(edit_id.to_owned()))?;
+        let index = site
+            .objects
+            .iter()
+            .position(|object| object.id == input.object)
+            .ok_or_else(|| EditError::UnknownObject(input.object.clone()))?;
+        let object = &site.objects[index];
+        let sort = self.object_sorting.get(&object.kind).cloned().unwrap_or_default();
+        if !edit.sorts.contains(&sort) {
+            return Err(EditError::NotApplicable {
+                edit: edit_id.to_owned(),
+                object: object.id.clone(),
+                sort,
+            });
+        }
+        if input.values.is_empty() {
+            return Err(EditError::EmptyEdit(edit_id.to_owned()));
+        }
+        let mut fields = object.fields.clone();
+        for (field, raw) in &input.values {
+            let field_type = edit.set.get(field).ok_or_else(|| EditError::UnknownField {
+                edit: edit_id.to_owned(),
+                field: field.clone(),
+            })?;
+            let value = field_type.check(raw).map_err(|detail| EditError::InvalidValue {
+                field: field.clone(),
+                detail,
+            })?;
+            fields.insert(field.clone(), value);
+        }
+        let support = if fields == object.fields {
+            BTreeSet::new()
+        } else {
+            BTreeSet::from([object.id.clone()])
+        };
+        let mut revised = site.clone();
+        revised.objects[index].fields = fields;
+        Ok((revised, SiteRevision { edit: edit_id.to_owned(), support }))
+    }
+
+    /// The bytes a host writes for `revision`, emitted by the edit's grammar. A
+    /// revision that changed nothing is [`EditError::NothingToWrite`].
+    pub fn write_intent(
+        &self,
+        grammar: &CompiledGrammar,
+        revised: &Site,
+        revision: &SiteRevision,
+    ) -> Result<WriteIntent, EditError> {
+        let edit = self
+            .edits
+            .get(&revision.edit)
+            .ok_or_else(|| EditError::UnknownEdit(revision.edit.clone()))?;
+        if edit.grammar != grammar.id() {
+            return Err(EditError::GrammarMismatch {
+                edit: revision.edit.clone(),
+                expected: edit.grammar.clone(),
+                actual: grammar.id().to_owned(),
+            });
+        }
+        if revision.support.is_empty() {
+            return Err(EditError::NothingToWrite(revision.edit.clone()));
+        }
+        let bytes = grammar.emit(revised, &revision.support).map_err(EditError::Emit)?;
+        Ok(WriteIntent {
+            grammar: edit.grammar.clone(),
+            edit: revision.edit.clone(),
+            bytes,
+            support: revision.support.clone(),
+        })
     }
 
     /// The per-object/per-morphism engine parameters over the whole site.
@@ -219,6 +329,61 @@ impl Topos {
         for id in self.sheaves.keys() {
             if !referenced.contains(id) {
                 return Err(ToposError::UnreferencedSheaf { id: id.clone() });
+            }
+        }
+        self.validate_restrictions_and_edits()
+    }
+
+    /// Every restriction names declared sorts; every edit is well-formed and
+    /// every table's offered edits exist and sit on an object-scoped table.
+    fn validate_restrictions_and_edits(&self) -> Result<(), ToposError> {
+        for (id, edit) in &self.edits {
+            let invalid = |detail: String| ToposError::InvalidEdit {
+                edit: id.clone(),
+                detail,
+            };
+            if edit.sorts.is_empty() {
+                return Err(invalid("applies to no sort".to_owned()));
+            }
+            if let Some(sort) = edit.sorts.iter().find(|sort| !self.stalks.objects.contains_key(*sort)) {
+                return Err(invalid(format!("sort '{sort}' is not a regime object sort")));
+            }
+            if edit.set.is_empty() {
+                return Err(invalid("sets no fields".to_owned()));
+            }
+            if let Some((field, defect)) = edit.set.iter().find_map(|(field, ty)| ty.defect().map(|d| (field, d))) {
+                return Err(invalid(format!("field '{field}': {defect}")));
+            }
+            if edit.grammar.is_empty() {
+                return Err(invalid("names no grammar".to_owned()));
+            }
+        }
+        for (binding, sheaf) in &self.sheaves {
+            if let Some((sorts, space)) = sheaf.restriction() {
+                let declared = match space {
+                    SortSpace::Objects => self.object_sort_set(),
+                    SortSpace::Morphisms => self.morphism_sort_set(),
+                };
+                if let Some(sort) = sorts.iter().find(|sort| !declared.contains(*sort)) {
+                    return Err(ToposError::RestrictOutsideSorts {
+                        binding: binding.clone(),
+                        sort: sort.clone(),
+                    });
+                }
+            }
+            if let Sheaf::Table(table) = sheaf {
+                if let Some(edit) = table.edits.iter().find(|edit| !self.edits.contains_key(*edit)) {
+                    return Err(ToposError::UnknownEdit {
+                        binding: binding.clone(),
+                        edit: edit.clone(),
+                    });
+                }
+                if let (Some(edit), RowScope::Morphisms) = (table.edits.first(), table.scope) {
+                    return Err(ToposError::InvalidEdit {
+                        edit: edit.clone(),
+                        detail: format!("offered on morphism-scoped table '{binding}'"),
+                    });
+                }
             }
         }
         Ok(())
