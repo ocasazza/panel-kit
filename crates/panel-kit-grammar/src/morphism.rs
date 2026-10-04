@@ -11,9 +11,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
+use panel_kit_core::widgets::TextModel;
 
 use crate::error::MorphismError;
 use crate::topos::Topos;
+use crate::sheaf::Section;
 
 /// The regime-neutral physics base topos: engine particle/bond sorts and the
 /// only authored physics parameters.
@@ -86,6 +88,16 @@ pub struct GeometricMorphism {
     pub object_sorts: BTreeMap<String, String>,
     /// φ on morphism sorts: sorts(E) → sorts(F).
     pub morphism_sorts: BTreeMap<String, String>,
+}
+
+/// Which topos the active subobject `u` lives in when rendering a morphism
+/// [`section`](GeometricMorphism::section).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MorphismSide {
+    /// The morphism's domain `E`; `∃f`/`∀f` push `u` into `F`.
+    Domain,
+    /// The morphism's codomain `F`; `f*` pulls `u` back into `E`.
+    Codomain,
 }
 
 impl GeometricMorphism {
@@ -194,6 +206,95 @@ impl GeometricMorphism {
         out
     }
 
+    /// A text [`Section`] rendering this morphism against the active subobject
+    /// `u`, taken in `side`'s topos: a per-sort row table plus the adjoint-triple
+    /// summary. `e`/`f` supply the sort labels; `u` holds sorts of `side`'s topos.
+    pub fn section(&self, e: &Topos, f: &Topos, u: &BTreeSet<String>, side: MorphismSide) -> Section {
+        let mut lines = vec![format!("f: {} → {}", self.domain, self.codomain)];
+        match side {
+            MorphismSide::Domain => {
+                let exists = self.image(u);
+                let universal = self.universal_image(u);
+                let back = self.pullback_subobject(&exists);
+                lines.push("sort | f(sort) | U | f*∃f".to_owned());
+                for s in e.object_sort_set() {
+                    let image = self.object_sorts.get(&s).cloned().unwrap_or_default();
+                    lines.push(format!(
+                        "{} | {} | {} | {}",
+                        label(e, &s),
+                        label(f, &image),
+                        mark(u.contains(&s)),
+                        mark(back.contains(&s)),
+                    ));
+                }
+                lines.push(String::new());
+                lines.push(format!("U = {}", names(u)));
+                lines.push(format!("∃f(U) = {}", names(&exists)));
+                lines.push(format!("∀f(U) = {}", names(&universal)));
+                lines.push(format!("f*∃f(U) = {}", names(&back)));
+                if u.is_subset(&back) && back.len() > u.len() {
+                    lines.push(format!(
+                        "f*∃f(U) ⊋ U: f merges {} (information lost)",
+                        self.merges(&exists)
+                    ));
+                }
+            }
+            MorphismSide::Codomain => {
+                let back = self.pullback_subobject(u);
+                let closure = self.universal_image(&back);
+                lines.push("sort | f⁻¹(sort) | U | ∀f∘f*".to_owned());
+                for t in f.object_sort_set() {
+                    lines.push(format!(
+                        "{} | {} | {} | {}",
+                        label(f, &t),
+                        self.fiber_labels(e, &t),
+                        mark(u.contains(&t)),
+                        mark(closure.contains(&t)),
+                    ));
+                }
+                lines.push(String::new());
+                lines.push(format!("U = {}", names(u)));
+                lines.push(format!("f*(U) = {}", names(&back)));
+                lines.push(format!("∀f∘f*(U) = {}", names(&closure)));
+            }
+        }
+        Section::Text(TextModel { text: lines.join("\n") })
+    }
+
+    /// The preimage of codomain sort `t` under φ, as domain-sort labels joined
+    /// by `, `, or `∅` when the fiber is empty.
+    fn fiber_labels(&self, e: &Topos, t: &str) -> String {
+        let fiber: Vec<String> = self
+            .object_sorts
+            .iter()
+            .filter(|(_, image)| image.as_str() == t)
+            .map(|(sort, _)| label(e, sort))
+            .collect();
+        if fiber.is_empty() {
+            "∅".to_owned()
+        } else {
+            fiber.join(", ")
+        }
+    }
+
+    /// The non-trivial fibers of `exists` (more than one preimage) as `a, b → t`
+    /// joined by `; `: the merges that make `f*∃f` grow a subobject.
+    fn merges(&self, exists: &BTreeSet<String>) -> String {
+        let mut parts = Vec::new();
+        for t in exists {
+            let fiber: Vec<&str> = self
+                .object_sorts
+                .iter()
+                .filter(|(_, image)| image.as_str() == t.as_str())
+                .map(|(sort, _)| sort.as_str())
+                .collect();
+            if fiber.len() > 1 {
+                parts.push(format!("{} → {}", fiber.join(", "), t));
+            }
+        }
+        parts.join("; ")
+    }
+
     /// Compose `self: E → F` with `other: F → G` into `E → G`.
     pub fn compose(&self, other: &GeometricMorphism) -> Result<GeometricMorphism, MorphismError> {
         if self.codomain != other.domain {
@@ -243,6 +344,34 @@ impl GeometricMorphism {
             .iter()
             .filter(|(key, value)| value.as_str() == t && key.as_str() < s)
             .count()
+    }
+}
+
+/// Display label of object `sort` in `topos`, falling back to the raw sort.
+fn label(topos: &Topos, sort: &str) -> String {
+    topos
+        .stalks
+        .objects
+        .get(sort)
+        .map(|stalk| stalk.label.clone())
+        .unwrap_or_else(|| sort.to_owned())
+}
+
+/// `∈` when `present`, else `·`.
+fn mark(present: bool) -> &'static str {
+    if present {
+        "∈"
+    } else {
+        "·"
+    }
+}
+
+/// A sorted sort set as `{a, b}`, or `∅` when empty.
+fn names(set: &BTreeSet<String>) -> String {
+    if set.is_empty() {
+        "∅".to_owned()
+    } else {
+        format!("{{{}}}", set.iter().cloned().collect::<Vec<_>>().join(", "))
     }
 }
 

@@ -12,8 +12,8 @@ use panel_kit_core::widgets::table::TableCell;
 use crate::error::SheafError;
 use crate::package::CompiledGrammar;
 use crate::{
-    assembly, BaseTopos, GeometricMorphism, GrammarError, GrammarPackage, Morphism, MorphismError,
-    Object, ParserSpec, Physics, Section, Site, Stage, Topos, ToposError,
+    assembly, status_table, BaseTopos, GeometricMorphism, GrammarError, GrammarPackage, Morphism,
+    MorphismError, MorphismSide, Object, ParserSpec, Physics, Section, Site, Stage, Topos, ToposError,
 };
 
 /// Pest grammar package, byte-for-byte the Nix-produced `grammar-trace-lines`.
@@ -415,6 +415,51 @@ fn galois_connections_hold_over_all_subsets() {
     // φ is non-injective (planner, reviewer ↦ head), so ∃_f ≠ ∀_f.
     let only_planner: BTreeSet<String> = [String::from("planner")].into_iter().collect();
     assert_ne!(phi.image(&only_planner), phi.universal_image(&only_planner));
+}
+
+#[test]
+fn morphism_section_shows_the_adjoint_triple() {
+    let phi = morphism(F_JSON);
+    let agentic = agentic_topos("{}");
+    let membrane = membrane_topos("{}");
+
+    // Agentic side, U = {planner}: ∃f lands on head, f*∃f pulls back the whole
+    // fiber {planner, reviewer}, and ∀f({planner}) is empty.
+    let u: BTreeSet<String> = [String::from("planner")].into_iter().collect();
+    let Section::Text(model) = phi.section(&agentic, &membrane, &u, MorphismSide::Domain) else {
+        panic!("morphism section is text");
+    };
+    assert!(model.text.contains("∃f(U) = {head}"), "{}", model.text);
+    assert!(model.text.contains("∀f(U) = ∅"), "{}", model.text);
+    assert!(model.text.contains("f*∃f(U) = {planner, reviewer}"), "{}", model.text);
+    assert!(model.text.contains("f merges planner, reviewer → head"), "{}", model.text);
+
+    // U = {planner, reviewer}: ∀f now reaches head and f*∃f no longer grows U.
+    let u: BTreeSet<String> = [String::from("planner"), String::from("reviewer")].into_iter().collect();
+    let Section::Text(model) = phi.section(&agentic, &membrane, &u, MorphismSide::Domain) else {
+        panic!("morphism section is text");
+    };
+    assert!(model.text.contains("∀f(U) = {head}"), "{}", model.text);
+    assert!(!model.text.contains("information lost"), "{}", model.text);
+
+    // Membrane side, U = {head}: f* pulls back to the whole fiber in E.
+    let u: BTreeSet<String> = [String::from("head")].into_iter().collect();
+    let Section::Text(model) = phi.section(&agentic, &membrane, &u, MorphismSide::Codomain) else {
+        panic!("morphism section is text");
+    };
+    assert!(model.text.contains("f*(U) = {planner, reviewer}"), "{}", model.text);
+    assert!(model.text.contains("Planner, Reviewer"), "{}", model.text);
+}
+
+#[test]
+fn status_table_marks_each_check() {
+    let Section::Table(model) = status_table("Check", "Holds", &[("a".to_owned(), true), ("b".to_owned(), false)])
+    else {
+        panic!("status table is a table");
+    };
+    assert_eq!(model.rows.len(), 2);
+    assert!(matches!(&model.rows[0].cells[1], TableCell::Status { label, .. } if label == "ok"));
+    assert!(matches!(&model.rows[1].cells[1], TableCell::Status { label, .. } if label == "error"));
 }
 
 #[test]

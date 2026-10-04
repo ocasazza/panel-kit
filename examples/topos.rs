@@ -32,9 +32,7 @@ use dioxus::prelude::*;
 use panel_kit::CSS;
 use panel_kit_core::badge::BadgeAction;
 use panel_kit_core::reducer::{Viewport, WorkspaceEvent};
-use panel_kit_core::widgets::charts::{five_num, BoxItemView, SeriesView};
-use panel_kit_core::widgets::table::TableView;
-use panel_kit_core::widgets::{ContentSpec, ContentView, ScrollPolicy};
+use panel_kit_core::widgets::ContentSpec;
 use panel_kit_core::Units;
 
 #[allow(dead_code, unused_imports)]
@@ -46,8 +44,10 @@ mod spec_workspace;
 #[allow(dead_code)]
 #[path = "support/topos_demo.rs"]
 mod topos_demo;
+#[allow(dead_code)]
+#[path = "support/section_view.rs"]
+mod section_view;
 
-use panel_kit_grammar::Section;
 use topos_demo::{ToposDemo, TOPOS_AGENTIC};
 
 const DEMO_CSS: &str = "
@@ -79,14 +79,15 @@ fn browser_viewport() -> Viewport {
     }
 }
 
-/// Paint one binding id from the active demo state.
+/// Paint one binding id from the active demo state through the shared painter.
 ///
-/// The seam receives the panel's authored `ContentSpec`, so text keeps the
-/// declared scroll policy and a series keeps its declared unit. An id the demo
-/// does not resolve names itself instead of leaving a blank body.
+/// `section_view::paint` receives the panel's authored `ContentSpec`, so text
+/// keeps its scroll policy and a series its unit; a per-sort badge panel gets a
+/// toggle handler. An id the demo does not resolve names itself instead of
+/// leaving a blank body.
 fn demo_content(demo: Signal<ToposDemo>, id: &str, content: &ContentSpec) -> Element {
     let state = demo.read();
-    let Some(bound) = state.resolve(id) else {
+    let Some(section) = state.resolve(id) else {
         return rsx! {
             div {
                 class: "pk-content pk-content-unbound",
@@ -96,95 +97,8 @@ fn demo_content(demo: Signal<ToposDemo>, id: &str, content: &ContentSpec) -> Ele
             }
         };
     };
-
-    match bound {
-        Section::Text(text) => panel_kit::widgets::content_view(
-            ContentView::Text {
-                text: &text.text,
-                scroll: text_scroll(content),
-            },
-            0,
-            noop_badge_action(),
-        ),
-        Section::Table(table) => panel_kit::widgets::content_view(
-            ContentView::Table(TableView {
-                columns: &table.columns,
-                rows: &table.rows,
-            }),
-            0,
-            noop_badge_action(),
-        ),
-        Section::TimeSeries(series) => {
-            let views: Vec<SeriesView<'_>> = series
-                .iter()
-                .map(|model| SeriesView {
-                    name: &model.name,
-                    points: &model.points,
-                })
-                .collect();
-            panel_kit::widgets::content_view(
-                ContentView::TimeSeries {
-                    series: &views,
-                    unit: series_unit(content),
-                },
-                0,
-                noop_badge_action(),
-            )
-        }
-        Section::Gauges(gauges) => {
-            panel_kit::widgets::content_view(ContentView::Gauges(gauges), 0, noop_badge_action())
-        }
-        Section::Flamegraph(spans) => {
-            panel_kit::widgets::content_view(ContentView::Flamegraph(spans), 0, noop_badge_action())
-        }
-        Section::Boxplot(items) => {
-            let views: Vec<BoxItemView<'_>> = items
-                .iter()
-                .filter_map(|item| {
-                    five_num(&item.samples).map(|summary| BoxItemView {
-                        label: &item.label,
-                        summary,
-                        color: item.color,
-                    })
-                })
-                .collect();
-            panel_kit::widgets::content_view(ContentView::Boxplot(&views), 0, noop_badge_action())
-        }
-        Section::Badges(specs) => {
-            let on_action = if state.active_binding() == Some(id) {
-                badge_toggle_action(demo)
-            } else {
-                noop_badge_action()
-            };
-            panel_kit::widgets::content_view(ContentView::Badges(specs), 0, on_action)
-        }
-        Section::Meter(meter) => {
-            panel_kit::widgets::content_view(ContentView::Meter(meter), 0, noop_badge_action())
-        }
-        Section::Status(status) => {
-            panel_kit::widgets::content_view(ContentView::Status(status), 0, noop_badge_action())
-        }
-    }
-}
-
-/// Scroll policy a text panel's spec authored.
-fn text_scroll(content: &ContentSpec) -> ScrollPolicy {
-    match content {
-        ContentSpec::Text { scroll, .. } => *scroll,
-        _ => ScrollPolicy::Auto,
-    }
-}
-
-/// Unit label a time-series panel's spec authored.
-fn series_unit(content: &ContentSpec) -> &str {
-    match content {
-        ContentSpec::TimeSeries { unit, .. } => unit,
-        _ => "",
-    }
-}
-
-fn noop_badge_action() -> EventHandler<BadgeAction> {
-    EventHandler::new(|_: BadgeAction| {})
+    let on_badge = (state.active_binding() == Some(id)).then(|| badge_toggle_action(demo));
+    section_view::paint(section, content, None, on_badge)
 }
 
 /// A toggle on a per-sort badge flips that sort in the active subobject.

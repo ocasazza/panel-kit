@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 
 use panel_kit_grammar::{
     BadgeGroup, BaseTopos, CompiledGrammar, GeometricMorphism, GlobalSections, GrammarPackage,
-    Physics, PhysicsSection, Section, Sheaf, Site, Topos,
+    status_table, MorphismSide, Physics, PhysicsSection, Section, Sheaf, Site, Topos,
 };
 
 /// Agentic-trace regime topos id (slot A).
@@ -120,18 +120,24 @@ struct ToposEntry {
     workspace_json: String,
     physics: Physics,
     badge_binding: Option<String>,
+    morphism_binding: Option<String>,
+    invariants_binding: Option<String>,
 }
 
 impl ToposEntry {
     fn build(id: &'static str, spec: Topos, physics: Physics) -> Self {
         let workspace_json = spec.workspace_json();
         let badge_binding = kinds_badges_binding(&spec);
+        let morphism_binding = marker_binding(&spec, |sheaf| matches!(sheaf, Sheaf::Morphism));
+        let invariants_binding = marker_binding(&spec, |sheaf| matches!(sheaf, Sheaf::Invariants));
         Self {
             id,
             spec,
             workspace_json,
             physics,
             badge_binding,
+            morphism_binding,
+            invariants_binding,
         }
     }
 }
@@ -149,10 +155,14 @@ pub struct ToposDemo {
     contents: GlobalSections,
     active: BTreeSet<String>,
     active_badges: Option<Section>,
+    badge_base: Option<Section>,
+    morphism_section: Option<Section>,
+    invariants_section: Option<Section>,
     focus: usize,
     morphism_note: Option<String>,
     diagnostics: Vec<String>,
     appended: usize,
+    grammars_agree: bool,
 }
 
 impl ToposDemo {
@@ -199,6 +209,7 @@ impl ToposDemo {
             .parse(&source)
             .expect("canonical lines data parses");
 
+        let grammars_agree = sites_agree(&grammars);
         let mut demo = Self {
             grammars,
             topoi,
@@ -210,10 +221,14 @@ impl ToposDemo {
             contents: GlobalSections::default(),
             active: BTreeSet::new(),
             active_badges: None,
+            badge_base: None,
+            morphism_section: None,
+            invariants_section: None,
             focus: 0,
             morphism_note: None,
             diagnostics: Vec::new(),
             appended: 0,
+            grammars_agree,
         };
         demo.active = demo.current_sort_set();
         demo.reproject();
@@ -349,7 +364,7 @@ impl ToposDemo {
         let allowed = self.current_sort_set();
         self.active = sorts.into_iter().filter(|sort| allowed.contains(sort)).collect();
         self.morphism_note = None;
-        self.refresh_active_badges();
+        self.reproject_subobject();
     }
 
     /// Toggle one regime sort in the active subobject; ignores unknown sorts.
@@ -361,7 +376,7 @@ impl ToposDemo {
             self.active.insert(sort.to_owned());
         }
         self.morphism_note = None;
-        self.refresh_active_badges();
+        self.reproject_subobject();
     }
 
     /// Advance the terminal sort-focus cursor over the per-sort badges.
@@ -402,8 +417,19 @@ impl ToposDemo {
     /// Resolved content for one binding id; the active topos's per-sort badges
     /// carry the active subobject. `None` when the active topos does not bind it.
     pub fn resolve(&self, binding: &str) -> Option<&Section> {
-        if self.active_binding() == Some(binding) {
+        let entry = &self.topoi[self.topos];
+        if entry.badge_binding.as_deref() == Some(binding) {
             if let Some(section) = self.active_badges.as_ref() {
+                return Some(section);
+            }
+        }
+        if entry.morphism_binding.as_deref() == Some(binding) {
+            if let Some(section) = self.morphism_section.as_ref() {
+                return Some(section);
+            }
+        }
+        if entry.invariants_binding.as_deref() == Some(binding) {
+            if let Some(section) = self.invariants_section.as_ref() {
                 return Some(section);
             }
         }
@@ -425,18 +451,66 @@ impl ToposDemo {
         }
     }
 
-    /// Re-take global sections under the active topos and physics, keeping prior
-    /// content on failure, then refresh the active-badge overlay.
+    /// Full re-projection after a site or topos change: the panels over the
+    /// active subobject, the per-sort badge control over the whole site, and the
+    /// overlays. Prior content is kept on failure.
     fn reproject(&mut self) {
+        self.recompute_badge_base();
+        self.recompute_panels();
+        self.recompute_overlays();
+    }
+
+    /// Re-projection after only the active subobject changed: the panels and the
+    /// overlays, but not the whole-site badge control.
+    fn reproject_subobject(&mut self) {
+        self.recompute_panels();
+        self.recompute_overlays();
+    }
+
+    /// The subsite over the active subobject `U`: objects whose sort is in `U`
+    /// and the morphisms between them.
+    fn restricted_site(&self) -> Site {
+        let entry = &self.topoi[self.topos];
+        self.site.restrict_objects(&entry.spec.object_sorting, &self.active)
+    }
+
+    /// Γ(U, F): re-take global sections over the restricted subsite, keeping
+    /// prior content on failure.
+    fn recompute_panels(&mut self) {
+        let subsite = self.restricted_site();
         let sections = {
             let entry = &self.topoi[self.topos];
-            entry.spec.global_sections(&self.site, &entry.physics)
+            entry.spec.global_sections(&subsite, &entry.physics)
         };
         match sections {
             Ok(contents) => self.contents = contents,
             Err(error) => self.diagnostics.push(error.to_string()),
         }
-        self.refresh_active_badges();
+    }
+
+    /// The per-sort badge control is Γ over the whole site (every sort), so it
+    /// lists every sort regardless of `U`. Recomputed only on a site/topos change.
+    fn recompute_badge_base(&mut self) {
+        let Some(binding) = self.active_binding().map(str::to_owned) else {
+            self.badge_base = None;
+            return;
+        };
+        let sections = {
+            let entry = &self.topoi[self.topos];
+            entry.spec.global_sections(&self.site, &entry.physics)
+        };
+        match sections {
+            Ok(full) => self.badge_base = full.get(&binding).cloned(),
+            Err(error) => self.diagnostics.push(error.to_string()),
+        }
+    }
+
+    /// Rebuild the three host overlays: the active-badge control, the live
+    /// morphism panel, and the demo-invariants panel.
+    fn recompute_overlays(&mut self) {
+        self.active_badges = self.build_active_badges();
+        self.morphism_section = self.build_morphism_section();
+        self.invariants_section = self.build_invariants_section();
     }
 
     /// Transport the active subobject across a topos switch: `∃f` on
@@ -456,15 +530,10 @@ impl ToposDemo {
         }
     }
 
-    /// Overlay the active subobject on the per-sort badges from global sections:
+    /// Overlay the active subobject on the whole-site per-sort badge control:
     /// stamp each badge's `field` with its regime sort and mark it active.
-    fn refresh_active_badges(&mut self) {
-        self.active_badges = self.build_active_badges();
-    }
-
     fn build_active_badges(&self) -> Option<Section> {
-        let binding = self.active_binding()?;
-        let Some(Section::Badges(base)) = self.contents.get(binding) else {
+        let Some(Section::Badges(base)) = self.badge_base.as_ref() else {
             return None;
         };
         let sorts = self.active_sorts();
@@ -474,6 +543,71 @@ impl ToposDemo {
             badge.active = self.active.contains(sort);
         }
         Some(Section::Badges(badges))
+    }
+
+    /// The live morphism panel: the section of the agentic→membrane morphism
+    /// against the active subobject, taken from the current regime's side.
+    fn build_morphism_section(&self) -> Option<Section> {
+        self.topoi[self.topos].morphism_binding.as_ref()?;
+        let e = &self.topoi.iter().find(|entry| entry.id == TOPOS_AGENTIC)?.spec;
+        let f = &self.topoi.iter().find(|entry| entry.id == TOPOS_MEMBRANE)?.spec;
+        let side = if self.topos_id() == TOPOS_AGENTIC {
+            MorphismSide::Domain
+        } else {
+            MorphismSide::Codomain
+        };
+        Some(self.morphism.section(e, f, &self.active, side))
+    }
+
+    /// The live invariants panel: three recomputed topos facts as status rows.
+    fn build_invariants_section(&self) -> Option<Section> {
+        self.topoi[self.topos].invariants_binding.as_ref()?;
+        Some(status_table("Invariant", "Holds", &self.invariants()))
+    }
+
+    /// The three topos invariants over the demo data, recomputed live: both
+    /// grammars present the same site; the physics section is regime-invariant;
+    /// and the physics section commutes with restriction to the subobject `U`.
+    fn invariants(&self) -> Vec<(String, bool)> {
+        let same_site = self.grammars_agree;
+
+        let agentic = self.topoi.iter().find(|entry| entry.id == TOPOS_AGENTIC);
+        let membrane = self.topoi.iter().find(|entry| entry.id == TOPOS_MEMBRANE);
+        let physics_regime_invariant = match (agentic, membrane) {
+            (Some(a), Some(m)) => {
+                a.spec.physics_section(&self.site, &a.physics)
+                    == m.spec.physics_section(&self.site, &m.physics)
+            }
+            _ => false,
+        };
+
+        let entry = &self.topoi[self.topos];
+        let subsite = self.restricted_site();
+        let restricted = entry.spec.physics_section(&subsite, &entry.physics);
+        let full = entry.spec.physics_section(&self.site, &entry.physics);
+        let kept: BTreeSet<&str> = subsite.objects.iter().map(|object| object.id.as_str()).collect();
+        let base_objects: Vec<_> = full
+            .objects
+            .iter()
+            .filter(|(id, ..)| kept.contains(id.as_str()))
+            .cloned()
+            .collect();
+        let base_morphisms: Vec<_> = full
+            .morphisms
+            .iter()
+            .filter(|(domain, codomain, ..)| {
+                kept.contains(domain.as_str()) && kept.contains(codomain.as_str())
+            })
+            .cloned()
+            .collect();
+        let physics_restricts =
+            restricted.objects == base_objects && restricted.morphisms == base_morphisms;
+
+        vec![
+            ("trace-lines = trace-json (same site)".to_owned(), same_site),
+            ("physics: agentic = membrane".to_owned(), physics_regime_invariant),
+            ("physics over U = base over U".to_owned(), physics_restricts),
+        ]
     }
 
     /// Regime object sorts present in the site, in first-appearance order — the
@@ -538,6 +672,27 @@ fn kinds_badges_binding(spec: &Topos) -> Option<String> {
         Sheaf::Badges(badges) if badges.group == BadgeGroup::Kinds => Some(id.clone()),
         _ => None,
     })
+}
+
+/// The binding id of the first sheaf matching `pred`, if any.
+fn marker_binding(spec: &Topos, pred: impl Fn(&Sheaf) -> bool) -> Option<String> {
+    spec.sheaves
+        .iter()
+        .find_map(|(id, sheaf)| pred(sheaf).then(|| id.clone()))
+}
+
+/// Whether the line and JSON grammars parse their canonical data to equal sites.
+fn sites_agree(grammars: &[GrammarEntry]) -> bool {
+    let site_of = |id| {
+        grammars
+            .iter()
+            .find(|entry| entry.id == id)
+            .and_then(|entry| entry.grammar.parse(entry.data).ok())
+    };
+    match (site_of(GRAMMAR_LINES), site_of(GRAMMAR_JSON)) {
+        (Some(lines), Some(json)) => lines == json,
+        _ => false,
+    }
 }
 
 /// Join a parsed source with an append suffix on its own line; an empty suffix

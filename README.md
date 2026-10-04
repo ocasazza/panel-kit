@@ -335,6 +335,22 @@ morphism specs are surface-neutral; `nix develop` exports the web set and
 overrides variables exported before entering it, so terminal surfaces set only
 their `PANEL_KIT_TOPOS_A/B` specs inside the shell.
 
+Every panel is a section over the **active subobject** `U` (the selected sorts):
+`Γ(U, F)` of the subsite `site.restrict_objects(object_sorting, U)`. Toggling or
+transporting `U` re-restricts every table, chart, gauge, meter, assembly and
+physics panel — the per-sort badges are the controls and keep listing all sorts.
+The **Morphism** panel renders `f` against `U` live (per-sort rows plus the
+`∃f`/`∀f`/`f*` summary), and the **Invariants** panel proves, as recomputed
+status rows, that the two grammars present one site, that the physics section is
+regime-invariant, and that it commutes with restriction to `U`.
+
+What to try: click the **Planner** badge so `U = {planner}` — every panel narrows
+to planner sessions. Press `t`: `∃f` widens `U` to `{head}`, and the membrane
+panels now cover the planner **and** reviewer objects f merges into head. Press
+`t` again: `f*` pulls `U` back to `{planner, reviewer}` — the whole fiber, the
+information f could not tell apart. Press `g` to switch grammar: nothing changes,
+because `trace-lines` and `trace-json` present the same site.
+
 ```sh
 dx serve --example topos --platform web                     # web
 nix build .#topos-tui-native && ./result/bin/topos          # terminal

@@ -2,15 +2,14 @@
 # sessions plus memory stores; morphisms are handoffs. Identity sorting (every
 # site kind maps to its own regime sort). Sheaves: Stalks text, sessions Status
 # table, handoff Flamegraph over `continues`, Roles badges (per sort), Assembly
-# table + stage badges, Morphism text, Physics table. `surface`/`glyphs` select
-# units/chrome/glyphs; the stalks, sheaves, and binding ids do not vary.
+# table + stage badges, Physics table, Morphism + Invariants host overlays. `surface`/`glyphs`
+# select units/chrome/glyphs; the stalks, sheaves, and binding ids do not vary.
 
 { lib ? (import <nixpkgs> { }).lib, surface, glyphs ? "unicode" }:
 
 let
   topos = import ../lib/mkToposSpec.nix { inherit lib; };
   L = import ../lib/mkToposLayout.nix { inherit lib; };
-  data = import ../lib/physicsData.nix;
   inherit (topos) mkTopos defaultTheme;
   inherit (L) cell shelf textC tableC badgesC flameC textCell flex fixed;
 
@@ -29,7 +28,8 @@ let
     ])
     (shelf 3 [
       (cell "physics" "Physics" "physics" 2 (tableC "agentic.physics"))
-      (cell "morphism" "Morphism" "morphism" 2 (textC "agentic.morphism"))
+      (cell "morphism" "Morphism" "morphism" 1 (textC "agentic.morphism"))
+      (cell "invariants" "Invariants" "invariants" 1 (tableC "agentic.invariants"))
     ])
   ];
 in
@@ -105,11 +105,8 @@ mkTopos {
     "agentic.assembly" = { kind = "assembly"; morphism_sorts = [ "continues" "shares" ]; };
     "agentic.stages" = { kind = "assembly_badges"; morphism_sorts = [ "continues" "shares" ]; };
     "agentic.physics" = { kind = "physics"; scope = "objects"; };
-    "agentic.morphism" = {
-      kind = "text";
-      heading = data.morphismHeading;
-      preface = data.morphismPreface;
-    };
+    "agentic.morphism" = { kind = "morphism"; };
+    "agentic.invariants" = { kind = "invariants"; };
   };
 
   workspace = L.mkWorkspace {

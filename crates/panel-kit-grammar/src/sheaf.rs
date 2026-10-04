@@ -138,6 +138,11 @@ pub enum Sheaf {
     AssemblyBadges(AssemblySheaf),
     /// Physics section as a table (objects or morphisms).
     Physics(PhysicsSheaf),
+    /// Live morphism translation panel; the host overlays the section computed
+    /// from the [`GeometricMorphism`](crate::morphism::GeometricMorphism).
+    Morphism,
+    /// Demo invariants panel; the host overlays runtime-computed status rows.
+    Invariants,
 }
 
 impl Sheaf {
@@ -156,6 +161,8 @@ impl Sheaf {
             Self::Assembly(_) => "table",
             Self::AssemblyBadges(_) => "badges",
             Self::Physics(_) => "table",
+            Self::Morphism => "text",
+            Self::Invariants => "table",
         }
     }
 
@@ -177,6 +184,16 @@ impl Sheaf {
             Self::Assembly(sheaf) => sheaf.evaluate_table(resolver, site),
             Self::AssemblyBadges(sheaf) => sheaf.evaluate_badges(resolver, site),
             Self::Physics(sheaf) => sheaf.evaluate(resolver, site),
+            Self::Morphism => Ok(Section::Text(TextModel { text: "Morphism".to_owned() })),
+            Self::Invariants => Ok(Section::Table(TableModel {
+                columns: vec![TableColumn {
+                    key: "invariant".to_owned(),
+                    title: "Invariant".to_owned(),
+                    width: ColumnWidth::Flex { weight: 1 },
+                    align: TextAlign::Left,
+                }],
+                rows: Vec::new(),
+            })),
         }
     }
 
@@ -211,6 +228,40 @@ impl Sheaf {
             _ => None,
         }
     }
+}
+
+/// A status table: one row per `(check, holds)` with a left text column titled
+/// `checks_title` and a centered status column titled `holds_title` whose cell
+/// reads `ok`/`error`. Hosts render runtime-computed invariant panels with it.
+pub fn status_table(checks_title: &str, holds_title: &str, rows: &[(String, bool)]) -> Section {
+    let columns = vec![
+        TableColumn {
+            key: "check".to_owned(),
+            title: checks_title.to_owned(),
+            width: ColumnWidth::Flex { weight: 4 },
+            align: TextAlign::Left,
+        },
+        TableColumn {
+            key: "holds".to_owned(),
+            title: holds_title.to_owned(),
+            width: ColumnWidth::Flex { weight: 1 },
+            align: TextAlign::Center,
+        },
+    ];
+    let rows = rows
+        .iter()
+        .map(|(label, ok)| {
+            let word = if *ok { "ok" } else { "error" };
+            let (_, color) = status_of(word);
+            TableRow {
+                cells: vec![
+                    TableCell::Text(label.clone()),
+                    TableCell::Status { label: word.to_owned(), color },
+                ],
+            }
+        })
+        .collect();
+    Section::Table(TableModel { columns, rows })
 }
 
 /// Whether a restriction names object sorts or morphism sorts.

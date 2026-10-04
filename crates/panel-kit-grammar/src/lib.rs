@@ -35,7 +35,7 @@ pub use edit::{EditInput, FieldType, RowEdits, SectionEdit, SiteRevision, WriteI
 pub use error::{EditError, GrammarError, MorphismError, SheafError, SiteError, ToposError};
 pub use morphism::{
     BaseStalks, BaseTopos, EngineMorphismStalk, EngineObjectStalk, GeometricMorphism,
-    MorphismTuning, ObjectTuning, Physics,
+    MorphismSide, MorphismTuning, ObjectTuning, Physics,
 };
 pub use package::{
     CaptureRules, CompiledGrammar, EmitterSpec, GrammarPackage, JsonEdgeMap, JsonEmitter, JsonNodeMap,
@@ -43,10 +43,10 @@ pub use package::{
 };
 pub use site::{Morphism, Object, Site};
 pub use sheaf::{
-    assembly, Agg, AssemblySheaf, BadgeGroup, BadgesSheaf, BoxplotSheaf, CellAlign, CellSpec,
-    ColWidth, ColumnSpec, ComponentInvariants, FlamegraphSheaf, GaugesSheaf, GlobalSections,
-    GroupScope, MeterSheaf, PhysicsScope, PhysicsSheaf, RowScope, Section, Sheaf, Stage,
-    StatusSheaf, TableSheaf, TextSheaf, TimeSeriesSheaf,
+    assembly, status_table, Agg, AssemblySheaf, BadgeGroup, BadgesSheaf, BoxplotSheaf, CellAlign,
+    CellSpec, ColWidth, ColumnSpec, ComponentInvariants, FlamegraphSheaf, GaugesSheaf,
+    GlobalSections, GroupScope, MeterSheaf, PhysicsScope, PhysicsSheaf, RowScope, Section, Sheaf,
+    Stage, StatusSheaf, TableSheaf, TextSheaf, TimeSeriesSheaf,
 };
 pub use topos::{MorphismStalk, ObjectStalk, PhysicsSection, Stages, Stalks, Topos, SPEC_VERSION};
 

@@ -13,6 +13,7 @@ mod topos_demo;
 use std::collections::BTreeSet;
 
 use panel_kit_core::spec::WorkspaceSpec;
+use panel_kit_core::widgets::table::TableCell;
 use panel_kit_grammar::{assembly, Section, Stage};
 use topos_demo::{ToposDemo, GRAMMAR_JSON, GRAMMAR_LINES, TOPOS_AGENTIC, TOPOS_MEMBRANE};
 
@@ -200,5 +201,103 @@ fn a_malformed_line_keeps_prior_content_and_adds_a_diagnostic() {
             before,
             "{grammar}: a malformed line must keep prior content"
         );
+    }
+}
+
+/// Row count of a binding that resolves to a table.
+fn table_rows(demo: &ToposDemo, binding: &str) -> usize {
+    match demo.resolve(binding) {
+        Some(Section::Table(table)) => table.rows.len(),
+        other => panic!("{binding} is not a table: {other:?}"),
+    }
+}
+
+/// Text of a binding that resolves to a text section.
+fn text_of(demo: &ToposDemo, binding: &str) -> String {
+    match demo.resolve(binding) {
+        Some(Section::Text(model)) => model.text.clone(),
+        other => panic!("{binding} is not text: {other:?}"),
+    }
+}
+
+#[test]
+fn toggling_the_subobject_restricts_every_panel() {
+    let mut demo = ToposDemo::new();
+    let full_rows = table_rows(&demo, "agentic.status");
+    let planner = demo.site().objects.iter().filter(|object| object.kind == "planner").count();
+    assert!(planner > 0 && planner < full_rows, "{planner} planner of {full_rows} sessions");
+
+    demo.set_active(["planner".to_owned()]);
+
+    // The Sessions table is Γ over the {planner} subsite, not the whole site.
+    assert_eq!(table_rows(&demo, "agentic.status"), planner);
+
+    // The Assembly table lists exactly the subsite's connected components.
+    let components = {
+        let topos = demo.current_topos();
+        let subsite = demo.site().restrict_objects(&topos.object_sorting, &sorts(["planner"]));
+        assembly(&subsite, &topos.morphism_sorting, &sorts(["continues", "shares"])).len()
+    };
+    assert_eq!(table_rows(&demo, "agentic.assembly"), components);
+
+    // Empty U renders an explicit empty state, never stale data.
+    demo.set_active(std::iter::empty::<String>());
+    assert_eq!(table_rows(&demo, "agentic.status"), 0);
+}
+
+#[test]
+fn transport_moves_the_subobject_and_the_membrane_panels() {
+    let mut demo = ToposDemo::new();
+    demo.set_active(["planner".to_owned()]);
+
+    // agentic → membrane transports {planner} by ∃f to {head}.
+    assert!(demo.set_topos(TOPOS_MEMBRANE));
+    assert_eq!(demo.active_set(), &sorts(["head"]));
+
+    // The membrane Physics panel is Γ over the {head} subsite: the planner and
+    // reviewer objects f merges into head.
+    let head = demo
+        .site()
+        .objects
+        .iter()
+        .filter(|object| object.kind == "planner" || object.kind == "reviewer")
+        .count();
+    assert!(head > 0);
+    assert_eq!(table_rows(&demo, "membrane.physics"), head);
+
+    // membrane → agentic transports {head} by f* back to the whole fiber.
+    assert!(demo.set_topos(TOPOS_AGENTIC));
+    assert_eq!(demo.active_set(), &sorts(["planner", "reviewer"]));
+}
+
+#[test]
+fn the_morphism_panel_shows_the_adjoint_triple() {
+    let mut demo = ToposDemo::new();
+
+    demo.set_active(["planner".to_owned()]);
+    let text = text_of(&demo, "agentic.morphism");
+    assert!(text.contains("∀f(U) = ∅"), "{text}");
+
+    demo.set_active(["planner".to_owned(), "reviewer".to_owned()]);
+    let text = text_of(&demo, "agentic.morphism");
+    assert!(text.contains("∀f(U) = {head}"), "{text}");
+}
+
+#[test]
+fn the_invariants_panel_holds_under_both_regimes() {
+    let mut demo = ToposDemo::new();
+    for topos in [TOPOS_AGENTIC, TOPOS_MEMBRANE] {
+        assert!(demo.set_topos(topos));
+        let binding = format!("{}.invariants", topos.trim_start_matches("topos-"));
+        let Some(Section::Table(table)) = demo.resolve(&binding) else {
+            panic!("{binding} resolves to a table");
+        };
+        assert_eq!(table.rows.len(), 3, "{binding} has one row per invariant");
+        for row in &table.rows {
+            assert!(
+                matches!(&row.cells[1], TableCell::Status { label, .. } if label == "ok"),
+                "{binding}: an invariant does not hold"
+            );
+        }
     }
 }
