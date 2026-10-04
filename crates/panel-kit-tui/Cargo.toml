@@ -35,6 +35,9 @@ critical-section = { version = "1.2", features = ["std"] }
 ratzilla = "0.3.1"
 # Topos/grammar demo façade included by the topos examples.
 panel-kit-grammar = { version = "1.2.0", path = "../panel-kit-grammar" }
+# Layout solvers behind the `graph` component contract
+# (examples/support/graph_layout.rs): vendor/jump-cannon/VENDORED.md.
+graph-layouts = { path = "../../vendor/jump-cannon/graph-layouts" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 crossterm = "0.29"

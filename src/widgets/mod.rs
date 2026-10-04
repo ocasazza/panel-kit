@@ -14,6 +14,7 @@ pub mod dock;
 pub mod dropdown;
 pub mod forms;
 pub mod frontmatter;
+pub mod graph;
 pub mod hints;
 pub mod meter;
 pub mod pills;

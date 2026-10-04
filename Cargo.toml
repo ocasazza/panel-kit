@@ -83,6 +83,9 @@ web-sys = { version = "0.3", features = ["Headers", "Request", "RequestInit", "R
 # jump-cannon's graph view (renderer + canvas) for the auto-loop host's graph
 # panel, vendored: vendor/jump-cannon/VENDORED.md.
 jump-cannon-graph-view = { path = "vendor/jump-cannon/graph-view" }
+# Static + GPU layout solvers behind the `graph` component contract
+# (examples/support/graph_layout.rs): vendor/jump-cannon/VENDORED.md.
+graph-layouts = { path = "vendor/jump-cannon/graph-layouts" }
 
 # Injected by dioxus-cli on first `dx build` — dx builds the example demos
 # under these profiles.

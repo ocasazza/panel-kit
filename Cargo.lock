@@ -2373,6 +2373,7 @@ dependencies = [
  "console_error_panic_hook",
  "critical-section",
  "crossterm",
+ "graph-layouts",
  "panel-kit-core",
  "panel-kit-grammar",
  "ratatui",
