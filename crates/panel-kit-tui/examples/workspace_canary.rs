@@ -124,6 +124,12 @@ pub mod content {
             ContentSpec::Spinner { label } => {
                 render_spinner(frame, area, context.theme, label, demo.tick)
             }
+            ContentSpec::External { component, source, .. } => render_binding_placeholder(
+                frame,
+                area,
+                context.theme,
+                source.binding_id().unwrap_or(component.as_str()),
+            ),
         }
     }
 

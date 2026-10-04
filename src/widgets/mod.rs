@@ -56,6 +56,15 @@ pub fn content_view(
         ContentView::Editor { binding } => rsx! {
             div { class: "pk-content pk-content-editor", role: "group", aria_label: "editor content {binding}", "data-binding": "{binding}" }
         },
+        ContentView::External { component, binding, .. } => rsx! {
+            div {
+                class: "pk-content pk-content-external",
+                role: "group",
+                aria_label: "external component {component}",
+                "data-component": "{component}",
+                "data-binding": "{binding}"
+            }
+        },
         ContentView::Badges(specs) => badge::strip(specs, on_badge_action),
         ContentView::Table { binding, view } => table::table(binding, view, None),
         ContentView::TimeSeries { series, unit } => charts::time_series(series, unit),

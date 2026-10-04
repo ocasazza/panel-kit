@@ -592,6 +592,9 @@ fn sheaf_binding(content: &ContentSpec) -> Option<(&str, &'static str)> {
         ContentSpec::Boxplot { source } => source.binding_id().map(|id| (id, "boxplot")),
         ContentSpec::Meter { source } => source.binding_id().map(|id| (id, "meter")),
         ContentSpec::Status { source } => source.binding_id().map(|id| (id, "status")),
-        ContentSpec::Custom { .. } | ContentSpec::Editor { .. } | ContentSpec::Spinner { .. } => None,
+        ContentSpec::Custom { .. }
+        | ContentSpec::Editor { .. }
+        | ContentSpec::Spinner { .. }
+        | ContentSpec::External { .. } => None,
     }
 }

@@ -22,6 +22,7 @@ use panel_kit_core::widgets::charts::{
     five_num, BoxItemModel, BoxItemView, FlameSpanModel, GaugeModel, SeriesModel, SeriesView,
 };
 use panel_kit_core::widgets::data_table::ColumnKind;
+use panel_kit_core::widgets::graph::{GraphLayout, GraphModel, GraphView};
 use panel_kit_core::widgets::meter::MeterModel;
 use panel_kit_core::widgets::status::{StatusModel, StatusState};
 use panel_kit_core::widgets::table::{
@@ -252,6 +253,10 @@ fn render_content(
             DataSource::Inline { value } => paint_spinner(value),
             DataSource::Binding { id } => binding(id, content),
         },
+        ContentSpec::External { component, source, layout } => match source {
+            DataSource::Inline { value } => paint_external(component, "", layout, value),
+            DataSource::Binding { id } => binding(id, content),
+        },
     }
 }
 
@@ -277,6 +282,9 @@ pub fn canary_content(id: &str, content: &ContentSpec) -> Element {
             multiline,
             placeholder,
         } => paint_editor(binding, *multiline, placeholder),
+        ContentSpec::External { component, layout, .. } => {
+            paint_external(component, id, layout, &GraphModel::default())
+        }
     }
 }
 
@@ -334,6 +342,26 @@ fn paint_editor(binding: &str, multiline: bool, placeholder: &str) -> Element {
 
 fn paint_custom(binding: &str) -> Element {
     crate::widgets::content_view(ContentView::Custom { binding }, 0, noop_badge_action())
+}
+
+/// Paint the seam a host overlays for an external body: the same
+/// `data-binding` hook `Custom` uses, named by its declared component.
+fn paint_external(
+    component: &str,
+    binding: &str,
+    layout: &GraphLayout,
+    graph: &GraphModel,
+) -> Element {
+    crate::widgets::content_view(
+        ContentView::External {
+            component,
+            binding,
+            layout,
+            graph: GraphView { nodes: &graph.nodes, edges: &graph.edges },
+        },
+        0,
+        noop_badge_action(),
+    )
 }
 
 fn paint_badges(specs: &[BadgeSpec]) -> Element {

@@ -44,6 +44,7 @@ pub(crate) fn tui_field_dispositions(plan: &TuiSpecPlan) -> BTreeMap<String, Fie
         "theme": plan.theme,
         "persistence": plan.persistence,
         "panels": plan.panels,
+        "components": plan.components,
     });
 
     field_dispositions_from_value(&value, |pointer| tui_approximation_reason(plan, pointer))

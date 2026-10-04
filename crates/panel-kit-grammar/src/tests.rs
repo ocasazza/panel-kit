@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use panel_kit_core::spec::ComponentContract;
 use panel_kit_core::widgets::data_table::{
     natural_cmp, BuildOptions, ColumnKind, SortDir, SortSpec, TableDefaults, TableState, View,
 };
@@ -28,6 +29,9 @@ const GRAMMAR_JSON: &str = include_str!("../testdata/trace-json.grammar.json");
 const GRAMMAR_RECORDS: &str = include_str!("../testdata/grammar-records.json");
 /// Minimal two-panel workspace (text `legend`, gauges `load`) for inline topoi.
 const WS_MIN: &str = include_str!("../testdata/inline-workspace.json");
+/// The same workspace plus a host-mounted external panel bound to an overlay
+/// binding the host owns, with the `graph` component it names.
+const WS_EXTERNAL: &str = include_str!("../testdata/external-workspace.json");
 
 /// The same site authored two ways, parsed by the two engines in tests.
 const DATA_LINES: &str = include_str!("../testdata/trace.lines");
@@ -74,6 +78,18 @@ fn site_from_lines() -> Site {
 }
 
 fn topos_json(id: &str, regime: &str, osort: &str, msort: &str, stalks: &str, sheaves: &str) -> String {
+    topos_json_over_ws(id, regime, osort, msort, stalks, sheaves, WS_MIN)
+}
+
+fn topos_json_over_ws(
+    id: &str,
+    regime: &str,
+    osort: &str,
+    msort: &str,
+    stalks: &str,
+    sheaves: &str,
+    ws: &str,
+) -> String {
     format!(
         r##"{{"spec_version":1,"id":"{id}","regime":"{regime}","object_sorting":{osort},"morphism_sorting":{msort},"stalks":{stalks},"sheaves":{sheaves},"workspace":{ws}}}"##,
         id = id,
@@ -82,7 +98,7 @@ fn topos_json(id: &str, regime: &str, osort: &str, msort: &str, stalks: &str, sh
         msort = msort,
         stalks = stalks,
         sheaves = sheaves,
-        ws = WS_MIN,
+        ws = ws,
     )
 }
 
@@ -333,6 +349,28 @@ fn validate_rejects_missing_sheaf() {
         topos.validate(),
         Err(ToposError::MissingSheaf { binding }) if binding == "load"
     ));
+}
+
+/// An external body is the host's, not a sheaf: like `Custom`, its binding
+/// needs no sheaf, and the workspace's own contract validation still applies.
+#[test]
+fn validate_accepts_an_external_panel_bound_to_a_host_overlay() {
+    let sheaves = r##"{"legend":{"kind":"text","heading":"Legend"},"load":{"kind":"gauges","scope":"kinds","value":"field:energy","scale":1000.0}}"##;
+    let topos = Topos::from_json_str(&topos_json_over_ws(
+        "topos-external",
+        "Knowledge base",
+        AGENTIC_OSORT,
+        AGENTIC_MSORT,
+        AGENTIC_STALKS,
+        sheaves,
+        WS_EXTERNAL,
+    ))
+    .expect("a topos with an external panel decodes");
+
+    topos.validate().expect("an external panel needs no sheaf");
+
+    assert_eq!(topos.workspace.panels[2].external_component(), Some("graph"));
+    assert_eq!(topos.workspace.components[0].contract, ComponentContract::Graph);
 }
 
 #[test]
