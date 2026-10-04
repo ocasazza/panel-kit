@@ -10,7 +10,7 @@ pub mod dock;
 pub mod dropdown;
 pub mod meter;
 pub mod panel;
-mod panel_layout;
+pub mod panel_layout;
 pub mod root;
 pub mod scroll;
 pub mod spinner;

@@ -168,3 +168,111 @@ fn assert_error_kind(error: LayoutError, kind: ErrorKind) {
         (error, _) => panic!("unexpected layout error: {error:?}"),
     }
 }
+
+#[test]
+fn switch_layout_persists_old_and_restores_new() {
+    use crate::persist::switch_layout;
+
+    let old_store = MemoryStore::empty();
+    let new_store = MemoryStore::empty();
+    let old_catalog = catalog();
+    let new_catalog = catalog();
+
+    let old_snap = defaults();
+
+    let result = switch_layout(
+        &old_store,
+        &old_snap,
+        &old_catalog,
+        &new_store,
+        defaults(),
+        &new_catalog,
+        restore_context(),
+    )
+    .expect("switch must succeed");
+
+    // Old store must have been saved.
+    assert!(old_store.saved_json().is_some());
+
+    // New store must be empty (no prior layout).
+    assert!(new_store.saved_json().is_none());
+
+    // Result matches the default layout.
+    assert_eq!(result.panels.len(), 3);
+}
+
+#[test]
+fn switch_layout_isolates_two_grammars() {
+    use crate::persist::switch_layout;
+
+    // Seed old store with a custom layout.
+    let old_store = MemoryStore::empty();
+    let old_catalog = catalog();
+    let mut custom_snap = defaults();
+    // Move first panel to new position.
+    custom_snap.panels[0].x = 50.0;
+    custom_snap.panels[0].y = 50.0;
+    persist_snapshot(&old_store, &custom_snap, &old_catalog).expect("persist custom");
+
+    let new_store = MemoryStore::empty();
+    let new_catalog = catalog();
+    let new_defaults = defaults();
+
+    let result = switch_layout(
+        &old_store,
+        &custom_snap,
+        &old_catalog,
+        &new_store,
+        new_defaults,
+        &new_catalog,
+        restore_context(),
+    )
+    .expect("switch must succeed");
+
+    // Old store still has its custom layout.
+    let old_json = old_store.saved_json().expect("old store saved");
+    assert!(old_json.contains("50.0"), "old layout preserved");
+
+    // New store is empty — no prior layout for this grammar.
+    assert!(new_store.saved_json().is_none());
+
+    // Result matches defaults (not old custom, not mutated).
+    assert_eq!(result.panels[0].x, 10.0);
+}
+
+#[test]
+fn switch_layout_persist_failure_does_not_block_restore() {
+    use crate::persist::switch_layout;
+
+    struct FailingStore;
+    impl LayoutStore for FailingStore {
+        fn load(&self) -> Result<Option<String>, String> {
+            Ok(None)
+        }
+        fn save(&self, _json: &str) -> Result<(), String> {
+            Err("disk full".into())
+        }
+        fn clear(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    let failing_store = FailingStore;
+    let new_store = MemoryStore::empty();
+    let cat = catalog();
+    let snap = defaults();
+
+    let result = switch_layout(
+        &failing_store,
+        &snap,
+        &cat,
+        &new_store,
+        defaults(),
+        &cat,
+        restore_context(),
+    )
+    .expect("switch must succeed despite persist failure");
+
+    // Restore proceeds normally.
+    assert_eq!(result.panels.len(), 3);
+}

@@ -70,6 +70,7 @@
             ./assets
             ./examples
             ./tools
+            ./tests # integration tests run by the native test lanes
             ./nix # schema, producer, and repository specs used by native parity/tool tests
           ];
         };
@@ -112,21 +113,26 @@
         webWorkspace = import ./nix/specs/web-workspace.nix {
           inherit (pkgs) lib;
         };
-        toposCanary = import ./nix/specs/topos-canary.nix {
-          lib = nixpkgs.lib;
+        # One topos spec pair per surface; the ascii pair is the cells layout
+        # with the ASCII glyph family, for the ratzilla/WebGL2 backend.
+        toposSpecsFor = surface: glyphs: {
+          agentic = import ./nix/specs/topos-agentic.nix {
+            inherit (pkgs) lib;
+            inherit surface glyphs;
+          };
+          membrane = import ./nix/specs/topos-membrane.nix {
+            inherit (pkgs) lib;
+            inherit surface glyphs;
+          };
         };
-        toposWeb = import ./nix/specs/topos-web.nix {
-          lib = nixpkgs.lib;
-        };
+        toposWebSpecs = toposSpecsFor "web" "unicode";
+        toposCellsSpecs = toposSpecsFor "cells" "unicode";
+        toposAsciiSpecs = toposSpecsFor "cells" "ascii";
         web-workspace = pkgs.writeText "panel-kit-web-workspace.json"
           webWorkspace.json;
         web-workspace-provider-manifest = pkgs.writeText
           "panel-kit-web-workspace-provider-manifest.json"
           (builtins.readFile ./tools/spec-parity/fixtures/web-workspace-provider-manifest.json);
-        topos-canary-spec = pkgs.writeText "panel-kit-topos-canary.json"
-          (builtins.toJSON toposCanary);
-        topos-web-spec = pkgs.writeText "panel-kit-topos-web.json"
-          (builtins.toJSON toposWeb);
         onePanelWorkspace = mkWorkspaceSpecLib.mkWorkspaceSpec (workspaceCanary.value // {
           id = "workspace-canary-one-panel";
           chrome = workspaceCanary.value.chrome // {
@@ -150,6 +156,50 @@
         });
         workspace-one-panel = pkgs.writeText "panel-kit-workspace-one-panel.json"
           onePanelWorkspace.json;
+        topos-agentic-web = pkgs.writeText "panel-kit-topos-agentic-web.json"
+          toposWebSpecs.agentic.json;
+        topos-membrane-web = pkgs.writeText "panel-kit-topos-membrane-web.json"
+          toposWebSpecs.membrane.json;
+        topos-agentic-cells = pkgs.writeText "panel-kit-topos-agentic-cells.json"
+          toposCellsSpecs.agentic.json;
+        topos-membrane-cells = pkgs.writeText "panel-kit-topos-membrane-cells.json"
+          toposCellsSpecs.membrane.json;
+        topos-agentic-ascii = pkgs.writeText "panel-kit-topos-agentic-ascii.json"
+          toposAsciiSpecs.agentic.json;
+        topos-membrane-ascii = pkgs.writeText "panel-kit-topos-membrane-ascii.json"
+          toposAsciiSpecs.membrane.json;
+        # Base physics topos and the three geometric morphisms are surface-neutral.
+        topos-physics = pkgs.writeText "panel-kit-topos-physics.json"
+          (import ./nix/specs/topos-physics.nix { inherit (pkgs) lib; }).json;
+        morphism-agentic-membrane = pkgs.writeText "panel-kit-morphism-agentic-membrane.json"
+          (import ./nix/specs/morphism-agentic-membrane.nix { inherit (pkgs) lib; }).json;
+        morphism-agentic-physics = pkgs.writeText "panel-kit-morphism-agentic-physics.json"
+          (import ./nix/specs/morphism-agentic-physics.nix { inherit (pkgs) lib; }).json;
+        morphism-membrane-physics = pkgs.writeText "panel-kit-morphism-membrane-physics.json"
+          (import ./nix/specs/morphism-membrane-physics.nix { inherit (pkgs) lib; }).json;
+        grammar-trace-lines = pkgs.writeText "panel-kit-grammar-trace-lines.json"
+          (import ./nix/grammars/trace-lines.nix { inherit (pkgs) lib; }).json;
+        grammar-trace-json = pkgs.writeText "panel-kit-grammar-trace-json.json"
+          (import ./nix/grammars/trace-json.nix { inherit (pkgs) lib; }).json;
+        # Every topos host reads its surface's two regime topoi, the base physics
+        # topos, the three geometric morphisms, and the shared grammar packages
+        # and trace data from the environment.
+        toposSpecEnv = agentic: membrane: {
+          PANEL_KIT_TOPOS_A = "${agentic}";
+          PANEL_KIT_TOPOS_B = "${membrane}";
+          PANEL_KIT_TOPOS_PHYSICS = "${topos-physics}";
+          PANEL_KIT_MORPHISM = "${morphism-agentic-membrane}";
+          PANEL_KIT_MORPHISM_A_PHYSICS = "${morphism-agentic-physics}";
+          PANEL_KIT_MORPHISM_B_PHYSICS = "${morphism-membrane-physics}";
+          PANEL_KIT_GRAMMAR_LINES = "${grammar-trace-lines}";
+          PANEL_KIT_GRAMMAR_JSON = "${grammar-trace-json}";
+          PANEL_KIT_DATA_LINES = "${./nix/data/trace.lines}";
+          PANEL_KIT_DATA_JSON = "${./nix/data/trace.json}";
+        };
+        toposWebEnv = toposSpecEnv topos-agentic-web topos-membrane-web;
+        toposCellsEnv = toposSpecEnv topos-agentic-cells topos-membrane-cells;
+        toposAsciiEnv = toposSpecEnv topos-agentic-ascii topos-membrane-ascii;
+
         workspaceSpecReference = import ./nix/tests/workspace-spec.nix {
           inherit (pkgs) lib;
         };
@@ -160,7 +210,8 @@
           cargoExtraArgs = "-p spec-parity";
           doCheck = false;
         });
-        hostClippy = hostCraneLib.cargoClippy (hostArgs // {
+        # --all-targets compiles the topos example, which embeds the cells specs.
+        hostClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit-tui -p spec-parity --features panel-kit-tui/spec-plan --all-targets -- -D warnings";
         });
@@ -168,16 +219,25 @@
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example workspace --target wasm32-unknown-unknown -- -D warnings";
         });
-        multiSpecExampleClippy = wasmCraneLib.cargoClippy (commonArgs // (workspaceSpecEnv topos-canary-spec) // {
+        toposWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // toposWebEnv // {
           inherit cargoArtifacts;
-          PANEL_KIT_TOPOS_SPEC_B = "${topos-web-spec}";
-          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example multi_spec --target wasm32-unknown-unknown -- -D warnings";
+          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example topos --target wasm32-unknown-unknown -- -D warnings";
+        });
+        toposTuiNativeClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example topos -- -D warnings";
+        });
+        toposBrowserTuiClippy = wasmCraneLib.cargoClippy (commonArgs // toposAsciiEnv // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_topos --target wasm32-unknown-unknown -- -D warnings";
         });
         clippy = pkgs.runCommand "panel-kit-clippy" { } ''
           mkdir -p "$out"
           ln -s ${hostClippy} "$out/host"
-          ln -s ${multiSpecExampleClippy} "$out/multi-spec"
           ln -s ${webExampleClippy} "$out/web-example"
+          ln -s ${toposWebExampleClippy} "$out/topos-web"
+          ln -s ${toposTuiNativeClippy} "$out/topos-tui-native"
+          ln -s ${toposBrowserTuiClippy} "$out/topos-browser-tui"
         '';
         workspaceSpecEnv = spec: {
           PANEL_KIT_WORKSPACE_SPEC = "${spec}";
@@ -202,10 +262,25 @@
           ln -s ${workspace-spec-web-remainder-wasm} "$out/web-workspace"
           ln -s ${workspace-spec-web-one-panel-wasm} "$out/one-panel"
         '';
-        workspace-spec-topos-wasm = wasmCraneLib.buildPackage (commonArgs // (workspaceSpecEnv topos-canary-spec) // {
+        topos-web-wasm = wasmCraneLib.buildPackage (commonArgs // toposWebEnv // {
           inherit cargoArtifacts;
-          cargoExtraArgs = "--example multi_spec";
-          PANEL_KIT_TOPOS_SPEC_B = "${topos-web-spec}";
+          cargoExtraArgs = "-p panel-kit --features web-runtime --example topos";
+        });
+        topos-tui-native = hostCraneLib.buildPackage (hostArgs // toposCellsEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example topos";
+          doCheck = false;
+        });
+        topos-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // toposAsciiEnv // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_topos";
+        });
+        # The demo model is renderer-neutral, so its behaviour test runs on the
+        # host with the web specs in the environment: the same assertions then
+        # cover the shared model and the authored binding tables.
+        topos-grammar-test = hostCraneLib.cargoTest (hostArgs // toposWebEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit --test topos_grammar";
         });
         workspace-spec-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // workspaceSpecAsciiBuildEnv // {
           inherit cargoArtifacts;
@@ -225,7 +300,21 @@
         packages.web-workspace = web-workspace;
         packages.workspace-one-panel = workspace-one-panel;
         packages.workspace-spec-web-wasm = workspace-spec-web-wasm;
-        packages.workspace-spec-topos-wasm = workspace-spec-topos-wasm;
+        packages.topos-agentic-web = topos-agentic-web;
+        packages.topos-membrane-web = topos-membrane-web;
+        packages.topos-agentic-cells = topos-agentic-cells;
+        packages.topos-membrane-cells = topos-membrane-cells;
+        packages.topos-agentic-ascii = topos-agentic-ascii;
+        packages.topos-membrane-ascii = topos-membrane-ascii;
+        packages.topos-physics = topos-physics;
+        packages.morphism-agentic-membrane = morphism-agentic-membrane;
+        packages.morphism-agentic-physics = morphism-agentic-physics;
+        packages.morphism-membrane-physics = morphism-membrane-physics;
+        packages.grammar-trace-lines = grammar-trace-lines;
+        packages.grammar-trace-json = grammar-trace-json;
+        packages.topos-web-wasm = topos-web-wasm;
+        packages.topos-tui-native = topos-tui-native;
+        packages.topos-browser-tui-wasm = topos-browser-tui-wasm;
         packages.workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
         packages.workspace-spec-tui-native = workspace-spec-tui-native;
 
@@ -283,7 +372,10 @@
             cargoTestExtraArgs = "-p panel-kit --features web-runtime theme_parity";
           });
           workspace-spec-web-wasm = workspace-spec-web-wasm;
-          workspace-spec-topos-wasm = workspace-spec-topos-wasm;
+          topos-web-wasm = topos-web-wasm;
+          topos-tui-native = topos-tui-native;
+          topos-browser-tui-wasm = topos-browser-tui-wasm;
+          topos-grammar-test = topos-grammar-test;
           workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
           workspace-spec-tui-native = pkgs.runCommand "panel-kit-workspace-spec-tui-native-check" { } ''
             ${workspace-spec-tui-native}/bin/workspace --check-offscreen
@@ -297,7 +389,8 @@
           });
         };
 
-        devShells.default = pkgs.mkShell {
+        devShells.default = pkgs.mkShell (toposWebEnv // {
+          PANEL_KIT_WORKSPACE_SPEC = "${workspace-canary}";
           packages = [
             rustWasm
             # `dx serve --example <name> --platform web` runs the demos.
@@ -309,7 +402,7 @@
             pkgs.wasm-bindgen-cli
             pkgs.lld
           ];
-        };
+        });
       });
     in
     perSystem // {

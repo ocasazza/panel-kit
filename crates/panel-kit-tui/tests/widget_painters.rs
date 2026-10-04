@@ -13,6 +13,7 @@ use panel_kit_core::widgets::status::{StatusModel, StatusState};
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
 };
+use panel_kit_tui::scroll::PanelScroll;
 use panel_kit_tui::{badge, charts, meter, status, table, ResolvedTuiTheme};
 use ratatui::backend::TestBackend;
 use ratatui::layout::{Constraint, Rect};
@@ -93,7 +94,10 @@ fn canary_node_table_is_buffer_identical_after_core_model_switch() {
         rows: &model.rows,
     };
 
-    let core_buffer = render_to_buffer(|frame| table::table(frame, area, &theme, view));
+    let mut panels = test_registry();
+    let core_buffer = render_to_buffer(|frame| {
+        table::table(frame, area, &theme, &TestKey::One, &mut panels, view);
+    });
     let native_rows = native_rows_from_core_table(&model);
     let native_widths = [
         Constraint::Length(12),
@@ -111,7 +115,10 @@ fn canary_node_table_is_buffer_identical_after_core_model_switch() {
         )
     });
 
-    assert_eq!(core_buffer, native_buffer);
+    assert_eq!(
+        without_scrollbar_column(&core_buffer, area.right() - 1),
+        without_scrollbar_column(&native_buffer, area.right() - 1)
+    );
 }
 
 #[test]
@@ -119,7 +126,10 @@ fn canary_provider_widgets_are_buffer_identical_after_core_model_switch() {
     let core_model_buffer = render_core_canary_provider_buffer();
     let legacy_buffer = render_legacy_canary_provider_buffer();
 
-    assert_eq!(core_model_buffer, legacy_buffer);
+    assert_eq!(
+        without_scrollbar_column(&core_model_buffer, 37),
+        without_scrollbar_column(&legacy_buffer, 37)
+    );
 }
 
 #[test]
@@ -204,7 +214,15 @@ fn widget_painters_render_core_models_to_test_backend() {
 
     terminal
         .draw(|frame| {
-            table::table(frame, Rect::new(0, 0, 38, 4), &theme, view);
+            let mut panels = test_registry();
+            table::table(
+                frame,
+                Rect::new(0, 0, 38, 4),
+                &theme,
+                &TestKey::One,
+                &mut panels,
+                view,
+            );
             let status_line = status::line(&status_model);
             frame.render_widget(
                 ratatui::widgets::Paragraph::new(status_line),
@@ -249,6 +267,33 @@ fn render_to_buffer_size(
         .draw(|frame| render(frame))
         .expect("render succeeds");
     terminal.backend().buffer().clone()
+}
+
+
+/// The registry-backed table painter marks overflow in the body's rightmost
+/// column, which the hand-built native table painter has no equivalent for.
+/// Parity assertions compare the table cells themselves.
+fn without_scrollbar_column(
+    buffer: &ratatui::buffer::Buffer,
+    column: u16,
+) -> ratatui::buffer::Buffer {
+    let mut stripped = buffer.clone();
+    for y in 0..stripped.area.height {
+        stripped[(column, y)] = ratatui::buffer::Cell::default();
+    }
+    stripped
+}
+
+/// Painter test key: one panel identity is enough for registry-scoped painters.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum TestKey {
+    One,
+}
+
+impl panel_kit_core::PanelKey for TestKey {}
+
+fn test_registry() -> PanelScroll<TestKey> {
+    PanelScroll::new()
 }
 
 fn native_rows_from_core_table(model: &TableModel) -> Vec<Row<'_>> {
@@ -307,7 +352,15 @@ fn render_core_canary_provider_buffer() -> ratatui::buffer::Buffer {
         charts::time_series(frame, Rect::new(38, 0, 30, 7), &theme, "ms", &series);
         charts::gauges(frame, Rect::new(70, 0, 25, 4), &theme, &capacity);
         charts::flame(frame, Rect::new(38, 8, 40, 4), &theme, &flame);
-        table::table(frame, Rect::new(0, 12, 38, 5), &theme, table_view);
+        let mut panels = test_registry();
+        table::table(
+            frame,
+            Rect::new(0, 12, 38, 5),
+            &theme,
+            &TestKey::One,
+            &mut panels,
+            table_view,
+        );
         charts::boxplot(frame, Rect::new(40, 13, 50, 7), &theme, &boxes);
     })
 }
@@ -457,7 +510,15 @@ fn scroll_lines_safely_handles_buffer_overflow_boundaries() {
             let mut terminal = Terminal::new(TestBackend::new(buf_w, buf_h)).unwrap();
             terminal.draw(|f| {
                 let rect = Rect::new(0, area_y, buf_w, area_h);
-                panel_kit_tui::scroll::lines(f, rect, &theme, lines_content.clone(), 0);
+                let mut panels = test_registry();
+                panel_kit_tui::scroll::lines(
+                    f,
+                    rect,
+                    &theme,
+                    &TestKey::One,
+                    &mut panels,
+                    lines_content.clone(),
+                );
             }).expect("scroll::lines must never panic when area overflows frame buffer");
         }
     }

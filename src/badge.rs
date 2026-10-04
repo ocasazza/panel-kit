@@ -44,8 +44,11 @@ fn class_for(spec: &BadgeSpec) -> String {
     class
 }
 
+/// Inline custom properties for one badge: the community tint owns the fill
+/// and its computed contrast ink, and an accent only paints the stroke.
 fn style_for(spec: &BadgeSpec, accent_color: Option<&str>) -> String {
     let mut style = String::new();
+    let mut tint_owns_fill = false;
     if let Some(c) = spec.override_color {
         let (br, bg, bb) = tint_over(c, (255, 255, 255), 0.30);
         let fg = if perceived_brightness(c) < 0.55 {
@@ -53,19 +56,29 @@ fn style_for(spec: &BadgeSpec, accent_color: Option<&str>) -> String {
         } else {
             "var(--bg)"
         };
+        tint_owns_fill = true;
         style.push_str(&format!(
             "--badge-bg:{};--badge-c:rgb({br},{bg},{bb});--badge-fg:{fg};",
             rgb_css(c)
         ));
     }
     if let Some(c) = spec.accent_color {
-        let c = rgb_css(c);
-        style.push_str(&format!("--badge-c:{c};--badge-fg:{c};"));
+        push_accent(&mut style, &rgb_css(c), tint_owns_fill);
     }
     if let Some(c) = accent_color {
-        style.push_str(&format!("--badge-c:{c};--badge-fg:{c};"));
+        push_accent(&mut style, c, tint_owns_fill);
     }
     style
+}
+
+/// An accent is a stroke colour. It only takes the label when nothing else
+/// owns the fill — over a tint that would put label and background one colour.
+fn push_accent(style: &mut String, color: &str, tint_owns_fill: bool) {
+    if tint_owns_fill {
+        style.push_str(&format!("--badge-c:{color};"));
+    } else {
+        style.push_str(&format!("--badge-c:{color};--badge-fg:{color};"));
+    }
 }
 
 /// Action delivered by a primary body click.
@@ -229,6 +242,35 @@ mod tests {
         assert!(html.contains("--badge-fg:var(--accent);"), "{html}");
         assert!(html.contains("Add filter: tag=alpha"), "{html}");
         assert!(html.contains("Toggle filter: tag=alpha"), "{html}");
+    }
+
+    #[test]
+    fn tinted_status_badge_label_contrasts_with_its_background() {
+        let spec = BadgeSpec {
+            override_color: Some((255, 95, 86)),
+            accent_color: Some((255, 95, 86)),
+            ..BadgeSpec::new("status", "api:error", BadgeKind::Status)
+        };
+
+        let style = style_for(&spec, None);
+        let fg = style
+            .split("--badge-fg:")
+            .nth(1)
+            .expect("a tinted badge paints a label colour")
+            .split(';')
+            .next()
+            .expect("the label colour is terminated");
+        let bg = style
+            .split("--badge-bg:")
+            .nth(1)
+            .expect("a tinted badge paints a background")
+            .split(';')
+            .next()
+            .expect("the background colour is terminated");
+
+        assert_eq!(bg, "rgb(255,95,86)", "{style}");
+        assert_ne!(fg, bg, "label would be invisible: {style}");
+        assert!(fg.starts_with("var(--"), "{style}");
     }
 
     #[test]

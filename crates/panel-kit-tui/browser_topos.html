@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <link data-trunk rel="rust" />
+    <title>panel-kit TUI browser topos canary</title>
+    <style>
+      :root {
+        --bg: #0a0a0a;
+        --panel: #0d0d0d;
+        --fg: #ededed;
+        --dim: #7a7a7a;
+        --line: #262626;
+        --line2: #5f5f5f;
+        --accent: #5ef38c;
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--mono);
+        font-size: 13px;
+        cursor: default;
+      }
+      * {
+        box-sizing: border-box;
+        user-select: none;
+        scrollbar-width: thin;
+        scrollbar-color: var(--line2) transparent;
+      }
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-thumb { background: var(--line2); }
+      ::-webkit-scrollbar-track { background: transparent; }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      body {
+        display: block;
+        cursor: default;
+      }
+      #panel-kit-topos {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        cursor: default;
+        user-select: none;
+      }
+      #panel-kit-topos canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+        outline: none;
+        cursor: default;
+        user-select: none;
+        background: var(--bg);
+      }
+    </style>
+  </head>
+  <body>
+    <main id="panel-kit-topos" aria-label="panel-kit TUI browser topos canary"></main>
+  </body>
+</html>

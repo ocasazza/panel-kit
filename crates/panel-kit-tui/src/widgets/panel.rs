@@ -193,12 +193,7 @@ pub fn tiled_cell_rect(
     let w = column_span as f64 * grid.track_w + column_span.saturating_sub(1) as f64 * grid.gap;
     let h = row_span as f64 * grid.track_h + row_span.saturating_sub(1) as f64 * grid.gap;
 
-    Some(Rect::new(
-        x.max(0.0) as u16,
-        y.max(0.0) as u16,
-        w.max(0.0) as u16,
-        h.max(0.0) as u16,
-    ))
+    Some(rect_from_region(Region::new(x, y, w, h)))
 }
 
 /// Draw command for one panel traffic-light control.

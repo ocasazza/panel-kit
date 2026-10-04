@@ -53,6 +53,10 @@ pub(super) fn project_tiles<K: PanelKey>(
     }
 }
 
+/// Shelf packing: panels fill a shelf left to right until the next one no
+/// longer fits. Every member is stretched to the shelf's tallest span, so a
+/// shelf never leaves a gap under a shorter panel and growing one panel
+/// grows its shelf siblings with it.
 fn project_row_major<K: PanelKey>(
     snapshot: &Snapshot<K>,
     columns: u8,
@@ -60,7 +64,8 @@ fn project_row_major<K: PanelKey>(
 ) -> u16 {
     let mut used = 0_u8;
     let mut row = 0_u16;
-    let mut row_h = 0_u16;
+    let mut shelf_h = 0_u8;
+    let mut shelf_start = scratch.tile_rows.len();
 
     for (source_index, panel) in snapshot.panels.iter().enumerate() {
         if panel.state != WinState::Floating {
@@ -70,9 +75,12 @@ fn project_row_major<K: PanelKey>(
         let column_span = panel.tile_w.clamp(1, columns);
         let row_span = panel.tile_h.clamp(1, TILE_H_MAX);
         if used + column_span > columns {
-            row = row.saturating_add(row_h.max(1));
+            stretch_shelf(&mut scratch.tile_rows[shelf_start..], shelf_h);
+            fill_shelf(&mut scratch.tile_rows[shelf_start..], columns, used);
+            row = row.saturating_add(shelf_h.max(1) as u16);
             used = 0;
-            row_h = 0;
+            shelf_h = 0;
+            shelf_start = scratch.tile_rows.len();
         }
 
         scratch.tile_rows.push(TilePlacement {
@@ -83,10 +91,29 @@ fn project_row_major<K: PanelKey>(
             row_span,
         });
         used += column_span;
-        row_h = row_h.max(row_span as u16);
+        shelf_h = shelf_h.max(row_span);
     }
+    stretch_shelf(&mut scratch.tile_rows[shelf_start..], shelf_h);
+    fill_shelf(&mut scratch.tile_rows[shelf_start..], columns, used);
 
-    row.saturating_add(row_h).max(1)
+    row.saturating_add(shelf_h as u16).max(1)
+}
+
+fn stretch_shelf(shelf: &mut [TilePlacement], shelf_h: u8) {
+    for placement in shelf {
+        placement.row_span = shelf_h;
+    }
+}
+
+/// Stretch a shelf's last tile over the columns its spans left unused, so a
+/// shelf never leaves an empty trailing cell and the grid declares no column
+/// that no tile reaches.
+fn fill_shelf(shelf: &mut [TilePlacement], columns: u8, used: u8) {
+    if let Some(placement) = shelf.last_mut() {
+        placement.column_span = placement
+            .column_span
+            .saturating_add(columns.saturating_sub(used));
+    }
 }
 
 fn project_column_major<K: PanelKey>(
@@ -102,6 +129,7 @@ fn project_column_major<K: PanelKey>(
     let mut column = 0_u16;
     let mut used = 0_u16;
     let mut column_w = 0_u8;
+    let mut column_last = None;
     for (source_index, panel) in snapshot.panels.iter().enumerate() {
         if panel.state != WinState::Floating {
             continue;
@@ -110,6 +138,7 @@ fn project_column_major<K: PanelKey>(
         let column_span = panel.tile_w.clamp(1, columns);
         let row_span = panel.tile_h.clamp(1, TILE_H_MAX);
         if used > 0 && used.saturating_add(row_span as u16) > rows {
+            fill_column(&mut scratch.tile_rows, column_last, used, rows);
             column = column.saturating_add(column_w.max(1) as u16);
             used = 0;
             column_w = 0;
@@ -122,10 +151,21 @@ fn project_column_major<K: PanelKey>(
             column_span,
             row_span,
         });
+        column_last = Some(scratch.tile_rows.len() - 1);
         used = used.saturating_add(row_span as u16);
         column_w = column_w.max(column_span);
     }
+    fill_column(&mut scratch.tile_rows, column_last, used, rows);
     rows
+}
+
+/// Stretch a column's bottom panel over the rows the column left empty, so
+/// a short column never leaves a gap at the bottom of the grid.
+fn fill_column(placements: &mut [TilePlacement], last: Option<usize>, used: u16, rows: u16) {
+    if let Some(placement) = last.and_then(|index| placements.get_mut(index)) {
+        let span = placement.row_span as u16 + rows.saturating_sub(used);
+        placement.row_span = span.min(u8::MAX as u16) as u8;
+    }
 }
 
 /// Smallest row count a column-major fill could need: every panel must fit
@@ -629,6 +669,84 @@ mod tests {
         );
     }
 
+    /// Project `spans` row-major onto a gapless 1200x900 four-column band
+    /// and return each visible panel's region in panel order.
+    fn row_major_band(spans: &[(u8, u8)]) -> Vec<Region> {
+        let kinds = [TestPanel::One, TestPanel::Two, TestPanel::Three, TestPanel::Four];
+        let mut layout = LayoutBuilder::new();
+        let panels = spans
+            .iter()
+            .enumerate()
+            .map(|(index, &(w, h))| {
+                layout
+                    .at(kinds[index], 0.0, 0.0, 20.0, 10.0)
+                    .with_tile(w, h)
+            })
+            .collect::<Vec<_>>();
+        let snapshot = Snapshot::from_defaults(
+            panels,
+            Mode::Tiling,
+            Viewport {
+                width: 1200.0,
+                height: 900.0,
+                units: Units::CssPx,
+            },
+        );
+        let surface = SurfaceProfile::from_logical_width(
+            1200.0,
+            crate::WEB_COMPACT_MAX,
+            crate::WEB_TABLET_MAX,
+            SurfaceCapabilities {
+                coarse_pointer: false,
+                hover: true,
+                keyboard: true,
+            },
+        );
+        let mut metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+        metrics.gap = 0.0;
+        metrics.padding = 0.0;
+        let workspace = Region::new(0.0, 0.0, 1200.0, 900.0);
+        let mut scratch = ProjectionBuffer::with_panel_capacity(snapshot.panels.len());
+        let grid = project_tiles(&snapshot, workspace, &metrics, &mut scratch);
+        scratch
+            .tile_rows
+            .iter()
+            .map(|placement| tile_region(workspace, grid, *placement, 0.0).0)
+            .collect()
+    }
+
+    #[test]
+    fn row_major_shelves_never_leave_gaps_under_shorter_panels() {
+        let cases: [&[(u8, u8)]; 3] = [
+            &[(2, 2), (2, 1), (4, 1)],
+            &[(1, 1), (1, 3), (2, 2), (4, 2)],
+            &[(2, 3), (1, 1), (1, 2)],
+        ];
+        for spans in cases {
+            let regions = row_major_band(spans);
+            for a in &regions {
+                for b in regions.iter().filter(|b| b.y == a.y) {
+                    assert_eq!(a.h, b.h, "{spans:?}: shelf siblings must share one height");
+                }
+            }
+            let bottom = regions.iter().map(|r| r.y + r.h).fold(0.0, f64::max);
+            assert_eq!(bottom, 900.0, "{spans:?}: shelves must tile the whole band");
+        }
+    }
+
+    #[test]
+    fn growing_a_panel_never_shortens_its_shelf_siblings() {
+        let before = row_major_band(&[(2, 1), (2, 1), (4, 1)]);
+        let after = row_major_band(&[(2, 2), (2, 1), (4, 1)]);
+        assert_eq!(after[0].h, after[1].h, "the sibling stretches with the grown panel");
+        assert!(
+            after[1].h >= before[1].h,
+            "growing a panel shrank its sibling: {} -> {}",
+            before[1].h,
+            after[1].h
+        );
+    }
+
     /// One projected layout expectation: the grid row count plus each
     /// visible panel's region, in panel order.
     struct LayoutCase {
@@ -672,7 +790,7 @@ mod tests {
                 fill_order: ROW_MAJOR,
                 fill_viewport: true,
                 expected_rows: 2,
-                expected_regions: &[(0.0, 0.0, 900.0, 450.0), (0.0, 450.0, 600.0, 450.0)],
+                expected_regions: &[(0.0, 0.0, 1200.0, 450.0), (0.0, 450.0, 1200.0, 450.0)],
             },
             LayoutCase {
                 name: "row-major/tall panel raises its row, later panels wrap",
@@ -683,8 +801,8 @@ mod tests {
                 expected_rows: 3,
                 expected_regions: &[
                     (0.0, 0.0, 600.0, 600.0),
-                    (600.0, 0.0, 600.0, 300.0),
-                    (0.0, 600.0, 600.0, 300.0),
+                    (600.0, 0.0, 600.0, 600.0),
+                    (0.0, 600.0, 1200.0, 300.0),
                 ],
             },
             LayoutCase {
@@ -742,7 +860,7 @@ mod tests {
                 expected_regions: &[
                     (0.0, 0.0, 600.0, 450.0),
                     (0.0, 450.0, 600.0, 450.0),
-                    (600.0, 0.0, 600.0, 450.0),
+                    (600.0, 0.0, 600.0, 900.0),
                 ],
             },
             LayoutCase {
@@ -839,6 +957,77 @@ mod tests {
                 "{}: panel regions",
                 case.name
             );
+        }
+    }
+
+    /// Every projected tile cell must be claimed exactly once. A shelf whose
+    /// spans fall short of the surface-tier column count stretches its last
+    /// tile to the band edge, so no tier leaves an empty trailing column —
+    /// the empty grid cells that show as gaps in tiling mode.
+    #[test]
+    fn row_major_shelves_fill_every_grid_cell_across_surface_tiers() {
+        let tiers = [
+            ("desktop", 1400.0, crate::TILE_W_MAX),
+            ("tablet", 900.0, 2_u8),
+            ("compact", 400.0, 1_u8),
+        ];
+        // Canary-like span mixes: runs of narrow panels then wider ones,
+        // including a lone wide panel that previously left a trailing gap.
+        let span_sets: [&[(u8, u8)]; 2] = [&[(1, 2), (1, 3), (2, 3), (2, 2)], &[(1, 1), (2, 1)]];
+        let kinds = [TestPanel::One, TestPanel::Two, TestPanel::Three, TestPanel::Four];
+
+        for &(label, width, expected_columns) in &tiers {
+            let surface = SurfaceProfile::from_logical_width(
+                width,
+                crate::WEB_COMPACT_MAX,
+                crate::WEB_TABLET_MAX,
+                SurfaceCapabilities { coarse_pointer: false, hover: true, keyboard: true },
+            );
+            for spans in span_sets {
+                let mut layout = LayoutBuilder::new();
+                let panels = spans
+                    .iter()
+                    .enumerate()
+                    .map(|(index, &(w, h))| {
+                        layout.at(kinds[index], 0.0, 0.0, 20.0, 10.0).with_tile(w, h)
+                    })
+                    .collect::<Vec<_>>();
+                let snapshot = Snapshot::from_defaults(
+                    panels,
+                    Mode::Tiling,
+                    Viewport { width, height: 900.0, units: Units::CssPx },
+                );
+                let mut metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+                metrics.gap = 0.0;
+                metrics.padding = 0.0;
+                let workspace = Region::new(0.0, 0.0, width, 900.0);
+                let mut scratch = ProjectionBuffer::with_panel_capacity(spans.len());
+                let grid = project_tiles(&snapshot, workspace, &metrics, &mut scratch);
+                assert_eq!(grid.columns, expected_columns, "{label}: column policy");
+
+                let mut covered = vec![0_u32; grid.columns as usize * grid.rows as usize];
+                for placement in &scratch.tile_rows {
+                    let Placement::Tiled { column, row, column_span, row_span } =
+                        tile_region(workspace, grid, *placement, 0.0).1
+                    else {
+                        unreachable!("tiled projection yields tiled placements")
+                    };
+                    for r in row..row + row_span as u16 {
+                        for c in column..column + column_span {
+                            covered[r as usize * grid.columns as usize + c as usize] += 1;
+                        }
+                    }
+                }
+                for (cell, &count) in covered.iter().enumerate() {
+                    let (r, c) = (cell / grid.columns as usize, cell % grid.columns as usize);
+                    assert_eq!(
+                        count, 1,
+                        "{label} {spans:?}: cell (row {r}, col {c}) covered {count}x; \
+                         grid {}x{} must tile with no holes or overlaps",
+                        grid.rows, grid.columns,
+                    );
+                }
+            }
         }
     }
 }

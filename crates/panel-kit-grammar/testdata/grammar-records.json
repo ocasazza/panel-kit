@@ -1,0 +1,1 @@
+{"format_version":1,"limits":{"edges":5000,"grammar_bytes":1024,"input_bytes":131072,"nodes":1000},"metadata":{"description":"Records-only JSON: { nodes: [...] }.","id":"trace-records","name":"Records (json)","version":"1.0.0"},"parser":{"engine":"json","nodes":"/nodes","node":{"fields":["latency_ms"],"id":"id","kind":"kind","tags":"tags","title":"title"}}}

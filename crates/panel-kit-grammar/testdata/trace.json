@@ -1,0 +1,14 @@
+{"nodes":[
+{"id":"p1","title":"Plan A","kind":"planner","tags":[],"latency_ms":120,"energy":30,"t":0,"status":"ok"},
+{"id":"c1","title":"Code A","kind":"coder","tags":[],"latency_ms":1840.0,"energy":90,"t":1,"status":"error"},
+{"id":"r1","title":"Review A","kind":"reviewer","tags":[],"latency_ms":300,"energy":40,"t":2,"status":"ok"},
+{"id":"m1","title":"Mem A","kind":"memory","tags":[],"latency_ms":10,"energy":5,"t":3,"status":"ok"},
+{"id":"p2","title":"Plan B","kind":"planner","tags":[],"latency_ms":140,"energy":35,"t":4,"status":"warn"},
+{"id":"c2","title":"Code B","kind":"coder","tags":[],"latency_ms":900,"energy":70,"t":5,"status":"ok"}
+],"edges":[
+{"source":"p1","target":"c1","kind":"continues"},
+{"source":"c1","target":"r1","kind":"shares"},
+{"source":"r1","target":"m1","kind":"consolidates"},
+{"source":"p1","target":"p2","kind":"continues"},
+{"source":"p2","target":"c2","kind":"continues"}
+]}

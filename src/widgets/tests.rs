@@ -62,6 +62,32 @@ fn charts_render_fixed_content_view_snapshots() {
 }
 
 #[component]
+fn WideSeriesProbe() -> Element {
+    // x spans 0..29 and y spans 38..1450: the scale must read the values.
+    let points = [(0.0, 38.0), (29.0, 1450.0)];
+    let series = [SeriesView {
+        name: "latency",
+        points: &points,
+    }];
+    content_view(
+        ContentView::TimeSeries {
+            series: &series,
+            unit: "ms",
+        },
+        0,
+        noop_action(),
+    )
+}
+
+#[test]
+fn time_series_scale_labels_the_value_axis() {
+    let html = dioxus_ssr::render_element(rsx! { WideSeriesProbe {} });
+
+    assert!(html.contains(">1450 ms<"), "max label must be the largest value: {html}");
+    assert!(html.contains(">38 ms<"), "min label must be the smallest value: {html}");
+}
+
+#[component]
 fn ScrollSpinnerProbe() -> Element {
     let spinner = SpinnerModel {
         label: Some("syncing".into()),
@@ -71,6 +97,7 @@ fn ScrollSpinnerProbe() -> Element {
         div { class: "snapshot",
             {content_view(ContentView::Text { text: "one\ntwo", scroll: ScrollPolicy::Clip }, 0, noop_action())}
             {content_view(ContentView::Text { text: "alpha beta", scroll: ScrollPolicy::Wrap }, 0, noop_action())}
+            {content_view(ContentView::Text { text: "auto wrapped", scroll: ScrollPolicy::Auto }, 0, noop_action())}
             {content_view(ContentView::Spinner { label: "indexing" }, 10, noop_action())}
             {super::spinner::from_model(&spinner, 0)}
         }

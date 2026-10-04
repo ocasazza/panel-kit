@@ -11,11 +11,15 @@ fn policy_name(policy: ScrollPolicy) -> &'static str {
     }
 }
 
+/// Browser overflow semantics per core policy. `Wrap` and `Auto` both wrap
+/// long lines (the terminal wraps while preserving indentation) and scroll
+/// vertically; only `Clip` truncates.
 fn policy_style(policy: ScrollPolicy) -> &'static str {
     match policy {
         ScrollPolicy::Clip => "overflow:hidden;white-space:pre;",
-        ScrollPolicy::Wrap => "overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;",
-        ScrollPolicy::Auto => "overflow:auto;white-space:pre;",
+        ScrollPolicy::Wrap | ScrollPolicy::Auto => {
+            "overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;overflow-wrap:anywhere;"
+        }
     }
 }
 

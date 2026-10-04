@@ -97,6 +97,29 @@ pub struct RestoreContext {
     pub viewport: (f64, f64),
 }
 
+/// The storage key for one spec's layout under a base persistence key.
+///
+/// `{base}/{spec_id}` — each spec's saved layout is isolated so switching
+/// between workspace grammars never clobbers another grammar's arrangement.
+/// The base key is [`PersistenceSpec::key`]; the spec id is
+/// [`WorkspaceSpec::id`](crate::spec::WorkspaceSpec::id).
+///
+/// # Primary-spec migration guarantee
+///
+/// The identity spec id is `"default"`. Consumers that adopt multi-spec
+/// switching for the first time MUST either:
+///
+/// 1. Use `"default"` as the primary spec id so the first grammar's key
+///    `{base}/default` matches the existing bare `{base}` record — **no
+///    key migration needed**, or
+/// 2. Run a one-time read-rename `{base}` → `{base}/{primary_id}` on
+///    first boot.
+///
+/// A host that skips both silently orphans every saved layout.
+pub fn layout_key_for_spec(base: &str, spec_id: &str) -> String {
+    format!("{base}/{spec_id}")
+}
+
 /// Error produced while loading, decoding, reconciling, encoding, or saving a layout.
 #[derive(Debug, PartialEq)]
 pub enum LayoutError {
@@ -198,6 +221,64 @@ pub fn apply_save_decision<K: PanelKey>(
     }
 }
 
+/// Persist the current layout and restore layout state for a new grammar.
+///
+/// The host calls this when switching between workspace specs:
+///
+/// 1. Persist the current snapshot against `old_store` + `old_catalog`, then
+/// 2. Restore `new_defaults` from `new_store` + `new_catalog`.
+///
+/// Each grammar's layout is isolated via
+/// [`layout_key_for_spec`](layout_key_for_spec). The host composes the
+/// stores and catalogs before calling; core never owns transport or signals.
+///
+/// Persist failure is a soft error — the host may log it but must proceed to
+/// restore, or a switching failure loses the old layout. Restore failure
+/// returns `new_defaults` unchanged.
+#[cfg(feature = "spec-json")]
+pub fn switch_layout<K: PanelKey>(
+    old_store: &dyn LayoutStore,
+    old_snapshot: &Snapshot<K>,
+    old_catalog: &PanelCatalog<K>,
+    new_store: &dyn LayoutStore,
+    new_defaults: Snapshot<K>,
+    new_catalog: &PanelCatalog<K>,
+    restore_context: RestoreContext,
+) -> Result<Snapshot<K>, LayoutError> {
+    // Best-effort persistence of the old grammar's layout. A write failure
+    // must not block the switch — the old layout is only meaningful to the
+    // old grammar, and a failed write is a stale entry, not data loss.
+    let _ = persist_snapshot(old_store, old_snapshot, old_catalog);
+
+    restore_snapshot(new_store, new_defaults, new_catalog, restore_context)
+}
+
 #[cfg(all(test, feature = "spec-json"))]
 #[path = "persist/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod layout_key_tests {
+    use super::layout_key_for_spec;
+
+    #[test]
+    fn primary_spec_uses_default_as_identity() {
+        let key = layout_key_for_spec("jc_layout_v10", "default");
+        assert_eq!(key, "jc_layout_v10/default");
+    }
+
+    #[test]
+    fn two_specs_isolate_layouts() {
+        let a = layout_key_for_spec("app", "grammar_a");
+        let b = layout_key_for_spec("app", "grammar_b");
+        assert_ne!(a, b);
+        assert!(a.contains("app/grammar_a"));
+        assert!(b.contains("app/grammar_b"));
+    }
+
+    #[test]
+    fn non_default_spec_namespaces_key() {
+        let key = layout_key_for_spec("my_app", "admin_view");
+        assert_eq!(key, "my_app/admin_view");
+    }
+}

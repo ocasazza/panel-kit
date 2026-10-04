@@ -21,7 +21,8 @@ panel-kit = { git = "https://github.com/ocasazza/panel-kit" }
 
 ## Crates
 
-The repo is a small workspace — one state machine, two renderers:
+The repo is a small workspace — one state machine, two renderers, one data
+layer:
 
 - **`panel-kit-core`** (`crates/panel-kit-core`) — the renderer-agnostic
   state machine: `PanelWin`, `WinState`, `Mode`, `SurfaceProfile`, keyboard
@@ -37,6 +38,18 @@ The repo is a small workspace — one state machine, two renderers:
   `cargo run -p panel-kit-tui --example workspace`. Via
   [ratzilla](https://github.com/orhun/ratzilla) this renderer can also
   target the browser DOM — one panel codebase, web and terminal skins.
+- **`panel-kit-grammar`** (`crates/panel-kit-grammar`) — topos and grammar
+  abstractions. A *grammar* is a declarative import package (`pest` runtime
+  grammar with a capture map, or `json` pointers) that turns input into a
+  renderer-neutral `Site`. A *topos* is one UI/UX regime over that site: a
+  `WorkspaceSpec` plus `Stalks` (what each object/morphism sort means: label,
+  badge, assembly-stage prose) plus `sheaves` from binding ids to panel content
+  models. Physics tuning (repulsion, mass, weight, rest length) is not authored
+  per regime: it is the inverse image `p_R*` of a shared physics `BaseTopos`,
+  carried by a `GeometricMorphism` (`Physics`). `Topos::global_sections(site,
+  physics)` returns the `GlobalSections` hosts resolve `DataSource::Binding` ids
+  against, and `Topos::physics_section(site, physics)` the engine parameters a
+  layout consumes. Pure, sync, wasm32-clean.
 
 The core crate is the contract: renderer-neutral state, surface
 classification, geometry, pointer/keyboard semantics, and persistence live
@@ -265,6 +278,7 @@ dx serve --example workspace --platform web
 | `loading_workspace` | the post-mount `LoadingWorkspace` twin of the static pre-WASM boot contract |
 | `theming` | the documented full-palette retheme path: `:root` variable overrides layered after `panel_kit::CSS`, with three switchable presets |
 | `editor` | `editor::MonacoEditor`: two-way `Signal<String>` binding, `on_change` event log, imperative `EditorHandle` (set/read value, language, read-only, layout), reactive `language`/`read_only` props, the `pest` Monarch tokenizer and minimal `toml` language on real samples |
+| `topos` | two regimes (`topos-agentic`, `topos-membrane`) over one session site parsed by either the `trace-lines` (pest) or `trace-json` grammar, running one shared physics base (`topos-physics`). `t` switches regime (per-topos layout persisted; the Physics panel stays identical, only the UI/UX sheaves change), `g` switches grammar (identical content), `n`/`x` append a valid/malformed line (diagnostic, last good site kept), `r` resets. Each regime carries an active subobject on its per-sort badges: click a Roles/Species badge (web) or `s`/space (terminals) to toggle a sort; switching transports it by `∃f`/`f*` and the status line names the morphism |
 
 `dx build --example <name> --platform web` produces the same app
 statically under `target/dx/<name>/debug/web/public`.
@@ -296,6 +310,41 @@ This example is intentionally comprehensive: workspace chrome, floating and
 tiling interactions, dock restore, badges, action log, spinner, theming,
 scrollable content, time-series chart, and gauges. It is executable
 documentation for the shared core interface.
+
+### Topos demos (web, terminal, browser terminal)
+
+The same physics base, two regimes, and two grammars drive all three hosts.
+`topos-physics` is a regime-neutral base topos whose stalks are the only authored
+physics parameters (repulsion, mass per particle sort; stiffness, rest length per
+bond sort). Each regime — `topos-agentic` reads the sessions as
+planner/coder/reviewer roles, `topos-membrane` as self-assembling lipid species —
+carries a geometric morphism `p_R` into the base, so its physics tuning is the
+inverse image `p_R*` and the Physics panel is identical under both regimes. The
+morphism `f: topos-agentic → topos-membrane` commutes over the base
+(`p_membrane ∘ f = p_agentic`) and is non-injective (planner, reviewer ↦ head),
+so the active subobject on the per-sort badges transports by the image `∃f` on
+agentic→membrane and the inverse image `f*` on membrane→agentic; the status line
+names the morphism used. Toggle a sort by clicking its badge (web), or `s` to
+move the focus and space to toggle it (terminals). Specs, grammars, and data come
+from Nix (`nix/specs/topos-{agentic,membrane}.nix`, `nix/specs/topos-physics.nix`,
+`nix/specs/morphism-*.nix`, `nix/grammars/`, `nix/data/`) through
+`PANEL_KIT_TOPOS_A/B`, `PANEL_KIT_TOPOS_PHYSICS`, `PANEL_KIT_MORPHISM`,
+`PANEL_KIT_MORPHISM_A_PHYSICS`, `PANEL_KIT_MORPHISM_B_PHYSICS`,
+`PANEL_KIT_GRAMMAR_LINES/JSON`, and `PANEL_KIT_DATA_LINES/JSON`. The base and
+morphism specs are surface-neutral; `nix develop` exports the web set and
+overrides variables exported before entering it, so terminal surfaces set only
+their `PANEL_KIT_TOPOS_A/B` specs inside the shell.
+
+```sh
+dx serve --example topos --platform web                     # web
+nix build .#topos-tui-native && ./result/bin/topos          # terminal
+nix build .#topos-browser-tui-wasm                          # browser terminal
+
+# browser terminal dev server, from crates/panel-kit-tui inside `nix develop ..`:
+export PANEL_KIT_TOPOS_A=$(nix build --no-link --print-out-paths ..#topos-agentic-ascii)
+export PANEL_KIT_TOPOS_B=$(nix build --no-link --print-out-paths ..#topos-membrane-ascii)
+trunk serve browser_topos.html --example browser_topos --features spec-plan
+```
 
 Note: `Cargo.lock` pins `wasm-bindgen` to the exact version of nixpkgs'
 `wasm-bindgen-cli` (dx refuses to bindgen with a mismatched CLI); keep the

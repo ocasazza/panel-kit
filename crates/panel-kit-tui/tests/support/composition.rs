@@ -4,14 +4,14 @@ use panel_kit_core::frame::{
 };
 use panel_kit_core::reducer::{Snapshot, Viewport};
 use panel_kit_core::{
-    ChromeMetrics, Clamp, LayoutBuilder, Mode, PanelCatalog, PanelKind, Region,
+    ChromeMetrics, Clamp, LayoutBuilder, Mode, PanelCatalog, PanelKind,
     SurfaceCapabilities, SurfaceProfile, TileMetrics, Units, WinState, CELLS_COMPACT_MAX,
     CELLS_TABLET_MAX,
 };
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
 use panel_kit_tui::{Charset, ResolvedTuiTheme};
+pub(crate) use panel_kit_tui::rect_from_region;
 use ratatui::backend::TestBackend;
-use ratatui::layout::Rect;
 use ratatui::Terminal;
 use serde::{Deserialize, Serialize};
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -187,15 +187,6 @@ pub(crate) fn regular_cells_surface() -> SurfaceProfile {
             hover: true,
             keyboard: true,
         },
-    )
-}
-
-pub(crate) fn rect_from_region(region: Region) -> Rect {
-    Rect::new(
-        region.x as u16,
-        region.y as u16,
-        region.w as u16,
-        region.h as u16,
     )
 }
 

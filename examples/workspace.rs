@@ -14,6 +14,7 @@ use panel_kit::CSS;
 #[allow(dead_code, unused_imports)]
 #[path = "support/composable_workspace.rs"]
 mod composable_workspace;
+#[allow(dead_code)]
 #[path = "support/spec_workspace.rs"]
 mod spec_workspace;
 
@@ -101,7 +102,7 @@ fn App() -> Element {
                 class: "{workspace_class}",
                 style: "{workspace_style}",
                 onwheel: move |event| spec_workspace::handle_wheel(&wheel_workspace, &event),
-                {composable_workspace::web_canary::workspace_contents(&frame, &workspace.resolved, emit, header_clicks)}
+                {composable_workspace::web_canary::workspace_contents(&frame, &workspace.resolved, emit, header_clicks, &composable_workspace::web_canary::canary_content)}
             }
             if workspace.resolved.chrome.dock {
                 {panel_kit::widgets::dock::dock(

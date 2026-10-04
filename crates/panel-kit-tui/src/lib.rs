@@ -56,6 +56,8 @@ pub mod store;
 pub mod table;
 pub mod theme;
 pub mod widgets;
+#[cfg(target_arch = "wasm32")]
+pub mod wheel;
 
 use panel_kit_core::Region;
 pub use theme::{ResolvedTuiTheme, TuiThemeDisposition};
@@ -111,8 +113,19 @@ impl Charset {
     }
 }
 
-fn rect_from_region(r: Region) -> Rect {
-    Rect::new(r.x as u16, r.y as u16, r.w as u16, r.h as u16)
+/// Snap a core region to terminal cells by rounding each edge, so regions
+/// that share an edge in core share it in cells: no seams, no overlap.
+/// Edges outside the buffer's `u16` range are clamped.
+pub fn rect_from_region(r: Region) -> Rect {
+    let x0 = cell_edge(r.x);
+    let y0 = cell_edge(r.y);
+    let x1 = cell_edge(r.x + r.w).max(x0);
+    let y1 = cell_edge(r.y + r.h).max(y0);
+    Rect::new(x0, y0, x1 - x0, y1 - y0)
+}
+
+fn cell_edge(value: f64) -> u16 {
+    value.round().clamp(0.0, f64::from(u16::MAX)) as u16
 }
 
 fn write_header_text(f: &mut Frame, x: u16, y: u16, max_width: u16, text: &str, style: Style) {

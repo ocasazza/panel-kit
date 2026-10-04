@@ -1,0 +1,11 @@
+N|p1|Plan A|planner||latency_ms=120;energy=30;t=0;status=ok
+N|c1|Code A|coder||latency_ms=1840.0;energy=90;t=1;status=error
+N|r1|Review A|reviewer||latency_ms=300;energy=40;t=2;status=ok
+N|m1|Mem A|memory||latency_ms=10;energy=5;t=3;status=ok
+N|p2|Plan B|planner||latency_ms=140;energy=35;t=4;status=warn
+N|c2|Code B|coder||latency_ms=900;energy=70;t=5;status=ok
+E|p1|c1|continues
+E|c1|r1|shares
+E|r1|m1|consolidates
+E|p1|p2|continues
+E|p2|c2|continues

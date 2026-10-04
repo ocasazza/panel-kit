@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/panel-kit-core", "crates/panel-kit-tui", "tools/spec-parity"]
+members = ["crates/panel-kit-core", "crates/panel-kit-grammar", "crates/panel-kit-tui", "tools/spec-parity"]
 
 [package]
 name = "panel-kit"
@@ -64,6 +64,8 @@ parking_lot = "0.12"
 # Fake-async delays in the loading example's hydration arc demo.
 gloo-timers = { version = "0.3", features = ["futures"] }
 panel-kit-tui = { version = "1.1.1", path = "crates/panel-kit-tui" }
+# Topos/grammar demo façade (examples/support/topos_demo.rs) and its test.
+panel-kit-grammar = { version = "1.1.1", path = "crates/panel-kit-grammar" }
 
 # Injected by dioxus-cli on first `dx build` — dx builds the example demos
 # under these profiles.
