@@ -32,7 +32,9 @@ pub fn panel_style<K: PanelKey>(panel: PanelProjection<K>) -> String {
     }
 }
 
-pub(super) fn panel_class<K: PanelKey>(panel: PanelProjection<K>, class: Option<&str>) -> String {
+/// CSS class list for a projected panel: `panel`, an optional host class,
+/// and the drag/focus state modifiers.
+pub fn panel_class<K: PanelKey>(panel: PanelProjection<K>, class: Option<&str>) -> String {
     let extra = class.filter(|extra| !extra.is_empty()).unwrap_or_default();
     let tile_dragging = if panel.tile_dragging {
         " tile-dragging"

@@ -19,7 +19,7 @@ use panel_kit_core::frame::{
     project_into, ChromeProjectionInput, Placement, ProjectedFrame, ProjectionBuffer,
     ProjectionInput, TileLayoutMetrics,
 };
-use panel_kit_core::persist::{apply_save_decision, restore_snapshot, LayoutError, RestoreContext};
+use panel_kit_core::persist::{apply_save_decision, layout_key_for_spec, restore_snapshot, switch_layout, LayoutError, RestoreContext};
 use panel_kit_core::reducer::{reduce, HitTarget, Snapshot, Viewport, WorkspaceEvent};
 use panel_kit_core::spec::{BackendKind, BindingManifest, ResolvedWorkspace, WorkspaceSpec};
 use panel_kit_core::{
@@ -314,4 +314,69 @@ fn log_layout_error(action: &str, storage_key: &str, error: &LayoutError) {
 
     #[cfg(not(target_arch = "wasm32"))]
     eprintln!("{message}");
+}
+
+/// Switch to a new workspace grammar, preserving the old grammar's layout.
+///
+/// # Host transaction (ordered)
+///
+/// 1. Settle in-flight gestures and pending saves (the host owns this).
+/// 2. Resolve the new spec.
+/// 3. Build a new `LocalStorageLayoutStore` keyed with
+///    [`layout_key_for_spec`](panel_kit_core::persist::layout_key_for_spec).
+/// 4. Call [`switch_layout`](panel_kit_core::persist::switch_layout) to
+///    persist the old snapshot and restore the new grammar's layout.
+/// 5. Swap the resolved, store, and snapshot Rc/Signal atomically.
+/// 6. Drive the first data load through the existing `LoadStatus` store.
+///
+/// This is example glue for the web canary, not library API. The reusable
+/// kernel is `switch_layout` in core; the signal/Rc swap stays in the app.
+pub fn switch_workspace_spec(
+    workspace: &SpecWorkspaceState,
+    new_spec_json: &str,
+) -> SpecWorkspaceState {
+    let new_resolved = Rc::new(resolve_workspace_spec(new_spec_json));
+    let new_key = layout_key_for_spec(
+        &new_resolved.persistence.key,
+        &new_resolved.id,
+    );
+    let new_store = Rc::new(LocalStorageLayoutStore::new(new_key.clone()));
+
+    let snapshot_guard = workspace.snapshot.read();
+    let result = switch_layout(
+        &*workspace.store,
+        &snapshot_guard,
+        &new_resolved.catalog,
+        &*new_store,
+        restore_or_default(&new_resolved, &new_store),
+        &new_resolved.catalog,
+        restore_context_for(&new_resolved),
+    );
+
+    let new_snapshot = match result {
+        Ok(snap) => snap,
+        Err(error) => {
+            log_layout_error("switch_layout", &new_key, &error);
+            restore_or_default(&new_resolved, &new_store)
+        }
+    };
+
+    let panel_count = new_snapshot.panels.len();
+
+    SpecWorkspaceState {
+        resolved: new_resolved,
+        snapshot: Signal::new(new_snapshot),
+        snap: workspace.snap,
+        scratch: {
+            Rc::new(RefCell::new(ProjectionBuffer::with_panel_capacity(panel_count)))
+        },
+        store: new_store,
+    }
+}
+
+fn restore_context_for(resolved: &ResolvedWorkspace) -> RestoreContext {
+    RestoreContext {
+        units: resolved.layout.units,
+        viewport: (1280.0, 720.0),
+    }
 }

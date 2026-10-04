@@ -28,9 +28,9 @@ mod workspace_canary;
 mod browser {
     mod body {
         use panel_kit_core::badge::BadgeSpec;
-        use panel_kit_core::{Mode, SurfaceProfile};
+        use panel_kit_core::{Mode, SpecPanelId, SurfaceProfile};
         use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
-        use panel_kit_tui::scroll;
+        use panel_kit_tui::scroll::{self, PanelScroll};
         use panel_kit_tui::spinner::spinner;
         use panel_kit_tui::{badge, ResolvedTuiTheme};
         use ratatui::layout::Rect;
@@ -51,7 +51,7 @@ mod browser {
             pub(crate) badges: &'a [BadgeSpec],
             pub(crate) badge_zones: &'a mut Vec<(Rect, usize)>,
             pub(crate) actions: &'a [String],
-            pub(crate) notes_scroll: &'a mut usize,
+            pub(crate) panels: &'a mut PanelScroll<SpecPanelId>,
             pub(crate) theme_zone: &'a mut Rect,
         }
 
@@ -59,6 +59,7 @@ mod browser {
         pub(crate) fn draw_panel_body(
             frame: &mut ratatui::Frame,
             rect: Rect,
+            key: SpecPanelId,
             stable_id: &str,
             context: &mut BodyDrawContext<'_>,
         ) {
@@ -71,8 +72,8 @@ mod browser {
                 "Capacity" => gauges(frame, rect, &context.theme, &capacity_items()),
                 "Flame" => flame(frame, rect, &context.theme, &context.metrics.flame()),
                 "Distribution" => boxplot(frame, rect, &context.theme, &context.metrics.boxes()),
-                "Nodes" => draw_nodes_body(frame, rect, context),
-                "Notes" => draw_notes_body(frame, rect, context),
+                "Nodes" => draw_nodes_body(frame, rect, key, context),
+                "Notes" => draw_notes_body(frame, rect, key, context),
                 "Theme" => draw_theme_body(frame, rect, context),
                 _ => {}
             }
@@ -101,11 +102,12 @@ mod browser {
                     )),
                     Line::from("Persistence: schema V2 · Units::Cells · browser localStorage."),
                     Line::from(""),
-                    Line::from("Mouse: drag headers/grip, click lights; wheel scrolls workspace."),
+                    Line::from("Mouse: drag headers/grip, click lights; wheel scrolls the panel"),
+                    Line::from("under the pointer first, then the workspace at its content edge."),
                     Line::from(
                         "Keys: arrows move, Shift resizes, Alt fine-moves; m/f/t, Tab, Enter.",
                     ),
-                    Line::from("Palette: p · restore: 1-9 · workspace scroll: PgUp/PgDn."),
+                    Line::from("Palette: p · restore: 1-9 · PgUp/PgDn scroll the focused panel."),
                 ])
                 .style(Style::default().fg(context.theme.dim)),
                 rect,
@@ -151,12 +153,19 @@ mod browser {
             }
         }
 
-        fn draw_nodes_body(frame: &mut ratatui::Frame, rect: Rect, context: &BodyDrawContext<'_>) {
+        fn draw_nodes_body(
+            frame: &mut ratatui::Frame,
+            rect: Rect,
+            key: SpecPanelId,
+            context: &mut BodyDrawContext<'_>,
+        ) {
             let table_model = node_rows();
             panel_kit_tui::table::table(
                 frame,
                 rect,
                 &context.theme,
+                &key,
+                context.panels,
                 panel_kit_core::widgets::table::TableView {
                     columns: &table_model.columns,
                     rows: &table_model.rows,
@@ -164,9 +173,12 @@ mod browser {
             );
         }
 
+        /// Notes content long enough to overflow the panel body at the canary's
+        /// default size, so panel-body scrolling is demonstrable.
         fn draw_notes_body(
             frame: &mut ratatui::Frame,
             rect: Rect,
+            key: SpecPanelId,
             context: &mut BodyDrawContext<'_>,
         ) {
             let mut lines = vec![
@@ -178,19 +190,40 @@ mod browser {
             ];
             for text in [
                 "This example renders the ratatui workspace through a host-owned browser loop.",
-                "It exercises workspace panels, traffic lights, drag math, restore hooks, badges, action routing, charts, gauges, spinner frames, theming, and scrollbars.",
-                "The Nix WorkspaceSpec owns panel identity, geometry, chrome, theme, persistence, and glyph selection.",
-                "When the browser example builds under Trunk, the public TUI parts remain web-capable.",
-                "Keeping terminal and browser examples broad catches drift between core, Dioxus, and TUI renderers.",
+                "It exercises workspace panels, traffic lights, drag math, restore hooks,",
+                "badges, action routing, charts, gauges, spinner frames, theming, and scrollbars.",
+                "The Nix WorkspaceSpec owns panel identity, geometry, chrome, theme,",
+                "persistence, and glyph selection.",
+                "When the browser example builds under Trunk, the public TUI parts stay web-capable.",
+                "Keeping terminal and browser examples broad catches drift between core,",
+                "Dioxus, and TUI renderers.",
                 "The example is not a screenshot fixture: it is executable documentation.",
-                "Use p for palette, m/f/t for window state, Tab to cycle focus, 1-9 to restore, and PgUp/PgDn or the wheel to scroll.",
+                "",
+                "panel scrolling",
+                "Wheel and PgUp/PgDn scroll the panel under the pointer first.",
+                "Content consumes the gesture until its edge, then the gesture bubbles",
+                "to the workspace, matching the web shell's overflow chaining.",
+                "Shift+wheel scrolls sideways; the Nodes table scrolls row-wise",
+                "under a sticky header.",
+                "",
+                "keys",
+                "p · palette          m · minimize     f · float      t · tile",
+                "Tab · cycle focus    1-9 · restore    arrows · move",
+                "Shift+arrows · resize",
+                "PgUp/PgDn · page scroll the focused panel, then the workspace",
+                "",
+                "why this text is long",
+                "Canary bodies are small, so short text would hide the scrollbar and",
+                "make panel scrolling indistinguishable from workspace scrolling.",
+                "Overflowing text and node rows keep both paths observable.",
+                "",
+                "Scroll this panel with the wheel to confirm the offsets move.",
             ] {
                 lines.push(Line::from(text));
             }
             lines.push(Line::from(""));
             lines.push(spinner(context.tick, "TUI canary running", &context.theme));
-            *context.notes_scroll =
-                scroll::lines(frame, rect, &context.theme, lines, *context.notes_scroll);
+            scroll::lines(frame, rect, &context.theme, &key, context.panels, lines);
         }
 
         fn draw_theme_body(
@@ -302,20 +335,22 @@ mod browser {
     use panel_kit_core::theme::ThemeTokens;
     use panel_kit_core::{
         BackendKind, ChromeSpec, FocusContext, InputSpec, LayoutSpec, PanelCatalog,
-        PersistenceSpec, PointerButton, PointerEvent, PointerEventKind, Region, SpecPanelId,
+        PersistenceSpec, PointerButton, PointerEvent, PointerEventKind, SpecPanelId,
         SurfaceProfile, SurfaceSpec, Units, WorkspaceSpec,
     };
     use panel_kit_tui::input::{
-        ratzilla_key_chord, workspace_event_from_key, workspace_event_from_pointer,
-        RatzillaPointerTranslator,
+        ratzilla_key_chord, route_wheel, route_wheel_to, workspace_event_from_key,
+        workspace_event_from_pointer, RatzillaPointerTranslator, WheelDelta,
     };
+    use panel_kit_tui::scroll::PanelScroll;
     use panel_kit_tui::widgets::dock::{draw_dock, DockRenderContext};
     use panel_kit_tui::widgets::panel::{
         draw_panel_chrome, draw_panel_surface, draw_resize_grip, draw_traffic_lights,
     };
     use panel_kit_tui::widgets::root::{draw_root, draw_workspace_scrollbar};
     use panel_kit_tui::widgets::TuiHitBuffer;
-    use panel_kit_tui::{Charset, ResolvedTuiTheme};
+    use panel_kit_tui::{rect_from_region, Charset, ResolvedTuiTheme};
+    use panel_kit_tui::wheel::{self, WheelCell};
     use ratatui::layout::{Position, Rect};
     use ratatui::style::{Color, Style};
     use ratatui::widgets::Paragraph;
@@ -323,8 +358,7 @@ mod browser {
         KeyCode, KeyEvent, MouseButton as WebMouseButton, MouseEvent as WebMouseEvent,
         MouseEventKind as WebMouseEventKind,
     };
-    use ratzilla::web_sys::js_sys::{Function, Reflect};
-    use ratzilla::web_sys::wasm_bindgen::{closure::Closure, JsCast, JsValue};
+    use ratzilla::web_sys::wasm_bindgen::JsValue;
     use ratzilla::{
         backend::webgl2::{FontAtlasConfig, WebGl2BackendOptions},
         CursorShape, WebGl2Backend, WebRenderer,
@@ -366,7 +400,8 @@ mod browser {
         badge_zones: Vec<(Rect, usize)>,
         theme_zone: Rect,
         actions: Vec<String>,
-        notes_scroll: usize,
+        panels: PanelScroll<SpecPanelId>,
+        grid: (f64, f64),
         paper: bool,
         tick: u64,
         metrics: Metrics,
@@ -407,7 +442,8 @@ mod browser {
                 badge_zones: Vec::new(),
                 theme_zone: Rect::default(),
                 actions: Vec::new(),
-                notes_scroll: 0,
+                panels: PanelScroll::with_capacity(panel_count),
+                grid: (1.0, 1.0),
                 paper: false,
                 tick: 0,
                 metrics: Metrics::new(),
@@ -422,14 +458,8 @@ mod browser {
                 KeyCode::Char(ch) if ('1'..='9').contains(&ch) => {
                     self.restore_panel_by_number(ch);
                 }
-                KeyCode::PageUp => self.reduce_workspace_event(WorkspaceEvent::Wheel {
-                    delta_y: -4.0,
-                    disposition: WheelDisposition::BubbleToWorkspace,
-                }),
-                KeyCode::PageDown => self.reduce_workspace_event(WorkspaceEvent::Wheel {
-                    delta_y: 4.0,
-                    disposition: WheelDisposition::BubbleToWorkspace,
-                }),
+                KeyCode::PageUp => self.page_scroll(-4.0),
+                KeyCode::PageDown => self.page_scroll(4.0),
                 _ => {
                     if let Some(chord) = ratzilla_key_chord(event) {
                         self.reduce_workspace_event(workspace_event_from_key(
@@ -456,13 +486,49 @@ mod browser {
             }
         }
 
+        /// Route one browser wheel gesture and report whether anything moved,
+        /// which is what decides whether the page must not scroll.
+        fn handle_wheel(&mut self, cell: WheelCell) -> bool {
+            let before = self.snapshot.workspace_scroll;
+            let event = route_wheel(
+                &self.hits,
+                &mut self.panels,
+                (cell.col, cell.row),
+                cell.delta(),
+            );
+            let consumed = matches!(
+                event,
+                WorkspaceEvent::Wheel {
+                    disposition: WheelDisposition::ContentConsumed,
+                    ..
+                }
+            );
+            self.reduce_workspace_event(event);
+            consumed || self.snapshot.workspace_scroll != before
+        }
+
+        /// Scroll the focused panel body by a page, falling back to the workspace.
+        fn page_scroll(&mut self, rows: f64) {
+            let event = match self.snapshot.focused {
+                Some(key) => {
+                    route_wheel_to(&mut self.panels, &key, WheelDelta::new(0.0, rows))
+                }
+                None => WorkspaceEvent::Wheel {
+                    delta_y: rows,
+                    disposition: WheelDisposition::BubbleToWorkspace,
+                },
+            };
+            self.reduce_workspace_event(event);
+        }
+
         fn draw(&mut self, frame: &mut ratatui::Frame) {
             self.tick += 1;
-            if self.tick % 6 == 0 {
+            if self.tick.is_multiple_of(6) {
                 self.metrics.tick();
             }
             self.badge_zones.clear();
             self.hits.clear();
+            self.grid = (f64::from(frame.area().width), f64::from(frame.area().height));
             self.sync_viewport(frame.area());
             expect_persistence(self.restore_pending_layout());
 
@@ -502,7 +568,7 @@ mod browser {
                 badges: &self.badges,
                 badge_zones: &mut self.badge_zones,
                 actions: &self.actions,
-                notes_scroll: &mut self.notes_scroll,
+                panels: &mut self.panels,
                 theme_zone: &mut self.theme_zone,
             };
 
@@ -531,7 +597,13 @@ mod browser {
                 draw_resize_grip(frame, panel, self.hover, &self.theme, &mut self.hits);
                 let body_rect = body_rect.intersection(frame.area());
                 if body_rect.width > 0 && body_rect.height > 0 {
-                    draw_panel_body(frame, body_rect, meta.stable_id.as_ref(), &mut body);
+                    draw_panel_body(
+                        frame,
+                        body_rect,
+                        panel.key,
+                        meta.stable_id.as_ref(),
+                        &mut body,
+                    );
                 }
             }
 
@@ -708,44 +780,21 @@ mod browser {
         }
     }
 
-    fn rect_from_region(region: Region) -> Rect {
-        Rect::new(
-            region.x as u16,
-            region.y as u16,
-            region.w as u16,
-            region.h as u16,
+    fn install_wheel_routing(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
+        let grid_app = app.clone();
+        wheel::install_cell_wheel(
+            "panel-kit-tui",
+            move || {
+                grid_app
+                    .try_borrow()
+                    .map(|app| app.grid)
+                    .unwrap_or((1.0, 1.0))
+            },
+            move |cell| match app.try_borrow_mut() {
+                Ok(mut app) => app.handle_wheel(cell),
+                Err(_) => false,
+            },
         )
-    }
-
-    fn install_wheel_translation(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
-        let document = ratzilla::web_sys::window()
-            .and_then(|window| window.document())
-            .ok_or_else(|| JsValue::from_str("document unavailable"))?;
-        let target = document
-            .get_element_by_id("panel-kit-tui")
-            .ok_or_else(|| JsValue::from_str("panel-kit-tui element unavailable"))?;
-        let wheel = Closure::wrap(Box::new(move |event: JsValue| {
-            let delta = Reflect::get(&event, &JsValue::from_str("deltaY"))
-                .ok()
-                .and_then(|value| value.as_f64())
-                .unwrap_or(0.0);
-            if delta != 0.0 {
-                if let Ok(mut app) = app.try_borrow_mut() {
-                    app.reduce_workspace_event(WorkspaceEvent::Wheel {
-                        delta_y: delta.signum() * 3.0,
-                        disposition: WheelDisposition::BubbleToWorkspace,
-                    });
-                }
-            }
-            if let Ok(prevent_default) = Reflect::get(&event, &JsValue::from_str("preventDefault"))
-                .and_then(|value| value.dyn_into::<Function>())
-            {
-                let _ = prevent_default.call0(&event);
-            }
-        }) as Box<dyn FnMut(JsValue)>);
-        target.add_event_listener_with_callback("wheel", wheel.as_ref().unchecked_ref())?;
-        wheel.forget();
-        Ok(())
     }
 
     pub fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -763,7 +812,7 @@ mod browser {
         let mut terminal = ratatui::Terminal::new(backend)?;
         let app = Rc::new(RefCell::new(App::new()?));
 
-        install_wheel_translation(app.clone())
+        install_wheel_routing(app.clone())
             .map_err(|error| std::io::Error::other(format!("{error:?}")))?;
         terminal.on_key_event({
             let app = app.clone();

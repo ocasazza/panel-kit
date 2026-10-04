@@ -1,0 +1,17 @@
+[package]
+name = "panel-kit-grammar"
+version = "1.1.1"
+edition = "2021"
+license = "MIT"
+description = "Renderer-neutral site grammars and topos sheaves over panel-kit-core content models: runtime pest/json import engines and declarative UI regimes"
+repository = "https://github.com/ocasazza/panel-kit"
+keywords = ["grammar", "pest", "site", "panels", "wasm"]
+categories = ["parsing", "gui"]
+
+[dependencies]
+panel-kit-core = { version = "1.1.1", path = "../panel-kit-core", features = ["spec-json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+pest = "=2.8.8"
+pest_meta = "=2.8.8"
+pest_vm = "=2.8.8"

@@ -21,16 +21,16 @@ use panel_kit_core::frame::{
     project_into, ChromeProjectionInput, ProjectionBuffer, ProjectionInput, TileLayoutMetrics,
 };
 use panel_kit_core::persist::{apply_save_decision, restore_snapshot, LayoutError, RestoreContext};
-use panel_kit_core::reducer::{reduce, Snapshot, Viewport, WheelDisposition, WorkspaceEvent};
+use panel_kit_core::reducer::{reduce, Snapshot, Viewport, WorkspaceEvent};
 use panel_kit_core::spec::{BackendKind, Charset as SpecCharset, WorkspaceSpec};
-use panel_kit_core::{FocusContext, Region, SpecPanelId, SurfaceCapabilities, SurfaceProfile};
+use panel_kit_core::{FocusContext, SpecPanelId, SurfaceCapabilities, SurfaceProfile};
 use panel_kit_tui::input::{
-    crossterm_key_chord, crossterm_pointer_event, workspace_event_from_key,
-    workspace_event_from_pointer,
+    crossterm_key_chord, crossterm_workspace_event, route_wheel_to, workspace_event_from_key,
+    WheelDelta,
 };
 use panel_kit_tui::store::JsonFileLayoutStore;
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
-use panel_kit_tui::{Charset, ResolvedTuiTheme};
+use panel_kit_tui::{rect_from_region, Charset, ResolvedTuiTheme};
 use ratatui::layout::{Position, Rect};
 use workspace_canary::content::{render_content, ContentRenderContext, DemoData};
 
@@ -43,6 +43,7 @@ struct NativeCanary {
     hits: TuiHitBuffer<SpecPanelId>,
     store: Option<JsonFileLayoutStore>,
     content_jobs: Vec<ContentJob>,
+    live_keys: Vec<SpecPanelId>,
     demo: DemoData,
     evidence: RenderEvidence,
 }
@@ -89,6 +90,7 @@ impl NativeCanary {
             hits: TuiHitBuffer::with_capacity(panel_count, panel_count),
             store,
             content_jobs: Vec::with_capacity(panel_count),
+            live_keys: Vec::with_capacity(panel_count),
             demo: DemoData::new(),
             evidence: RenderEvidence::default(),
         })
@@ -200,6 +202,7 @@ impl NativeCanary {
             render_content(
                 frame,
                 job.body,
+                job.key,
                 content,
                 ContentRenderContext {
                     resolved: &workspace.resolved,
@@ -210,6 +213,11 @@ impl NativeCanary {
                 content_kinds,
             );
         }
+        // Drop scroll state for panels the spec no longer projects.
+        self.live_keys.clear();
+        self.live_keys
+            .extend(self.workspace.snapshot.panels.iter().map(|p| p.kind));
+        self.demo.panels.retain_panels(&self.live_keys);
         Ok(())
     }
 
@@ -229,15 +237,8 @@ impl NativeCanary {
             return Ok(false);
         }
         if matches!(event.code, KeyCode::PageUp | KeyCode::PageDown) {
-            let delta_y = if matches!(event.code, KeyCode::PageUp) {
-                -4.0
-            } else {
-                4.0
-            };
-            self.apply_event(WorkspaceEvent::Wheel {
-                delta_y,
-                disposition: WheelDisposition::BubbleToWorkspace,
-            })?;
+            let rows = if matches!(event.code, KeyCode::PageUp) { -4.0 } else { 4.0 };
+            self.page_scroll(rows)?;
             return Ok(false);
         }
         if let Some(chord) = crossterm_key_chord(event) {
@@ -265,12 +266,25 @@ impl NativeCanary {
                 return Ok(());
             }
         }
-        if let Some(pointer) = crossterm_pointer_event(event) {
-            if let Some(workspace_event) = workspace_event_from_pointer(&self.hits, pointer) {
-                self.apply_event(workspace_event)?;
-            }
+        if let Some(workspace_event) =
+            crossterm_workspace_event(&self.hits, &mut self.demo.panels, event)
+        {
+            self.apply_event(workspace_event)?;
         }
         Ok(())
+    }
+
+    /// Scroll the focused panel body by a page, falling back to the workspace.
+    fn page_scroll(&mut self, rows: f64) -> Result<(), LayoutError> {
+        let Some(key) = self.workspace.snapshot.focused else {
+            return self.apply_event(WorkspaceEvent::Wheel {
+                delta_y: rows,
+                disposition: panel_kit_core::reducer::WheelDisposition::BubbleToWorkspace,
+            });
+        };
+
+        let event = route_wheel_to(&mut self.demo.panels, &key, WheelDelta::new(0.0, rows));
+        self.apply_event(event)
     }
 
     fn apply_event(&mut self, event: WorkspaceEvent<SpecPanelId>) -> Result<(), LayoutError> {
@@ -453,15 +467,6 @@ fn restore_key(
         _ => return None,
     };
     catalog.get_by_stable_id(id).map(|meta| meta.key)
-}
-
-fn rect_from_region(region: Region) -> Rect {
-    Rect::new(
-        region.x as u16,
-        region.y as u16,
-        region.w as u16,
-        region.h as u16,
-    )
 }
 
 mod evidence {

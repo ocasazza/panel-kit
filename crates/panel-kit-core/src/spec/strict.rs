@@ -77,7 +77,15 @@ fn walk_tile(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
     };
     check_fields(object, pointer, TILE_LAYOUT_FIELDS, errors);
     if let Some(resize) = object.get("resize") {
-        walk_object_fields(resize, "/layout/tile/resize", TILE_METRIC_FIELDS, errors);
+        if let Some(object) = object_at(resize, "/layout/tile/resize", errors) {
+            check_fields_with_optional(
+                object,
+                "/layout/tile/resize",
+                TILE_METRIC_FIELDS,
+                TILE_METRIC_OPTIONAL_FIELDS,
+                errors,
+            );
+        }
     }
 }
 
@@ -606,15 +614,26 @@ fn walk_array_items<F>(
 }
 
 fn check_fields(object: &JsonMap, pointer: &str, allowed: &[&str], errors: &mut ErrorSink) {
+    check_fields_with_optional(object, pointer, allowed, &[], errors);
+}
+
+fn check_fields_with_optional(
+    object: &JsonMap,
+    pointer: &str,
+    required: &[&str],
+    optional: &[&str],
+    errors: &mut ErrorSink,
+) {
     for key in object.keys() {
-        if !allowed.contains(&key.as_str()) {
+        if !required.contains(&key.as_str()) && !optional.contains(&key.as_str()) {
+            let allowed = required.iter().chain(optional).copied().collect::<Vec<_>>();
             errors.push(
                 format!("{pointer}/{key}"),
                 format!("unknown field; allowed fields: {}", allowed.join(", ")),
             );
         }
     }
-    for field in allowed {
+    for field in required {
         if !object.contains_key(*field) {
             errors.push(format!("{pointer}/{field}"), "missing required field");
         }
@@ -707,6 +726,8 @@ const CLAMP_FIELDS: &[&str] = &[
     "outer_w", "outer_h", "floor_w", "floor_h", "inner", "edge", "min_w", "min_h", "max_frac",
 ];
 const TILE_METRIC_FIELDS: &[&str] = &["row", "col_floor", "outer"];
+/// `#[serde(default)]` fields of `TileMetrics`: accepted, never required.
+const TILE_METRIC_OPTIONAL_FIELDS: &[&str] = &["gap", "padding"];
 const SURFACE_CAP_FIELDS: &[&str] = &["coarse_pointer", "hover", "keyboard"];
 const CHROME_METRIC_FIELDS: &[&str] = &["inset", "dock_h"];
 const COMMAND_STEP_FIELDS: &[&str] = &["coarse", "fine"];

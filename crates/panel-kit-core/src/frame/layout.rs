@@ -103,7 +103,7 @@ impl TileLayoutMetrics {
 pub struct TileGridProjection {
     /// Number of columns in the projected grid.
     pub columns: u8,
-    /// Number of rows needed by the projected tiles.
+    /// Number of row tracks needed by the projected tiles.
     pub rows: u16,
     /// Width of one column track.
     pub track_w: f64,

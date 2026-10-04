@@ -187,8 +187,17 @@ pub mod web_canary {
     use panel_kit_core::widgets::table::{
         ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
     };
-    use panel_kit_core::widgets::{ContentSpec, ContentView, DataSource, ScrollPolicy, TextModel};
+    use panel_kit_core::widgets::{ContentSpec, ContentView, DataSource, ScrollPolicy};
     use panel_kit_core::SpecPanelId;
+
+    /// Host-supplied content for one provider-backed (`DataSource::Binding`) id.
+    ///
+    /// `id` is the authored binding id and `content` the panel's authored
+    /// `ContentSpec`, so a host reads the declared kind, scroll policy, and
+    /// unit instead of re-deriving them. Every bound panel body is painted by
+    /// this seam alone; [`canary_content`] is the fixed-data implementation
+    /// the workspace canary passes.
+    pub type BindingContent<'a> = &'a dyn Fn(&str, &ContentSpec) -> Element;
 
     /// Render projected panels for the spec-driven web canary.
     pub fn workspace_contents(
@@ -196,6 +205,7 @@ pub mod web_canary {
         resolved: &ResolvedWorkspace,
         emit: EventHandler<WorkspaceEvent<SpecPanelId>>,
         header_clicks: Signal<u32>,
+        binding: BindingContent<'_>,
     ) -> Element {
         if frame.status == FrameStatus::TooSmall {
             return rsx! {
@@ -213,25 +223,79 @@ pub mod web_canary {
                         {
                             let panel_class = format!("panel-{}", meta.slug);
                             let maximized = matches!(panel.placement, Placement::Maximized);
-                            panel_kit::widgets::panel::panel_shell(panel, Some(&panel_class), rsx! {
-                                if show_header {
-                                    {panel_kit::widgets::panel::panel_chrome_with_events(
-                                        panel,
-                                        meta,
-                                        emit,
-                                        show_lights.then(|| panel_kit::widgets::panel::traffic_lights(panel, emit)),
-                                        header_actions(spec, maximized, header_clicks),
-                                    )}
+                            {
+                            let class = panel_kit::widgets::panel_layout::panel_class(panel, Some(&panel_class));
+                            let style = panel_kit::widgets::panel_layout::panel_style(panel);
+                            let key = panel.key;
+                            let emit_down = emit;
+                            let emit_up = emit;
+                            rsx! {
+                                section {
+                                    class: "{class}",
+                                    style: "{style}",
+                                    onpointerdown: move |event: dioxus::events::PointerEvent| {
+                                        let coords = event.client_coordinates();
+                                        emit_down.call(WorkspaceEvent::Pointer {
+                                            target: panel_kit_core::reducer::HitTarget::Panel {
+                                                key,
+                                                part: panel_kit_core::reducer::PanelPart::Surface,
+                                            },
+                                            event: panel_kit_core::PointerEvent {
+                                                kind: panel_kit_core::PointerEventKind::Down(panel_kit_core::PointerButton::Primary),
+                                                x: coords.x,
+                                                y: coords.y,
+                                            },
+                                        });
+                                    },
+                                    onpointerenter: move |event: dioxus::events::PointerEvent| {
+                                        let coords = event.client_coordinates();
+                                        emit.call(WorkspaceEvent::Pointer {
+                                            target: panel_kit_core::reducer::HitTarget::Panel {
+                                                key,
+                                                part: panel_kit_core::reducer::PanelPart::Surface,
+                                            },
+                                            event: panel_kit_core::PointerEvent {
+                                                kind: panel_kit_core::PointerEventKind::Moved,
+                                                x: coords.x,
+                                                y: coords.y,
+                                            },
+                                        });
+                                    },
+                                    onpointerup: move |event: dioxus::events::PointerEvent| {
+                                        let coords = event.client_coordinates();
+                                        emit_up.call(WorkspaceEvent::Pointer {
+                                            target: panel_kit_core::reducer::HitTarget::Panel {
+                                                key,
+                                                part: panel_kit_core::reducer::PanelPart::Surface,
+                                            },
+                                            event: panel_kit_core::PointerEvent {
+                                                kind: panel_kit_core::PointerEventKind::Up(panel_kit_core::PointerButton::Primary),
+                                                x: coords.x,
+                                                y: coords.y,
+                                            },
+                                        });
+                                    },
+                                    if show_header {
+                                        {panel_kit::widgets::panel::panel_chrome_with_events(
+                                            panel,
+                                            meta,
+                                            emit,
+                                            show_lights.then(|| panel_kit::widgets::panel::traffic_lights(panel, emit)),
+                                            header_actions(spec, maximized, header_clicks),
+                                        )}
+                                    }
+                                    {panel_kit::widgets::panel::panel_body(render_content(
+                                        spec,
+                                        binding,
+                                        maximized,
+                                        *header_clicks.read(),
+                                    ))}
+                                    if resolved.chrome.resize_grip {
+                                        {panel_kit::widgets::panel::resize_grip(panel, emit)}
+                                    }
                                 }
-                                {panel_kit::widgets::panel::panel_body(render_content(
-                                    spec,
-                                    maximized,
-                                    *header_clicks.read(),
-                                ))}
-                                if resolved.chrome.resize_grip {
-                                    {panel_kit::widgets::panel::resize_grip(panel, emit)}
-                                }
-                            })
+                            }
+                        }
                         }
                     }
                 }
@@ -303,33 +367,89 @@ pub mod web_canary {
         })
     }
 
-    fn render_content(spec: &PanelSpec, maximized: bool, header_clicks: u32) -> Element {
-        match &spec.content {
+    /// Paint one panel body: spec-authored inline values here, every
+    /// provider-backed id through the host seam.
+    fn render_content(
+        spec: &PanelSpec,
+        binding: BindingContent<'_>,
+        maximized: bool,
+        header_clicks: u32,
+    ) -> Element {
+        let content = &spec.content;
+        match content {
             ContentSpec::Custom { binding } => {
                 render_custom(binding, spec, maximized, header_clicks)
             }
-            ContentSpec::Text { source, scroll } => render_text(source, *scroll),
             ContentSpec::Editor {
                 binding,
                 multiline,
                 placeholder,
-            } => rsx! {
-                textarea {
-                    class: "pk-editor",
-                    aria_label: "editor binding {binding}",
-                    placeholder: "{placeholder}",
-                    rows: if *multiline { "12" } else { "1" },
-                }
+            } => paint_editor(binding, *multiline, placeholder),
+            ContentSpec::Text { source, scroll } => match source {
+                DataSource::Inline { value } => paint_text(&value.text, *scroll),
+                DataSource::Binding { id } => binding(id, content),
             },
-            ContentSpec::Badges { source } => render_badges(source),
-            ContentSpec::Table { source } => render_table(source),
-            ContentSpec::TimeSeries { source, unit } => render_time_series(source, unit),
-            ContentSpec::Gauges { source } => render_gauges(source),
-            ContentSpec::Flamegraph { source } => render_flamegraph(source),
-            ContentSpec::Boxplot { source } => render_boxplot(source),
-            ContentSpec::Meter { source } => render_meter(source),
-            ContentSpec::Status { source } => render_status(source),
-            ContentSpec::Spinner { label } => render_spinner(label),
+            ContentSpec::Badges { source } => match source {
+                DataSource::Inline { value } => paint_badges(value),
+                DataSource::Binding { id } => binding(id, content),
+            },
+            ContentSpec::Table { source } => match source {
+                DataSource::Inline { value } => paint_table(value),
+                DataSource::Binding { id } => binding(id, content),
+            },
+            ContentSpec::TimeSeries { source, unit } => match source {
+                DataSource::Inline { value } => paint_series(value, unit),
+                DataSource::Binding { id } => binding(id, content),
+            },
+            ContentSpec::Gauges { source } => match source {
+                DataSource::Inline { value } => paint_gauges(value),
+                DataSource::Binding { id } => binding(id, content),
+            },
+            ContentSpec::Flamegraph { source } => match source {
+                DataSource::Inline { value } => paint_flamegraph(value),
+                DataSource::Binding { id } => binding(id, content),
+            },
+            ContentSpec::Boxplot { source } => match source {
+                DataSource::Inline { value } => paint_boxplot(value),
+                DataSource::Binding { id } => binding(id, content),
+            },
+            ContentSpec::Meter { source } => match source {
+                DataSource::Inline { value } => paint_meter(value),
+                DataSource::Binding { id } => binding(id, content),
+            },
+            ContentSpec::Status { source } => match source {
+                DataSource::Inline { value } => paint_status(value),
+                DataSource::Binding { id } => binding(id, content),
+            },
+            ContentSpec::Spinner { label } => match label {
+                DataSource::Inline { value } => paint_spinner(value),
+                DataSource::Binding { id } => binding(id, content),
+            },
+        }
+    }
+
+    /// Fixed demo content for the workspace canary's own binding ids.
+    ///
+    /// Ids the canary does not register keep the unregistered-binding marker
+    /// each kind showed before, so an unmapped panel is never a blank body.
+    pub fn canary_content(id: &str, content: &ContentSpec) -> Element {
+        match content {
+            ContentSpec::Text { scroll, .. } => paint_text(bound_text(id), *scroll),
+            ContentSpec::Badges { .. } => paint_badges(&bound_badges(id)),
+            ContentSpec::Table { .. } => paint_table(&bound_table(id)),
+            ContentSpec::TimeSeries { unit, .. } => paint_series(&bound_series(id), unit),
+            ContentSpec::Gauges { .. } => paint_gauges(&bound_gauges(id)),
+            ContentSpec::Flamegraph { .. } => paint_flamegraph(&bound_flamegraph(id)),
+            ContentSpec::Boxplot { .. } => paint_boxplot(&bound_boxplot(id)),
+            ContentSpec::Meter { .. } => paint_meter(&bound_meter(id)),
+            ContentSpec::Status { .. } => paint_status(&bound_status(id)),
+            ContentSpec::Spinner { .. } => paint_spinner(bound_spinner_label(id)),
+            ContentSpec::Custom { .. } => paint_custom(id),
+            ContentSpec::Editor {
+                binding,
+                multiline,
+                placeholder,
+            } => paint_editor(binding, *multiline, placeholder),
         }
     }
 
@@ -357,59 +477,34 @@ pub mod web_canary {
                     }
                 }
             },
-            _ => panel_kit::widgets::content_view(
-                ContentView::Custom { binding },
-                0,
-                noop_badge_action(),
-            ),
+            _ => paint_custom(binding),
         }
     }
 
-    fn render_text(source: &DataSource<TextModel>, scroll: ScrollPolicy) -> Element {
-        match source {
-            DataSource::Inline { value } => panel_kit::widgets::content_view(
-                ContentView::Text {
-                    text: &value.text,
-                    scroll,
-                },
-                0,
-                noop_badge_action(),
-            ),
-            DataSource::Binding { id } => {
-                let text = bound_text(id);
-                panel_kit::widgets::content_view(
-                    ContentView::Text { text, scroll },
-                    0,
-                    noop_badge_action(),
-                )
+    fn paint_text(text: &str, scroll: ScrollPolicy) -> Element {
+        panel_kit::widgets::content_view(ContentView::Text { text, scroll }, 0, noop_badge_action())
+    }
+
+    fn paint_editor(binding: &str, multiline: bool, placeholder: &str) -> Element {
+        rsx! {
+            textarea {
+                class: "pk-editor",
+                aria_label: "editor binding {binding}",
+                placeholder: "{placeholder}",
+                rows: if multiline { "12" } else { "1" },
             }
         }
     }
 
-    fn render_badges(source: &DataSource<Vec<BadgeSpec>>) -> Element {
-        match source {
-            DataSource::Inline { value } => {
-                panel_kit::widgets::content_view(ContentView::Badges(value), 0, noop_badge_action())
-            }
-            DataSource::Binding { id } => {
-                let badges = bound_badges(id);
-                panel_kit::widgets::content_view(
-                    ContentView::Badges(&badges),
-                    0,
-                    noop_badge_action(),
-                )
-            }
-        }
+    fn paint_custom(binding: &str) -> Element {
+        panel_kit::widgets::content_view(ContentView::Custom { binding }, 0, noop_badge_action())
     }
 
-    fn render_table(source: &DataSource<TableModel>) -> Element {
-        match source {
-            DataSource::Inline { value } => render_table_model(value),
-            DataSource::Binding { id } => render_table_model(&bound_table(id)),
-        }
+    fn paint_badges(specs: &[BadgeSpec]) -> Element {
+        panel_kit::widgets::content_view(ContentView::Badges(specs), 0, noop_badge_action())
     }
 
-    fn render_table_model(table: &TableModel) -> Element {
+    fn paint_table(table: &TableModel) -> Element {
         panel_kit::widgets::content_view(
             ContentView::Table(TableView {
                 columns: &table.columns,
@@ -420,14 +515,7 @@ pub mod web_canary {
         )
     }
 
-    fn render_time_series(source: &DataSource<Vec<SeriesModel>>, unit: &str) -> Element {
-        match source {
-            DataSource::Inline { value } => render_series_models(value, unit),
-            DataSource::Binding { id } => render_series_models(&bound_series(id), unit),
-        }
-    }
-
-    fn render_series_models(series: &[SeriesModel], unit: &str) -> Element {
+    fn paint_series(series: &[SeriesModel], unit: &str) -> Element {
         let views: Vec<SeriesView<'_>> = series
             .iter()
             .map(|model| SeriesView {
@@ -445,98 +533,29 @@ pub mod web_canary {
         )
     }
 
-    fn render_gauges(source: &DataSource<Vec<GaugeModel>>) -> Element {
-        match source {
-            DataSource::Inline { value } => {
-                panel_kit::widgets::content_view(ContentView::Gauges(value), 0, noop_badge_action())
-            }
-            DataSource::Binding { id } => {
-                let gauges = bound_gauges(id);
-                panel_kit::widgets::content_view(
-                    ContentView::Gauges(&gauges),
-                    0,
-                    noop_badge_action(),
-                )
-            }
-        }
+    fn paint_gauges(gauges: &[GaugeModel]) -> Element {
+        panel_kit::widgets::content_view(ContentView::Gauges(gauges), 0, noop_badge_action())
     }
 
-    fn render_flamegraph(source: &DataSource<Vec<FlameSpanModel>>) -> Element {
-        match source {
-            DataSource::Inline { value } => panel_kit::widgets::content_view(
-                ContentView::Flamegraph(value),
-                0,
-                noop_badge_action(),
-            ),
-            DataSource::Binding { id } => {
-                let spans = bound_flamegraph(id);
-                panel_kit::widgets::content_view(
-                    ContentView::Flamegraph(&spans),
-                    0,
-                    noop_badge_action(),
-                )
-            }
-        }
+    fn paint_flamegraph(spans: &[FlameSpanModel]) -> Element {
+        panel_kit::widgets::content_view(ContentView::Flamegraph(spans), 0, noop_badge_action())
     }
 
-    fn render_boxplot(source: &DataSource<Vec<BoxItemModel>>) -> Element {
-        match source {
-            DataSource::Inline { value } => render_box_models(value),
-            DataSource::Binding { id } => render_box_models(&bound_boxplot(id)),
-        }
-    }
-
-    fn render_box_models(items: &[BoxItemModel]) -> Element {
+    fn paint_boxplot(items: &[BoxItemModel]) -> Element {
         let views = box_item_views(items);
         panel_kit::widgets::content_view(ContentView::Boxplot(&views), 0, noop_badge_action())
     }
 
-    fn render_meter(source: &DataSource<MeterModel>) -> Element {
-        match source {
-            DataSource::Inline { value } => {
-                panel_kit::widgets::content_view(ContentView::Meter(value), 0, noop_badge_action())
-            }
-            DataSource::Binding { id } => {
-                let meter = bound_meter(id);
-                panel_kit::widgets::content_view(ContentView::Meter(&meter), 0, noop_badge_action())
-            }
-        }
+    fn paint_meter(meter: &MeterModel) -> Element {
+        panel_kit::widgets::content_view(ContentView::Meter(meter), 0, noop_badge_action())
     }
 
-    fn render_status(source: &DataSource<StatusModel>) -> Element {
-        match source {
-            DataSource::Inline { value } => {
-                panel_kit::widgets::content_view(ContentView::Status(value), 0, noop_badge_action())
-            }
-            DataSource::Binding { id } => {
-                let status = bound_status(id);
-                panel_kit::widgets::content_view(
-                    ContentView::Status(&status),
-                    0,
-                    noop_badge_action(),
-                )
-            }
-        }
+    fn paint_status(status: &StatusModel) -> Element {
+        panel_kit::widgets::content_view(ContentView::Status(status), 0, noop_badge_action())
     }
 
-    fn render_spinner(label: &DataSource<String>) -> Element {
-        match label {
-            DataSource::Inline { value } => panel_kit::widgets::content_view(
-                ContentView::Spinner {
-                    label: value.as_str(),
-                },
-                0,
-                noop_badge_action(),
-            ),
-            DataSource::Binding { id } => {
-                let label = bound_spinner_label(id);
-                panel_kit::widgets::content_view(
-                    ContentView::Spinner { label },
-                    0,
-                    noop_badge_action(),
-                )
-            }
-        }
+    fn paint_spinner(label: &str) -> Element {
+        panel_kit::widgets::content_view(ContentView::Spinner { label }, 0, noop_badge_action())
     }
 
     fn box_item_views(items: &[BoxItemModel]) -> Vec<BoxItemView<'_>> {

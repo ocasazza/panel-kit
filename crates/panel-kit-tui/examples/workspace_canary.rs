@@ -83,7 +83,20 @@ pub fn node_rows() -> TableModel {
             node_row("pdx-01 *", true, 0.42, "leader"),
             node_row("pdx-02", true, 0.18, "ready"),
             node_row("pdx-03", true, 0.71, "busy"),
+            node_row("pdx-04", true, 0.35, "ready"),
+            node_row("pdx-05", true, 0.58, "warm"),
+            node_row("pdx-06", true, 0.24, "ready"),
+            node_row("pdx-07", true, 0.83, "hot"),
+            node_row("pdx-08", true, 0.12, "draining"),
             node_row("gfr-01", false, 0.0, "stale"),
+            node_row("gfr-02", true, 0.47, "ready"),
+            node_row("gfr-03", true, 0.66, "warm"),
+            node_row("gfr-04", true, 0.29, "ready"),
+            node_row("iad-01", true, 0.53, "ready"),
+            node_row("iad-02", false, 0.91, "evicting"),
+            node_row("iad-03", true, 0.38, "ready"),
+            node_row("syd-01", true, 0.61, "ready"),
+            node_row("syd-02", true, 0.27, "catching up"),
         ],
     }
 }
@@ -360,6 +373,7 @@ pub mod content {
     use panel_kit_core::widgets::{ContentSpec, DataSource, ScrollPolicy, TextModel};
     use panel_kit_core::{ResolvedWorkspace, SpecPanelId};
     use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
+    use panel_kit_tui::scroll::PanelScroll;
     use panel_kit_tui::spinner::spinner;
     use panel_kit_tui::ResolvedTuiTheme;
     use ratatui::layout::Rect;
@@ -375,7 +389,7 @@ pub mod content {
         pub badge_zones: Vec<(Rect, usize)>,
         pub theme_zone: Rect,
         pub actions: Vec<String>,
-        pub notes_scroll: usize,
+        pub panels: PanelScroll<SpecPanelId>,
         pub paper: bool,
         pub tick: u64,
         metrics: Metrics,
@@ -397,7 +411,7 @@ pub mod content {
                 badge_zones: Vec::new(),
                 theme_zone: Rect::default(),
                 actions: Vec::new(),
-                notes_scroll: 0,
+                panels: PanelScroll::with_capacity(9),
                 paper: false,
                 tick: 0,
                 metrics: Metrics::new(),
@@ -412,9 +426,12 @@ pub mod content {
     }
 
     /// Render the body content for one projected panel.
+    ///
+    /// `key` identifies the panel whose scroll offsets the content records.
     pub fn render_content(
         frame: &mut ratatui::Frame,
         area: Rect,
+        key: SpecPanelId,
         content: &ContentSpec,
         context: ContentRenderContext<'_>,
         demo: &mut DemoData,
@@ -432,7 +449,7 @@ pub mod content {
                 render_binding_placeholder(frame, area, context.theme, binding)
             }
             ContentSpec::Text { source, scroll } => {
-                render_text(frame, area, context.theme, source, *scroll, demo)
+                render_text(frame, area, context.theme, source, *scroll, key, demo)
             }
             ContentSpec::Editor {
                 binding,
@@ -442,7 +459,9 @@ pub mod content {
             ContentSpec::Badges { source } => {
                 render_badges(frame, area, context.theme, source, demo)
             }
-            ContentSpec::Table { source } => render_table(frame, area, context.theme, source),
+            ContentSpec::Table { source } => {
+                render_table(frame, area, context.theme, source, key, demo)
+            }
             ContentSpec::TimeSeries { source, unit } => {
                 render_time_series(frame, area, context.theme, source, unit, demo)
             }
@@ -527,6 +546,7 @@ pub mod content {
         theme: &ResolvedTuiTheme,
         source: &DataSource<TextModel>,
         scroll_policy: ScrollPolicy,
+        key: SpecPanelId,
         demo: &mut DemoData,
     ) {
         let lines = match source {
@@ -534,15 +554,12 @@ pub mod content {
             DataSource::Binding { id } if id == "canary.notes" => notes_lines(theme, demo.tick),
             DataSource::Binding { id } => vec![Line::from(format!("text binding: {id}"))],
         };
-        demo.notes_scroll = match scroll_policy {
-            ScrollPolicy::Clip => {
-                frame.render_widget(Paragraph::new(lines), area);
-                demo.notes_scroll
-            }
-            ScrollPolicy::Wrap | ScrollPolicy::Auto => {
-                panel_kit_tui::scroll::lines(frame, area, theme, lines, demo.notes_scroll)
-            }
-        };
+        if scroll_policy == ScrollPolicy::Clip {
+            frame.render_widget(Paragraph::new(lines), area);
+            return;
+        }
+
+        panel_kit_tui::scroll::lines(frame, area, theme, &key, &mut demo.panels, lines);
     }
 
     fn render_badges(
@@ -615,6 +632,8 @@ pub mod content {
         area: Rect,
         theme: &ResolvedTuiTheme,
         source: &DataSource<TableModel>,
+        key: SpecPanelId,
+        demo: &mut DemoData,
     ) {
         let owned;
         let model = match source {
@@ -629,6 +648,8 @@ pub mod content {
             frame,
             area,
             theme,
+            &key,
+            &mut demo.panels,
             TableView {
                 columns: &model.columns,
                 rows: &model.rows,
@@ -813,13 +834,53 @@ pub mod content {
         );
     }
 
+    /// Notes content long enough to overflow the panel body at the canary's
+    /// default size, so panel-body scrolling is demonstrable.
     fn notes_lines(theme: &ResolvedTuiTheme, tick: u64) -> Vec<Line<'static>> {
+        let heading = |text: &'static str| {
+            Line::from(Span::styled(
+                text,
+                Style::default().fg(theme.fg).add_modifier(ratatui::style::Modifier::BOLD),
+            ))
+        };
+
         vec![
-            Line::from(Span::styled("docs-as-code canary", Style::default().fg(theme.fg))),
+            heading("docs-as-code canary"),
             Line::from(""),
+            heading("what this example is"),
             Line::from("This example renders the terminal backend as executable documentation."),
-            Line::from("It exercises spec-authored layout, chrome, input, persistence, badges, charts, tables, gauges, text, custom panels, and dock restore."),
-            Line::from("Use p for palette, m/f/t for window state, Tab to cycle focus, 1-9 to restore, and PgUp/PgDn or the wheel to scroll."),
+            Line::from("It exercises spec-authored layout, chrome, input, persistence,"),
+            Line::from("badges, charts, tables, gauges, text, custom panels, and dock restore."),
+            Line::from(""),
+            heading("panel scrolling"),
+            Line::from("Wheel and PgUp/PgDn scroll the panel under the pointer first."),
+            Line::from("Content consumes the gesture until its edge, then the gesture bubbles"),
+            Line::from("to the workspace, matching the web shell's overflow chaining."),
+            Line::from("Shift+wheel scrolls sideways; the Nodes table scrolls row-wise"),
+            Line::from("under a sticky header."),
+            Line::from(""),
+            heading("keys"),
+            Line::from("p · palette            m · minimize       f · float"),
+            Line::from("t · tile               Tab · cycle focus  1-9 · restore"),
+            Line::from("arrows · move          Shift+arrows · resize"),
+            Line::from("PgUp/PgDn · page scroll this panel, then the workspace"),
+            Line::from("q · quit"),
+            Line::from(""),
+            heading("why it is long"),
+            Line::from("Canary bodies are small, so short text would hide the scrollbar and"),
+            Line::from("make panel scrolling indistinguishable from workspace scrolling."),
+            Line::from("Overflowing text and node rows keep both paths observable."),
+            Line::from(""),
+            heading("reading order"),
+            Line::from("1 · project the snapshot into reusable scratch"),
+            Line::from("2 · draw root, panels, chrome, controls, dock, scrollbars"),
+            Line::from("3 · paint body content with the panel's scroll offsets"),
+            Line::from("4 · route wheel gestures through the same offsets"),
+            Line::from(""),
+            Line::from("Every step above is a renderer-neutral core calculation or a thin"),
+            Line::from("ratatui painter; the browser example runs the identical sequence."),
+            Line::from(""),
+            Line::from("Scroll this panel with the wheel to confirm the offsets move."),
             Line::from(""),
             spinner(tick, "TUI canary running", theme),
         ]

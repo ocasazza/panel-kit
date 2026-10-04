@@ -360,3 +360,41 @@ fn assert_row_is_blank(buffer: &ratatui::buffer::Buffer, x: u16, y: u16, width: 
         assert_eq!(buffer[(x + offset, y)].symbol(), " ");
     }
 }
+
+#[test]
+fn fractional_tracks_snap_to_shared_cell_edges() {
+    // 118 cells over 4 columns and 41 rows over 3 shelves: neither divides
+    // evenly, so truncating origin and size separately opens 1-cell seams.
+    let grid = TileGridProjection {
+        columns: 4,
+        rows: 3,
+        track_w: 29.5,
+        track_h: 41.0 / 3.0,
+        gap: 0.0,
+        padding: 0.0,
+    };
+    let workspace = Rect::new(1, 1, 118, 41);
+    let cell = |column, row| {
+        widgets::panel::tiled_cell_rect(
+            Placement::Tiled {
+                column,
+                row,
+                column_span: 1,
+                row_span: 1,
+            },
+            grid,
+            workspace,
+            0.0,
+        )
+        .expect("tiled placement converts")
+    };
+
+    for column in 0..3 {
+        assert_eq!(cell(column, 0).right(), cell(column + 1, 0).x, "column {column} seam");
+    }
+    for row in 0..2 {
+        assert_eq!(cell(0, row).bottom(), cell(0, row + 1).y, "row {row} seam");
+    }
+    assert_eq!(cell(3, 0).right(), workspace.right(), "last column reaches the edge");
+    assert_eq!(cell(0, 2).bottom(), workspace.bottom(), "last row reaches the edge");
+}

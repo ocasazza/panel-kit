@@ -1,0 +1,897 @@
+{
+  "nodes": [
+    {
+      "id": "c0",
+      "title": "Session c0",
+      "kind": "planner",
+      "tags": [
+        "chain"
+      ],
+      "latency_ms": 30.0,
+      "energy": 240,
+      "t": 0,
+      "status": "error"
+    },
+    {
+      "id": "c1",
+      "title": "Session c1",
+      "kind": "coder",
+      "tags": [
+        "chain"
+      ],
+      "latency_ms": 15.5,
+      "energy": 139,
+      "t": 1,
+      "status": "ok"
+    },
+    {
+      "id": "c2",
+      "title": "Session c2",
+      "kind": "coder",
+      "tags": [
+        "chain"
+      ],
+      "latency_ms": 16.0,
+      "energy": 148,
+      "t": 2,
+      "status": "ok"
+    },
+    {
+      "id": "c3",
+      "title": "Session c3",
+      "kind": "reviewer",
+      "tags": [
+        "chain"
+      ],
+      "latency_ms": 46.5,
+      "energy": 327,
+      "t": 3,
+      "status": "ok"
+    },
+    {
+      "id": "c4",
+      "title": "Session c4",
+      "kind": "coder",
+      "tags": [
+        "chain"
+      ],
+      "latency_ms": 17.0,
+      "energy": 166,
+      "t": 4,
+      "status": "ok"
+    },
+    {
+      "id": "r0",
+      "title": "Session r0",
+      "kind": "planner",
+      "tags": [
+        "ring"
+      ],
+      "latency_ms": 32.5,
+      "energy": 285,
+      "t": 5,
+      "status": "ok"
+    },
+    {
+      "id": "r1",
+      "title": "Session r1",
+      "kind": "coder",
+      "tags": [
+        "ring"
+      ],
+      "latency_ms": 18.0,
+      "energy": 184,
+      "t": 6,
+      "status": "ok"
+    },
+    {
+      "id": "r2",
+      "title": "Session r2",
+      "kind": "coder",
+      "tags": [
+        "ring"
+      ],
+      "latency_ms": 18.5,
+      "energy": 193,
+      "t": 7,
+      "status": "warn"
+    },
+    {
+      "id": "r3",
+      "title": "Session r3",
+      "kind": "reviewer",
+      "tags": [
+        "ring"
+      ],
+      "latency_ms": 49.0,
+      "energy": 372,
+      "t": 8,
+      "status": "ok"
+    },
+    {
+      "id": "r4",
+      "title": "Session r4",
+      "kind": "coder",
+      "tags": [
+        "ring"
+      ],
+      "latency_ms": 15.0,
+      "energy": 211,
+      "t": 9,
+      "status": "ok"
+    },
+    {
+      "id": "r5",
+      "title": "Session r5",
+      "kind": "coder",
+      "tags": [
+        "ring"
+      ],
+      "latency_ms": 15.5,
+      "energy": 220,
+      "t": 10,
+      "status": "ok"
+    },
+    {
+      "id": "sc",
+      "title": "Session sc",
+      "kind": "planner",
+      "tags": [
+        "sheet"
+      ],
+      "latency_ms": 31.0,
+      "energy": 240,
+      "t": 11,
+      "status": "info"
+    },
+    {
+      "id": "s0",
+      "title": "Session s0",
+      "kind": "coder",
+      "tags": [
+        "sheet"
+      ],
+      "latency_ms": 16.5,
+      "energy": 139,
+      "t": 12,
+      "status": "ok"
+    },
+    {
+      "id": "s1",
+      "title": "Session s1",
+      "kind": "coder",
+      "tags": [
+        "sheet"
+      ],
+      "latency_ms": 17.0,
+      "energy": 148,
+      "t": 13,
+      "status": "error"
+    },
+    {
+      "id": "s2",
+      "title": "Session s2",
+      "kind": "reviewer",
+      "tags": [
+        "sheet"
+      ],
+      "latency_ms": 47.5,
+      "energy": 327,
+      "t": 14,
+      "status": "warn"
+    },
+    {
+      "id": "s3",
+      "title": "Session s3",
+      "kind": "coder",
+      "tags": [
+        "sheet"
+      ],
+      "latency_ms": 18.0,
+      "energy": 166,
+      "t": 15,
+      "status": "ok"
+    },
+    {
+      "id": "s4",
+      "title": "Session s4",
+      "kind": "coder",
+      "tags": [
+        "sheet"
+      ],
+      "latency_ms": 18.5,
+      "energy": 175,
+      "t": 16,
+      "status": "ok"
+    },
+    {
+      "id": "s5",
+      "title": "Session s5",
+      "kind": "reviewer",
+      "tags": [
+        "sheet"
+      ],
+      "latency_ms": 49.0,
+      "energy": 354,
+      "t": 17,
+      "status": "ok"
+    },
+    {
+      "id": "t0",
+      "title": "Session t0",
+      "kind": "planner",
+      "tags": [
+        "tube"
+      ],
+      "latency_ms": 30.0,
+      "energy": 303,
+      "t": 18,
+      "status": "ok"
+    },
+    {
+      "id": "t1",
+      "title": "Session t1",
+      "kind": "coder",
+      "tags": [
+        "tube"
+      ],
+      "latency_ms": 15.5,
+      "energy": 202,
+      "t": 19,
+      "status": "ok"
+    },
+    {
+      "id": "t2",
+      "title": "Session t2",
+      "kind": "reviewer",
+      "tags": [
+        "tube"
+      ],
+      "latency_ms": 46.0,
+      "energy": 381,
+      "t": 20,
+      "status": "ok"
+    },
+    {
+      "id": "t3",
+      "title": "Session t3",
+      "kind": "coder",
+      "tags": [
+        "tube"
+      ],
+      "latency_ms": 16.5,
+      "energy": 220,
+      "t": 21,
+      "status": "warn"
+    },
+    {
+      "id": "b0",
+      "title": "Session b0",
+      "kind": "coder",
+      "tags": [
+        "tube"
+      ],
+      "latency_ms": 17.0,
+      "energy": 130,
+      "t": 22,
+      "status": "info"
+    },
+    {
+      "id": "b1",
+      "title": "Session b1",
+      "kind": "coder",
+      "tags": [
+        "tube"
+      ],
+      "latency_ms": 17.5,
+      "energy": 139,
+      "t": 23,
+      "status": "ok"
+    },
+    {
+      "id": "b2",
+      "title": "Session b2",
+      "kind": "reviewer",
+      "tags": [
+        "tube"
+      ],
+      "latency_ms": 48.0,
+      "energy": 318,
+      "t": 24,
+      "status": "ok"
+    },
+    {
+      "id": "b3",
+      "title": "Session b3",
+      "kind": "coder",
+      "tags": [
+        "tube"
+      ],
+      "latency_ms": 18.5,
+      "energy": 157,
+      "t": 25,
+      "status": "ok"
+    },
+    {
+      "id": "mN",
+      "title": "Session mN",
+      "kind": "planner",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 34.0,
+      "energy": 276,
+      "t": 26,
+      "status": "error"
+    },
+    {
+      "id": "ma0",
+      "title": "Session ma0",
+      "kind": "coder",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 15.0,
+      "energy": 175,
+      "t": 27,
+      "status": "ok"
+    },
+    {
+      "id": "ma1",
+      "title": "Session ma1",
+      "kind": "coder",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 15.5,
+      "energy": 184,
+      "t": 28,
+      "status": "warn"
+    },
+    {
+      "id": "ma2",
+      "title": "Session ma2",
+      "kind": "coder",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 16.0,
+      "energy": 193,
+      "t": 29,
+      "status": "ok"
+    },
+    {
+      "id": "ma3",
+      "title": "Session ma3",
+      "kind": "coder",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 16.5,
+      "energy": 202,
+      "t": 30,
+      "status": "ok"
+    },
+    {
+      "id": "ma4",
+      "title": "Session ma4",
+      "kind": "coder",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 17.0,
+      "energy": 211,
+      "t": 31,
+      "status": "ok"
+    },
+    {
+      "id": "ml0",
+      "title": "Session ml0",
+      "kind": "coder",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 17.5,
+      "energy": 220,
+      "t": 32,
+      "status": "ok"
+    },
+    {
+      "id": "ml1",
+      "title": "Session ml1",
+      "kind": "reviewer",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 48.0,
+      "energy": 300,
+      "t": 33,
+      "status": "info"
+    },
+    {
+      "id": "ml2",
+      "title": "Session ml2",
+      "kind": "coder",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 18.5,
+      "energy": 139,
+      "t": 34,
+      "status": "ok"
+    },
+    {
+      "id": "ml3",
+      "title": "Session ml3",
+      "kind": "reviewer",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 49.0,
+      "energy": 318,
+      "t": 35,
+      "status": "warn"
+    },
+    {
+      "id": "ml4",
+      "title": "Session ml4",
+      "kind": "coder",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 15.0,
+      "energy": 157,
+      "t": 36,
+      "status": "ok"
+    },
+    {
+      "id": "mS",
+      "title": "Session mS",
+      "kind": "reviewer",
+      "tags": [
+        "membrane"
+      ],
+      "latency_ms": 45.5,
+      "energy": 336,
+      "t": 37,
+      "status": "ok"
+    },
+    {
+      "id": "mem0",
+      "title": "Episodic log",
+      "kind": "memory",
+      "tags": [
+        "memory"
+      ],
+      "latency_ms": 6.0,
+      "energy": 65,
+      "t": 38,
+      "status": "ok"
+    },
+    {
+      "id": "mem1",
+      "title": "Task board",
+      "kind": "memory",
+      "tags": [
+        "memory"
+      ],
+      "latency_ms": 6.5,
+      "energy": 74,
+      "t": 39,
+      "status": "error"
+    },
+    {
+      "id": "mem2",
+      "title": "Code index",
+      "kind": "memory",
+      "tags": [
+        "memory"
+      ],
+      "latency_ms": 7.0,
+      "energy": 83,
+      "t": 40,
+      "status": "ok"
+    },
+    {
+      "id": "mem3",
+      "title": "Note store",
+      "kind": "memory",
+      "tags": [
+        "memory"
+      ],
+      "latency_ms": 7.5,
+      "energy": 92,
+      "t": 41,
+      "status": "ok"
+    },
+    {
+      "id": "mem4",
+      "title": "Spec mirror",
+      "kind": "memory",
+      "tags": [
+        "memory"
+      ],
+      "latency_ms": 8.0,
+      "energy": 101,
+      "t": 42,
+      "status": "warn"
+    }
+  ],
+  "edges": [
+    {
+      "source": "c0",
+      "target": "c1",
+      "kind": "continues"
+    },
+    {
+      "source": "c1",
+      "target": "c2",
+      "kind": "continues"
+    },
+    {
+      "source": "c2",
+      "target": "c3",
+      "kind": "continues"
+    },
+    {
+      "source": "c3",
+      "target": "c4",
+      "kind": "continues"
+    },
+    {
+      "source": "r0",
+      "target": "r1",
+      "kind": "continues"
+    },
+    {
+      "source": "r1",
+      "target": "r2",
+      "kind": "continues"
+    },
+    {
+      "source": "r2",
+      "target": "r3",
+      "kind": "continues"
+    },
+    {
+      "source": "r3",
+      "target": "r4",
+      "kind": "continues"
+    },
+    {
+      "source": "r4",
+      "target": "r5",
+      "kind": "continues"
+    },
+    {
+      "source": "r5",
+      "target": "r0",
+      "kind": "shares"
+    },
+    {
+      "source": "sc",
+      "target": "s0",
+      "kind": "continues"
+    },
+    {
+      "source": "sc",
+      "target": "s1",
+      "kind": "continues"
+    },
+    {
+      "source": "sc",
+      "target": "s2",
+      "kind": "continues"
+    },
+    {
+      "source": "sc",
+      "target": "s3",
+      "kind": "continues"
+    },
+    {
+      "source": "sc",
+      "target": "s4",
+      "kind": "continues"
+    },
+    {
+      "source": "sc",
+      "target": "s5",
+      "kind": "continues"
+    },
+    {
+      "source": "s0",
+      "target": "s1",
+      "kind": "shares"
+    },
+    {
+      "source": "s1",
+      "target": "s2",
+      "kind": "shares"
+    },
+    {
+      "source": "s2",
+      "target": "s3",
+      "kind": "shares"
+    },
+    {
+      "source": "s3",
+      "target": "s4",
+      "kind": "shares"
+    },
+    {
+      "source": "s4",
+      "target": "s5",
+      "kind": "shares"
+    },
+    {
+      "source": "s5",
+      "target": "s0",
+      "kind": "shares"
+    },
+    {
+      "source": "t0",
+      "target": "t1",
+      "kind": "continues"
+    },
+    {
+      "source": "t1",
+      "target": "t2",
+      "kind": "continues"
+    },
+    {
+      "source": "t2",
+      "target": "t3",
+      "kind": "continues"
+    },
+    {
+      "source": "t3",
+      "target": "t0",
+      "kind": "shares"
+    },
+    {
+      "source": "b0",
+      "target": "b1",
+      "kind": "continues"
+    },
+    {
+      "source": "b1",
+      "target": "b2",
+      "kind": "continues"
+    },
+    {
+      "source": "b2",
+      "target": "b3",
+      "kind": "continues"
+    },
+    {
+      "source": "b3",
+      "target": "b0",
+      "kind": "shares"
+    },
+    {
+      "source": "t0",
+      "target": "b0",
+      "kind": "continues"
+    },
+    {
+      "source": "t1",
+      "target": "b1",
+      "kind": "shares"
+    },
+    {
+      "source": "t2",
+      "target": "b2",
+      "kind": "shares"
+    },
+    {
+      "source": "t3",
+      "target": "b3",
+      "kind": "shares"
+    },
+    {
+      "source": "t1",
+      "target": "b0",
+      "kind": "shares"
+    },
+    {
+      "source": "t2",
+      "target": "b1",
+      "kind": "shares"
+    },
+    {
+      "source": "t3",
+      "target": "b2",
+      "kind": "shares"
+    },
+    {
+      "source": "t0",
+      "target": "b3",
+      "kind": "shares"
+    },
+    {
+      "source": "ma0",
+      "target": "ma1",
+      "kind": "shares"
+    },
+    {
+      "source": "ma1",
+      "target": "ma2",
+      "kind": "shares"
+    },
+    {
+      "source": "ma2",
+      "target": "ma3",
+      "kind": "shares"
+    },
+    {
+      "source": "ma3",
+      "target": "ma4",
+      "kind": "shares"
+    },
+    {
+      "source": "ma4",
+      "target": "ma0",
+      "kind": "shares"
+    },
+    {
+      "source": "ml0",
+      "target": "ml1",
+      "kind": "shares"
+    },
+    {
+      "source": "ml1",
+      "target": "ml2",
+      "kind": "shares"
+    },
+    {
+      "source": "ml2",
+      "target": "ml3",
+      "kind": "shares"
+    },
+    {
+      "source": "ml3",
+      "target": "ml4",
+      "kind": "shares"
+    },
+    {
+      "source": "ml4",
+      "target": "ml0",
+      "kind": "shares"
+    },
+    {
+      "source": "mN",
+      "target": "ma0",
+      "kind": "continues"
+    },
+    {
+      "source": "mN",
+      "target": "ma1",
+      "kind": "continues"
+    },
+    {
+      "source": "mN",
+      "target": "ma2",
+      "kind": "continues"
+    },
+    {
+      "source": "mN",
+      "target": "ma3",
+      "kind": "continues"
+    },
+    {
+      "source": "mN",
+      "target": "ma4",
+      "kind": "continues"
+    },
+    {
+      "source": "mS",
+      "target": "ml0",
+      "kind": "shares"
+    },
+    {
+      "source": "mS",
+      "target": "ml1",
+      "kind": "shares"
+    },
+    {
+      "source": "mS",
+      "target": "ml2",
+      "kind": "shares"
+    },
+    {
+      "source": "mS",
+      "target": "ml3",
+      "kind": "shares"
+    },
+    {
+      "source": "mS",
+      "target": "ml4",
+      "kind": "shares"
+    },
+    {
+      "source": "ma0",
+      "target": "ml0",
+      "kind": "continues"
+    },
+    {
+      "source": "ma1",
+      "target": "ml1",
+      "kind": "continues"
+    },
+    {
+      "source": "ma2",
+      "target": "ml2",
+      "kind": "continues"
+    },
+    {
+      "source": "ma3",
+      "target": "ml3",
+      "kind": "continues"
+    },
+    {
+      "source": "ma4",
+      "target": "ml4",
+      "kind": "continues"
+    },
+    {
+      "source": "ma1",
+      "target": "ml0",
+      "kind": "shares"
+    },
+    {
+      "source": "ma2",
+      "target": "ml1",
+      "kind": "shares"
+    },
+    {
+      "source": "ma3",
+      "target": "ml2",
+      "kind": "shares"
+    },
+    {
+      "source": "ma4",
+      "target": "ml3",
+      "kind": "shares"
+    },
+    {
+      "source": "ma0",
+      "target": "ml4",
+      "kind": "shares"
+    },
+    {
+      "source": "c4",
+      "target": "mem0",
+      "kind": "consolidates"
+    },
+    {
+      "source": "r3",
+      "target": "mem1",
+      "kind": "consolidates"
+    },
+    {
+      "source": "sc",
+      "target": "mem2",
+      "kind": "consolidates"
+    },
+    {
+      "source": "t2",
+      "target": "mem3",
+      "kind": "consolidates"
+    },
+    {
+      "source": "mN",
+      "target": "mem4",
+      "kind": "consolidates"
+    },
+    {
+      "source": "mem0",
+      "target": "r0",
+      "kind": "consolidates"
+    },
+    {
+      "source": "mem2",
+      "target": "t0",
+      "kind": "consolidates"
+    }
+  ]
+}
