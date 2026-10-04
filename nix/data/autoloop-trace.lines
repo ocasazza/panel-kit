@@ -32,3 +32,5 @@ E|sb1|eb1_2|emitted
 E|eb1_1|eb1_2|next
 E|sa1|ea1_3|emitted
 E|ea1_2|ea1_3|next
+N|s90001|legacy-a|session|no-goal|cwd=/w/alpha
+N|s90002|legacy-b|session|no-goal|cwd=/w/beta;continuations=2;max_continuations=3

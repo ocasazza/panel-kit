@@ -242,7 +242,8 @@ impl Topos {
         Ok((revised, SiteRevision { edit: edit_id.to_owned(), support }))
     }
 
-    /// The bytes a host writes for `revision`, emitted by the edit's grammar.
+    /// The bytes a host writes for `revision`, emitted by the edit's grammar. A
+    /// revision that changed nothing is [`EditError::NothingToWrite`].
     pub fn write_intent(
         &self,
         grammar: &CompiledGrammar,
@@ -259,6 +260,9 @@ impl Topos {
                 expected: edit.grammar.clone(),
                 actual: grammar.id().to_owned(),
             });
+        }
+        if revision.support.is_empty() {
+            return Err(EditError::NothingToWrite(revision.edit.clone()));
         }
         let bytes = grammar.emit(revised, &revision.support).map_err(EditError::Emit)?;
         Ok(WriteIntent {

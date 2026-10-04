@@ -471,6 +471,14 @@ pub enum SiteError {
         /// Object id.
         id: String,
     },
+    /// Both sites carry the same morphism between identified objects; the
+    /// pushout over a discrete site would keep two copies of it.
+    DuplicateMorphism {
+        /// Domain object id.
+        domain: String,
+        /// Codomain object id.
+        codomain: String,
+    },
 }
 
 impl fmt::Display for SiteError {
@@ -478,6 +486,9 @@ impl fmt::Display for SiteError {
         match self {
             Self::GlueDisagrees { id } => write!(f, "glued object '{id}' differs between the two sites"),
             Self::IdCollision { id } => write!(f, "object id '{id}' occurs in both sites outside the gluing kind"),
+            Self::DuplicateMorphism { domain, codomain } => {
+                write!(f, "both sites carry the morphism '{domain}' -> '{codomain}' between glued objects")
+            }
         }
     }
 }
@@ -527,6 +538,8 @@ pub enum EditError {
     },
     /// The grammar could not emit the revised objects.
     Emit(GrammarError),
+    /// The revision changed nothing, so there is nothing to write.
+    NothingToWrite(String),
 }
 
 impl fmt::Display for EditError {
@@ -544,6 +557,7 @@ impl fmt::Display for EditError {
                 write!(f, "edit '{edit}' is bound to grammar '{expected}', not '{actual}'")
             }
             Self::Emit(error) => write!(f, "{error}"),
+            Self::NothingToWrite(edit) => write!(f, "edit '{edit}' changed nothing; there is nothing to write"),
         }
     }
 }

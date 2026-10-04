@@ -113,6 +113,7 @@ impl Site {
     pub fn glue(&self, other: &Site, along_kind: &str) -> Result<Site, SiteError> {
         let mine: HashMap<&str, &Object> = self.objects.iter().map(|object| (object.id.as_str(), object)).collect();
         let mut objects = self.objects.clone();
+        let mut identified = std::collections::HashSet::new();
         for object in &other.objects {
             match mine.get(object.id.as_str()) {
                 None => objects.push(object.clone()),
@@ -120,9 +121,16 @@ impl Site {
                     if *existing != object {
                         return Err(SiteError::GlueDisagrees { id: object.id.clone() });
                     }
+                    identified.insert(object.id.as_str());
                 }
                 Some(_) => return Err(SiteError::IdCollision { id: object.id.clone() }),
             }
+        }
+        // R is discrete, so no morphism is identified: one present on both sides
+        // between glued objects would appear twice, and is refused instead.
+        let between_glued = |m: &Morphism| identified.contains(m.domain.as_str()) && identified.contains(m.codomain.as_str());
+        if let Some(m) = other.morphisms.iter().find(|m| between_glued(m) && self.morphisms.contains(m)) {
+            return Err(SiteError::DuplicateMorphism { domain: m.domain.clone(), codomain: m.codomain.clone() });
         }
         let mut morphisms = self.morphisms.clone();
         morphisms.extend(other.morphisms.iter().cloned());

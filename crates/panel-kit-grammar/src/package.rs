@@ -331,14 +331,21 @@ impl CompiledGrammar {
     }
 
     /// Serialize the `support` objects of `site` so that parsing the bytes with
-    /// this grammar yields exactly those objects, in site order.
+    /// this grammar yields exactly those objects, in site order. Output that
+    /// would not (a value the wire format cannot carry) is an error, not bytes.
     pub fn emit(&self, site: &Site, support: &std::collections::BTreeSet<String>) -> Result<Vec<u8>, GrammarError> {
         let emitter = self.emitter.as_ref().ok_or(GrammarError::NoEmitter)?;
         let objects = emitter::support_objects(site, support)?;
-        match emitter {
-            CompiledEmitter::Pest(template) => Ok(template.emit(&objects)),
-            CompiledEmitter::Json(spec) => emitter::emit_json(spec, &objects),
+        let bytes = match emitter {
+            CompiledEmitter::Pest(template) => template.emit(&objects),
+            CompiledEmitter::Json(spec) => emitter::emit_json(spec, &objects)?,
+        };
+        let text = std::str::from_utf8(&bytes).map_err(|e| GrammarError::EmitterLosesData(e.to_string()))?;
+        let reparsed = self.parse(text).map_err(|e| GrammarError::EmitterLosesData(format!("emitted output does not parse: {e}")))?;
+        if !reparsed.objects.iter().eq(objects.iter().copied()) {
+            return Err(GrammarError::EmitterLosesData("emitted output parses to different objects".to_owned()));
         }
+        Ok(bytes)
     }
 
     /// Parse one UTF-8 input into a [`Site`], enforcing limits.

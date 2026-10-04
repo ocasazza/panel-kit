@@ -756,6 +756,22 @@ fn a_restricted_table_has_rows_only_for_its_sorts() {
 }
 
 #[test]
+fn an_optional_field_reads_empty_where_a_required_one_fails() {
+    let column = |expr: &str| {
+        format!(
+            r##"{{"kind":"table","scope":"objects","restrict":["coder"],"columns":[{{"key":"f","title":"F","width":{{"flex":{{"weight":1}}}},"align":"left","cell":{{"cell":"text","expr":"{expr}"}}}}]}}"##
+        )
+    };
+    let site = demo_site();
+    assert_eq!(table_rows(&table_topos(&column("field?:missing"), "{}"), &site), [""]);
+    assert_eq!(table_rows(&table_topos(&column("field?:energy"), "{}"), &site), table_rows(&table_topos(&column("field:energy"), "{}"), &site));
+    assert!(matches!(
+        table_topos(&column("field:missing"), "{}").global_sections(&site, &physics_a()),
+        Err(SheafError::MissingField { .. })
+    ));
+}
+
+#[test]
 fn a_morphism_table_restricts_by_morphism_sort() {
     let topos = table_topos(
         r##"{"kind":"table","scope":"morphisms","restrict":["shares"],"columns":[{"key":"s","title":"S","width":{"flex":{"weight":1}},"align":"left","cell":{"cell":"text","expr":"source"}}]}"##,
@@ -1032,4 +1048,78 @@ fn a_write_intent_parses_back_to_the_revised_object() {
 
     let lines = with_emitter(GRAMMAR_LINES, LINES_EMITTER).unwrap();
     assert!(matches!(topos.write_intent(&lines, &revised, &revision), Err(crate::EditError::GrammarMismatch { .. })));
+}
+
+const NOTES_EDIT: &str = r##"{"annotate":{"label":"Annotate","sorts":["coder"],"set":{"notes":{"type":"lines","max":4},"status":{"type":"text","max":40}},"grammar":"trace-lines"}}"##;
+const NOTES_TABLE: &str = r##"{"kind":"table","scope":"objects","edits":["annotate"],"columns":[{"key":"id","title":"Id","width":{"flex":{"weight":1}},"align":"left","cell":{"cell":"text","expr":"id"}}]}"##;
+
+#[test]
+fn a_value_the_line_format_cannot_carry_is_an_emit_error_not_corrupt_bytes() {
+    let topos = table_topos(NOTES_TABLE, NOTES_EDIT);
+    topos.validate().unwrap();
+    let grammar = with_emitter(GRAMMAR_LINES, LINES_EMITTER).unwrap();
+    let site = site_from_lines();
+    // Newline, `;` and `|` delimit records, properties and fields; `=` inside a value is legal.
+    for (field, value) in [("notes", "first\nsecond"), ("status", "a;b"), ("status", "a|b")] {
+        let (revised, revision) = topos.revise(&site, "annotate", &input("c1", &[(field, value)])).unwrap();
+        assert!(
+            matches!(topos.write_intent(&grammar, &revised, &revision), Err(crate::EditError::Emit(GrammarError::EmitterLosesData(_)))),
+            "{field} = {value:?}"
+        );
+    }
+    let (revised, revision) = topos.revise(&site, "annotate", &input("c1", &[("status", "k=v")])).unwrap();
+    assert!(topos.write_intent(&grammar, &revised, &revision).is_ok());
+}
+
+#[test]
+fn a_revision_that_changed_nothing_has_nothing_to_write() {
+    let topos = table_topos(EDIT_TABLE, STATUS_EDIT);
+    let grammar = with_emitter(GRAMMAR_JSON, r##"{"engine":"json"}"##).unwrap();
+    let site = grammar.parse(DATA_JSON).unwrap();
+    let current = site.objects.iter().find(|o| o.id == "c1").unwrap().fields["status"].clone();
+    let (revised, revision) = topos.revise(&site, "triage", &input("c1", &[("status", &current)])).unwrap();
+    assert!(revision.support.is_empty());
+    assert_eq!(topos.write_intent(&grammar, &revised, &revision), Err(crate::EditError::NothingToWrite("triage".to_owned())));
+}
+
+#[test]
+fn glue_refuses_a_morphism_both_sides_carry_between_glued_objects() {
+    let a = side(vec![anchored("r1", "repo"), anchored("r2", "repo")], vec![typed("r1", "r2", "mirrors")]);
+    let b = side(vec![anchored("r1", "repo"), anchored("r2", "repo")], vec![typed("r1", "r2", "mirrors")]);
+    assert_eq!(
+        a.glue(&b, "repo"),
+        Err(crate::SiteError::DuplicateMorphism { domain: "r1".to_owned(), codomain: "r2".to_owned() })
+    );
+    let c = side(vec![anchored("r1", "repo"), anchored("r2", "repo")], vec![typed("r2", "r1", "mirrors")]);
+    assert_eq!(a.glue(&c, "repo").unwrap().morphisms.len(), 2);
+}
+
+#[test]
+fn the_json_emitter_refuses_tags_when_its_map_has_no_tags_member() {
+    let mut package: serde_json::Value = serde_json::from_str(GRAMMAR_JSON).unwrap();
+    package["parser"]["node"].as_object_mut().unwrap().remove("tags");
+    let grammar = with_emitter(&package.to_string(), r##"{"engine":"json"}"##).unwrap();
+    let mut site = grammar.parse(DATA_JSON).unwrap();
+    let support = BTreeSet::from([site.objects[0].id.clone()]);
+    assert!(grammar.emit(&site, &support).is_ok());
+    site.objects[0].tags = vec!["hot".to_owned()];
+    assert!(matches!(grammar.emit(&site, &support), Err(GrammarError::EmitterLosesData(_))));
+}
+
+#[test]
+fn edit_decode_rejects_unknown_keys_and_validation_rejects_max_zero() {
+    let unknown_edit_key = r##"{"triage":{"label":"T","sorts":["coder"],"set":{"s":{"type":"text","max":5}},"grammar":"g","extra":1}}"##;
+    let unknown_type_key = r##"{"triage":{"label":"T","sorts":["coder"],"set":{"s":{"type":"text","max":5,"min":1}},"grammar":"g"}}"##;
+    for edits in [unknown_edit_key, unknown_type_key] {
+        let json = format!(
+            r##"{{"spec_version":1,"id":"t","regime":"r","object_sorting":{AGENTIC_OSORT},"morphism_sorting":{AGENTIC_MSORT},"stalks":{AGENTIC_STALKS},"sheaves":{{"legend":{{"kind":"text","heading":"L"}},"load":{EDIT_TABLE}}},"edits":{edits},"workspace":{ws}}}"##,
+            ws = table_workspace(),
+        );
+        assert!(Topos::from_json_str(&json).is_err(), "{edits}");
+    }
+    for ty in ["text", "lines"] {
+        let edits = format!(r##"{{"triage":{{"label":"T","sorts":["coder"],"set":{{"s":{{"type":"{ty}","max":0}}}},"grammar":"g"}}}}"##);
+        let table = EDIT_TABLE;
+        assert!(matches!(table_topos(table, &edits).validate(), Err(ToposError::InvalidEdit { .. })), "{ty}");
+    }
 }

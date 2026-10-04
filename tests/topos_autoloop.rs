@@ -126,7 +126,7 @@ fn sessions_assemble_under_the_trace_regime_and_events_are_solvent() {
     assert_eq!(engine["ea1_1"], "solvent");
 
     let sessions = table(&regime.global_sections(&f.glued, &physics(&regime, "PANEL_KIT_AUTOLOOP_MORPHISM_TRACE_PHYSICS")).unwrap(), "autoloop.sessions").rows.len();
-    assert_eq!(sessions, 3);
+    assert_eq!(sessions, 5, "three current sessions and two written by older producers");
 }
 
 #[test]

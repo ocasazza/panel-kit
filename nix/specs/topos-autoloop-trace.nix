@@ -84,9 +84,10 @@ mkTopos {
         (col "goal" "Goal state" 1 "tag:0")
         (col "agent" "Agent" 1 "tag:1")
         (col "cwd" "Directory" 3 "field:cwd")
-        (num "continuations" "Cont." "field:continuations")
-        (num "max" "Max" "field:max_continuations")
-        (num "heartbeats" "Beats" "field:heartbeats")
+        # Older producers wrote sessions without these counters.
+        (num "continuations" "Cont." "field?:continuations")
+        (num "max" "Max" "field?:max_continuations")
+        (num "heartbeats" "Beats" "field?:heartbeats")
       ];
     };
     "autoloop.events" = {

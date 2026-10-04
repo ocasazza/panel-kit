@@ -1,7 +1,6 @@
-//! Section edits: named, typed changes to object data, declared by a topos
-//! over its regime sorts. Applying one is a site revision that is the identity
-//! on generators and replaces the local section at its support; the grammar's
-//! emitter serializes that support for the host to write.
+//! Section edits: typed changes to object data, declared by a topos over its
+//! regime sorts. Applying one is a site revision (identity on generators);
+//! the grammar's emitter serializes its support for the host to write.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -93,6 +92,7 @@ impl FieldType {
                 Some("enum repeats a value".to_owned())
             }
             Self::Int { min, max } if min > max => Some(format!("int range [{min}, {max}] is empty")),
+            Self::Text { max: 0 } | Self::Lines { max: 0 } => Some("max = 0 admits no value".to_owned()),
             _ => None,
         }
     }

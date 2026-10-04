@@ -3,7 +3,8 @@
 //! bindable content kind. Value expressions are strings:
 //!
 //! - object text/number: `id`, `title`, `kind` (regime sort label), `tag:<i>`,
-//!   `field:<name>`, `degree`, `in_degree`, `out_degree`, `repulsion`, `mass`,
+//!   `field:<name>` (missing is an error), `field?:<name>` (missing reads
+//!   empty), `degree`, `in_degree`, `out_degree`, `repulsion`, `mass`,
 //!   `weighted:<field>` (= `field` * `repulsion`); physics values resolve
 //!   through the base.
 //! - morphism: `source`, `target`, `edge_kind` (regime sort label), `weight`,
@@ -1260,6 +1261,8 @@ fn object_value(expr: &str, object: &Object, site: &Site, resolver: &Resolver) -
                     .parse()
                     .map_err(|_| SheafError::BadExpression(expr.to_owned()))?;
                 Ok(Value::Str(object.tags.get(index).cloned().unwrap_or_default()))
+            } else if let Some(name) = expr.strip_prefix("field?:") {
+                Ok(Value::Str(object.fields.get(name).cloned().unwrap_or_default()))
             } else if let Some(name) = expr.strip_prefix("field:") {
                 let value = object.fields.get(name).ok_or_else(|| SheafError::MissingField {
                     object: object.id.clone(),
