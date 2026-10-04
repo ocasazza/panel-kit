@@ -249,6 +249,10 @@
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example topos --target wasm32-unknown-unknown -- -D warnings";
         });
+        autoloopWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // autoloopEnv // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example autoloop --target wasm32-unknown-unknown -- -D warnings";
+        });
         toposTuiNativeClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example topos -- -D warnings";
@@ -262,6 +266,7 @@
           ln -s ${hostClippy} "$out/host"
           ln -s ${webExampleClippy} "$out/web-example"
           ln -s ${toposWebExampleClippy} "$out/topos-web"
+          ln -s ${autoloopWebExampleClippy} "$out/autoloop-web"
           ln -s ${toposTuiNativeClippy} "$out/topos-tui-native"
           ln -s ${toposBrowserTuiClippy} "$out/topos-browser-tui"
         '';
@@ -291,6 +296,10 @@
         topos-web-wasm = wasmCraneLib.buildPackage (commonArgs // toposWebEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit --features web-runtime --example topos";
+        });
+        autoloop-web-wasm = wasmCraneLib.buildPackage (commonArgs // autoloopEnv // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p panel-kit --features web-runtime --example autoloop";
         });
         topos-tui-native = hostCraneLib.buildPackage (hostArgs // toposCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
@@ -349,6 +358,7 @@
         packages.grammar-autoloop-trace = grammar-autoloop-trace;
         packages.grammar-autoloop-control = grammar-autoloop-control;
         packages.topos-web-wasm = topos-web-wasm;
+        packages.autoloop-web-wasm = autoloop-web-wasm;
         packages.topos-tui-native = topos-tui-native;
         packages.topos-browser-tui-wasm = topos-browser-tui-wasm;
         packages.workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
@@ -403,13 +413,15 @@
             spec-parity check
             touch "$out"
           '';
-          # Filtering by test name still compiles every test target, including topos_grammar.
-          theme-parity = hostCraneLib.cargoTest (hostArgs // toposWebEnv // {
+          # Filtering by test name still compiles every test target and example,
+          # including topos_grammar and the topos and autoloop hosts.
+          theme-parity = hostCraneLib.cargoTest (hostArgs // toposWebEnv // autoloopEnv // {
             cargoArtifacts = hostCargoArtifacts;
             cargoTestExtraArgs = "-p panel-kit --features web-runtime theme_parity";
           });
           workspace-spec-web-wasm = workspace-spec-web-wasm;
           topos-web-wasm = topos-web-wasm;
+          autoloop-web-wasm = autoloop-web-wasm;
           topos-tui-native = topos-tui-native;
           topos-browser-tui-wasm = topos-browser-tui-wasm;
           topos-grammar-test = topos-grammar-test;
@@ -427,7 +439,7 @@
           });
         };
 
-        devShells.default = pkgs.mkShell (toposWebEnv // {
+        devShells.default = pkgs.mkShell (toposWebEnv // autoloopEnv // {
           PANEL_KIT_WORKSPACE_SPEC = "${workspace-canary}";
           packages = [
             rustWasm

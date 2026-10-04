@@ -350,6 +350,37 @@ Note: `Cargo.lock` pins `wasm-bindgen` to the exact version of nixpkgs'
 `wasm-bindgen-cli` (dx refuses to bindgen with a mismatched CLI); keep the
 two in lockstep when bumping the flake.
 
+### omp auto-loop host (web)
+
+Two regimes over the omp auto-loop's own state: `topos-autoloop-trace` over its
+projection and `topos-autoloop-control` over its control site, glued along
+`repo` (design: `.specs/design/topos-autoloop-2026-10-04.md`). The host reads
+`GET /api/trace` and `GET /api/site` from the loop; a row of an editable control
+table opens the edits its topos offers, and writing one POSTs the
+`autoloop-control` emitter's bytes to `/api/site`, then reloads. Specs come from
+`PANEL_KIT_TOPOS_PHYSICS` and `PANEL_KIT_AUTOLOOP_*`, exported by `nix develop`.
+
+The host calls the loop same-origin, so `dx serve` proxies `/api/` to the loop's
+dashboard. A local, uncommitted `Dioxus.toml`:
+
+```toml
+[application]
+
+[web.app]
+title = "omp auto-loop"
+
+[[web.proxy]]
+backend = "http://127.0.0.1:8798/api/"
+```
+
+```sh
+dx serve --example autoloop --platform web
+```
+
+`topos-autoloop-test` runs both regimes and the host façade
+(`examples/support/autoloop_host.rs`) over fixtures the loop's producers wrote
+(`nix/data/autoloop-*`).
+
 ## Developing against a local checkout
 
 In the consuming app's workspace `Cargo.toml`:

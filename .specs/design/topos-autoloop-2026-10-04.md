@@ -72,7 +72,10 @@ A geometric morphism between the two regimes is optional; if declared it must co
 
 ## Host
 
-The panel-kit topos example host, extended with the write path: it parses both inputs, glues them,
-and on an edit calls `revise`, `emit`, and POSTs the emitted bytes to the route bound to
-`autoloop-control`, then re-reads. jump-cannon adopts the regimes once it consumes
+`examples/autoloop` (web), separate from the static topos demo. It reads `GET /api/trace` and
+`GET /api/site` same-origin, parses and glues them, and paints the active regime. A row of an
+editable table opens its offered edits; writing one calls `revise` and `write_intent` and POSTs the
+bytes to `/api/site`, then re-reads. Pure host logic is `examples/support/autoloop_host.rs`
+(covered by `topos-autoloop-test`); section painting and the edit form are the shared
+`examples/support/section_view.rs`. jump-cannon adopts the regimes once it consumes
 `panel-kit-grammar`.

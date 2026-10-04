@@ -2,11 +2,16 @@
 //! specs and fixtures the loop's own producers wrote (nix/data/autoloop-*):
 //! the trace and control sites glue along `repo`; every binding resolves under
 //! both regimes over the glued site; each control table offers its edits on
-//! exactly its sort's rows; and an edit's write intent is the record the
-//! loop's `POST /api/site` reads, which re-parses to the revised object.
+//! exactly its sort's rows; an edit's write intent is the record the loop's
+//! `POST /api/site` reads, which re-parses to the revised object; and the web
+//! host's façade offers edits only under the regime that declares them.
 //!
 //! Paths come from the environment at run time (the `topos-autoloop-test`
 //! check sets them), so this target compiles under every check.
+
+#[allow(dead_code)]
+#[path = "../examples/support/autoloop_host.rs"]
+mod autoloop_host;
 
 use std::collections::BTreeMap;
 
@@ -58,6 +63,32 @@ fn table<'a>(sections: &'a panel_kit_grammar::GlobalSections, id: &str) -> &'a p
         Some(Section::Table(model)) => model,
         other => panic!("{id} is not a table: {other:?}"),
     }
+}
+
+fn host() -> autoloop_host::AutoloopHost {
+    let specs = [
+        "PANEL_KIT_TOPOS_PHYSICS",
+        "PANEL_KIT_AUTOLOOP_TOPOS_TRACE",
+        "PANEL_KIT_AUTOLOOP_TOPOS_CONTROL",
+        "PANEL_KIT_AUTOLOOP_MORPHISM_TRACE_PHYSICS",
+        "PANEL_KIT_AUTOLOOP_MORPHISM_CONTROL_PHYSICS",
+        "PANEL_KIT_AUTOLOOP_GRAMMAR_TRACE",
+        "PANEL_KIT_AUTOLOOP_GRAMMAR_CONTROL",
+    ]
+    .map(read);
+    let mut host = autoloop_host::AutoloopHost::new(&autoloop_host::Specs {
+        base: &specs[0],
+        trace_topos: &specs[1],
+        control_topos: &specs[2],
+        trace_physics: &specs[3],
+        control_physics: &specs[4],
+        trace_grammar: &specs[5],
+        control_grammar: &specs[6],
+    })
+    .expect("host builds from the specs");
+    host.load(&read("PANEL_KIT_AUTOLOOP_DATA_TRACE"), &read("PANEL_KIT_AUTOLOOP_DATA_CONTROL"))
+        .expect("host loads the loop's inputs");
+    host
 }
 
 #[test]
@@ -161,4 +192,34 @@ fn a_control_edit_is_refused_on_a_trace_object_and_out_of_range_values() {
         regime.revise(&f.glued, "ratify", &set("claim:reviewer#b1@2026-10-04T01:04:00.000Z", "decision", "maybe")),
         Err(EditError::InvalidValue { .. })
     ));
+}
+
+#[test]
+fn the_host_offers_edits_only_under_the_regime_that_declares_them() {
+    let mut host = host();
+    let claim = "claim:reviewer#b1@2026-10-04T01:04:00.000Z";
+    let accept = || BTreeMap::from([("decision".to_owned(), "accepted".to_owned())]);
+    assert_eq!(host.active_id(), autoloop_host::TRACE);
+    assert!(host.row_edits("autoloop.claims").is_none(), "the trace regime has no claims table");
+    assert_eq!(host.write("ratify", claim, accept()), Err("no edit ratify".to_owned()));
+
+    assert!(host.set_active(autoloop_host::CONTROL));
+    let rows = host.row_edits("autoloop.claims").expect("claims rows offer edits");
+    assert!(rows.iter().any(|row| row.object == claim && row.edits == ["ratify"]));
+    assert!(host.edit("ratify").expect("declared").set.contains_key("decision"));
+
+    let bytes = host.write("ratify", claim, accept()).expect("the host emits the revised claim");
+    let written = grammar("PANEL_KIT_AUTOLOOP_GRAMMAR_CONTROL").parse(std::str::from_utf8(&bytes).unwrap()).unwrap();
+    assert_eq!(written.objects.len(), 1);
+    assert_eq!(written.objects[0].id, claim);
+    assert_eq!(written.objects[0].fields["decision"], "accepted");
+}
+
+#[test]
+fn a_host_edit_that_changes_nothing_writes_nothing() {
+    let mut host = host();
+    host.set_active(autoloop_host::CONTROL);
+    let param = host.object("param:maxContinuations").expect("the limits are loaded");
+    let unchanged = BTreeMap::from([("value".to_owned(), param.fields["value"].clone())]);
+    assert_eq!(host.write("set_value", "param:maxContinuations", unchanged), Err("nothing changed".to_owned()));
 }
