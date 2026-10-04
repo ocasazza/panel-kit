@@ -9,24 +9,25 @@ specs, never in crate types.
 | Site | Grammar | Objects (site kinds) | Morphisms (site kinds) |
 |---|---|---|---|
 | trace | `autoloop-trace` (pest; the line format of jump-cannon's `omp-auto-loop.toml`) | `session`, `event`, `goal`, `repo`, `gate` | `in_repo`, `pursues`, `runs_gate`, `spawned`, `emitted`, `next` |
-| control | `autoloop-control` (json, multi-collection; the loop's `GET /api/site`, written back through its emitter to `POST /api/site`) | `claim`, `proposal`, `queued_goal`, `repo`, `term`, `param`, `prompt` | `targets` (queued_goal → repo), `revises` (proposal → param or prompt) |
+| control | `autoloop-control` (json; one flat `objects` array and a `morphisms` array from the loop's `GET /api/site`, written back through its emitter to `POST /api/site`) | `claim`, `proposal`, `queued_goal`, `repo`, `repo_policy`, `term`, `param`, `prompt` | `targets` (queued_goal → repo), `governs` (repo_policy → repo), `revises` (proposal → param or prompt) |
 
 A `GeometricMorphism` relates topoi over the same site, so the two sites are first **glued** along
 `repo`: the pushout `trace ← R → control`, where `R` is the discrete site of the repo objects both
-present, identified by id. The loop's control site reuses the trace's repo ids for every repo the
-trace knows, so the identification is by equal ids. Each grammar parses its own input; the host
-glues; both regimes are over the glued site.
+present, identified by id. The loop's control site presents each repo the trace knows under the
+trace's id with exactly the trace's data (`title`, no tags, `root`); repo policy lives on
+`repo_policy`. Each grammar parses its own input; the host glues; both regimes are over the glued
+site.
 
 Crate addition (this work): `Site::glue(&a, &b, along_kind: &str) -> Result<Site, SiteError>` —
-pure; objects of `along_kind` with equal ids are identified (fields must agree; a disagreement is an
-error); any other id collision is an error. Tests: glue is associative on the demo; restricting the
-glued site to each side's kinds returns that side.
+pure; objects of `along_kind` with equal ids are identified (they must be equal; anything else is
+`GlueDisagrees`); any other id collision is `IdCollision`. Tests: glue is associative on the demo;
+restricting the glued site to each side's kinds returns that side.
 
 ## `topos-autoloop-control`
 
 Sorting: identity on control kinds; every trace kind except `repo` sorts to `elsewhere`, which has no
-sheaves. Stalks: labels per sort; `claim` badge from `reason`; `repo` badge from its verification tag
-(`gated` / `judge-checked` / `unverifiable`).
+sheaves. Stalks: labels per sort; `claim` badge from `reason`; `repo_policy` badge from its
+verification tag (`gated` / `judge-checked` / `unverifiable`).
 
 Sheaves (each `restrict`ed to one sort):
 
@@ -35,13 +36,13 @@ Sheaves (each `restrict`ed to one sort):
 | `autoloop.claims` | table: title, session, reason, judge, decision | `claim` | `ratify` (`decision: enum accepted\|overturned`, `note: text`) |
 | `autoloop.proposals` | table: title, before, after, rationale, status | `proposal` | `decide` (`status: enum accepted\|rejected`) |
 | `autoloop.queue` | table: title, repo, priority, status, claimed_by | `queued_goal` | `prioritize` (`priority: int`), `retire` (`status: enum retired`) |
-| `autoloop.repos` | table: title, verification, gates, criteria | `repo` | `set_gates` (`gates: lines`), `set_criteria` (`criteria: text`) |
+| `autoloop.repos` | table: title, verification, gates, criteria | `repo_policy` | `set_gates` (`gates: lines`), `set_criteria` (`criteria: text`) |
 | `autoloop.limits` | table: title, value, min, max | `param` | `set_value` (`value: int`) |
 | `autoloop.prompts` | text per object | `prompt` | `set_text` (`text: text`) |
 | `autoloop.terms` | table: title, vocabulary, usage, count, hidden | `term` | `relabel` (`title: text`, `description: text`), `hide` (`hidden: enum true\|false`) |
 | `autoloop.verdicts` | badges by claim `decision` | `claim` | — |
 
-Physics: `p_control` sends every control sort to `solvent` and both control morphism kinds to `weak`.
+Physics: `p_control` sends every control sort to `solvent` and every control morphism kind to `weak`.
 
 ## `topos-autoloop-trace`
 

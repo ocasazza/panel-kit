@@ -1,7 +1,7 @@
 # Section edits: writing back through the site
 
-Status: approved by the panel-kit-grammar owner with the changes below folded in; implementation
-starts after phase 2A of `feat/topos-grammar-site` lands. v1 is set-only.
+Status: approved by the panel-kit-grammar owner with the changes below folded in; implemented on
+`feat/topos-section-edits` over phase 2A of `feat/topos-grammar-site`. v1 is set-only.
 
 ## Problem
 
@@ -116,12 +116,16 @@ it names a grammar, and every table's offered edits exist and sit on an object-s
 
 ## Example regime (non-normative; lives in Nix specs, not crate types)
 
-The omp auto-loop control regime: a `json` grammar over the loop's control site (records for
-claims, proposals, queued goals, repos, terms, params, prompts) whose emitter's records the loop's
-server accepts on a write route and folds into its policy log. Edits: ratify a claim
-(`decision: enum accepted|overturned`, `note: text`), decide a proposal, set a repo's gates
-(`lines`) and done criteria (`text`), set a param (`int`), set a prompt (`text`). Effects beyond the
-record (steering a session after an overturn) belong to that server.
+The omp auto-loop control regime: a `json` grammar over the loop's control site, one flat `objects`
+array whose records name their sort (claim, proposal, queued_goal, repo, repo_policy, term, param,
+prompt) plus typed `morphisms`. The member map is the union of every sort's fields, which the
+server pins in a test. Repo objects are exactly the trace's (`id`, `title`, no tags, `root`), so
+the control and trace sites glue along `repo`; what policy says about a repo lives on a
+`repo_policy` object with a `governs` morphism to it. The emitter's records are accepted on the
+server's write route and folded into its policy log. Edits: ratify a claim (`decision: enum
+accepted|overturned`, `note: text`), decide a proposal, set a repo policy's gates (`lines`) and done
+criteria (`text`), set a param (`int`), set a prompt (`text`). Effects beyond the record (steering a
+session after an overturn) belong to that server.
 
 ## Future work
 
