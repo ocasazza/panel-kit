@@ -912,6 +912,57 @@ fn restricted_badges_count_only_their_sorts() {
     assert_eq!(badges.len(), 1);
 }
 
+#[test]
+fn object_badges_carry_their_value_expression_or_the_title() {
+    let valued = agentic_topos(r##"{"tags":{"kind":"badges","group":"objects","value":"field:energy"}}"##);
+    let Section::Badges(badges) = valued.global_sections(&demo_site(), &physics_a()).unwrap().get("tags").unwrap().clone()
+    else {
+        panic!("not badges");
+    };
+    assert_eq!(badges.iter().map(|badge| badge.value.as_str()).collect::<Vec<_>>(), ["30", "90", "40", "5"]);
+
+    let plain = agentic_topos(r##"{"tags":{"kind":"badges","group":"objects"}}"##);
+    let Section::Badges(titles) = plain.global_sections(&demo_site(), &physics_a()).unwrap().get("tags").unwrap().clone()
+    else {
+        panic!("not badges");
+    };
+    assert_eq!(titles[0].value, "P1");
+}
+
+#[test]
+fn a_meter_filter_reads_only_the_objects_whose_field_equals() {
+    let counted = agentic_topos(
+        r##"{"load":{"kind":"meter","label":"Loud","value":"field:energy","agg":"count","filter":{"field":"energy","equals":"90"},"scale":4.0}}"##,
+    );
+    let Section::Meter(meter) = counted.global_sections(&demo_site(), &physics_a()).unwrap().get("load").unwrap().clone()
+    else {
+        panic!("not a meter");
+    };
+    assert_eq!(meter.text, "1");
+    assert_eq!(meter.ratio, 0.25);
+
+    let summed = agentic_topos(
+        r##"{"load":{"kind":"meter","label":"Loud energy","value":"field:energy","agg":"sum","filter":{"field":"energy","equals":"90"},"scale":1000.0}}"##,
+    );
+    let Section::Meter(total) = summed.global_sections(&demo_site(), &physics_a()).unwrap().get("load").unwrap().clone()
+    else {
+        panic!("not a meter");
+    };
+    assert_eq!(total.text, "90");
+    assert_eq!(total.ratio, 0.09);
+
+    // An absent field never matches, so an unfiltered meter and a filtered one
+    // over a value no object carries differ.
+    let unmatched = agentic_topos(
+        r##"{"load":{"kind":"meter","label":"None","value":"field:energy","agg":"count","filter":{"field":"energy","equals":"7"},"scale":4.0}}"##,
+    );
+    let Section::Meter(none) = unmatched.global_sections(&demo_site(), &physics_a()).unwrap().get("load").unwrap().clone()
+    else {
+        panic!("not a meter");
+    };
+    assert_eq!(none.text, "0");
+}
+
 // --- Gluing ----------------------------------------------------------------
 
 fn anchored(id: &str, kind: &str) -> Object {

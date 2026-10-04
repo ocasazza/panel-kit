@@ -362,6 +362,10 @@ pub struct BadgesSheaf {
     /// Regime object sorts to restrict to; absent means every object.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restrict: Option<BTreeSet<String>>,
+    /// Per-object text expression drawn on each badge, `group = "objects"`
+    /// only; absent means the object's title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
 }
 
 /// Badge grouping.
@@ -393,7 +397,11 @@ impl BadgesSheaf {
             BadgeGroup::Objects => {
                 for object in &site.objects {
                     let badge = parse_badge(resolver.object_badge(&object.kind))?;
-                    badges.push(BadgeSpec::new("object", object.title.clone(), badge));
+                    let value = match &self.value {
+                        Some(expr) => object_value(expr, object, site, resolver)?.into_text(),
+                        None => object.title.clone(),
+                    };
+                    badges.push(BadgeSpec::new("object", value, badge));
                 }
             }
         }
@@ -984,6 +992,27 @@ pub struct MeterSheaf {
     /// Unit appended to the display text.
     #[serde(default)]
     pub unit: String,
+    /// Restricts the aggregate to objects whose projected `field` equals
+    /// `equals`; an absent field never matches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<FieldFilter>,
+}
+
+/// A predicate over an object's projected fields.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FieldFilter {
+    /// Projected field name compared against `equals`.
+    pub field: String,
+    /// The value the field must hold.
+    pub equals: String,
+}
+
+impl FieldFilter {
+    /// Whether `object` carries `field` set to `equals`.
+    fn matches(&self, object: &Object) -> bool {
+        object.fields.get(&self.field).is_some_and(|value| value == &self.equals)
+    }
 }
 
 /// Aggregation function.
@@ -1005,10 +1034,18 @@ pub enum Agg {
 impl MeterSheaf {
     fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
         let aggregate = match self.agg {
-            Agg::Count => site.objects.len() as f64,
+            Agg::Count => {
+                site.objects
+                    .iter()
+                    .filter(|object| self.filter.as_ref().is_none_or(|filter| filter.matches(object)))
+                    .count() as f64
+            }
             _ => {
                 let mut values = Vec::new();
                 for object in &site.objects {
+                    if self.filter.as_ref().is_some_and(|filter| !filter.matches(object)) {
+                        continue;
+                    }
                     values.push(object_value(&self.value, object, site, resolver)?.into_number(&self.value)?);
                 }
                 match self.agg {

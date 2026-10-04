@@ -50,7 +50,7 @@ pub use site::{Morphism, Object, Site};
 pub use nav::{sort_map, SiteIndex, UNTYPED_KIND};
 pub use sheaf::{
     assembly, status_table, Agg, AssemblySheaf, BadgeGroup, BadgesSheaf, BoxplotSheaf, CellAlign,
-    CellSpec, ColWidth, ColumnSpec, ComponentInvariants, FlamegraphSheaf, GaugesSheaf,
+    CellSpec, ColWidth, ColumnSpec, ComponentInvariants, FieldFilter, FlamegraphSheaf, GaugesSheaf,
     GlobalSections, GroupScope, MeterSheaf, PhysicsScope, PhysicsSheaf, RowScope, Section, Sheaf,
     Stage, StatusSheaf, TableSheaf, TextSheaf, TimeSeriesSheaf,
 };

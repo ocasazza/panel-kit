@@ -130,6 +130,19 @@
         toposWebSpecs = toposSpecsFor "web" "unicode";
         toposCellsSpecs = toposSpecsFor "cells" "unicode";
         toposAsciiSpecs = toposSpecsFor "cells" "ascii";
+        okfSpecsFor = surface: glyphs: {
+          catalog = import ./nix/specs/topos-okf-catalog.nix {
+            inherit (pkgs) lib;
+            inherit surface glyphs;
+          };
+          lineage = import ./nix/specs/topos-okf-lineage.nix {
+            inherit (pkgs) lib;
+            inherit surface glyphs;
+          };
+        };
+        okfWebSpecs = okfSpecsFor "web" "unicode";
+        okfCellsSpecs = okfSpecsFor "cells" "unicode";
+        okfAsciiSpecs = okfSpecsFor "cells" "ascii";
         web-workspace = pkgs.writeText "panel-kit-web-workspace.json"
           webWorkspace.json;
         web-workspace-provider-manifest = pkgs.writeText
@@ -170,6 +183,18 @@
           toposAsciiSpecs.agentic.json;
         topos-membrane-ascii = pkgs.writeText "panel-kit-topos-membrane-ascii.json"
           toposAsciiSpecs.membrane.json;
+        topos-okf-catalog-web = pkgs.writeText "panel-kit-topos-okf-catalog-web.json"
+          okfWebSpecs.catalog.json;
+        topos-okf-lineage-web = pkgs.writeText "panel-kit-topos-okf-lineage-web.json"
+          okfWebSpecs.lineage.json;
+        topos-okf-catalog-cells = pkgs.writeText "panel-kit-topos-okf-catalog-cells.json"
+          okfCellsSpecs.catalog.json;
+        topos-okf-lineage-cells = pkgs.writeText "panel-kit-topos-okf-lineage-cells.json"
+          okfCellsSpecs.lineage.json;
+        topos-okf-catalog-ascii = pkgs.writeText "panel-kit-topos-okf-catalog-ascii.json"
+          okfAsciiSpecs.catalog.json;
+        topos-okf-lineage-ascii = pkgs.writeText "panel-kit-topos-okf-lineage-ascii.json"
+          okfAsciiSpecs.lineage.json;
         # Base physics topos and the three geometric morphisms are surface-neutral.
         topos-physics = pkgs.writeText "panel-kit-topos-physics.json"
           (import ./nix/specs/topos-physics.nix { inherit (pkgs) lib; }).json;
@@ -179,6 +204,12 @@
           (import ./nix/specs/morphism-agentic-physics.nix { inherit (pkgs) lib; }).json;
         morphism-membrane-physics = pkgs.writeText "panel-kit-morphism-membrane-physics.json"
           (import ./nix/specs/morphism-membrane-physics.nix { inherit (pkgs) lib; }).json;
+        morphism-okf-catalog-lineage = pkgs.writeText "panel-kit-morphism-okf-catalog-lineage.json"
+          (import ./nix/specs/morphism-okf-catalog-lineage.nix { inherit (pkgs) lib; }).json;
+        morphism-okf-catalog-physics = pkgs.writeText "panel-kit-morphism-okf-catalog-physics.json"
+          (import ./nix/specs/morphism-okf-catalog-physics.nix { inherit (pkgs) lib; }).json;
+        morphism-okf-lineage-physics = pkgs.writeText "panel-kit-morphism-okf-lineage-physics.json"
+          (import ./nix/specs/morphism-okf-lineage-physics.nix { inherit (pkgs) lib; }).json;
         grammar-trace-lines = pkgs.writeText "panel-kit-grammar-trace-lines.json"
           (import ./nix/grammars/trace-lines.nix { inherit (pkgs) lib; }).json;
         grammar-trace-json = pkgs.writeText "panel-kit-grammar-trace-json.json"
@@ -205,10 +236,19 @@
           (import ./nix/data/okf-knowledge-catalog.nix { inherit pkgs; inherit (pkgs) lib; });
         grammar-okf = pkgs.writeText "panel-kit-grammar-okf.json"
           (import ./nix/grammars/okf.nix { inherit (pkgs) lib; }).json;
-        okfEnv = {
-          PANEL_KIT_OKF_DATA = "${okf-knowledge-catalog}";
+        okfGraphEnv = catalog: lineage: {
           PANEL_KIT_OKF_GRAMMAR = "${grammar-okf}";
+          PANEL_KIT_OKF_DATA = "${okf-knowledge-catalog}";
+          PANEL_KIT_OKF_CATALOG = "${catalog}";
+          PANEL_KIT_OKF_LINEAGE = "${lineage}";
+          PANEL_KIT_OKF_BASE = "${topos-physics}";
+          PANEL_KIT_OKF_MORPHISM = "${morphism-okf-catalog-lineage}";
+          PANEL_KIT_OKF_CATALOG_PHYSICS = "${morphism-okf-catalog-physics}";
+          PANEL_KIT_OKF_LINEAGE_PHYSICS = "${morphism-okf-lineage-physics}";
         };
+        okfEnv = okfGraphEnv topos-okf-catalog-web topos-okf-lineage-web;
+        okfCellsEnv = okfGraphEnv topos-okf-catalog-cells topos-okf-lineage-cells;
+        okfAsciiEnv = okfGraphEnv topos-okf-catalog-ascii topos-okf-lineage-ascii;
         autoloopEnv = {
           PANEL_KIT_TOPOS_PHYSICS = "${topos-physics}";
           PANEL_KIT_AUTOLOOP_TOPOS_TRACE = "${topos-autoloop-trace-web}";
@@ -344,6 +384,10 @@
           cargoArtifacts = hostCargoArtifacts;
           cargoTestExtraArgs = "-p panel-kit --test topos_autoloop";
         });
+        topos-okf-test = hostCraneLib.cargoTest (hostArgs // okfEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit --test topos_okf";
+        });
         workspace-spec-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // workspaceSpecAsciiBuildEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_tui";
@@ -375,6 +419,15 @@
         packages.topos-membrane-cells = topos-membrane-cells;
         packages.topos-agentic-ascii = topos-agentic-ascii;
         packages.topos-membrane-ascii = topos-membrane-ascii;
+        packages.topos-okf-catalog-web = topos-okf-catalog-web;
+        packages.topos-okf-lineage-web = topos-okf-lineage-web;
+        packages.topos-okf-catalog-cells = topos-okf-catalog-cells;
+        packages.topos-okf-lineage-cells = topos-okf-lineage-cells;
+        packages.topos-okf-catalog-ascii = topos-okf-catalog-ascii;
+        packages.topos-okf-lineage-ascii = topos-okf-lineage-ascii;
+        packages.morphism-okf-catalog-lineage = morphism-okf-catalog-lineage;
+        packages.morphism-okf-catalog-physics = morphism-okf-catalog-physics;
+        packages.morphism-okf-lineage-physics = morphism-okf-lineage-physics;
         packages.topos-physics = topos-physics;
         packages.morphism-agentic-membrane = morphism-agentic-membrane;
         packages.morphism-agentic-physics = morphism-agentic-physics;
@@ -459,6 +512,7 @@
           topos-browser-tui-wasm = topos-browser-tui-wasm;
           topos-grammar-test = topos-grammar-test;
           topos-autoloop-test = topos-autoloop-test;
+          topos-okf-test = topos-okf-test;
           okf-grammar-test = okf-grammar-test;
           workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
           workspace-spec-tui-native = pkgs.runCommand "panel-kit-workspace-spec-tui-native-check" { } ''
