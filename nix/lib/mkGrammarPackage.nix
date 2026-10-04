@@ -7,6 +7,7 @@
 #     metadata = { id; name; version; description; };
 #     limits   = { grammar_bytes; input_bytes; nodes; edges; };
 #     parser   = { engine = "pest"; root_rule; grammar; captures; };
+#     emitter  = { engine = "json"; };   # optional; required by section edits
 #   };
 #   # grammar.value -> the GrammarPackage attrset
 #   # grammar.json  -> the JSON string (pkgs.writeText'd by the flake)
@@ -21,7 +22,7 @@ let
     metadata = spec.metadata;
     limits = spec.limits;
     parser = spec.parser;
-  };
+  } // lib.optionalAttrs (spec ? emitter) { inherit (spec) emitter; };
 in
 {
   inherit value;

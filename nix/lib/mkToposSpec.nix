@@ -7,6 +7,7 @@
 #     id; regime; object_sorting; morphism_sorting;
 #     stalks      = { objects; morphisms; stages; };
 #     sheaves     = { "<binding>" = { kind = "..."; ... }; };
+#     edits       = { "<edit>" = { label; sorts; set; grammar; }; };  # optional
 #     workspace   = { spec_version; id; layout; ... panels; };  # mkWorkspaceSpec input
 #   };
 #   # topos.value -> the Topos attrset
@@ -23,13 +24,13 @@ in
 
   # Regime topos: object/morphism sorting functors + stalks keyed by regime
   # sort + sheaves over the embedded workspace.
-  mkTopos = { spec_version ? 1, id, regime, object_sorting, morphism_sorting, stalks, sheaves, workspace }:
+  mkTopos = { spec_version ? 1, id, regime, object_sorting, morphism_sorting, stalks, sheaves, edits ? { }, workspace }:
     let
       ws = wsLib.mkWorkspaceSpec workspace;
       value = {
         inherit spec_version id regime object_sorting morphism_sorting stalks sheaves;
         workspace = ws.value;
-      };
+      } // lib.optionalAttrs (edits != { }) { inherit edits; };
     in
     {
       inherit value;

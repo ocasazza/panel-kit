@@ -181,6 +181,32 @@
           (import ./nix/grammars/trace-lines.nix { inherit (pkgs) lib; }).json;
         grammar-trace-json = pkgs.writeText "panel-kit-grammar-trace-json.json"
           (import ./nix/grammars/trace-json.nix { inherit (pkgs) lib; }).json;
+        # omp auto-loop: two regimes over the trace and control sites glued
+        # along `repo`, each with its own physics morphism into the base.
+        topos-autoloop-trace-web = pkgs.writeText "panel-kit-topos-autoloop-trace-web.json"
+          (import ./nix/specs/topos-autoloop-trace.nix { inherit (pkgs) lib; surface = "web"; }).json;
+        topos-autoloop-control-web = pkgs.writeText "panel-kit-topos-autoloop-control-web.json"
+          (import ./nix/specs/topos-autoloop-control.nix { inherit (pkgs) lib; surface = "web"; }).json;
+        morphism-autoloop-trace-physics = pkgs.writeText "panel-kit-morphism-autoloop-trace-physics.json"
+          (import ./nix/specs/morphism-autoloop-trace-physics.nix { inherit (pkgs) lib; }).json;
+        morphism-autoloop-control-physics = pkgs.writeText "panel-kit-morphism-autoloop-control-physics.json"
+          (import ./nix/specs/morphism-autoloop-control-physics.nix { inherit (pkgs) lib; }).json;
+        grammar-autoloop-trace = pkgs.writeText "panel-kit-grammar-autoloop-trace.json"
+          (import ./nix/grammars/autoloop-trace.nix { inherit (pkgs) lib; }).json;
+        grammar-autoloop-control = pkgs.writeText "panel-kit-grammar-autoloop-control.json"
+          (import ./nix/grammars/autoloop-control.nix { inherit (pkgs) lib; }).json;
+        autoloopEnv = {
+          PANEL_KIT_TOPOS_PHYSICS = "${topos-physics}";
+          PANEL_KIT_AUTOLOOP_TOPOS_TRACE = "${topos-autoloop-trace-web}";
+          PANEL_KIT_AUTOLOOP_TOPOS_CONTROL = "${topos-autoloop-control-web}";
+          PANEL_KIT_AUTOLOOP_MORPHISM_TRACE_PHYSICS = "${morphism-autoloop-trace-physics}";
+          PANEL_KIT_AUTOLOOP_MORPHISM_CONTROL_PHYSICS = "${morphism-autoloop-control-physics}";
+          PANEL_KIT_AUTOLOOP_GRAMMAR_TRACE = "${grammar-autoloop-trace}";
+          PANEL_KIT_AUTOLOOP_GRAMMAR_CONTROL = "${grammar-autoloop-control}";
+          # Written by omp-auto-loop's own producers (graph projection, controlSite).
+          PANEL_KIT_AUTOLOOP_DATA_TRACE = "${./nix/data/autoloop-trace.lines}";
+          PANEL_KIT_AUTOLOOP_DATA_CONTROL = "${./nix/data/autoloop-control.json}";
+        };
         # Every topos host reads its surface's two regime topoi, the base physics
         # topos, the three geometric morphisms, and the shared grammar packages
         # and trace data from the environment.
@@ -282,6 +308,10 @@
           cargoArtifacts = hostCargoArtifacts;
           cargoTestExtraArgs = "-p panel-kit --test topos_grammar";
         });
+        topos-autoloop-test = hostCraneLib.cargoTest (hostArgs // autoloopEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit --test topos_autoloop";
+        });
         workspace-spec-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // workspaceSpecAsciiBuildEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_tui";
@@ -312,6 +342,12 @@
         packages.morphism-membrane-physics = morphism-membrane-physics;
         packages.grammar-trace-lines = grammar-trace-lines;
         packages.grammar-trace-json = grammar-trace-json;
+        packages.topos-autoloop-trace-web = topos-autoloop-trace-web;
+        packages.topos-autoloop-control-web = topos-autoloop-control-web;
+        packages.morphism-autoloop-trace-physics = morphism-autoloop-trace-physics;
+        packages.morphism-autoloop-control-physics = morphism-autoloop-control-physics;
+        packages.grammar-autoloop-trace = grammar-autoloop-trace;
+        packages.grammar-autoloop-control = grammar-autoloop-control;
         packages.topos-web-wasm = topos-web-wasm;
         packages.topos-tui-native = topos-tui-native;
         packages.topos-browser-tui-wasm = topos-browser-tui-wasm;
@@ -377,6 +413,7 @@
           topos-tui-native = topos-tui-native;
           topos-browser-tui-wasm = topos-browser-tui-wasm;
           topos-grammar-test = topos-grammar-test;
+          topos-autoloop-test = topos-autoloop-test;
           workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
           workspace-spec-tui-native = pkgs.runCommand "panel-kit-workspace-spec-tui-native-check" { } ''
             ${workspace-spec-tui-native}/bin/workspace --check-offscreen

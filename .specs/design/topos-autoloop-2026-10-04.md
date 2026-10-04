@@ -26,10 +26,10 @@ restricting the glued site to each side's kinds returns that side.
 ## `topos-autoloop-control`
 
 Sorting: identity on control kinds; every trace kind except `repo` sorts to `elsewhere`, which has no
-sheaves. Stalks: labels per sort; `claim` badge from `reason`; `repo_policy` badge from its
-verification tag (`gated` / `judge-checked` / `unverifiable`).
+sheaves. Stalks: a label and a fixed badge kind per sort (badge kinds are per sort, not per value, so
+a claim's decision and a repo policy's verification status are table columns, not badges).
 
-Sheaves (each `restrict`ed to one sort):
+Sheaves (each table `restrict`ed to one sort):
 
 | Binding | Kind | `restrict` | Edits |
 |---|---|---|---|
@@ -38,11 +38,18 @@ Sheaves (each `restrict`ed to one sort):
 | `autoloop.queue` | table: title, repo, priority, status, claimed_by | `queued_goal` | `prioritize` (`priority: int`), `retire` (`status: enum retired`) |
 | `autoloop.repos` | table: title, verification, gates, criteria | `repo_policy` | `set_gates` (`gates: lines`), `set_criteria` (`criteria: text`) |
 | `autoloop.limits` | table: title, value, min, max | `param` | `set_value` (`value: int`) |
-| `autoloop.prompts` | text per object | `prompt` | `set_text` (`text: text`) |
-| `autoloop.terms` | table: title, vocabulary, usage, count, hidden | `term` | `relabel` (`title: text`, `description: text`), `hide` (`hidden: enum true\|false`) |
-| `autoloop.verdicts` | badges by claim `decision` | `claim` | — |
+| `autoloop.prompts` | table: title, text | `prompt` | `set_text` (`text: text`) |
+| `autoloop.terms` | table: title, vocabulary, usage, count, hidden, description | `term` | `describe` (`description: text`), `hide` (`hidden: enum true\|false`) |
+| `autoloop.kinds` | badges: object count per control sort | every control sort | — |
+
+Edits set object fields only, so a term cannot be renamed in v1: its display name is the object's
+`title`. Field limits match the loop's own validation (note and term description 400 characters,
+criteria and prompt text 8000); `set_value` accepts the widest param range and the loop checks each
+param's bounds.
 
 Physics: `p_control` sends every control sort to `solvent` and every control morphism kind to `weak`.
+Each physics morphism is total over its regime's sorts, so `elsewhere` maps too: to `solvent` and
+`weak` in both regimes.
 
 ## `topos-autoloop-trace`
 
@@ -53,8 +60,13 @@ Physics `p_trace`: `session` → `hydrophobic` (the assembling units), `goal`/`r
 `in_repo`/`pursues` → `lateral`, `runs_gate` → `weak`. No morphism to `topos-agentic` is declared, so
 no commuting square is required.
 
-Sheaves: Sessions table (cwd, continuations / max, heartbeats, model), event stream, assembly table
-and stage badges over `in_repo` + `pursues` (sessions on one repo and goal assemble), physics table.
+Sheaves: sessions table (title, goal state, agent, directory, continuations, max, heartbeats; only
+props every session carries, since a missing field is an error), events table (time, session, class,
+title), per-sort counts, assembly table and stage badges over `in_repo` + `pursues` (sessions on one
+repo and goal assemble), physics table.
+
+Verification: the `topos-autoloop-test` check builds both regimes from these specs and runs them over
+fixtures written by the loop's own producers (`nix/data/autoloop-*`).
 
 A geometric morphism between the two regimes is optional; if declared it must commute over the base.
 
