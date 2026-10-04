@@ -335,3 +335,32 @@ fn a_host_edit_that_changes_nothing_writes_nothing() {
         Err("nothing changed".to_owned())
     );
 }
+
+#[test]
+fn the_graph_carries_every_glued_morphism_and_the_active_regimes_mass_and_sorts() {
+    let mut host = host();
+    let f = fixture();
+    let trace = host.graph().expect("loaded");
+    assert_eq!(trace.ids.len(), f.glued.objects.len());
+    assert_eq!(trace.edges.len(), 2 * f.glued.morphisms.len());
+    let at = |g: &autoloop_host::GraphInputs, id: &str| g.ids.iter().position(|x| x == id).unwrap();
+    let (session, claim) = (at(&trace, "sa1"), at(&trace, "claim:reviewer#b1@2026-10-04T01:04:00.000Z"));
+    assert_eq!(trace.mass[session], 1.5, "a session is hydrophobic under p_trace");
+
+    host.set_active(autoloop_host::CONTROL);
+    let control = host.graph().unwrap();
+    assert_eq!(control.mass[session], 0.25, "every sort is solvent under p_control");
+    let label = |g: &autoloop_host::GraphInputs, i: usize| g.sort_labels[g.sort_index[i] as usize].clone();
+    assert_eq!((label(&trace, claim), label(&control, claim)), ("Control".to_owned(), "Claim".to_owned()));
+    assert_eq!((label(&trace, session), label(&control, session)), ("Session".to_owned(), "Trace".to_owned()));
+}
+
+#[test]
+fn a_graph_node_offers_the_edits_of_its_table_row_under_the_active_regime() {
+    let mut host = host();
+    let claim = "claim:reviewer#b1@2026-10-04T01:04:00.000Z";
+    assert_eq!(host.offered(claim), None);
+    host.set_active(autoloop_host::CONTROL);
+    assert_eq!(host.offered(claim), Some(("autoloop.claims", &["ratify".to_owned()][..])));
+    assert_eq!(host.offered("sa1"), None, "a session has no editable row");
+}

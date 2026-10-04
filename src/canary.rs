@@ -203,8 +203,9 @@ fn render_content(
 ) -> Element {
     let content = &spec.content;
     match content {
-        ContentSpec::Custom { binding } => {
-            render_custom(binding, spec, maximized, header_clicks)
+        ContentSpec::Custom { binding: id } => {
+            render_custom(id, spec, maximized, header_clicks)
+                .unwrap_or_else(|| binding(id, content))
         }
         ContentSpec::Editor {
             binding,
@@ -279,25 +280,26 @@ pub fn canary_content(id: &str, content: &ContentSpec) -> Element {
     }
 }
 
+/// The canary's own custom bodies; any other custom binding is the host's.
 fn render_custom(
     binding: &str,
     spec: &PanelSpec,
     maximized: bool,
     header_clicks: u32,
-) -> Element {
+) -> Option<Element> {
     match binding {
         "canary.workspace" => {
             let [declared, state] =
                 fixtures::workspace_card_lines(&spec.title, maximized, header_clicks);
-            rsx! {
+            Some(rsx! {
                 section { class: "pk-custom-card", role: "group", aria_label: "workspace summary",
                     h2 { "{fixtures::WORKSPACE_CARD_HEADING}" }
                     p { "{declared}" }
                     p { "{state}" }
                 }
-            }
+            })
         }
-        "canary.theme" => rsx! {
+        "canary.theme" => Some(rsx! {
             section { class: "pk-custom-card", role: "group", aria_label: "theme summary",
                 h2 { "{fixtures::theme_preset_label(false)}" }
                 ul { class: "spec-list",
@@ -310,8 +312,8 @@ fn render_custom(
                 }
                 {paint_spinner("spinner painter")}
             }
-        },
-        _ => paint_custom(binding),
+        }),
+        _ => None,
     }
 }
 

@@ -23,13 +23,17 @@ let
   # A column over a small vocabulary: the table offers its values as a filter.
   vocab = key: title: weight: expr: col key title weight expr // { kind = "enum"; };
 
+  # The graph is the host's jump-cannon graph view over the glued site.
+  graphC = { kind = "custom"; binding = "autoloop.graph"; };
+
   shelves = [
     (shelf 3 [
-      (cell "sessions" "Sessions" "sessions" 3 (tableC "autoloop.sessions"))
+      (cell "graph" "Graph" "graph" 3 graphC)
       (cell "kinds" "Trace" "kinds" 1 (badgesC "autoloop.trace_kinds"))
     ])
     (shelf 3 [
-      (cell "events" "Events" "events" 4 (tableC "autoloop.events"))
+      (cell "sessions" "Sessions" "sessions" 2 (tableC "autoloop.sessions"))
+      (cell "events" "Events" "events" 2 (tableC "autoloop.events"))
     ])
     (shelf 3 [
       (cell "assembly" "Assembly" "assembly" 3 (tableC "autoloop.assembly"))

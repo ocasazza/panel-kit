@@ -21,6 +21,7 @@ use panel_kit::CSS;
 use panel_kit_core::reducer::{Viewport, WorkspaceEvent};
 use panel_kit_core::widgets::ContentSpec;
 use panel_kit_core::Units;
+use graph_view::render;
 use panel_kit_grammar::Topos;
 use wasm_bindgen::{JsCast, JsValue};
 
@@ -138,9 +139,63 @@ fn open_draft(host: Host, binding: &str, object: &str, edit: &str) -> Option<Edi
     Some(EditDraft::open(binding, host.object(object)?, edit, host.edit(edit)?))
 }
 
+/// The workspace binding the graph panel is declared under.
+const GRAPH: &str = "autoloop.graph";
+
+/// jump-cannon's graph view over the glued site, coloured by the active
+/// regime's sorts and sized by their pulled-back mass. Clicking a node that
+/// has an editable row opens that row's first edit.
+#[component]
+fn AutoloopGraph(host: Host, draft: Signal<Option<EditDraft>>) -> Element {
+    let ids = use_memo(move || host.read().as_ref().ok().and_then(AutoloopHost::graph).map(|g| g.ids).unwrap_or_default());
+    use_effect(move || {
+        let Some(graph) = host.read().as_ref().ok().and_then(AutoloopHost::graph) else { return };
+        let n = graph.ids.len();
+        let colors = graph
+            .sort_index
+            .iter()
+            .flat_map(|&sort| {
+                let [r, g, b] = render::data::palette_color(sort);
+                [r, g, b, 1.0]
+            })
+            .collect();
+        // Mass sets relative size within the regime: its heaviest sort draws
+        // at jump-cannon's uniform node size (2.0).
+        let heaviest = graph.mass.iter().copied().fold(f32::MIN_POSITIVE, f32::max);
+        let sizes = graph.mass.iter().map(|mass| 2.0 * mass / heaviest).collect();
+        render::mount_canvas(render::Scene {
+            positions: render::data::spawn_on_unit_sphere(n, 800.0),
+            edges: graph.edges,
+            colors,
+            sizes,
+        });
+    });
+    let pick = move |x: f32, y: f32| render::pick(x, y).and_then(|i| ids.read().get(i as usize).cloned());
+
+    rsx! {
+        graph_view::GraphView {
+            node_count: ids.read().len() as u32,
+            on_hover: move |(x, y): (f32, f32)| render::set_hover_feedback(render::pick(x, y), render::pick_edge(x, y)),
+            on_click: move |(x, y): (f32, f32)| {
+                let Some(object) = pick(x, y) else { return };
+                let offered = host.read().as_ref().ok().and_then(|h| {
+                    h.offered(&object).map(|(binding, edits)| (binding.to_owned(), edits[0].clone()))
+                });
+                if let Some((binding, edit)) = offered {
+                    draft.set(open_draft(host, &binding, &object, &edit));
+                }
+            },
+            on_leave: move |_| render::set_hover_feedback(None, None),
+        }
+    }
+}
+
 /// Paint one binding from the active regime; rows of a table that offers
 /// edits open a draft on their object.
 fn host_content(host: Host, mut draft: Signal<Option<EditDraft>>, id: &str, content: &ContentSpec) -> Element {
+    if id == GRAPH {
+        return rsx! { AutoloopGraph { host, draft } };
+    }
     let state = host.read();
     let Ok(state) = state.as_ref() else {
         return rsx! { div { class: "pk-content pk-content-unbound", "host failed to start" } };
@@ -324,6 +379,7 @@ fn App() -> Element {
         style { {CSS} }
         style { {HOST_CSS} }
         style { {section_view::EDIT_FORM_CSS} }
+        style { {graph_view::CSS} }
         div {
             class: "{root_class}",
             tabindex: "0",
