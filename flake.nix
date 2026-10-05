@@ -319,6 +319,18 @@
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_topos --target wasm32-unknown-unknown -- -D warnings";
         });
+        okfWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // okfEnv // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example okf --target wasm32-unknown-unknown -- -D warnings";
+        });
+        okfTuiNativeClippy = hostCraneLib.cargoClippy (hostArgs // okfCellsEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example okf -- -D warnings";
+        });
+        okfBrowserTuiClippy = wasmCraneLib.cargoClippy (commonArgs // okfAsciiEnv // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_okf --target wasm32-unknown-unknown -- -D warnings";
+        });
         clippy = pkgs.runCommand "panel-kit-clippy" { } ''
           mkdir -p "$out"
           ln -s ${hostClippy} "$out/host"
@@ -328,6 +340,9 @@
           ln -s ${vendoredWebExampleClippy} "$out/vendored-web"
           ln -s ${toposTuiNativeClippy} "$out/topos-tui-native"
           ln -s ${toposBrowserTuiClippy} "$out/topos-browser-tui"
+          ln -s ${okfTuiNativeClippy} "$out/okf-tui-native"
+          ln -s ${okfBrowserTuiClippy} "$out/okf-browser-tui"
+          ln -s ${okfWebExampleClippy} "$out/okf-web"
         '';
         workspaceSpecEnv = spec: {
           PANEL_KIT_WORKSPACE_SPEC = "${spec}";
@@ -364,6 +379,10 @@
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit --features web-runtime --example vendored";
         });
+        okf-web-wasm = wasmCraneLib.buildPackage (commonArgs // okfEnv // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p panel-kit --features web-runtime --example okf";
+        });
         topos-tui-native = hostCraneLib.buildPackage (hostArgs // toposCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example topos";
@@ -372,6 +391,15 @@
         topos-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // toposAsciiEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_topos";
+        });
+        okf-tui-native = hostCraneLib.buildPackage (hostArgs // okfCellsEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example okf";
+          doCheck = false;
+        });
+        okf-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // okfAsciiEnv // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_okf";
         });
         # The demo model is renderer-neutral, so its behaviour test runs on the
         # host with the web specs in the environment: the same assertions then
@@ -444,8 +472,11 @@
         packages.okf-knowledge-catalog = okf-knowledge-catalog;
         packages.topos-web-wasm = topos-web-wasm;
         packages.autoloop-web-wasm = autoloop-web-wasm;
+        packages.okf-web-wasm = okf-web-wasm;
         packages.topos-tui-native = topos-tui-native;
         packages.topos-browser-tui-wasm = topos-browser-tui-wasm;
+        packages.okf-tui-native = okf-tui-native;
+        packages.okf-browser-tui-wasm = okf-browser-tui-wasm;
         packages.workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
         packages.workspace-spec-tui-native = workspace-spec-tui-native;
 
@@ -508,8 +539,14 @@
           topos-web-wasm = topos-web-wasm;
           autoloop-web-wasm = autoloop-web-wasm;
           vendored-web-wasm = vendored-web-wasm;
+          okf-web-wasm = okf-web-wasm;
           topos-tui-native = topos-tui-native;
           topos-browser-tui-wasm = topos-browser-tui-wasm;
+          okf-tui-native = pkgs.runCommand "panel-kit-okf-tui-native-check" { } ''
+            ${okf-tui-native}/bin/okf --check-offscreen
+            touch "$out"
+          '';
+          okf-browser-tui-wasm = okf-browser-tui-wasm;
           topos-grammar-test = topos-grammar-test;
           topos-autoloop-test = topos-autoloop-test;
           topos-okf-test = topos-okf-test;
@@ -531,7 +568,7 @@
           });
         };
 
-        devShells.default = pkgs.mkShell (toposWebEnv // autoloopEnv // {
+        devShells.default = pkgs.mkShell (toposWebEnv // autoloopEnv // okfEnv // {
           PANEL_KIT_WORKSPACE_SPEC = "${workspace-canary}";
           packages = [
             rustWasm

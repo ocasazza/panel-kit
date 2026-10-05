@@ -17,12 +17,12 @@ use panel_kit::widgets::graph::{graph_notice, graph_svg};
 use panel_kit_core::spec::{
     Capability, ComponentEvent, ComponentFallback, ExternalComponentSpec, component_satisfied,
 };
-use panel_kit_core::widgets::graph::{GraphLayout, GraphModel, GraphView};
+use panel_kit_core::widgets::graph::{GraphLayout, GraphModel, GraphView, LayoutAlgorithm};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
 #[path = "graph_layout.rs"]
-mod graph_layout;
+pub mod graph_layout;
 
 use graph_layout::{Tween, project_2d};
 
@@ -36,11 +36,13 @@ const FRAME_MS: i32 = 16;
 /// Mount the `graph` contract for `component` over `model`.
 ///
 /// `target` is the arrangement the host wants drawn — the codomain's solved
-/// layout when the topos switches. Every change tweens towards it and then hands
-/// the GPU force simulation the model's pulled-back physics to relax.
+/// layout when the topos switches. Every change tweens towards it; a static
+/// `layout` then stays on screen, while `Force` hands the GPU simulation the
+/// model's pulled-back physics to relax.
 #[component]
 pub fn GraphComponent(
     model: GraphModel,
+    layout: GraphLayout,
     target: Vec<[f32; 3]>,
     selected: Option<String>,
     on_event: EventHandler<ComponentEvent>,
@@ -48,11 +50,13 @@ pub fn GraphComponent(
 ) -> Element {
     let live: Signal<Vec<[f32; 3]>> = use_signal(|| target.clone());
     let mut webgpu = use_signal(|| false);
-    // Props are owned values, not signals: memos are what makes them reactive.
-    let model = use_memo(move || model.clone());
-    let wanted = use_memo(move || target.clone());
-    let chosen = use_memo(move || selected.clone());
-    let spec = use_memo(move || component.clone());
+    // `use_reactive` re-runs each memo when its prop changes; a bare memo over
+    // a moved prop would keep the first render's value forever.
+    let model = use_memo(use_reactive((&model,), |(model,)| model));
+    let layout = use_memo(use_reactive((&layout,), |(layout,)| layout));
+    let wanted = use_memo(use_reactive((&target,), |(target,)| target));
+    let chosen = use_memo(use_reactive((&selected,), |(selected,)| selected));
+    let spec = use_memo(use_reactive((&component,), |(component,)| component));
 
     use_effect(move || {
         let request = wanted.read().clone();
@@ -61,15 +65,30 @@ pub fn GraphComponent(
             return;
         }
         let tween = Tween::new(from, request, TRANSITION_MS, reduced_motion());
-        drive(live, model, tween, now_ms());
+        drive(live, model, layout, tween, now_ms());
     });
 
-    // Remount only when the node set or its encoding changes; tween frames
-    // reach the GPU through `drive` without re-uploading the scene.
+    // Mount once the WebGPU canvas is in the DOM and again only when the node
+    // count changes: a topos switch keeps the node set, so it recolours and
+    // resizes in place instead of remounting over the tween.
+    let nodes = use_memo(move || model.read().nodes.len());
+    use_effect(move || {
+        if !webgpu() {
+            return;
+        }
+        nodes();
+        render::set_after_mount(render::fit_camera);
+        mount(&model.peek(), &live.peek());
+    });
     use_effect(move || {
         let graph = model.read();
-        mount(&graph, &live.peek());
-        resume_physics(&graph);
+        let (colors, sizes) = (node_colors(&graph), node_sizes(&graph));
+        render::with_host(|host| {
+            let (pipes, queue) = host.pipes_and_queue();
+            pipes.update_colors(queue, colors);
+            pipes.update_sizes(queue, sizes);
+        });
+        settle(&graph, &layout.peek());
     });
 
     use_effect(move || {
@@ -149,11 +168,12 @@ pub fn GraphComponent(
 /// One tween step, then the next, until the arrangement lands.
 ///
 /// Each step updates `live` (read by the SVG fallback) and writes the same
-/// frame to the GPU through `RenderHost::apply_positions`; the force sim
-/// stays paused until the tween lands, then resumes from there.
+/// frame to the GPU through `RenderHost::apply_positions` with the force sim
+/// paused; the landed arrangement is then settled per [`settle`].
 fn drive(
     mut live: Signal<Vec<[f32; 3]>>,
     model: Memo<GraphModel>,
+    layout: Memo<GraphLayout>,
     tween: Tween,
     start: u32,
 ) {
@@ -164,11 +184,11 @@ fn drive(
     render::set_sim_running(false);
     let _ = render::with_host(|host| host.apply_positions(&flat));
     if tween.is_complete(elapsed) {
-        resume_physics(&model.read());
+        settle(&model.read(), &layout.read());
         return;
     }
     let next = tween.clone();
-    schedule(move || drive(live, model, next, start));
+    schedule(move || drive(live, model, layout, next, start));
 }
 
 /// Run `tick` on the next frame's timeout, off the browser too.
@@ -231,40 +251,48 @@ pub fn force_options(model: &GraphModel) -> GpuForceOptions {
 
 /// Mount the graph view's scene over `positions`.
 fn mount(model: &GraphModel, positions: &[[f32; 3]]) {
-    render::mount_canvas(scene(model, positions));
-}
-
-/// The vendored scene for `model`: indices in model order, colours from the
-/// model, sizes relative to the heaviest node.
-fn scene(model: &GraphModel, positions: &[[f32; 3]]) -> render::Scene {
-    let heaviest = model
-        .nodes
-        .iter()
-        .map(|node| node.size)
-        .fold(f32::MIN_POSITIVE, f32::max)
-        .max(f32::MIN_POSITIVE);
-    render::Scene {
+    render::mount_canvas(render::Scene {
         positions: positions.iter().flat_map(|p| p.to_vec()).collect(),
         edges: model
             .edges
             .iter()
             .flat_map(|edge| [edge.source, edge.target])
             .collect(),
-        colors: model
-            .nodes
-            .iter()
-            .flat_map(|node| {
-                let (r, g, b) = node.color;
-                [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
-            })
-            .collect(),
-        sizes: model.nodes.iter().map(|node| node.size / heaviest).collect(),
-    }
+        colors: node_colors(model),
+        sizes: node_sizes(model),
+    });
 }
 
-/// Hand the force engine the model's pulled-back parameters and let it relax
-/// from wherever the tween left the nodes.
-fn resume_physics(model: &GraphModel) {
+/// RGBA per node from the model's encoding.
+fn node_colors(model: &GraphModel) -> Vec<f32> {
+    model
+        .nodes
+        .iter()
+        .flat_map(|node| {
+            let (r, g, b) = node.color;
+            [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
+        })
+        .collect()
+}
+
+/// Node sizes mapped onto jump-cannon's 2..10 px range, largest model size on top.
+fn node_sizes(model: &GraphModel) -> Vec<f32> {
+    let heaviest = model
+        .nodes
+        .iter()
+        .map(|node| node.size)
+        .fold(f32::MIN_POSITIVE, f32::max);
+    model.nodes.iter().map(|node| 2.0 + 8.0 * node.size / heaviest).collect()
+}
+
+/// Frame the landed arrangement. A static layout stays as solved; `Force`
+/// hands the GPU engine the model's pulled-back parameters to relax.
+fn settle(model: &GraphModel, layout: &GraphLayout) {
+    render::fit_camera();
+    if layout.algorithm != LayoutAlgorithm::Force {
+        render::set_sim_running(false);
+        return;
+    }
     render::with_host(|host| {
         host.pipes.update_layout_options(force_options(model));
         host.pipes.wake_physics_layout();
@@ -286,7 +314,10 @@ async fn detect_webgpu() -> bool {
     let Some(window) = web_sys::window() else {
         return false;
     };
-    let Ok(gpu) = js_sys::Reflect::get(window.as_ref(), &wasm_bindgen::JsValue::from_str("gpu")) else {
+    let Ok(navigator) = js_sys::Reflect::get(window.as_ref(), &wasm_bindgen::JsValue::from_str("navigator")) else {
+        return false;
+    };
+    let Ok(gpu) = js_sys::Reflect::get(&navigator, &wasm_bindgen::JsValue::from_str("gpu")) else {
         return false;
     };
     if gpu.is_null() || gpu.is_undefined() {

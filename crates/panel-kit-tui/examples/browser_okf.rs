@@ -188,7 +188,9 @@ mod browser {
             if let Ok(mut host) = host.try_borrow_mut() {
                 let now = host.now_ms();
                 host.app.advance(now);
-                let _ = host.app.draw(frame);
+                if let Err(error) = host.app.draw(frame) {
+                    ratzilla::web_sys::console::error_1(&format!("browser_okf draw: {error:?}").into());
+                }
             }
         });
         Ok(())
