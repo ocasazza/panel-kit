@@ -1,22 +1,19 @@
 # The pinned OKF corpus as one JSON envelope for the `okf` grammar engine.
 #
-# `fetchFromGitHub` supplies the bytes; this file only *enumerates* them:
-# `readDir` over `okf/bundles`, `readFile` per `*.md`. No YAML and no Markdown
-# is parsed here — frontmatter and link semantics belong to
-# `crates/panel-kit-grammar/src/okf.rs`, so a Nix change can never quietly
-# redefine what a concept is. Bundles and their files are sorted by path, so
-# the envelope is byte-identical on every evaluation.
+# `builtins.fetchTarball` supplies the bytes at evaluation time, so the
+# envelope is identical on every system without import-from-derivation; this
+# file only *enumerates* them: `readDir` over `okf/bundles`, `readFile` per
+# `*.md`. No YAML or Markdown is parsed here; that belongs to
+# `crates/panel-kit-grammar/src/okf.rs`. Bundles and files are sorted by path.
 #
-#   json = import ./nix/data/okf-knowledge-catalog.nix { inherit pkgs; };
-{ pkgs ? (import <nixpkgs> {}), lib ? pkgs.lib }:
+#   json = import ./nix/data/okf-knowledge-catalog.nix { inherit lib; };
+{ lib ? (import <nixpkgs> {}).lib }:
 let
   repository = "GoogleCloudPlatform/knowledge-catalog";
   rev = "58e16bdb7a34430f055ea57e84655cff37000c03";
-  corpus = pkgs.fetchFromGitHub {
-    owner = "GoogleCloudPlatform";
-    repo = "knowledge-catalog";
-    inherit rev;
-    hash = "sha256-WwZSi5m9T2yUjEQJZH0L7lcUFb/IKvyD1HisAjZ/3nc=";
+  corpus = builtins.fetchTarball {
+    url = "https://github.com/${repository}/archive/${rev}.tar.gz";
+    sha256 = "sha256-WwZSi5m9T2yUjEQJZH0L7lcUFb/IKvyD1HisAjZ/3nc=";
   };
   bundlesRoot = "${corpus}/okf/bundles";
 

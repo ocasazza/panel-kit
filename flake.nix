@@ -233,7 +233,7 @@
         # read both from the environment, so the snapshot is canaried by
         # `cargo test -p panel-kit-grammar` rather than by a Rust fixture.
         okf-knowledge-catalog = pkgs.writeText "panel-kit-okf-knowledge-catalog.json"
-          (import ./nix/data/okf-knowledge-catalog.nix { inherit pkgs; inherit (pkgs) lib; });
+          (import ./nix/data/okf-knowledge-catalog.nix { inherit (pkgs) lib; });
         grammar-okf = pkgs.writeText "panel-kit-grammar-okf.json"
           (import ./nix/grammars/okf.nix { inherit (pkgs) lib; }).json;
         okfGraphEnv = catalog: lineage: {
@@ -290,8 +290,8 @@
           cargoExtraArgs = "-p spec-parity";
           doCheck = false;
         });
-        # --all-targets compiles the topos example, which embeds the cells specs.
-        hostClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // {
+        # --all-targets compiles the topos and okf examples, which embed their cells specs.
+        hostClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // okfCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit-tui -p spec-parity --features panel-kit-tui/spec-plan --all-targets -- -D warnings";
         });
