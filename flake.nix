@@ -291,6 +291,34 @@
           PANEL_KIT_TRIO_MORPHISM_AGENTIC = "${morphism-okf-catalog-agentic}";
         };
 
+        # The trio host reads both sites and all three regimes: the three topos
+        # specs for one surface, the one physics base, the three morphisms
+        # between the regimes, the three morphisms from a regime into the base,
+        # both trace grammars with their data, and the okf grammar with the
+        # pinned corpus. One env carries the lot, so a trio host and its
+        # contract test never have to merge three others.
+        trioSpecEnv = agentic: membrane: okfCatalog: {
+          PANEL_KIT_TRIO_AGENTIC = "${agentic}";
+          PANEL_KIT_TRIO_MEMBRANE = "${membrane}";
+          PANEL_KIT_TRIO_OKF_CATALOG = "${okfCatalog}";
+          PANEL_KIT_TRIO_BASE = "${topos-physics}";
+          PANEL_KIT_TRIO_F = "${morphism-agentic-membrane}";
+          PANEL_KIT_TRIO_PSI = "${morphism-okf-catalog-membrane}";
+          PANEL_KIT_TRIO_CHI = "${morphism-okf-catalog-agentic}";
+          PANEL_KIT_TRIO_AGENTIC_PHYSICS = "${morphism-agentic-physics}";
+          PANEL_KIT_TRIO_MEMBRANE_PHYSICS = "${morphism-membrane-physics}";
+          PANEL_KIT_TRIO_OKF_CATALOG_PHYSICS = "${morphism-okf-catalog-physics}";
+          PANEL_KIT_TRIO_GRAMMAR_LINES = "${grammar-trace-lines}";
+          PANEL_KIT_TRIO_GRAMMAR_JSON = "${grammar-trace-json}";
+          PANEL_KIT_TRIO_DATA_LINES = "${./nix/data/trace.lines}";
+          PANEL_KIT_TRIO_DATA_JSON = "${./nix/data/trace.json}";
+          PANEL_KIT_TRIO_OKF_GRAMMAR = "${grammar-okf}";
+          PANEL_KIT_TRIO_OKF_DATA = "${okf-knowledge-catalog}";
+        };
+        trioEnv = trioSpecEnv topos-agentic-web topos-membrane-web topos-okf-catalog-web;
+        trioCellsEnv = trioSpecEnv topos-agentic-cells topos-membrane-cells topos-okf-catalog-cells;
+        trioAsciiEnv = trioSpecEnv topos-agentic-ascii topos-membrane-ascii topos-okf-catalog-ascii;
+
         workspaceSpecReference = import ./nix/tests/workspace-spec.nix {
           inherit (pkgs) lib;
         };
@@ -434,6 +462,16 @@
           cargoArtifacts = hostCargoArtifacts;
           cargoTestExtraArgs = "-p panel-kit --test topos_trio_morphisms";
         });
+        # The trio host over the real Nix JSON: every workspace binding of every
+        # available (site, regime) pair resolves, the trace site is refused in
+        # okf-catalog by name, the graph's tuning is invariant across a site's
+        # regimes while its sorts and colours move, the trace site assembles
+        # into every stage, a selection survives the trip along psi, and a
+        # broken psi fails the load with the triangle named.
+        topos-trio-test = hostCraneLib.cargoTest (hostArgs // trioEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit --test topos_trio";
+        });
         workspace-spec-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // workspaceSpecAsciiBuildEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_tui";
@@ -571,6 +609,7 @@
           topos-autoloop-test = topos-autoloop-test;
           topos-okf-test = topos-okf-test;
           topos-trio-morphisms-test = topos-trio-morphisms-test;
+          topos-trio-test = topos-trio-test;
           okf-grammar-test = okf-grammar-test;
           workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
           workspace-spec-tui-native = pkgs.runCommand "panel-kit-workspace-spec-tui-native-check" { } ''
@@ -589,7 +628,7 @@
           });
         };
 
-        devShells.default = pkgs.mkShell (toposWebEnv // autoloopEnv // okfEnv // {
+        devShells.default = pkgs.mkShell (toposWebEnv // autoloopEnv // okfEnv // trioEnv // {
           PANEL_KIT_WORKSPACE_SPEC = "${workspace-canary}";
           packages = [
             rustWasm
