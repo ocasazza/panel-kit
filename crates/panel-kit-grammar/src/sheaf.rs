@@ -1009,9 +1009,11 @@ pub struct FieldFilter {
 }
 
 impl FieldFilter {
-    /// Whether `object` carries `field` set to `equals`.
-    fn matches(&self, object: &Object) -> bool {
-        object.fields.get(&self.field).is_some_and(|value| value == &self.equals)
+    /// Whether `object`'s projected `field` equals `equals`, read through the
+    /// attribute map when the regime reads the object's kind by transport.
+    fn matches(&self, object: &Object, resolver: &Resolver) -> bool {
+        let field = resolver.field_of(&object.kind, &self.field);
+        object.fields.get(field).is_some_and(|value| value == &self.equals)
     }
 }
 
@@ -1037,13 +1039,15 @@ impl MeterSheaf {
             Agg::Count => {
                 site.objects
                     .iter()
-                    .filter(|object| self.filter.as_ref().is_none_or(|filter| filter.matches(object)))
+                    .filter(|object| {
+                        self.filter.as_ref().is_none_or(|filter| filter.matches(object, resolver))
+                    })
                     .count() as f64
             }
             _ => {
                 let mut values = Vec::new();
                 for object in &site.objects {
-                    if self.filter.as_ref().is_some_and(|filter| !filter.matches(object)) {
+                    if self.filter.as_ref().is_some_and(|filter| !filter.matches(object, resolver)) {
                         continue;
                     }
                     values.push(object_value(&self.value, object, site, resolver)?.into_number(&self.value)?);
@@ -1118,6 +1122,11 @@ impl StatusSheaf {
 pub struct AssemblySheaf {
     /// Regime morphism sorts whose morphisms build the 1-skeleton.
     pub morphism_sorts: Vec<String>,
+    /// Site morphism kinds to build the 1-skeleton from; absent means every
+    /// morphism of a chosen sort. Several site kinds share a regime sort, so
+    /// this is how a regime assembles over its own kinds alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kinds: Option<BTreeSet<String>>,
 }
 
 impl AssemblySheaf {
@@ -1125,7 +1134,14 @@ impl AssemblySheaf {
         self.morphism_sorts.iter().cloned().collect()
     }
 
+    /// The site whose bonds are the declared kinds, else the site as it is.
+    fn bonded(&self, site: &Site) -> Option<Site> {
+        self.kinds.as_ref().map(|kinds| site.restrict_morphism_kinds(kinds))
+    }
+
     fn evaluate_table(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
+        let bonded = self.bonded(site);
+        let site = bonded.as_ref().unwrap_or(site);
         let components = assembly(site, resolver.morphism_sorting, &self.selected());
         let columns = assembly_columns();
         let mut rows = Vec::new();
@@ -1151,6 +1167,8 @@ impl AssemblySheaf {
     }
 
     fn evaluate_badges(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
+        let bonded = self.bonded(site);
+        let site = bonded.as_ref().unwrap_or(site);
         let components = assembly(site, resolver.morphism_sorting, &self.selected());
         let mut badges = Vec::new();
         for stage in STAGE_ORDER {
@@ -1532,17 +1550,23 @@ fn object_value(expr: &str, object: &Object, site: &Site, resolver: &Resolver) -
                     .map_err(|_| SheafError::BadExpression(expr.to_owned()))?;
                 Ok(Value::Str(object.tags.get(index).cloned().unwrap_or_default()))
             } else if let Some(name) = expr.strip_prefix("field?:") {
+                let name = resolver.field_of(&object.kind, name);
                 Ok(Value::Str(object.fields.get(name).cloned().unwrap_or_default()))
             } else if let Some(name) = expr.strip_prefix("field:") {
-                let value = object.fields.get(name).ok_or_else(|| SheafError::MissingField {
-                    object: object.id.clone(),
-                    field: name.to_owned(),
-                })?;
+                let value = object
+                    .fields
+                    .get(resolver.field_of(&object.kind, name))
+                    .ok_or_else(|| SheafError::MissingField {
+                        object: object.id.clone(),
+                        field: name.to_owned(),
+                    })?;
                 Ok(Value::Str(value.clone()))
             } else if let Some(name) = expr.strip_prefix("weighted:") {
-                let base = object.number(name).ok_or_else(|| SheafError::MissingField {
-                    object: object.id.clone(),
-                    field: name.to_owned(),
+                let base = object.number(resolver.field_of(&object.kind, name)).ok_or_else(|| {
+                    SheafError::MissingField {
+                        object: object.id.clone(),
+                        field: name.to_owned(),
+                    }
                 })?;
                 Ok(Value::Num(base * resolver.object_repulsion(&object.kind)?))
             } else {
@@ -1662,6 +1686,7 @@ mod tests {
             morphism_sorting: &morphism_sorting,
             stalks: &stalks,
             physics: &physics,
+            attributes: &BTreeMap::new(),
         };
         let sheaf = FlamegraphSheaf {
             morphism_kind: "continues".to_owned(),

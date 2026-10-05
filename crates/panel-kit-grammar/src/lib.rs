@@ -54,7 +54,9 @@ pub use sheaf::{
     GlobalSections, GroupScope, MeterSheaf, PhysicsScope, PhysicsSheaf, RowScope, Section, Sheaf,
     Stage, StatusSheaf, TableSheaf, TextSheaf, TimeSeriesSheaf,
 };
-pub use topos::{MorphismStalk, ObjectStalk, PhysicsSection, Stages, Stalks, Topos, SPEC_VERSION};
+pub use topos::{
+    AttributeMaps, MorphismStalk, ObjectStalk, PhysicsSection, Stages, Stalks, Topos, SPEC_VERSION,
+};
 
 #[cfg(test)]
 mod tests;

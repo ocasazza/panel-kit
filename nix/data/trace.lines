@@ -41,6 +41,33 @@ N|mem1|Task board|memory|memory|latency_ms=6.5;energy=74;t=39;status=error
 N|mem2|Code index|memory|memory|latency_ms=7.0;energy=83;t=40;status=ok
 N|mem3|Note store|memory|memory|latency_ms=7.5;energy=92;t=41;status=ok
 N|mem4|Spec mirror|memory|memory|latency_ms=8.0;energy=101;t=42;status=warn
+N|acme_retail|Acme retail bundle|bundle|okf,bundle|status=stable;trust=human-reviewed;stale_after=30
+N|ga4|GA4 analytics bundle|bundle|okf,bundle|status=stable;trust=human-reviewed;stale_after=14
+N|acme_retail/orders|Orders table|table|okf,retail|status=stable;trust=human-reviewed;stale_after=7
+N|acme_retail/returns|Returns table|table|okf,retail|status=draft;trust=machine-generated;stale_after=30
+N|ga4/events_daily|Daily events table|table|okf,analytics|status=stable;trust=human-reviewed;stale_after=3
+N|ga4/web_events|Web events dataset|dataset|okf,analytics|status=stable;trust=human-reviewed;stale_after=2
+N|acme_retail/order_lines|Order lines dataset|dataset|okf,retail|status=stable;trust=machine-generated;stale_after=14
+N|acme_retail/customers|Customer master dataset|dataset|okf,retail|status=stable;trust=human-reviewed;stale_after=60
+N|acme_retail/gross-margin|Gross margin|metric|okf,retail|status=stable;trust=human-reviewed;stale_after=7
+N|acme_retail/return-rate|Return rate|metric|okf,retail|status=draft;trust=machine-generated;stale_after=30
+N|acme_retail/ltv|Lifetime value|metric|okf,retail|status=draft;trust=unattested;stale_after=90
+N|ga4/conversion-rate|Conversion rate|metric|okf,analytics|status=stable;trust=machine-generated;stale_after=3
+N|acme_retail/margin-rollup|Margin rollup|computation|okf,retail|status=stable;trust=human-reviewed;stale_after=7
+N|ga4/sessionise|Sessionise|computation|okf,analytics|status=stable;trust=human-reviewed;stale_after=3
+N|acme_retail/backfill|Order lines backfill|computation|okf,retail|status=deprecated;trust=machine-generated;stale_after=90
+N|acme_retail/retention-policy|Data retention policy|policy|okf,retail|status=stable;trust=human-reviewed;stale_after=90
+N|ga4/consent-policy|Consent mode policy|policy|okf,analytics|status=stable;trust=human-reviewed;stale_after=60
+N|acme_retail/reconciliation|Reconciliation skill|skill|okf,retail|status=stable;trust=human-reviewed;stale_after=30
+N|ga4/funnel-audit|Funnel audit skill|skill|okf,analytics|status=draft;trust=machine-generated;stale_after=14
+N|acme_retail/rfc3339|RFC 3339 timestamps|reference|okf,spec|status=stable;trust=human-reviewed;stale_after=90
+N|acme_retail/ga4-schema|GA4 event schema|reference|okf,spec|status=stable;trust=human-reviewed;stale_after=30
+N|acme_retail/sql-style|SQL style guide|reference|okf,spec|status=stable;trust=human-reviewed;stale_after=90
+N|acme_retail/active-customer|Active customer|concept|okf,retail|status=draft;trust=unattested;stale_after=30
+N|ga4/session|GA4 session|concept|okf,analytics|status=stable;trust=machine-generated;stale_after=7
+N|acme_retail/knowledge-catalog|Knowledge catalog convention|concept|okf,meta|status=stable;trust=human-reviewed;stale_after=90
+N|acme_retail/backfill-2026-09|September backfill run|log|okf,run|status=stable;trust=machine-generated;stale_after=90
+N|ga4/export-2026-10|October analytics export|log|okf,run|status=stable;trust=machine-generated;stale_after=30
 E|c0|c1|continues
 E|c1|c2|continues
 E|c2|c3|continues
@@ -116,3 +143,57 @@ E|t2|mem3|consolidates
 E|mN|mem4|consolidates
 E|mem0|r0|consolidates
 E|mem2|t0|consolidates
+E|acme_retail|acme_retail/orders|contains
+E|acme_retail|acme_retail/order_lines|contains
+E|acme_retail|acme_retail/gross-margin|contains
+E|acme_retail|acme_retail/margin-rollup|contains
+E|acme_retail|acme_retail/retention-policy|contains
+E|acme_retail|acme_retail/reconciliation|contains
+E|acme_retail|acme_retail/active-customer|contains
+E|acme_retail|acme_retail/rfc3339|contains
+E|ga4|ga4/events_daily|contains
+E|ga4|ga4/web_events|contains
+E|ga4|ga4/conversion-rate|contains
+E|ga4|ga4/sessionise|contains
+E|ga4|ga4/consent-policy|contains
+E|ga4|ga4/session|contains
+E|ga4|ga4/export-2026-10|contains
+E|acme_retail/gross-margin|acme_retail/orders|derived_from
+E|acme_retail/return-rate|acme_retail/returns|derived_from
+E|acme_retail/ltv|acme_retail/customers|derived_from
+E|acme_retail/margin-rollup|acme_retail/order_lines|derived_from
+E|ga4/sessionise|ga4/web_events|derived_from
+E|ga4/conversion-rate|ga4/events_daily|derived_from
+E|acme_retail/active-customer|acme_retail/gross-margin|derived_from
+E|acme_retail/margin-rollup|acme_retail/gross-margin|computes
+E|ga4/sessionise|ga4/session|computes
+E|ga4/sessionise|ga4/conversion-rate|computes
+E|acme_retail/backfill|acme_retail/order_lines|computes
+E|acme_retail/gross-margin|acme_retail/margin-rollup|executed_by
+E|ga4/conversion-rate|ga4/sessionise|executed_by
+E|acme_retail/return-rate|acme_retail/reconciliation|executed_by
+E|acme_retail/backfill-2026-09|acme_retail/backfill|executed_by
+E|acme_retail/gross-margin|acme_retail/reconciliation|attested_by
+E|ga4/sessionise|ga4/funnel-audit|attested_by
+E|acme_retail/backfill|acme_retail/reconciliation|attested_by
+E|acme_retail/active-customer|acme_retail/rfc3339|references
+E|ga4/session|acme_retail/ga4-schema|references
+E|acme_retail/margin-rollup|acme_retail/sql-style|references
+E|acme_retail/knowledge-catalog|acme_retail/rfc3339|references
+E|acme_retail/retention-policy|acme_retail/sql-style|references
+E|c4|acme_retail/orders|produces
+E|c2|ga4/web_events|produces
+E|c3|acme_retail/gross-margin|verifies
+E|r2|acme_retail/return-rate|produces
+E|r3|acme_retail/retention-policy|verifies
+E|sc|acme_retail|produces
+E|s1|ga4/events_daily|produces
+E|s2|acme_retail/margin-rollup|verifies
+E|t2|ga4/sessionise|verifies
+E|b2|ga4/consent-policy|verifies
+E|ma1|acme_retail/order_lines|produces
+E|ma2|ga4/export-2026-10|produces
+E|ml1|acme_retail/reconciliation|verifies
+E|ml3|acme_retail/rfc3339|verifies
+E|mS|acme_retail/active-customer|verifies
+E|mem0|ga4/conversion-rate|produces

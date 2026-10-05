@@ -1,7 +1,8 @@
-# Pest grammar for the pipe-delimited agent trace:
-#   N|id|title|kind|tag,tag|key=value;key=value
+# Pest grammar for the merged trio site: pipe-delimited agent sessions and the
+# OKF objects they produce, verify, and read.
+#   N|id|title|kind|tags|key=value;key=value
 #   E|source|target|edge_kind
-# Produces the same graph as nix/grammars/trace-json.nix over nix/data/trace.*.
+# Produces the same site as nix/grammars/trace-json.nix over nix/data/trace.*.
 
 { lib ? (import <nixpkgs> { }).lib }:
 

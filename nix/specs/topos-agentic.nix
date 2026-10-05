@@ -1,10 +1,10 @@
-# Agentic-trace regime over the session site: objects are planner/coder/reviewer
-# sessions plus memory stores; morphisms are handoffs. Identity sorting on the
-# trace site, and the OKF catalog kinds pushed along χ for the OKF site.
-# Sheaves: Stalks text, sessions Status table, handoff Flamegraph over
-# `continues`, Roles badges (per sort), Assembly table + stage badges,
-# Physics table, Morphism + Invariants host overlays, and the host-mounted
-# Graph panel (external `graph` component, force layout grouped by sort).
+# Agentic-trace regime over the merged site: sessions (planner/coder/reviewer
+# plus memory stores) beside the OKF objects they produce, verify, and read.
+# Sessions sort natively; the OKF kinds are pushed along χ. Sheaves: Stalks
+# text, an Objects table, a session handoff Flamegraph over `continues`, Roles
+# badges (per sort), Assembly table + stage badges over the session handoff
+# kinds, Morphism text, Physics table, and the host-mounted Graph panel
+# (external `graph` component, force layout grouped by sort).
 # `surface`/`glyphs` select units/chrome/glyphs; stalks, sheaves and binding
 # ids do not vary.
 
@@ -29,7 +29,7 @@ let
     (shelf 4 [ (cell "graph" "Graph" "graph" 4 graphContent) ])
     (shelf 3 [
       (cell "stalks" "Stalks" "stalks" 1 (textC "agentic.stalks"))
-      (cell "status" "Sessions" "status" 3 (tableC "agentic.status"))
+      (cell "status" "Objects" "status" 3 (tableC "agentic.status"))
     ])
     (shelf 3 [
       (cell "flame" "Handoffs" "flame" 3 (flameC "agentic.flame"))
@@ -51,9 +51,9 @@ mkTopos {
   id = "topos-agentic";
   regime = "Agentic traces";
 
-  # The native identity on the trace site, plus the OKF catalog kinds pushed
-  # along chi (the composite sorting functor: sort natively, then transport).
-  # Both maps are what makes chi validate against this topos.
+  # The native identity on the merged site (sessions), plus the OKF catalog
+  # kinds pushed along chi (the composite sorting functor: sort natively, then
+  # transport). Both maps are what makes chi validate against this topos.
   object_sorting = {
     planner = "planner"; coder = "coder"; reviewer = "reviewer"; memory = "memory";
     table = "planner"; dataset = "planner"; policy = "planner";
@@ -65,6 +65,7 @@ mkTopos {
     derived_from = "continues"; computes = "continues";
     executed_by = "shares"; attested_by = "shares";
     references = "consolidates"; contains = "consolidates";
+    produces = "shares"; verifies = "shares";
   };
 
   stalks = {
@@ -92,10 +93,12 @@ mkTopos {
   sheaves = {
     "agentic.stalks" = {
       kind = "text";
-      heading = "Agentic-trace regime";
+      heading = "Agentic-trace regime over one merged site";
       preface = [
-        "Objects are planner/coder/reviewer sessions and memory stores; morphisms are handoffs."
-        "Components self-assemble over continues+shares: chain, ring, sheet, tube, membrane."
+        "One site: planner/coder/reviewer sessions and memory stores beside the OKF objects"
+        "they produce, verify, and read; morphisms are handoffs and the bonds around them."
+        "A session is native here; a knowledge object is sorted along chi."
+        "Components self-assemble over the session handoffs continues+shares: chain, ring, sheet, tube, membrane."
         "Stalks: object sort -> label [badge]; morphism sort -> label."
       ];
       include_stalks = true;
@@ -104,7 +107,7 @@ mkTopos {
       kind = "table";
       scope = "objects";
       columns = [
-        { key = "session"; title = "Session"; width = flex 3; align = "left"; cell = textCell "title"; }
+        { key = "session"; title = "Object"; width = flex 3; align = "left"; cell = textCell "title"; }
         { key = "sort"; title = "Sort"; width = flex 2; align = "left"; cell = textCell "kind"; }
         {
           key = "latency";
@@ -126,10 +129,11 @@ mkTopos {
       kind = "flamegraph";
       morphism_kind = "continues";
       value = "field:latency_ms";
+      restrict = [ "planner" "coder" "reviewer" ];
     };
     "agentic.roles" = { kind = "badges"; group = "kinds"; };
-    "agentic.assembly" = { kind = "assembly"; morphism_sorts = [ "continues" "shares" ]; };
-    "agentic.stages" = { kind = "assembly_badges"; morphism_sorts = [ "continues" "shares" ]; };
+    "agentic.assembly" = { kind = "assembly"; morphism_sorts = [ "continues" "shares" ]; kinds = [ "continues" "shares" ]; };
+    "agentic.stages" = { kind = "assembly_badges"; morphism_sorts = [ "continues" "shares" ]; kinds = [ "continues" "shares" ]; };
     "agentic.physics" = { kind = "physics"; scope = "objects"; };
     "agentic.morphism" = { kind = "morphism"; };
     "agentic.invariants" = { kind = "invariants"; };

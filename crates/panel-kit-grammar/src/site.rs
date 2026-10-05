@@ -107,6 +107,20 @@ impl Site {
         Site { objects: self.objects.clone(), morphisms }
     }
 
+    /// Every object, and only the morphisms of the given site kinds. The
+    /// 1-skeleton of a regime that assembles over its own kinds alone.
+    pub fn restrict_morphism_kinds(&self, kinds: &BTreeSet<String>) -> Site {
+        let morphisms = self
+            .morphisms
+            .iter()
+            .filter(|morphism| {
+                morphism.kind.as_ref().is_some_and(|kind| kinds.contains(kind.as_str()))
+            })
+            .cloned()
+            .collect();
+        Site { objects: self.objects.clone(), morphisms }
+    }
+
     /// The pushout of `self ← R → other`, where `R` is the discrete site of the
     /// objects of `along_kind` both sides present under one id. Identified
     /// objects must be equal; any other shared id is an error.

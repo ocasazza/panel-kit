@@ -214,6 +214,8 @@
           (import ./nix/specs/morphism-okf-catalog-membrane.nix { inherit (pkgs) lib; }).json;
         morphism-okf-catalog-agentic = pkgs.writeText "panel-kit-morphism-okf-catalog-agentic.json"
           (import ./nix/specs/morphism-okf-catalog-agentic.nix { inherit (pkgs) lib; }).json;
+        morphism-agentic-okf-catalog = pkgs.writeText "panel-kit-morphism-agentic-okf-catalog.json"
+          (import ./nix/specs/morphism-agentic-okf-catalog.nix { inherit (pkgs) lib; }).json;
         grammar-trace-lines = pkgs.writeText "panel-kit-grammar-trace-lines.json"
           (import ./nix/grammars/trace-lines.nix { inherit (pkgs) lib; }).json;
         grammar-trace-json = pkgs.writeText "panel-kit-grammar-trace-json.json"
@@ -283,20 +285,22 @@
         toposWebEnv = toposSpecEnv topos-agentic-web topos-membrane-web;
         toposCellsEnv = toposSpecEnv topos-agentic-cells topos-membrane-cells;
         toposAsciiEnv = toposSpecEnv topos-agentic-ascii topos-membrane-ascii;
-        # The trio's two new morphisms read the OKF catalog against the two
-        # agent-trace regimes, so the check gets the topos env, the OKF env and
-        # both morphism documents.
+        # The trio's three new morphisms read the OKF catalog against the two
+        # agent-trace regimes, and omega closes the diagram from agentic into
+        # the catalog, so the check gets the topos env, the OKF env and all
+        # four morphism documents.
         trioMorphismEnv = toposWebEnv // okfEnv // {
           PANEL_KIT_TRIO_MORPHISM_MEMBRANE = "${morphism-okf-catalog-membrane}";
           PANEL_KIT_TRIO_MORPHISM_AGENTIC = "${morphism-okf-catalog-agentic}";
+          PANEL_KIT_TRIO_MORPHISM_OMEGA = "${morphism-agentic-okf-catalog}";
         };
 
-        # The trio host reads both sites and all three regimes: the three topos
-        # specs for one surface, the one physics base, the three morphisms
+        # The trio host reads one site in all three regimes: the three topos
+        # specs for one surface, the one physics base, the four morphisms
         # between the regimes, the three morphisms from a regime into the base,
-        # both trace grammars with their data, and the okf grammar with the
-        # pinned corpus. One env carries the lot, so a trio host and its
-        # contract test never have to merge three others.
+        # and the merged site's two grammars with their one data pair. One env
+        # carries the lot, so a trio host and its contract test never have to
+        # merge three others.
         trioSpecEnv = agentic: membrane: okfCatalog: {
           PANEL_KIT_TRIO_AGENTIC = "${agentic}";
           PANEL_KIT_TRIO_MEMBRANE = "${membrane}";
@@ -305,6 +309,7 @@
           PANEL_KIT_TRIO_F = "${morphism-agentic-membrane}";
           PANEL_KIT_TRIO_PSI = "${morphism-okf-catalog-membrane}";
           PANEL_KIT_TRIO_CHI = "${morphism-okf-catalog-agentic}";
+          PANEL_KIT_TRIO_OMEGA = "${morphism-agentic-okf-catalog}";
           PANEL_KIT_TRIO_AGENTIC_PHYSICS = "${morphism-agentic-physics}";
           PANEL_KIT_TRIO_MEMBRANE_PHYSICS = "${morphism-membrane-physics}";
           PANEL_KIT_TRIO_OKF_CATALOG_PHYSICS = "${morphism-okf-catalog-physics}";
@@ -312,8 +317,6 @@
           PANEL_KIT_TRIO_GRAMMAR_JSON = "${grammar-trace-json}";
           PANEL_KIT_TRIO_DATA_LINES = "${./nix/data/trace.lines}";
           PANEL_KIT_TRIO_DATA_JSON = "${./nix/data/trace.json}";
-          PANEL_KIT_TRIO_OKF_GRAMMAR = "${grammar-okf}";
-          PANEL_KIT_TRIO_OKF_DATA = "${okf-knowledge-catalog}";
         };
         trioEnv = trioSpecEnv topos-agentic-web topos-membrane-web topos-okf-catalog-web;
         trioCellsEnv = trioSpecEnv topos-agentic-cells topos-membrane-cells topos-okf-catalog-cells;

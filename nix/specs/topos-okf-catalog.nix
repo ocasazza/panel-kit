@@ -1,10 +1,12 @@
-# OKF catalog regime over the knowledge-catalog site: object sorts are the
-# normalised OKF types (plus `concept` and `log`, which the corpus' link rules
-# can produce but the pinned snapshot does not exercise) and morphism sorts are
-# the link kinds. Identity sorting. The graph panel is an external `graph`
-# component laid out concentric by sort; the rest are the corpus' own reads:
-# Concepts table, tag badges, per-kind degree gauges, stable-share meter, and
-# the host overlays (selected concept, repository/grammar, morphism, layout).
+# OKF catalog regime over the merged trio site: object sorts are the
+# normalised OKF types (plus `concept` and `log`) together with the agent
+# session kinds pushed along ω (a planning or reviewing session is a `policy`,
+# a coding session a `computation`, a memory store a `concept`), and morphism
+# sorts are the link kinds plus the session bonds read along ω. Identity
+# sorting on the OKF kinds. The graph panel is an external `graph` component
+# laid out concentric by sort; the rest are the corpus' own reads: Concepts
+# table, tag badges, per-kind degree gauges, stable-share meter, and the host
+# overlays (selected concept, repository/grammar, morphism, layout).
 # `surface`/`glyphs` select units/chrome/glyphs; stalks, sheaves, and binding
 # ids do not vary.
 
@@ -13,6 +15,7 @@
 let
   topos = import ../lib/mkToposSpec.nix { inherit lib; };
   L = import ../lib/mkToposLayout.nix { inherit lib; };
+  data = import ../lib/physicsData.nix;
   inherit (topos) mkTopos defaultTheme;
   inherit (L) cell shelf textC tableC badgesC gaugesC meterC externalC flex textCell;
 
@@ -60,10 +63,13 @@ mkTopos {
     table = "table"; dataset = "dataset"; policy = "policy";
     metric = "metric"; computation = "computation"; skill = "skill";
     reference = "reference"; bundle = "bundle"; concept = "concept"; log = "log";
+    planner = "policy"; reviewer = "policy"; coder = "computation"; memory = "concept";
   };
   morphism_sorting = {
     contains = "contains"; references = "references"; derived_from = "derived_from";
     executed_by = "executed_by"; attested_by = "attested_by"; computes = "computes";
+    continues = "computes"; shares = "executed_by"; consolidates = "references";
+    produces = "executed_by"; verifies = "executed_by";
   };
 
   stalks = {
@@ -132,7 +138,7 @@ mkTopos {
     # layout transport.
     "okf.selected" = { kind = "text"; heading = "Selected concept"; };
     "okf.repository" = { kind = "text"; heading = "Repository"; };
-    "okf.morphism" = { kind = "text"; heading = "Morphism f: topos-okf-catalog -> topos-okf-lineage"; };
+    "okf.morphism" = { kind = "text"; heading = data.catalogMorphismHeading; preface = data.catalogMorphismPreface; };
     "okf.layout" = { kind = "text"; heading = "Layout transport"; };
   };
 

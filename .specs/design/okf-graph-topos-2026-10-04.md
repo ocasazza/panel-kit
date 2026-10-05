@@ -147,48 +147,73 @@ concept's sheaves (attributes text, neighbours) to that object.
 
 ## The trio: agentic, membrane, OKF
 
-OKF is the third regime beside the agent-trace regimes. Agent traces with
-edges between sessions assemble like lipids under Brownian motion: chains,
-then sheets/rings, then flat tubes, then closed membranes. `assembly()`
-already classifies each component of a site by β₁, χ, and boundary; the trace
-data carries every stage. All three regimes pull their physics back from the
-one base (`nix/lib/physicsData.nix`), so a morphism changes the presentation
-while the assembly is invariant.
+**One site.** The agent trace and the OKF knowledge objects are one document
+(`nix/data/trace.lines`, or the equivalent `nix/data/trace.json`, which is
+generated from it). It carries the sessions — `planner`, `coder`, `reviewer`,
+`memory` with `continues`, `shares`, `consolidates` — and the OKF objects beside
+them — `bundle`, `table`, `dataset`, `metric`, `computation`, `policy`, `skill`,
+`reference`, `concept`, `log` with `contains`, `derived_from`, `computes`,
+`executed_by`, `attested_by`, `references` — joined by two cross-morphisms that
+make it one graph: `produces` (a session ↦ the object it produced, 8 bonds) and
+`verifies` (a reviewing session ↦ the object it attests, 8 bonds). Every object
+kind carries its own fields: sessions `latency_ms`, `energy`, `t`, `status`;
+knowledge objects `status`, `trust`, `stale_after`. Both grammars read the merged
+site, so `g` re-reads it rather than switching sites.
 
-Morphisms (each pair related; all commute over the base):
+**Three regimes, always available.** `agentic`, `membrane`, and `okf-catalog`
+are three views of that one site; there is no site control and no pair is ever
+refused. A regime sorts a kind **natively** when its topos is the identity on it
+(`Topos::native_object_kinds`: the session kinds are native in `agentic`, the
+OKF kinds in `okf-catalog`, and no kind in `membrane`); otherwise the kind is
+pushed along the morphism from the regime that does sort it natively, which is
+the composite sorting functor. Every regime therefore sorts every kind:
+sessions reach `membrane` along `f` and `okf-catalog` along `ω`; knowledge
+objects reach `agentic` along `χ` and `membrane` along `ψ`. `GeometricMorphism::
+validate` checks that agreement only on the domain's native kinds, since a kind
+the domain sorts by transport is one the codomain sorts itself.
 
-- `f: agentic → membrane` (exists): planner, reviewer ↦ head; coder ↦ tail;
-  memory ↦ solvent; continues ↦ tail_bond, shares ↦ lateral, consolidates ↦
-  solvation.
-- `ψ: okf-catalog → membrane`: table, dataset, policy ↦ head; metric,
-  computation, skill ↦ tail; bundle, reference, concept, log ↦ solvent;
-  derived_from, computes ↦ tail_bond; executed_by, attested_by ↦ lateral;
-  references, contains ↦ solvation.
-- `χ: okf-catalog → agentic`: table, dataset, policy ↦ planner; metric,
-  computation, skill ↦ coder; bundle, reference, concept, log ↦ memory;
-  derived_from, computes ↦ continues; executed_by, attested_by ↦ shares;
-  references, contains ↦ consolidates.
-- The triangle commutes: `f ∘ χ = ψ` on every sort.
+**Morphisms and the laws.** `f: agentic → membrane` (planner, reviewer ↦ head;
+coder ↦ tail; memory ↦ solvent; continues ↦ tail_bond, shares ↦ lateral,
+consolidates ↦ solvation), `ψ: okf-catalog → membrane` (table, dataset, policy ↦
+head; metric, computation, skill ↦ tail; bundle, reference, concept, log ↦
+solvent; derived_from, computes ↦ tail_bond; executed_by, attested_by ↦ lateral;
+references, contains ↦ solvation), `χ: okf-catalog → agentic` (table, dataset,
+policy ↦ planner; metric, computation, skill ↦ coder; bundle, reference, concept,
+log ↦ memory; derived_from, computes ↦ continues; executed_by, attested_by ↦
+shares; references, contains ↦ consolidates), and `ω: agentic → okf-catalog`
+(planner, reviewer ↦ policy; coder ↦ computation; memory ↦ concept; continues ↦
+computes; shares ↦ executed_by; consolidates ↦ references). The session handoff
+kinds `produces` and `verifies` are agentic `shares`, so the catalog reads them
+as `executed_by`. `TrioHost::load` checks all four against their domain and
+codomain, the triangle `f ∘ χ = ψ`, the square `ψ ∘ ω = f`, that each commutes
+over the base (`p_membrane ∘ f = p_membrane ∘ ψ = p_agentic ∘ χ =
+p_catalog ∘ ω`), and — per kind — that the physics pulled back from the base
+along **every** path from the kind's native regime is the same engine and the
+same numbers.
 
-Sites: the agent-trace site (grammar `trace-lines`) and the OKF site (grammar
-`okf`). A regime views any site whose native regime has a morphism into it:
-the site's kinds are sorted by its native regime, then pushed along the
-morphism (composite sorting functor). Traces view in agentic (native) and
-membrane (via f); OKF views in okf-catalog (native), agentic (via χ), and
-membrane (via ψ). Traces in okf-catalog is not offered: no morphism
-agentic → okf-catalog exists, and the demo says so instead of inventing one.
+**Data transport.** A morphism carries attributes as well as sorts, field ↦
+field, the trivial identity where the map is silent. `χ` and `ψ` map an OKF
+object's `stale_after` onto the agentic `latency_ms` and the membrane `energy`
+(the one numeric horizon an OKF object publishes); `status` crosses unchanged.
+`ω` maps a session's `energy` onto the catalog's `trust` and its `latency_ms`
+onto the catalog's `stale_after`. Every field is therefore available in every
+regime: `host.resolve` answers every binding of every regime with real content
+and no panel degrades to a diagnostic. The Morphism overlay states the maps.
 
-Graph: agentic and membrane declare the graph panel with `algorithm = force`,
-so the pulled-back physics runs and components visibly assemble (the closed
-membrane component settles into a shell, tubes into cylinders, sheets flat).
-Every surface runs the force: WebGPU on the web, a deterministic CPU force
-solve in `graph_layout` (per-node repulsion/mass, per-edge weight/rest
-length, 3-D, projected to 2-D) for the SVG and braille painters. Moving along
-a morphism recolours by φ and keeps positions; switching site re-solves.
+**Physics.** Every regime pulls its tuning back from the one base
+(`nix/lib/physicsData.nix`), so the graph's mass, repulsion, weight, and rest
+length are identical in all three regimes; only sorts and colours move. The
+agentic and membrane regimes assemble over their own handoff kinds
+(`continues`, `shares`) — not the cross morphisms, which the assembly leaves out
+— so the sessions still form chains, rings, sheets, tubes, and closed membranes
+(`AssemblySheaf.kinds`), while the catalog assembles the knowledge objects over
+`derived_from`, `computes`, `executed_by`, `attested_by`, `references`.
 
-Demo `trio` (web `examples/trio.rs`, TUI `trio`/`browser_trio`): header
-selects site (traces | OKF) and regime (agentic | membrane | okf-catalog,
-unavailable pairs disabled with the reason), shows the morphism taken, and
-panels include the regime's sheaves plus Assembly (stage per component),
-Morphism (the φ table with fibre counts and the commuting triangle), and
-Physics (pulled-back tuning, identical across regimes).
+Demo `trio` (web `examples/trio.rs`, TUI `trio`/`browser_trio`): the header
+selects the regime (all three, never disabled) and the site's grammar, and the
+status line states, per native regime, the route its kinds take and how many
+objects that covers. Panels are the regime's sheaves over the one site plus
+Assembly (stage per component), Morphism (the routes, φ per kind, the triangle,
+the square, and the attribute maps), Physics (the pulled-back tuning, one
+section), and Selected (the object's fields as this regime reads them, the route
+that transports them, and its neighbours).

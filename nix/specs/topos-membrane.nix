@@ -1,13 +1,14 @@
-# Lipid self-assembly regime over the same session site (replaces the
-# force-field regime): sessions are lipids under Brownian motion whose bonds
-# self-assemble into a bilayer. Species: planner/reviewer -> head, coder ->
-# tail, memory -> solvent; continues -> tail_bond, shares -> lateral,
-# consolidates -> solvation. Regime stalks carry only UI/UX data; physics tuning
-# comes from the base (p_membrane*). Sheaves: Stalks text, Species badges,
-# Assembly table + stage badges, energy Boxplot, per-species potential Gauges,
-# total potential Meter, Physics table, Morphism + Invariants host overlays, and
-# the host-mounted Graph panel (external `graph` component, force layout
-# grouped by sort).
+# Lipid self-assembly regime over the merged site (replaces the force-field
+# regime): sessions and the OKF objects they produce, verify, and read are
+# lipids under Brownian motion whose bonds self-assemble into a bilayer.
+# Sessions sort as lipids; the OKF kinds are pushed along ψ. Species:
+# planner/reviewer -> head, coder -> tail, memory -> solvent; continues ->
+# tail_bond, shares -> lateral, consolidates -> solvation. Regime stalks carry
+# only UI/UX data; physics tuning comes from the base (p_membrane*). Sheaves:
+# Stalks text, Species badges, Assembly table + stage badges over the session
+# handoff kinds, energy Boxplot, per-species potential Gauges, total potential
+# Meter, Physics table, Morphism text, and the host-mounted Graph panel
+# (external `graph` component, force layout grouped by sort).
 
 { lib ? (import <nixpkgs> { }).lib, surface, glyphs ? "unicode" }:
 
@@ -53,9 +54,9 @@ mkTopos {
   id = "topos-membrane";
   regime = "Lipid self-assembly";
 
-  # The trace site sorted as lipids, plus the OKF catalog kinds pushed along
-  # psi (the composite sorting functor: sort natively, then transport). Both
-  # maps are what makes psi validate against this topos.
+  # Sessions sorted as lipids, plus the OKF catalog kinds pushed along psi (the
+  # composite sorting functor: sort natively, then transport). Both maps are
+  # what makes psi validate against this topos.
   object_sorting = {
     planner = "head"; reviewer = "head"; coder = "tail"; memory = "solvent";
     table = "head"; dataset = "head"; policy = "head";
@@ -67,6 +68,7 @@ mkTopos {
     derived_from = "tail_bond"; computes = "tail_bond";
     executed_by = "lateral"; attested_by = "lateral";
     references = "solvation"; contains = "solvation";
+    produces = "lateral"; verifies = "lateral";
   };
 
   stalks = {
@@ -93,19 +95,21 @@ mkTopos {
   sheaves = {
     "membrane.stalks" = {
       kind = "text";
-      heading = "Lipid self-assembly regime";
+      heading = "Lipid self-assembly regime over one merged site";
       preface = [
-        "Sessions are lipids under Brownian motion; bonds self-assemble into a bilayer."
+        "One site: sessions and the OKF objects they produce, verify, and read."
+        "Every object is a lipid under Brownian motion; bonds self-assemble into a bilayer."
         "Species: planner/reviewer -> head, coder -> tail, memory -> solvent."
-        "Assembly over tail_bond+lateral: chain, ring, bilayer sheet, flat tube, closed membrane."
+        "A session is sorted as a lipid; a knowledge object is pushed along psi."
+        "Assembly over the session handoffs tail_bond+lateral: chain, ring, bilayer sheet, flat tube, closed membrane."
         "Stalks: object sort -> label [badge]; morphism sort -> label."
       ];
       include_stalks = true;
     };
     "membrane.species" = { kind = "badges"; group = "kinds"; };
     "membrane.spread" = { kind = "boxplot"; sample = "field:energy"; };
-    "membrane.assembly" = { kind = "assembly"; morphism_sorts = [ "tail_bond" "lateral" ]; };
-    "membrane.stages" = { kind = "assembly_badges"; morphism_sorts = [ "tail_bond" "lateral" ]; };
+    "membrane.assembly" = { kind = "assembly"; morphism_sorts = [ "tail_bond" "lateral" ]; kinds = [ "continues" "shares" ]; };
+    "membrane.stages" = { kind = "assembly_badges"; morphism_sorts = [ "tail_bond" "lateral" ]; kinds = [ "continues" "shares" ]; };
     "membrane.gauges" = { kind = "gauges"; scope = "kinds"; value = "weighted:energy"; scale = 45000.0; };
     "membrane.meter" = {
       kind = "meter";

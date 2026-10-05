@@ -131,6 +131,17 @@ impl Topos {
         self.stalks.morphisms.keys().cloned().collect()
     }
 
+    /// The site object kinds this regime sorts **natively**: the ones its
+    /// sorting is the identity on. Every other kind is foreign and is read
+    /// through a morphism from the regime that does sort it natively.
+    pub fn native_object_kinds(&self) -> BTreeSet<String> {
+        native_kinds(&self.object_sorting)
+    }
+
+    /// The site morphism kinds this regime sorts natively, by the same rule.
+    pub fn native_morphism_kinds(&self) -> BTreeSet<String> {
+        native_kinds(&self.morphism_sorting)
+    }
     /// Every object/morphism kind present in the site is sorted, and every sort
     /// it maps to has a stalk.
     pub fn check_site(&self, site: &Site) -> Result<(), SheafError> {
@@ -159,8 +170,22 @@ impl Topos {
 
     /// Γ of every sheaf: resolve each against the site through `physics`.
     pub fn global_sections(&self, site: &Site, physics: &Physics) -> Result<GlobalSections, SheafError> {
+        self.global_sections_over(site, physics, &BTreeMap::new())
+    }
+
+    /// Γ of every sheaf over one site, reading each foreign kind's fields
+    /// through `attributes`: site object kind → (regime field → the field of
+    /// the object's native regime it is read from). The morphism attribute maps
+    /// composed along each route make that table; a regime reading a kind
+    /// natively passes no entry for it and reads its fields directly.
+    pub fn global_sections_over(
+        &self,
+        site: &Site,
+        physics: &Physics,
+        attributes: &BTreeMap<String, BTreeMap<String, String>>,
+    ) -> Result<GlobalSections, SheafError> {
         self.check_site(site)?;
-        let resolver = self.resolver(physics);
+        let resolver = self.resolver(physics, attributes);
         let mut map = BTreeMap::new();
         let mut rows = BTreeMap::new();
         for (id, sheaf) in &self.sheaves {
@@ -304,15 +329,16 @@ impl Topos {
 
     /// The per-object/per-morphism engine parameters over the whole site.
     pub fn physics_section(&self, site: &Site, physics: &Physics) -> PhysicsSection {
-        self.resolver(physics).physics_section(site)
+        self.resolver(physics, &BTreeMap::new()).physics_section(site)
     }
 
-    fn resolver<'a>(&'a self, physics: &'a Physics) -> Resolver<'a> {
+    fn resolver<'a>(&'a self, physics: &'a Physics, attributes: &'a AttributeMaps) -> Resolver<'a> {
         Resolver {
             object_sorting: &self.object_sorting,
             morphism_sorting: &self.morphism_sorting,
             stalks: &self.stalks,
             physics,
+            attributes,
         }
     }
 
@@ -419,19 +445,45 @@ impl Topos {
     }
 }
 
-/// Resolution context: the sortings, stalks, and physics a sheaf reads to turn
-/// a site into content.
+/// Site object kind to (regime field → the field of that kind's native regime
+/// the regime reads it from), composed from a morphism's attribute map along
+/// the route from the kind's native regime.
+pub type AttributeMaps = BTreeMap<String, BTreeMap<String, String>>;
+
+/// The kinds of `sorting` the sorting is the identity on: the regime's native
+/// kinds, as opposed to the ones it reads by transport.
+fn native_kinds(sorting: &BTreeMap<String, String>) -> BTreeSet<String> {
+    sorting
+        .iter()
+        .filter(|(kind, sort)| *kind == *sort)
+        .map(|(kind, _)| kind.clone())
+        .collect()
+}
+
+/// Resolution context: the sortings, stalks, physics, and transported
+/// attributes a sheaf reads to turn a site into content.
 pub(crate) struct Resolver<'a> {
     pub(crate) object_sorting: &'a BTreeMap<String, String>,
     pub(crate) morphism_sorting: &'a BTreeMap<String, String>,
     pub(crate) stalks: &'a Stalks,
     pub(crate) physics: &'a Physics,
+    pub(crate) attributes: &'a AttributeMaps,
 }
 
 impl Resolver<'_> {
     /// Regime sort for an object kind.
     pub(crate) fn object_sort(&self, kind: &str) -> Option<&str> {
         self.object_sorting.get(kind).map(String::as_str)
+    }
+
+    /// The domain field `kind`'s `field` is read from in this regime: the
+    /// transported name when `kind` is foreign here, `field` itself when the
+    /// regime sorts it natively or no morphism names it.
+    pub(crate) fn field_of<'a>(&'a self, kind: &str, field: &'a str) -> &'a str {
+        self.attributes
+            .get(kind)
+            .and_then(|map| map.get(field))
+            .map_or(field, String::as_str)
     }
 
     /// Label for an object sort, falling back to the raw sort.

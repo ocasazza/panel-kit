@@ -519,6 +519,7 @@ fn validate_rejects_bad_sort_maps() {
             ("shares", "lateral"),
             ("consolidates", "solvation"),
         ]),
+        attributes: BTreeMap::new(),
     };
     assert!(matches!(
         non_total.validate(&agentic, &membrane),
@@ -540,6 +541,7 @@ fn validate_rejects_bad_sort_maps() {
             ("shares", "lateral"),
             ("consolidates", "solvation"),
         ]),
+        attributes: BTreeMap::new(),
     };
     assert!(matches!(
         outside.validate(&agentic, &membrane),
@@ -562,6 +564,7 @@ fn validate_rejects_bad_sort_maps() {
             ("shares", "lateral"),
             ("consolidates", "solvation"),
         ]),
+        attributes: BTreeMap::new(),
     };
     assert!(matches!(
         non_commuting.validate(&agentic, &membrane),
