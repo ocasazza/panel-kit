@@ -210,6 +210,10 @@
           (import ./nix/specs/morphism-okf-catalog-physics.nix { inherit (pkgs) lib; }).json;
         morphism-okf-lineage-physics = pkgs.writeText "panel-kit-morphism-okf-lineage-physics.json"
           (import ./nix/specs/morphism-okf-lineage-physics.nix { inherit (pkgs) lib; }).json;
+        morphism-okf-catalog-membrane = pkgs.writeText "panel-kit-morphism-okf-catalog-membrane.json"
+          (import ./nix/specs/morphism-okf-catalog-membrane.nix { inherit (pkgs) lib; }).json;
+        morphism-okf-catalog-agentic = pkgs.writeText "panel-kit-morphism-okf-catalog-agentic.json"
+          (import ./nix/specs/morphism-okf-catalog-agentic.nix { inherit (pkgs) lib; }).json;
         grammar-trace-lines = pkgs.writeText "panel-kit-grammar-trace-lines.json"
           (import ./nix/grammars/trace-lines.nix { inherit (pkgs) lib; }).json;
         grammar-trace-json = pkgs.writeText "panel-kit-grammar-trace-json.json"
@@ -279,6 +283,13 @@
         toposWebEnv = toposSpecEnv topos-agentic-web topos-membrane-web;
         toposCellsEnv = toposSpecEnv topos-agentic-cells topos-membrane-cells;
         toposAsciiEnv = toposSpecEnv topos-agentic-ascii topos-membrane-ascii;
+        # The trio's two new morphisms read the OKF catalog against the two
+        # agent-trace regimes, so the check gets the topos env, the OKF env and
+        # both morphism documents.
+        trioMorphismEnv = toposWebEnv // okfEnv // {
+          PANEL_KIT_TRIO_MORPHISM_MEMBRANE = "${morphism-okf-catalog-membrane}";
+          PANEL_KIT_TRIO_MORPHISM_AGENTIC = "${morphism-okf-catalog-agentic}";
+        };
 
         workspaceSpecReference = import ./nix/tests/workspace-spec.nix {
           inherit (pkgs) lib;
@@ -416,6 +427,13 @@
           cargoArtifacts = hostCargoArtifacts;
           cargoTestExtraArgs = "-p panel-kit --test topos_okf";
         });
+        # psi and chi against the real Nix JSON: each validates on its domain
+        # and codomain, both commute over the physics base, and the triangle
+        # f . chi = psi holds on every sort (a broken psi must fail it).
+        topos-trio-morphisms-test = hostCraneLib.cargoTest (hostArgs // trioMorphismEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit --test topos_trio_morphisms";
+        });
         workspace-spec-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // workspaceSpecAsciiBuildEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_tui";
@@ -456,6 +474,8 @@
         packages.morphism-okf-catalog-lineage = morphism-okf-catalog-lineage;
         packages.morphism-okf-catalog-physics = morphism-okf-catalog-physics;
         packages.morphism-okf-lineage-physics = morphism-okf-lineage-physics;
+        packages.morphism-okf-catalog-membrane = morphism-okf-catalog-membrane;
+        packages.morphism-okf-catalog-agentic = morphism-okf-catalog-agentic;
         packages.topos-physics = topos-physics;
         packages.morphism-agentic-membrane = morphism-agentic-membrane;
         packages.morphism-agentic-physics = morphism-agentic-physics;
@@ -550,6 +570,7 @@
           topos-grammar-test = topos-grammar-test;
           topos-autoloop-test = topos-autoloop-test;
           topos-okf-test = topos-okf-test;
+          topos-trio-morphisms-test = topos-trio-morphisms-test;
           okf-grammar-test = okf-grammar-test;
           workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
           workspace-spec-tui-native = pkgs.runCommand "panel-kit-workspace-spec-tui-native-check" { } ''

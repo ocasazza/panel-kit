@@ -35,13 +35,15 @@ fn node(id: &str, sort: &str) -> GraphNode {
     }
 }
 
+/// `rest_length` is in units of the seed's mean radius, matching the
+/// dimensionless rest lengths of the pulled-back physics base.
 fn edge(source: u32, target: u32, kind: &str) -> GraphEdge {
     GraphEdge {
         source,
         target,
         kind: kind.into(),
         weight: 1.0,
-        rest_length: 60.0,
+        rest_length: 1.0,
     }
 }
 
@@ -135,21 +137,237 @@ fn an_unknown_group_field_leaves_the_graph_whole() {
 }
 
 #[test]
-fn force_seeds_the_simulator_from_the_live_positions() {
+fn force_relaxes_from_the_live_positions() {
     let model = model();
-    let live: Vec<[f32; 3]> = (0..model.nodes.len())
-        .map(|index| [index as f32, 0.0, 0.0])
-        .collect();
-    let positions = solve(&model, &layout(LayoutAlgorithm::Force, None), Some(&live));
-    assert_eq!(positions, live);
+    let request = force_layout();
+    let live = fibonacci_sphere(model.nodes.len(), 400.0);
+    let relaxed = solve(&model, &request, Some(&live));
+    assert_ne!(relaxed, live, "the solve must relax, not echo the seed");
+
+    // The seed is the starting arrangement, not a hint: the solved layout keeps
+    // the seed's own scale and centre, so a topos switch tween begins where the
+    // GPU sim already was instead of jumping to a fresh sphere.
+    let centre = |points: &[[f32; 3]]| {
+        [
+            mean(points.iter().map(|p| f64::from(p[0]))),
+            mean(points.iter().map(|p| f64::from(p[1]))),
+            mean(points.iter().map(|p| f64::from(p[2]))),
+        ]
+    };
+    let radius = |points: &[[f32; 3]]| {
+        let c = centre(points);
+        mean(points.iter().map(|p| {
+            (0..3)
+                .map(|axis| f64::from(p[axis]) - c[axis])
+                .fold(0.0_f64, |sum, v| sum.hypot(v))
+        }))
+    };
+    assert!(
+        (radius(&relaxed) - radius(&live)).abs() < 0.5 * radius(&live),
+        "the solve kept radius {} against the seed's {}",
+        radius(&relaxed),
+        radius(&live)
+    );
+    for axis in 0..3 {
+        assert!(
+            (centre(&relaxed)[axis] - centre(&live)[axis]).abs() < 0.5 * radius(&live),
+            "the solve drifted off the seed's centre"
+        );
+    }
 }
 
 #[test]
 fn a_wrong_length_seed_falls_back_to_the_sphere() {
     let model = model();
     let short: Vec<[f32; 3]> = vec![[0.0; 3]];
-    let positions = solve(&model, &layout(LayoutAlgorithm::Force, None), Some(&short));
-    assert_eq!(positions, fibonacci_sphere(model.nodes.len(), 200.0));
+    let request = force_layout();
+    let positions = solve(&model, &request, Some(&short));
+    assert_eq!(positions.len(), model.nodes.len());
+    assert!(positions.iter().all(|p| p.iter().all(|v| v.is_finite())));
+    assert_eq!(
+        positions,
+        solve(&model, &request, None),
+        "a wrong-length seed must solve like no seed at all"
+    );
+}
+
+/// An icosahedron: 12 nodes, 30 edges, uniform physics. A closed triangulated
+/// surface is the shell case — repulsion alone spreads every node, the springs
+/// hold neighbours at one rest length, and the equilibrium is a shell.
+fn icosahedron() -> GraphModel {
+    let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
+    let corners = [
+        (-1.0, phi, 0.0),
+        (1.0, phi, 0.0),
+        (-1.0, -phi, 0.0),
+        (1.0, -phi, 0.0),
+        (0.0, -1.0, phi),
+        (0.0, 1.0, phi),
+        (0.0, -1.0, -phi),
+        (0.0, 1.0, -phi),
+        (phi, 0.0, -1.0),
+        (phi, 0.0, 1.0),
+        (-phi, 0.0, -1.0),
+        (-phi, 0.0, 1.0),
+    ];
+    // The 20 triangular faces of the icosahedron; their edge set is the graph.
+    let faces = [
+        (0, 11, 5),
+        (0, 5, 1),
+        (0, 1, 7),
+        (0, 7, 10),
+        (0, 10, 11),
+        (1, 5, 9),
+        (5, 11, 4),
+        (11, 10, 2),
+        (10, 7, 6),
+        (7, 1, 8),
+        (3, 9, 4),
+        (3, 4, 2),
+        (3, 2, 6),
+        (3, 6, 8),
+        (3, 8, 9),
+        (4, 9, 5),
+        (2, 4, 11),
+        (6, 2, 10),
+        (8, 6, 7),
+        (9, 8, 1),
+    ];
+    let mut seen = std::collections::BTreeSet::new();
+    let mut edges = Vec::new();
+    for (a, b, c) in faces {
+        for (source, target) in [(a, b), (b, c), (c, a)] {
+            let key = if source < target {
+                (source, target)
+            } else {
+                (target, source)
+            };
+            if seen.insert(key) {
+                edges.push(edge(key.0 as u32, key.1 as u32, "tail_bond"));
+            }
+        }
+    }
+    assert_eq!(edges.len(), 30, "the icosahedron has 30 edges");
+    GraphModel {
+        nodes: corners
+            .iter()
+            .enumerate()
+            .map(|(index, _)| node(&format!("v{index:02}"), "solvent"))
+            .collect(),
+        edges,
+    }
+}
+
+/// A chain of `count` nodes: no cycle, so nothing but the springs can hold the
+/// ends apart.
+fn chain(count: usize, rest_length: f64, weight: f64) -> GraphModel {
+    GraphModel {
+        nodes: (0..count)
+            .map(|index| node(&format!("n{index:03}"), "tail"))
+            .collect(),
+        edges: (1..count as u32)
+            .map(|index| GraphEdge {
+                source: index - 1,
+                target: index,
+                kind: "tail_bond".into(),
+                weight,
+                rest_length,
+            })
+            .collect(),
+    }
+}
+
+fn force_layout() -> GraphLayout {
+    GraphLayout {
+        algorithm: LayoutAlgorithm::Force,
+        group_by: None,
+        params: BTreeMap::new(),
+    }
+}
+
+fn mean(values: impl Iterator<Item = f64>) -> f64 {
+    let values: Vec<f64> = values.collect();
+    assert!(!values.is_empty());
+    values.iter().sum::<f64>() / values.len() as f64
+}
+
+fn distance(a: [f32; 3], b: [f32; 3]) -> f64 {
+    (0..3)
+        .map(|axis| f64::from(a[axis]) - f64::from(b[axis]))
+        .fold(0.0_f64, |sum, value| sum.hypot(value))
+}
+
+#[test]
+fn force_lays_a_closed_surface_out_as_a_shell() {
+    let model = icosahedron();
+    // A flat seed: the previous force behaviour returned it verbatim, so every
+    // node sat in one plane and the shell assertion below could not hold.
+    let seed: Vec<[f32; 3]> = (0..model.nodes.len())
+        .map(|index| [index as f32 * 20.0, 0.0, 0.0])
+        .collect();
+
+    let positions = solve(&model, &force_layout(), Some(&seed));
+    assert_eq!(positions.len(), model.nodes.len());
+    let centre = (0..3)
+        .map(|axis| mean(positions.iter().map(|p| f64::from(p[axis]))))
+        .collect::<Vec<_>>();
+    let radii: Vec<f64> = positions
+        .iter()
+        .map(|p| {
+            (0..3)
+                .map(|axis| f64::from(p[axis]) - centre[axis])
+                .fold(0.0_f64, |sum, value| sum.hypot(value))
+        })
+        .collect();
+    let mean_radius = mean(radii.iter().copied());
+    assert!(mean_radius > 1.0, "the shell must have a real radius: {radii:?}");
+    for (index, radius) in radii.iter().enumerate() {
+        assert!(
+            (radius - mean_radius).abs() <= 0.25 * mean_radius,
+            "node {index} sits at radius {radius}, mean {mean_radius}: {radii:?}"
+        );
+    }
+}
+
+#[test]
+fn force_keeps_a_chain_stretched_out() {
+    let model = chain(14, 1.0, 1.0);
+    let positions = solve(&model, &force_layout(), None);
+    assert_eq!(positions.len(), model.nodes.len());
+    let mean_edge = mean((0..model.nodes.len() - 1).map(|i| distance(positions[i], positions[i + 1])));
+    let end_to_end = distance(positions[0], positions[model.nodes.len() - 1]);
+    assert!(
+        end_to_end > 0.6 * (model.nodes.len() - 1) as f64 * mean_edge,
+        "chain ends {end_to_end} apart over a mean edge of {mean_edge}"
+    );
+}
+
+#[test]
+fn force_is_deterministic_across_runs() {
+    let model = icosahedron();
+    let seed = fibonacci_sphere(model.nodes.len(), 120.0);
+    let request = force_layout();
+    assert_eq!(
+        solve(&model, &request, Some(&seed)),
+        solve(&model, &request, Some(&seed)),
+        "the CPU force solve must not depend on unseeded randomness"
+    );
+    assert_eq!(solve(&model, &request, None), solve(&model, &request, None));
+}
+
+#[test]
+fn stiffer_shorter_edges_end_shorter_than_weak_long_ones() {
+    let stiff = solve(&chain(14, 0.4, 5.0), &force_layout(), None);
+    let weak = solve(&chain(14, 2.0, 0.5), &force_layout(), None);
+    let edge_length = |positions: &[[f32; 3]]| {
+        mean((0..positions.len() - 1).map(|i| distance(positions[i], positions[i + 1])))
+    };
+    assert!(
+        edge_length(&stiff) < edge_length(&weak),
+        "stiff short edges drew up to {} against weak long ones at {}",
+        edge_length(&stiff),
+        edge_length(&weak)
+    );
 }
 
 #[test]

@@ -141,3 +141,51 @@ concept's sheaves (attributes text, neighbours) to that object.
   terminal), same panels, same keys.
 - Keys everywhere: `t` switch topos along f / back, `n`/`p` next/previous node
   selection, `l` re-solve layout, `r` reset.
+
+## The trio: agentic, membrane, OKF
+
+OKF is the third regime beside the agent-trace regimes. Agent traces with
+edges between sessions assemble like lipids under Brownian motion: chains,
+then sheets/rings, then flat tubes, then closed membranes. `assembly()`
+already classifies each component of a site by β₁, χ, and boundary; the trace
+data carries every stage. All three regimes pull their physics back from the
+one base (`nix/lib/physicsData.nix`), so a morphism changes the presentation
+while the assembly is invariant.
+
+Morphisms (each pair related; all commute over the base):
+
+- `f: agentic → membrane` (exists): planner, reviewer ↦ head; coder ↦ tail;
+  memory ↦ solvent; continues ↦ tail_bond, shares ↦ lateral, consolidates ↦
+  solvation.
+- `ψ: okf-catalog → membrane`: table, dataset, policy ↦ head; metric,
+  computation, skill ↦ tail; bundle, reference, concept, log ↦ solvent;
+  derived_from, computes ↦ tail_bond; executed_by, attested_by ↦ lateral;
+  references, contains ↦ solvation.
+- `χ: okf-catalog → agentic`: table, dataset, policy ↦ planner; metric,
+  computation, skill ↦ coder; bundle, reference, concept, log ↦ memory;
+  derived_from, computes ↦ continues; executed_by, attested_by ↦ shares;
+  references, contains ↦ consolidates.
+- The triangle commutes: `f ∘ χ = ψ` on every sort.
+
+Sites: the agent-trace site (grammar `trace-lines`) and the OKF site (grammar
+`okf`). A regime views any site whose native regime has a morphism into it:
+the site's kinds are sorted by its native regime, then pushed along the
+morphism (composite sorting functor). Traces view in agentic (native) and
+membrane (via f); OKF views in okf-catalog (native), agentic (via χ), and
+membrane (via ψ). Traces in okf-catalog is not offered: no morphism
+agentic → okf-catalog exists, and the demo says so instead of inventing one.
+
+Graph: agentic and membrane declare the graph panel with `algorithm = force`,
+so the pulled-back physics runs and components visibly assemble (the closed
+membrane component settles into a shell, tubes into cylinders, sheets flat).
+Every surface runs the force: WebGPU on the web, a deterministic CPU force
+solve in `graph_layout` (per-node repulsion/mass, per-edge weight/rest
+length, 3-D, projected to 2-D) for the SVG and braille painters. Moving along
+a morphism recolours by φ and keeps positions; switching site re-solves.
+
+Demo `trio` (web `examples/trio.rs`, TUI `trio`/`browser_trio`): header
+selects site (traces | OKF) and regime (agentic | membrane | okf-catalog,
+unavailable pairs disabled with the reason), shows the morphism taken, and
+panels include the regime's sheaves plus Assembly (stage per component),
+Morphism (the φ table with fibre counts and the commuting triangle), and
+Physics (pulled-back tuning, identical across regimes).

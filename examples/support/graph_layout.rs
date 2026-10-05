@@ -3,8 +3,9 @@
 //! One seam for both backends: a [`GraphLayout`] request plus a [`GraphModel`]
 //! body in, one position per node out, in node declaration order. Every static
 //! [`LayoutAlgorithm`] maps 1:1 onto a vendored `graph-layouts` solver;
-//! [`LayoutAlgorithm::Force`] is the GPU simulation alone, so it emits its seed
-//! positions unchanged for the sim to relax.
+//! [`LayoutAlgorithm::Force`] has no static solver, so it runs the
+//! deterministic CPU force solve in [`force_solve`] that stands in for the
+//! GPU simulation.
 //!
 //! Parameters arrive as the spec's `params` map of `f64`. Scalar knobs map by
 //! name (`rank_separation`, `level_spacing`, …); the vendored enums map by
@@ -26,6 +27,36 @@ use panel_kit_core::widgets::graph::{GraphLayout, GraphModel, GraphNode, LayoutA
 /// Radius of the deterministic seed sphere [`LayoutAlgorithm::Force`] starts
 /// from when the caller supplies no live positions.
 pub const FORCE_SEED_RADIUS: f32 = 200.0;
+
+/// Iterations the CPU force solve runs before it returns.
+const FORCE_ITERATIONS: f64 = 600.0;
+/// First per-iteration displacement cap, in canonical layout lengths.
+const FORCE_STEP: f64 = 0.12;
+/// Fraction of the displacement cap left after each iteration (cooling).
+const FORCE_COOLING: f64 = 0.995;
+/// Fraction of a node's velocity carried into the next iteration.
+const FORCE_DAMPING: f64 = 0.6;
+/// Spring stiffness per unit of `weight`, per canonical layout length.
+const FORCE_STIFFNESS: f64 = 1.0;
+/// Repulsion per unit of the mean-normalised `repulsion` product.
+const FORCE_REPULSION: f64 = 5.0;
+/// Pull toward the centroid, as a fraction of the distance from it.
+const FORCE_CENTER: f64 = 0.05;
+/// Fixed-seed jitter that lifts a seed off its own plane (a line, a plane or a
+/// point cannot relax into 3-D on its own), as a fraction of the seed's spread.
+const FORCE_JITTER: f64 = 0.05;
+/// Seed of that jitter: the solve stays a pure function of the model.
+const FORCE_JITTER_SEED: u64 = 0x5EED_0F1E_D000_0001;
+/// Smallest seed spread that still fixes a length scale.
+const FORCE_MIN_SPREAD: f64 = 1.0e-3;
+/// Closest approach two nodes may take, so the `1/d` terms stay finite.
+const FORCE_MIN_DISTANCE: f64 = 1.0e-3;
+/// Largest rest length, in canonical layout lengths, one edge may ask for.
+const FORCE_MAX_REST: f64 = 4.0;
+/// Canonical layout length: one `rest_length` of the pulled-back physics.
+const FORCE_LENGTH: f64 = 200.0;
+/// Lightest a node may be treated as, so inertia never divides by zero.
+const FORCE_MIN_MASS: f64 = 0.05;
 
 // Solver graphs are cached per topology, so one topology always solves through
 // one graph: the vendored `Graph` is `HashMap`-backed, `HashMap` hands each new
@@ -241,11 +272,7 @@ fn solve_members(
 ) -> Vec<[f32; 3]> {
     let fallback: Vec<[f32; 3]> = members.iter().map(|&index| seed[index]).collect();
     if layout.algorithm == LayoutAlgorithm::Force {
-        return if fallback.iter().all(|point| point.iter().all(|v| v.is_finite())) {
-            fallback
-        } else {
-            fibonacci_sphere(members.len(), FORCE_SEED_RADIUS)
-        };
+        return force_solve(model, members, seed, &layout.params);
     }
 
     let (graph, order) = solver_graph(model, members);
@@ -265,6 +292,238 @@ fn solve_members(
     } else {
         fallback
     }
+}
+
+/// Positions for `LayoutAlgorithm::Force`: a deterministic 3-D force solve
+/// standing in for the GPU simulation on surfaces without WebGPU.
+///
+/// Each of `FORCE_ITERATIONS` iterations sums, per node, the repulsion every
+/// other node pushes on it (Fruchterman-Reingold `k²/d`, scaled by each node's
+/// `repulsion` and normalised to unit mean), the springs of its edges (`weight`
+/// times the overshoot of that edge's rest length), and a pull toward the
+/// seed's centroid; `mass` is the inertia the sum is divided by. Damping and a
+/// cooling displacement cap settle it. The forces are all in units of
+/// [`FORCE_LENGTH`], the canonical layout length, so the arrangement a solve
+/// settles at does not depend on the scale of the seed it started from.
+///
+/// The seed is the starting arrangement only, and comes back at its own centre
+/// and spread: the seed owns the scale, the forces own the shape, so a re-solve
+/// seeded from a solved layout lands on the same shape. There is no RNG — the
+/// fixed-seed jitter that lifts a line, plane or point seed off its own plane is
+/// the only source of irregularity.
+///
+/// A seed that is not finite or has collapsed to a point returns it unchanged,
+/// and a result that is not finite falls back to the seed, so the caller never
+/// paints a broken graph.
+fn force_solve(
+    model: &GraphModel,
+    members: &[usize],
+    seed: &[[f32; 3]],
+    params: &BTreeMap<String, f64>,
+) -> Vec<[f32; 3]> {
+    let count = members.len();
+    let fallback: Vec<[f32; 3]> = members.iter().map(|&index| seed[index]).collect();
+    let mut points: Vec<[f64; 3]> = members
+        .iter()
+        .map(|&index| seed[index].map(f64::from))
+        .collect();
+    if count < 2 || points.iter().flatten().any(|value| !value.is_finite()) {
+        return fallback;
+    }
+
+    let mut centre = [0.0_f64; 3];
+    for point in &points {
+        for axis in 0..3 {
+            centre[axis] += point[axis];
+        }
+    }
+    for axis in centre.iter_mut() {
+        *axis /= count as f64;
+    }
+    let spread = points
+        .iter()
+        .map(|point| distance(point, &centre))
+        .sum::<f64>()
+        / count as f64;
+    if spread <= FORCE_MIN_SPREAD {
+        return fallback;
+    }
+    // The solve runs centred on the seed; the forces below are in absolute
+    // [`FORCE_LENGTH`] units, so the shape it settles at is a property of the
+    // model and not of the scale the caller happened to seed with.
+    for point in &mut points {
+        for axis in 0..3 {
+            point[axis] -= centre[axis];
+        }
+    }
+
+    let declared: f64 = members
+        .iter()
+        .map(|&index| model.nodes[index].repulsion)
+        .filter(|repulsion| repulsion.is_finite() && *repulsion > 0.0)
+        .sum();
+    let unit = if declared > 0.0 {
+        declared / count as f64
+    } else {
+        1.0
+    };
+    let repulsion: Vec<f64> = members
+        .iter()
+        .map(|&index| {
+            let value = model.nodes[index].repulsion;
+            if value.is_finite() && value > 0.0 {
+                value / unit
+            } else {
+                1.0
+            }
+        })
+        .collect();
+    let mass: Vec<f64> = members
+        .iter()
+        .map(|&index| {
+            let value = model.nodes[index].mass;
+            if value.is_finite() {
+                value.max(FORCE_MIN_MASS)
+            } else {
+                1.0
+            }
+        })
+        .collect();
+    let springs: Vec<(usize, usize, f64, f64)> = solver_links(model, members)
+        .into_iter()
+        .filter(|link| link.source != link.target)
+        .map(|link| {
+            let edge = &model.edges[link.edge];
+            // Stiffness is per unit length, matching the repulsion it balances.
+            let weight = if edge.weight.is_finite() {
+                FORCE_STIFFNESS * edge.weight.max(0.0) / FORCE_LENGTH
+            } else {
+                FORCE_STIFFNESS / FORCE_LENGTH
+            };
+            // `rest_length` is dimensionless: it counts canonical layout lengths.
+            let rest = if edge.rest_length.is_finite() {
+                edge.rest_length.clamp(0.0, FORCE_MAX_REST) * FORCE_LENGTH
+            } else {
+                FORCE_LENGTH
+            };
+            (link.source, link.target, weight, rest)
+        })
+        .collect();
+
+    jitter(&mut points, spread);
+    let iterations = number(params, "iterations", FORCE_ITERATIONS).clamp(1.0, 4000.0) as usize;
+    let cooling = number(params, "cooling", FORCE_COOLING).clamp(0.5, 0.999);
+    let damping = number(params, "damping", FORCE_DAMPING).clamp(0.0, 1.0);
+    // The displacement cap cools across the solve, so it starts wide enough to
+    // cover the distance the longest rest length asks for.
+    let longest = springs
+        .iter()
+        .map(|&(_, _, _, rest)| rest)
+        .fold(spread, f64::max);
+    let mut cap = number(params, "step", FORCE_STEP) * longest;
+    let mut velocity = vec![[0.0_f64; 3]; count];
+    let mut force = vec![[0.0_f64; 3]; count];
+    for _ in 0..iterations {
+        force.fill([0.0; 3]);
+        for i in 0..count {
+            for j in i + 1..count {
+                let away = sub(points[j], points[i]);
+                let length = norm(away);
+                if length <= FORCE_MIN_DISTANCE {
+                    continue;
+                }
+                // Fruchterman-Reingold repulsion, `k^2/d`, along the line joining
+                // the pair.
+                let push = FORCE_REPULSION * repulsion[i] * repulsion[j] * FORCE_LENGTH / length;
+                for axis in 0..3 {
+                    let share = push * away[axis] / length;
+                    force[i][axis] -= share;
+                    force[j][axis] += share;
+                }
+            }
+        }
+        for &(source, target, weight, rest) in &springs {
+            let along = sub(points[target], points[source]);
+            let length = norm(along);
+            if length <= FORCE_MIN_DISTANCE {
+                continue;
+            }
+            // Hooke spring along the edge: attraction past `rest`, repulsion short of it.
+            let pull = weight * (length - rest);
+            for axis in 0..3 {
+                let share = pull * along[axis] / length;
+                force[source][axis] += share;
+                force[target][axis] -= share;
+            }
+        }
+        for i in 0..count {
+            for axis in 0..3 {
+                let step = (velocity[i][axis] + force[i][axis] / mass[i]
+                    - FORCE_CENTER * points[i][axis] / FORCE_LENGTH)
+                    * damping;
+                let step = step.clamp(-cap, cap);
+                velocity[i][axis] = step;
+                points[i][axis] += step;
+            }
+        }
+        cap *= cooling;
+    }
+
+    // The seed owns the scale: the solved shape comes back at the seed's own
+    // spread, so a topos switch keeps the layout the size it already was.
+    let settled = points
+        .iter()
+        .map(|point| norm(*point))
+        .sum::<f64>()
+        / count as f64;
+    let scale = if settled > FORCE_MIN_SPREAD {
+        spread / settled
+    } else {
+        1.0
+    };
+    let solved: Vec<[f32; 3]> = points
+        .iter()
+        .map(|point| {
+            [
+                (point[0] * scale + centre[0]) as f32,
+                (point[1] * scale + centre[1]) as f32,
+                (point[2] * scale + centre[2]) as f32,
+            ]
+        })
+        .collect();
+    if solved.iter().all(|point| point.iter().all(|value| value.is_finite())) {
+        solved
+    } else {
+        fallback
+    }
+}
+
+/// Nudge every node off its seed position by a fixed-seed jitter, scaled to the
+/// seed's spread: a seed that is a line, a plane or a point has no out-of-plane
+/// direction to relax along.
+fn jitter(points: &mut [[f64; 3]], spread: f64) {
+    let mut state = FORCE_JITTER_SEED;
+    let amplitude = FORCE_JITTER * spread;
+    for point in points.iter_mut() {
+        for axis in point.iter_mut() {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            *axis += amplitude * ((state >> 11) as f64 / (1_u64 << 53) as f64 - 0.5);
+        }
+    }
+}
+
+fn sub(lhs: [f64; 3], rhs: [f64; 3]) -> [f64; 3] {
+    [lhs[0] - rhs[0], lhs[1] - rhs[1], lhs[2] - rhs[2]]
+}
+
+fn norm(vector: [f64; 3]) -> f64 {
+    (vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]).sqrt()
+}
+
+fn distance(lhs: &[f64; 3], rhs: &[f64; 3]) -> f64 {
+    norm([lhs[0] - rhs[0], lhs[1] - rhs[1], lhs[2] - rhs[2]])
 }
 
 /// Build the vendored solver's graph over `members` and return the permutation

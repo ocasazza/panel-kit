@@ -108,4 +108,36 @@ rec {
       citation = "weak"; containment = "weak";
     };
   };
+
+  # psi: topos-okf-catalog -> topos-membrane. Tables, datasets and policies are
+  # the head; metrics, computations and skills the tail; the rest solvent.
+  # p_membrane . psi = p_catalog, and f . chi = psi on every sort.
+  okfCatalogToMembrane = {
+    object_sorts = {
+      table = "head"; dataset = "head"; policy = "head";
+      metric = "tail"; computation = "tail"; skill = "tail";
+      bundle = "solvent"; reference = "solvent"; concept = "solvent"; log = "solvent";
+    };
+    morphism_sorts = {
+      derived_from = "tail_bond"; computes = "tail_bond";
+      executed_by = "lateral"; attested_by = "lateral";
+      references = "solvation"; contains = "solvation";
+    };
+  };
+
+  # chi: topos-okf-catalog -> topos-agentic. Tables, datasets and policies are
+  # planners; metrics, computations and skills coders; the rest memory.
+  # p_agentic . chi = p_catalog, and f . chi = psi on every sort.
+  okfCatalogToAgentic = {
+    object_sorts = {
+      table = "planner"; dataset = "planner"; policy = "planner";
+      metric = "coder"; computation = "coder"; skill = "coder";
+      bundle = "memory"; reference = "memory"; concept = "memory"; log = "memory";
+    };
+    morphism_sorts = {
+      derived_from = "continues"; computes = "continues";
+      executed_by = "shares"; attested_by = "shares";
+      references = "consolidates"; contains = "consolidates";
+    };
+  };
 }

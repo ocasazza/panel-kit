@@ -5,7 +5,9 @@
 # consolidates -> solvation. Regime stalks carry only UI/UX data; physics tuning
 # comes from the base (p_membrane*). Sheaves: Stalks text, Species badges,
 # Assembly table + stage badges, energy Boxplot, per-species potential Gauges,
-# total potential Meter, Physics table, Morphism + Invariants host overlays.
+# total potential Meter, Physics table, Morphism + Invariants host overlays, and
+# the host-mounted Graph panel (external `graph` component, force layout
+# grouped by sort).
 
 { lib ? (import <nixpkgs> { }).lib, surface, glyphs ? "unicode" }:
 
@@ -13,9 +15,19 @@ let
   topos = import ../lib/mkToposSpec.nix { inherit lib; };
   L = import ../lib/mkToposLayout.nix { inherit lib; };
   inherit (topos) mkTopos defaultTheme;
-  inherit (L) cell shelf textC tableC badgesC boxC gaugesC meterC;
+  inherit (L) cell shelf textC tableC badgesC boxC gaugesC meterC externalC;
+
+  # The graph panel is an external `graph` component over the host-mounted
+  # `membrane.graph` model, so the pulled-back force simulation assembles the
+  # lipids into chains, sheets, tubes and closed membranes.
+  graphContent = externalC "graph" "membrane.graph" {
+    algorithm = "force";
+    group_by = "sort";
+    params = { };
+  };
 
   shelves = [
+    (shelf 4 [ (cell "graph" "Graph" "graph" 4 graphContent) ])
     (shelf 3 [
       (cell "stalks" "Stalks" "stalks" 1 (textC "membrane.stalks"))
       (cell "species" "Species" "species" 1 (badgesC "membrane.species"))
@@ -41,8 +53,21 @@ mkTopos {
   id = "topos-membrane";
   regime = "Lipid self-assembly";
 
-  object_sorting = { planner = "head"; reviewer = "head"; coder = "tail"; memory = "solvent"; };
-  morphism_sorting = { continues = "tail_bond"; shares = "lateral"; consolidates = "solvation"; };
+  # The trace site sorted as lipids, plus the OKF catalog kinds pushed along
+  # psi (the composite sorting functor: sort natively, then transport). Both
+  # maps are what makes psi validate against this topos.
+  object_sorting = {
+    planner = "head"; reviewer = "head"; coder = "tail"; memory = "solvent";
+    table = "head"; dataset = "head"; policy = "head";
+    metric = "tail"; computation = "tail"; skill = "tail";
+    bundle = "solvent"; reference = "solvent"; concept = "solvent"; log = "solvent";
+  };
+  morphism_sorting = {
+    continues = "tail_bond"; shares = "lateral"; consolidates = "solvation";
+    derived_from = "tail_bond"; computes = "tail_bond";
+    executed_by = "lateral"; attested_by = "lateral";
+    references = "solvation"; contains = "solvation";
+  };
 
   stalks = {
     objects = {
@@ -100,5 +125,16 @@ mkTopos {
     id = "topos-membrane-ws";
     persistKey = "panel_kit_topos_membrane_${surface}";
     theme = defaultTheme;
+    components = [
+      {
+        id = "graph";
+        contract = "graph";
+        requires = [ "webgpu" ];
+        keep_mounted = true;
+        min_size = if surface == "web" then [ 320.0 240.0 ] else [ 24.0 8.0 ];
+        events = [ "select" "hover" ];
+        fallback = "cells";
+      }
+    ];
   };
 }

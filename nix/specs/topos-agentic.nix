@@ -1,9 +1,12 @@
 # Agentic-trace regime over the session site: objects are planner/coder/reviewer
-# sessions plus memory stores; morphisms are handoffs. Identity sorting (every
-# site kind maps to its own regime sort). Sheaves: Stalks text, sessions Status
-# table, handoff Flamegraph over `continues`, Roles badges (per sort), Assembly
-# table + stage badges, Physics table, Morphism + Invariants host overlays. `surface`/`glyphs`
-# select units/chrome/glyphs; the stalks, sheaves, and binding ids do not vary.
+# sessions plus memory stores; morphisms are handoffs. Identity sorting on the
+# trace site, and the OKF catalog kinds pushed along χ for the OKF site.
+# Sheaves: Stalks text, sessions Status table, handoff Flamegraph over
+# `continues`, Roles badges (per sort), Assembly table + stage badges,
+# Physics table, Morphism + Invariants host overlays, and the host-mounted
+# Graph panel (external `graph` component, force layout grouped by sort).
+# `surface`/`glyphs` select units/chrome/glyphs; stalks, sheaves and binding
+# ids do not vary.
 
 { lib ? (import <nixpkgs> { }).lib, surface, glyphs ? "unicode" }:
 
@@ -11,9 +14,19 @@ let
   topos = import ../lib/mkToposSpec.nix { inherit lib; };
   L = import ../lib/mkToposLayout.nix { inherit lib; };
   inherit (topos) mkTopos defaultTheme;
-  inherit (L) cell shelf textC tableC badgesC flameC textCell flex fixed;
+  inherit (L) cell shelf textC tableC badgesC flameC textCell flex fixed externalC;
+
+  # The graph panel is an external `graph` component over the host-mounted
+  # `agentic.graph` model, so the pulled-back force simulation runs: handoffs
+  # pull the sessions into chains, sheets and closed membranes.
+  graphContent = externalC "graph" "agentic.graph" {
+    algorithm = "force";
+    group_by = "sort";
+    params = { };
+  };
 
   shelves = [
+    (shelf 4 [ (cell "graph" "Graph" "graph" 4 graphContent) ])
     (shelf 3 [
       (cell "stalks" "Stalks" "stalks" 1 (textC "agentic.stalks"))
       (cell "status" "Sessions" "status" 3 (tableC "agentic.status"))
@@ -38,8 +51,21 @@ mkTopos {
   id = "topos-agentic";
   regime = "Agentic traces";
 
-  object_sorting = { planner = "planner"; coder = "coder"; reviewer = "reviewer"; memory = "memory"; };
-  morphism_sorting = { continues = "continues"; shares = "shares"; consolidates = "consolidates"; };
+  # The native identity on the trace site, plus the OKF catalog kinds pushed
+  # along chi (the composite sorting functor: sort natively, then transport).
+  # Both maps are what makes chi validate against this topos.
+  object_sorting = {
+    planner = "planner"; coder = "coder"; reviewer = "reviewer"; memory = "memory";
+    table = "planner"; dataset = "planner"; policy = "planner";
+    metric = "coder"; computation = "coder"; skill = "coder";
+    bundle = "memory"; reference = "memory"; concept = "memory"; log = "memory";
+  };
+  morphism_sorting = {
+    continues = "continues"; shares = "shares"; consolidates = "consolidates";
+    derived_from = "continues"; computes = "continues";
+    executed_by = "shares"; attested_by = "shares";
+    references = "consolidates"; contains = "consolidates";
+  };
 
   stalks = {
     objects = {
@@ -114,5 +140,16 @@ mkTopos {
     id = "topos-agentic-ws";
     persistKey = "panel_kit_topos_agentic_${surface}";
     theme = defaultTheme;
+    components = [
+      {
+        id = "graph";
+        contract = "graph";
+        requires = [ "webgpu" ];
+        keep_mounted = true;
+        min_size = if surface == "web" then [ 320.0 240.0 ] else [ 24.0 8.0 ];
+        events = [ "select" "hover" ];
+        fallback = "cells";
+      }
+    ];
   };
 }
