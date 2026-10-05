@@ -2380,6 +2380,7 @@ dependencies = [
  "ratzilla",
  "serde",
  "serde_json",
+ "wgpu",
 ]
 
 [[package]]

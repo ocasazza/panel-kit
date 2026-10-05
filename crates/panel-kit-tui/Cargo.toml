@@ -43,6 +43,13 @@ graph-layouts = { path = "../../vendor/jump-cannon/graph-layouts" }
 crossterm = "0.29"
 ratatui = { version = "0.30.1", features = ["crossterm"] }
 
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+# graph-layouts solves through wgpu, whose API types are neither `Send` nor
+# `Sync` on wasm without atomics unless this feature is on. `panel-kit` picks
+# it up transitively through jump-cannon-graph-view; the TUI crate has no
+# renderer, so it declares the feature itself.
+wgpu = { version = "23", default-features = false, features = ["fragile-send-sync-non-atomic-wasm"] }
+
 [[example]]
 name = "workspace"
 
@@ -55,4 +62,12 @@ required-features = ["spec-plan"]
 
 [[example]]
 name = "browser_topos"
+required-features = ["spec-plan"]
+
+[[example]]
+name = "okf"
+required-features = ["spec-plan"]
+
+[[example]]
+name = "browser_okf"
 required-features = ["spec-plan"]
