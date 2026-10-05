@@ -100,7 +100,10 @@ pub struct GraphLayout { pub algorithm: LayoutAlgorithm,
 ```
 
 `LayoutAlgorithm` names map 1:1 onto vendored `graph-layouts` solvers; `Force`
-is the GPU force simulation alone.
+is the host's CPU force solve over each connected component with every node's
+and edge's own physics, packed on a grid. The WebGPU view draws that solve and
+never re-simulates it: the GPU engine's options hold one global tuning, which
+would flatten the per-sort physics that assembles a membrane.
 
 ## Topoi and the morphism
 
@@ -123,8 +126,8 @@ Switching topos along `f` is the visible morphism, on every surface:
 1. Every node's colour and sort move along φ (fibres of φ merge clusters).
 2. The codomain's layout is solved **seeded from the current positions**, and
    the renderer tweens old → new positions (≈800 ms; instant under
-   `prefers-reduced-motion`); on WebGPU the force simulation then resumes with
-   the codomain's pulled-back parameters (`update_layout_options`).
+   `prefers-reduced-motion`). A `Force` graph's first paint tweens from the
+   solve's seed sphere, so the components visibly assemble.
 3. Selection transports by `∃f` (forward) / `f*` (back), as `topos_demo.rs` does.
 4. The "Layout" text panel states domain algorithm → codomain algorithm, φ with
    fibre sizes, and the pulled-back force parameters that changed.

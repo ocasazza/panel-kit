@@ -115,7 +115,7 @@ fn solving_is_deterministic() {
 #[test]
 fn grouping_by_sort_moves_the_arrangement() {
     let model = model();
-    for algorithm in ALGORITHMS {
+    for algorithm in ALGORITHMS.into_iter().filter(|a| *a != LayoutAlgorithm::Force) {
         let whole = solve(&model, &layout(algorithm, None), None);
         let grouped = solve(&model, &layout(algorithm, Some("sort")), None);
         assert_eq!(grouped.len(), whole.len(), "{algorithm:?}");
@@ -124,6 +124,50 @@ fn grouping_by_sort_moves_the_arrangement() {
             "{algorithm:?} must compose sorts differently when grouped"
         );
     }
+}
+
+/// Force assembles connected components, never sorts: a closed surface whose
+/// nodes carry three sorts stays one shell, and a separate chain lands beside
+/// it instead of inside it.
+#[test]
+fn force_assembles_each_component_whole_and_apart() {
+    let mut model = icosahedron();
+    let sorts = ["planner", "coder", "reviewer"];
+    for (index, node) in model.nodes.iter_mut().enumerate() {
+        node.sort = sorts[index % sorts.len()].into();
+    }
+    let offset = model.nodes.len() as u32;
+    let tail = chain(8, 1.0, 1.0);
+    model.nodes.extend(tail.nodes);
+    model.edges.extend(tail.edges.into_iter().map(|edge| GraphEdge {
+        source: edge.source + offset,
+        target: edge.target + offset,
+        ..edge
+    }));
+
+    let mut request = force_layout();
+    request.group_by = Some("sort".into());
+    let positions = solve(&model, &request, None);
+    assert_eq!(positions, solve(&model, &force_layout(), None), "group_by must not split a force solve");
+
+    let (shell, rod) = positions.split_at(offset as usize);
+    let shell_centre = centre(shell);
+    let radii: Vec<f64> = shell.iter().map(|p| distance(*p, shell_centre)).collect();
+    let shell_radius = mean(radii.iter().copied());
+    for (index, radius) in radii.iter().enumerate() {
+        assert!(
+            (radius - shell_radius).abs() <= 0.25 * shell_radius,
+            "node {index} sits at radius {radius}, mean {shell_radius}: {radii:?}"
+        );
+    }
+    let nearest = rod
+        .iter()
+        .map(|p| distance(*p, shell_centre))
+        .fold(f64::INFINITY, f64::min);
+    assert!(
+        nearest > 1.5 * shell_radius,
+        "the chain reaches {nearest} from the shell's centre, inside radius {shell_radius}"
+    );
 }
 
 #[test]
@@ -138,12 +182,12 @@ fn an_unknown_group_field_leaves_the_graph_whole() {
 
 #[test]
 fn force_relaxes_from_the_live_positions() {
-    let model = model();
+    let mut model = model();
+    model.edges.push(edge(3, 2, "derived_from"));
     let request = force_layout();
     let live = fibonacci_sphere(model.nodes.len(), 400.0);
     let relaxed = solve(&model, &request, Some(&live));
     assert_ne!(relaxed, live, "the solve must relax, not echo the seed");
-
     // The seed is the starting arrangement, not a hint: the solved layout keeps
     // the seed's own scale and centre, so a topos switch tween begins where the
     // GPU sim already was instead of jumping to a fresh sphere.
@@ -297,6 +341,11 @@ fn distance(a: [f32; 3], b: [f32; 3]) -> f64 {
         .fold(0.0_f64, |sum, value| sum.hypot(value))
 }
 
+fn centre(points: &[[f32; 3]]) -> [f32; 3] {
+    let axis = |index: usize| mean(points.iter().map(|p| f64::from(p[index]))) as f32;
+    [axis(0), axis(1), axis(2)]
+}
+
 #[test]
 fn force_lays_a_closed_surface_out_as_a_shell() {
     let model = icosahedron();
@@ -340,6 +389,22 @@ fn force_keeps_a_chain_stretched_out() {
         end_to_end > 0.6 * (model.nodes.len() - 1) as f64 * mean_edge,
         "chain ends {end_to_end} apart over a mean edge of {mean_edge}"
     );
+}
+
+/// A camera looks down z, so a ring must lie across x and y, widest along x,
+/// rather than stand edge-on as a line.
+#[test]
+fn force_turns_a_ring_to_face_the_viewer() {
+    let mut model = chain(12, 1.0, 1.0);
+    model.edges.push(edge(11, 0, "tail_bond"));
+    let positions = solve(&model, &force_layout(), None);
+    let extent = |axis: usize| {
+        let values = positions.iter().map(|p| p[axis]);
+        values.clone().fold(f32::MIN, f32::max) - values.fold(f32::MAX, f32::min)
+    };
+    let (x, y, z) = (extent(0), extent(1), extent(2));
+    assert!(x >= y && y >= z, "extents x {x}, y {y}, z {z} must narrow towards z");
+    assert!(z < 0.5 * y, "the ring stands {z} deep across a {y} face");
 }
 
 #[test]

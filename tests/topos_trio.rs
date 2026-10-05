@@ -18,6 +18,10 @@
 #[path = "../examples/support/trio_host.rs"]
 mod trio_host;
 
+#[allow(dead_code)]
+#[path = "../examples/support/graph_layout.rs"]
+mod graph_layout;
+
 use std::collections::BTreeSet;
 
 use panel_kit_core::badge::Rgb;
@@ -498,6 +502,87 @@ fn the_trace_site_assembles_into_every_stage() {
         );
     }
     assert_eq!(summary.len(), 5, "every available pair assembles the active site");
+}
+
+/// Every assembly component of the trace site, as node indices into the
+/// agentic graph, with its stage: a BFS over the agentic assembly bonds from
+/// each component's representative.
+fn trace_components(host: &TrioHost) -> Vec<(Stage, Vec<usize>)> {
+    let graph = host.graph();
+    let bonds = ["continues", "shares"];
+    host.assembly()
+        .iter()
+        .map(|component| {
+            let start = graph
+                .nodes
+                .iter()
+                .position(|node| node.id == component.representative)
+                .expect("the representative is a graph node");
+            let mut members = vec![start];
+            let mut at = 0;
+            while at < members.len() {
+                let node = members[at] as u32;
+                for edge in graph.edges.iter().filter(|edge| bonds.contains(&edge.kind.as_str())) {
+                    let next = if edge.source == node {
+                        edge.target
+                    } else if edge.target == node {
+                        edge.source
+                    } else {
+                        continue;
+                    };
+                    if !members.contains(&(next as usize)) {
+                        members.push(next as usize);
+                    }
+                }
+                at += 1;
+            }
+            (component.stage, members)
+        })
+        .collect()
+}
+
+/// We form membranes: under the force layout the graph panel asks for, the
+/// trace site's closed surface lays out as a hollow vesicle in every regime
+/// that reads it — the harder-repelling sorts may bulge it, never collapse or
+/// tear it — and no other component's nodes sit inside.
+#[test]
+fn the_trace_membrane_forms_a_shell() {
+    let Some(fixture) = Fixture::load() else { return };
+    let components = trace_components(&fixture.host_at(SiteId::Traces, RegimeId::Agentic));
+    let (_, shell) = components
+        .iter()
+        .find(|(stage, _)| *stage == Stage::Membrane)
+        .expect("the trace site assembles a membrane");
+
+    for regime in [RegimeId::Agentic, RegimeId::Membrane] {
+        let host = fixture.host_at(SiteId::Traces, regime);
+        let layout = host.graph_layout();
+        let positions = graph_layout::solve(&host.graph(), &layout, None);
+        let point = |index: usize| positions[index].map(f64::from);
+        let centre = (0..3)
+            .map(|axis| shell.iter().map(|&index| point(index)[axis]).sum::<f64>() / shell.len() as f64)
+            .collect::<Vec<_>>();
+        let from_centre =
+            |index: usize| (0..3).map(|axis| point(index)[axis] - centre[axis]).fold(0.0_f64, f64::hypot);
+        let radii: Vec<f64> = shell.iter().map(|&index| from_centre(index)).collect();
+        let mean = radii.iter().sum::<f64>() / radii.len() as f64;
+        println!("{regime}: {:?} shell radii {radii:.1?}", layout.algorithm);
+        for (&index, radius) in shell.iter().zip(&radii) {
+            assert!(
+                (0.5 * mean..=1.5 * mean).contains(radius),
+                "{regime}: {} sits at radius {radius:.1}, the shell's mean is {mean:.1}: {radii:.1?}",
+                host.graph().nodes[index].id
+            );
+        }
+        for index in (0..positions.len()).filter(|index| !shell.contains(index)) {
+            assert!(
+                from_centre(index) > 0.75 * mean,
+                "{regime}: {} sits inside the membrane, {:.1} from its centre, radius {mean:.1}",
+                host.graph().nodes[index].id,
+                from_centre(index)
+            );
+        }
+    }
 }
 
 #[test]

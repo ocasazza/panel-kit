@@ -329,8 +329,8 @@
           cargoExtraArgs = "-p spec-parity";
           doCheck = false;
         });
-        # --all-targets compiles the topos and okf examples, which embed their cells specs.
-        hostClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // okfCellsEnv // {
+        # --all-targets compiles the topos, trio and okf examples, which embed their cells specs.
+        hostClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // trioCellsEnv // okfCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit-tui -p spec-parity --features panel-kit-tui/spec-plan --all-targets -- -D warnings";
         });
@@ -338,13 +338,17 @@
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example workspace --target wasm32-unknown-unknown -- -D warnings";
         });
-        toposWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // toposWebEnv // {
+        trioWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // trioEnv // {
           inherit cargoArtifacts;
-          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example topos --target wasm32-unknown-unknown -- -D warnings";
+          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example trio --target wasm32-unknown-unknown -- -D warnings";
         });
         autoloopWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // autoloopEnv // {
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example autoloop --target wasm32-unknown-unknown -- -D warnings";
+        });
+        toposWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // toposWebEnv // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example topos --target wasm32-unknown-unknown -- -D warnings";
         });
         vendoredWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // {
           inherit cargoArtifacts;
@@ -357,6 +361,14 @@
         toposBrowserTuiClippy = wasmCraneLib.cargoClippy (commonArgs // toposAsciiEnv // {
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_topos --target wasm32-unknown-unknown -- -D warnings";
+        });
+        trioTuiNativeClippy = hostCraneLib.cargoClippy (hostArgs // trioCellsEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example trio -- -D warnings";
+        });
+        trioBrowserTuiClippy = wasmCraneLib.cargoClippy (commonArgs // trioAsciiEnv // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_trio --target wasm32-unknown-unknown -- -D warnings";
         });
         okfWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // okfEnv // {
           inherit cargoArtifacts;
@@ -374,11 +386,14 @@
           mkdir -p "$out"
           ln -s ${hostClippy} "$out/host"
           ln -s ${webExampleClippy} "$out/web-example"
+          ln -s ${trioWebExampleClippy} "$out/trio-web"
           ln -s ${toposWebExampleClippy} "$out/topos-web"
           ln -s ${autoloopWebExampleClippy} "$out/autoloop-web"
           ln -s ${vendoredWebExampleClippy} "$out/vendored-web"
           ln -s ${toposTuiNativeClippy} "$out/topos-tui-native"
           ln -s ${toposBrowserTuiClippy} "$out/topos-browser-tui"
+          ln -s ${trioTuiNativeClippy} "$out/trio-tui-native"
+          ln -s ${trioBrowserTuiClippy} "$out/trio-browser-tui"
           ln -s ${okfTuiNativeClippy} "$out/okf-tui-native"
           ln -s ${okfBrowserTuiClippy} "$out/okf-browser-tui"
           ln -s ${okfWebExampleClippy} "$out/okf-web"
@@ -406,6 +421,10 @@
           ln -s ${workspace-spec-web-remainder-wasm} "$out/web-workspace"
           ln -s ${workspace-spec-web-one-panel-wasm} "$out/one-panel"
         '';
+        trio-web-wasm = wasmCraneLib.buildPackage (commonArgs // trioEnv // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p panel-kit --features web-runtime --example trio";
+        });
         topos-web-wasm = wasmCraneLib.buildPackage (commonArgs // toposWebEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit --features web-runtime --example topos";
@@ -422,6 +441,15 @@
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit --features web-runtime --example okf";
         });
+        trio-tui-native = hostCraneLib.buildPackage (hostArgs // trioCellsEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example trio";
+          doCheck = false;
+        });
+        trio-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // trioAsciiEnv // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_trio";
+        });
         topos-tui-native = hostCraneLib.buildPackage (hostArgs // toposCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example topos";
@@ -431,6 +459,13 @@
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_topos";
         });
+        # The topos demo model is renderer-neutral, so its behaviour test runs on
+        # the host with the web specs in the environment: the same assertions then
+        # cover the shared model and the authored binding tables.
+        topos-grammar-test = hostCraneLib.cargoTest (hostArgs // toposWebEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit --test topos_grammar";
+        });
         okf-tui-native = hostCraneLib.buildPackage (hostArgs // okfCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example okf";
@@ -439,13 +474,6 @@
         okf-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // okfAsciiEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_okf";
-        });
-        # The demo model is renderer-neutral, so its behaviour test runs on the
-        # host with the web specs in the environment: the same assertions then
-        # cover the shared model and the authored binding tables.
-        topos-grammar-test = hostCraneLib.cargoTest (hostArgs // toposWebEnv // {
-          cargoArtifacts = hostCargoArtifacts;
-          cargoTestExtraArgs = "-p panel-kit --test topos_grammar";
         });
         topos-autoloop-test = hostCraneLib.cargoTest (hostArgs // autoloopEnv // {
           cargoArtifacts = hostCargoArtifacts;
@@ -528,9 +556,12 @@
         packages.grammar-autoloop-control = grammar-autoloop-control;
         packages.grammar-okf = grammar-okf;
         packages.okf-knowledge-catalog = okf-knowledge-catalog;
+        packages.trio-web-wasm = trio-web-wasm;
         packages.topos-web-wasm = topos-web-wasm;
         packages.autoloop-web-wasm = autoloop-web-wasm;
         packages.okf-web-wasm = okf-web-wasm;
+        packages.trio-tui-native = trio-tui-native;
+        packages.trio-browser-tui-wasm = trio-browser-tui-wasm;
         packages.topos-tui-native = topos-tui-native;
         packages.topos-browser-tui-wasm = topos-browser-tui-wasm;
         packages.okf-tui-native = okf-tui-native;
@@ -588,16 +619,25 @@
             touch "$out"
           '';
           # Filtering by test name still compiles every test target and example,
-          # including topos_grammar and the topos and autoloop hosts.
-          theme-parity = hostCraneLib.cargoTest (hostArgs // toposWebEnv // autoloopEnv // {
+          # including topos_grammar and the topos, trio and autoloop hosts.
+          theme-parity = hostCraneLib.cargoTest (hostArgs // toposWebEnv // trioEnv // autoloopEnv // {
             cargoArtifacts = hostCargoArtifacts;
             cargoTestExtraArgs = "-p panel-kit --features web-runtime theme_parity";
           });
           workspace-spec-web-wasm = workspace-spec-web-wasm;
+          trio-web-wasm = trio-web-wasm;
           topos-web-wasm = topos-web-wasm;
           autoloop-web-wasm = autoloop-web-wasm;
           vendored-web-wasm = vendored-web-wasm;
           okf-web-wasm = okf-web-wasm;
+          # The trio demo's laws are only visible once rendered, so the native
+          # build runs its offscreen canary: braille graph, resolved bodies,
+          # in-place regime switch, site switch, and the refused pair.
+          trio-tui-native = pkgs.runCommand "panel-kit-trio-tui-native-check" { } ''
+            ${trio-tui-native}/bin/trio --check-offscreen
+            touch "$out"
+          '';
+          trio-browser-tui-wasm = trio-browser-tui-wasm;
           topos-tui-native = topos-tui-native;
           topos-browser-tui-wasm = topos-browser-tui-wasm;
           okf-tui-native = pkgs.runCommand "panel-kit-okf-tui-native-check" { } ''
@@ -605,8 +645,8 @@
             touch "$out"
           '';
           okf-browser-tui-wasm = okf-browser-tui-wasm;
-          topos-grammar-test = topos-grammar-test;
           topos-autoloop-test = topos-autoloop-test;
+          topos-grammar-test = topos-grammar-test;
           topos-okf-test = topos-okf-test;
           topos-trio-morphisms-test = topos-trio-morphisms-test;
           topos-trio-test = topos-trio-test;
@@ -628,7 +668,7 @@
           });
         };
 
-        devShells.default = pkgs.mkShell (toposWebEnv // autoloopEnv // okfEnv // trioEnv // {
+        devShells.default = pkgs.mkShell (autoloopEnv // okfEnv // trioEnv // {
           PANEL_KIT_WORKSPACE_SPEC = "${workspace-canary}";
           packages = [
             rustWasm

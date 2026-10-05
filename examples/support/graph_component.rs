@@ -6,12 +6,12 @@
 //! an honest notice. The host solves positions; every new target tweens from
 //! the current arrangement, so a topos switch animates on every surface.
 //!
-//! The physics the model carries (node `mass`/`repulsion`, edge
-//! `weight`/`rest_length`) is pulled back into the GPU force engine's options
-//! by [`force_options`]; see that function for the mapping.
+//! `Force` arrangements arrive solved by `graph_layout::solve`, which honours
+//! each node's and edge's own physics. The GPU engine draws that arrangement
+//! and never re-simulates it: its force options hold one global tuning, which
+//! would flatten the per-sort physics a membrane assembles from.
 
 use dioxus::prelude::*;
-use graph_layouts::{GpuForceOptions, SeedMode};
 use graph_view::render;
 use panel_kit::widgets::graph::{graph_notice, graph_svg};
 use panel_kit_core::spec::{
@@ -24,7 +24,7 @@ use wasm_bindgen::closure::Closure;
 #[path = "graph_layout.rs"]
 pub mod graph_layout;
 
-use graph_layout::{Tween, project_2d};
+use graph_layout::{FORCE_SEED_RADIUS, Tween, fibonacci_sphere, project_2d};
 
 /// Milliseconds the renderer spends walking from the old arrangement to the
 /// codomain's, unless the page asks for reduced motion.
@@ -36,9 +36,8 @@ const FRAME_MS: i32 = 16;
 /// Mount the `graph` contract for `component` over `model`.
 ///
 /// `target` is the arrangement the host wants drawn — the codomain's solved
-/// layout when the topos switches. Every change tweens towards it; a static
-/// `layout` then stays on screen, while `Force` hands the GPU simulation the
-/// model's pulled-back physics to relax.
+/// layout when the topos switches. Every change tweens towards it. A `Force`
+/// graph first paints the solve's own seed sphere, so it visibly assembles.
 #[component]
 pub fn GraphComponent(
     model: GraphModel,
@@ -48,12 +47,14 @@ pub fn GraphComponent(
     on_event: EventHandler<ComponentEvent>,
     component: ExternalComponentSpec,
 ) -> Element {
-    let live: Signal<Vec<[f32; 3]>> = use_signal(|| target.clone());
+    let live: Signal<Vec<[f32; 3]>> = use_signal(|| match layout.algorithm {
+        LayoutAlgorithm::Force => fibonacci_sphere(target.len(), FORCE_SEED_RADIUS),
+        _ => target.clone(),
+    });
     let mut webgpu = use_signal(|| false);
     // `use_reactive` re-runs each memo when its prop changes; a bare memo over
     // a moved prop would keep the first render's value forever.
     let model = use_memo(use_reactive((&model,), |(model,)| model));
-    let layout = use_memo(use_reactive((&layout,), |(layout,)| layout));
     let wanted = use_memo(use_reactive((&target,), |(target,)| target));
     let chosen = use_memo(use_reactive((&selected,), |(selected,)| selected));
     let spec = use_memo(use_reactive((&component,), |(component,)| component));
@@ -65,7 +66,7 @@ pub fn GraphComponent(
             return;
         }
         let tween = Tween::new(from, request, TRANSITION_MS, reduced_motion());
-        drive(live, model, layout, tween, now_ms());
+        drive(live, tween, now_ms());
     });
 
     // Mount once the WebGPU canvas is in the DOM and again only when the node
@@ -77,7 +78,7 @@ pub fn GraphComponent(
             return;
         }
         nodes();
-        render::set_after_mount(render::fit_camera);
+        render::set_after_mount(frame);
         mount(&model.peek(), &live.peek());
     });
     use_effect(move || {
@@ -88,7 +89,7 @@ pub fn GraphComponent(
             pipes.update_colors(queue, colors);
             pipes.update_sizes(queue, sizes);
         });
-        settle(&graph, &layout.peek());
+        settle();
     });
 
     use_effect(move || {
@@ -168,15 +169,9 @@ pub fn GraphComponent(
 /// One tween step, then the next, until the arrangement lands.
 ///
 /// Each step updates `live` (read by the SVG fallback) and writes the same
-/// frame to the GPU through `RenderHost::apply_positions` with the force sim
-/// paused; the landed arrangement is then settled per [`settle`].
-fn drive(
-    mut live: Signal<Vec<[f32; 3]>>,
-    model: Memo<GraphModel>,
-    layout: Memo<GraphLayout>,
-    tween: Tween,
-    start: u32,
-) {
+/// frame to the GPU through `RenderHost::apply_positions`; the landed
+/// arrangement is then framed per [`settle`].
+fn drive(mut live: Signal<Vec<[f32; 3]>>, tween: Tween, start: u32) {
     let elapsed = now_ms().saturating_sub(start);
     let frame = tween.at(elapsed);
     live.set(frame.clone());
@@ -184,11 +179,11 @@ fn drive(
     render::set_sim_running(false);
     let _ = render::with_host(|host| host.apply_positions(&flat));
     if tween.is_complete(elapsed) {
-        settle(&model.read(), &layout.read());
+        settle();
         return;
     }
     let next = tween.clone();
-    schedule(move || drive(live, model, layout, next, start));
+    schedule(move || drive(live, next, start));
 }
 
 /// Run `tick` on the next frame's timeout, off the browser too.
@@ -207,46 +202,6 @@ fn schedule(tick: impl FnOnce() + 'static) {
         return;
     }
     once.forget();
-}
-
-/// Pull the model's physics into the GPU force engine's options.
-///
-/// `repulsion` is the mean node repulsion scaled by the mean node mass: a heavy
-/// node is hard to move, so the pair force it contributes is the product.
-/// `spring_k` is the mean edge weight (a heavier morphism pulls harder) and
-/// `spring_len` the mean edge rest length, with the engine's documented
-/// `4 x spring_len` repulsion clip. An empty model keeps the engine defaults.
-pub fn force_options(model: &GraphModel) -> GpuForceOptions {
-    let defaults = GpuForceOptions::default();
-    if model.nodes.is_empty() {
-        return defaults;
-    }
-    let mean = |values: Vec<f64>, fallback: f64| {
-        if values.is_empty() {
-            fallback
-        } else {
-            values.iter().sum::<f64>() / values.len() as f64
-        }
-    };
-    let mass = mean(model.nodes.iter().map(|node| node.mass).collect(), 1.0);
-    let repulsion = mean(
-        model.nodes.iter().map(|node| node.repulsion).collect(),
-        defaults.repulsion as f64,
-    );
-    let weight = mean(model.edges.iter().map(|edge| edge.weight).collect(), 1.0);
-    let spring_len = mean(
-        model.edges.iter().map(|edge| edge.rest_length).collect(),
-        defaults.spring_len as f64,
-    ) as f32;
-
-    GpuForceOptions {
-        repulsion: (repulsion * mass) as f32,
-        spring_k: weight as f32,
-        spring_len,
-        repulsion_radius: 4.0 * spring_len,
-        seed_mode: SeedMode::Random,
-        ..defaults
-    }
 }
 
 /// Mount the graph view's scene over `positions`.
@@ -285,19 +240,35 @@ fn node_sizes(model: &GraphModel) -> Vec<f32> {
     model.nodes.iter().map(|node| 2.0 + 8.0 * node.size / heaviest).collect()
 }
 
-/// Frame the landed arrangement. A static layout stays as solved; `Force`
-/// hands the GPU engine the model's pulled-back parameters to relax.
-fn settle(model: &GraphModel, layout: &GraphLayout) {
-    render::fit_camera();
-    if layout.algorithm != LayoutAlgorithm::Force {
-        render::set_sim_running(false);
-        return;
-    }
+/// Frame the landed arrangement; the simulation stays paused, so what the host
+/// solved is what stays on screen.
+fn settle() {
+    render::set_sim_running(false);
+    frame();
+}
+
+/// Room around the framed graph, as a multiple of its extent.
+const FRAME_MARGIN: f32 = 1.15;
+
+/// Fit the camera to the graph's box and the panel's aspect. The vendored fit
+/// frames the bounding sphere with generous padding, which leaves a wide panel
+/// mostly empty and every assembled shape a speck.
+fn frame() {
     render::with_host(|host| {
-        host.pipes.update_layout_options(force_options(model));
-        host.pipes.wake_physics_layout();
+        let (width, height) = host.logical_size();
+        let pipes = &mut host.pipes;
+        pipes.fit_camera();
+        let Some((min, max)) = pipes.bounds() else {
+            return;
+        };
+        if pipes.camera.is_ortho() || width <= 0.0 || height <= 0.0 {
+            return;
+        }
+        let half = (max - min) * 0.5;
+        let tan = (pipes.camera.fov_y() * 0.5).tan();
+        let reach = (half.y / tan).max(half.x / (tan * width / height));
+        pipes.camera.look_at_point((min + max) * 0.5, FRAME_MARGIN * reach + half.z);
     });
-    render::set_sim_running(true);
 }
 
 /// Whether the page asks for reduced motion; false off the browser.
@@ -368,58 +339,4 @@ pub fn describe(layout: &GraphLayout) -> String {
         .map(|(key, value)| format!("{key}={value}"))
         .collect();
     format!("{:?} / {:?}", layout.algorithm, params.join(", "))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeMap;
-
-    use panel_kit_core::widgets::graph::{GraphEdge, GraphNode, LayoutAlgorithm};
-
-    fn model() -> GraphModel {
-        let node = |id: &str, mass: f64, repulsion: f64| GraphNode {
-            id: id.into(),
-            label: id.into(),
-            sort: "s".into(),
-            color: (1, 2, 3),
-            size: 1.0,
-            mass,
-            repulsion,
-        };
-        GraphModel {
-            nodes: vec![node("a", 2.0, 1000.0), node("b", 4.0, 2000.0)],
-            edges: vec![GraphEdge {
-                source: 0,
-                target: 1,
-                kind: "k".into(),
-                weight: 3.0,
-                rest_length: 250.0,
-            }],
-        }
-    }
-
-    #[test]
-    fn physics_aggregates_into_the_force_engine_options() {
-        let options = force_options(&model());
-        // mean repulsion 1500 x mean mass 3.0
-        assert_eq!(options.repulsion, 4500.0);
-        assert_eq!(options.spring_k, 3.0);
-        assert_eq!(options.spring_len, 250.0);
-        assert_eq!(options.repulsion_radius, 1000.0);
-    }
-
-    #[test]
-    fn the_layout_description_names_the_solver_and_its_parameters() {
-        let mut params = BTreeMap::new();
-        params.insert("rank_separation".to_string(), 120.0);
-        let layout = GraphLayout {
-            algorithm: LayoutAlgorithm::Dagre,
-            group_by: Some("sort".into()),
-            params,
-        };
-        let text = describe(&layout);
-        assert!(text.contains("Dagre"), "{text}");
-        assert!(text.contains("rank_separation=120"), "{text}");
-    }
 }

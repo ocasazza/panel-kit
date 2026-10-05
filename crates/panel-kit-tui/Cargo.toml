@@ -57,11 +57,11 @@ name = "workspace"
 name = "browser_tui"
 
 [[example]]
-name = "topos"
+name = "trio"
 required-features = ["spec-plan"]
 
 [[example]]
-name = "browser_topos"
+name = "browser_trio"
 required-features = ["spec-plan"]
 
 [[example]]

@@ -76,11 +76,12 @@ parking_lot = "0.12"
 # Fake-async delays in the loading example's hydration arc demo.
 gloo-timers = { version = "0.3", features = ["futures"] }
 panel-kit-tui = { version = "1.2.0", path = "crates/panel-kit-tui" }
-# Topos/grammar demo façade (examples/support/topos_demo.rs) and its test.
+# The grammar/topos host façades (examples/support/{topos_demo,trio_host}.rs)
+# and their tests, plus the panel-kit-tui trio host.
 panel-kit-grammar = { version = "1.2.0", path = "crates/panel-kit-grammar" }
 # Fetch for the auto-loop host example (examples/autoloop.rs).
 web-sys = { version = "0.3", features = ["Headers", "Request", "RequestInit", "Response"] }
-# jump-cannon's graph view (renderer + canvas) for the auto-loop host's graph
+# jump-cannon's graph view (renderer + canvas) for the graph hosts' graph
 # panel, vendored: vendor/jump-cannon/VENDORED.md.
 jump-cannon-graph-view = { path = "vendor/jump-cannon/graph-view" }
 # Static + GPU layout solvers behind the `graph` component contract

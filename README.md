@@ -293,6 +293,7 @@ dx serve --example workspace --platform web
 | `theming` | the documented full-palette retheme path: `:root` variable overrides layered after `panel_kit::CSS`, with three switchable presets |
 | `editor` | `editor::MonacoEditor`: two-way `Signal<String>` binding, `on_change` event log, imperative `EditorHandle` (set/read value, language, read-only, layout), reactive `language`/`read_only` props, the `nix`/`pest`/`toml` Monarch tokenizers, the `on_submit` action, and the minimal `toml` language on real samples |
 | `topos` | two regimes (`topos-agentic`, `topos-membrane`) over one session site parsed by either the `trace-lines` (pest) or `trace-json` grammar, running one shared physics base (`topos-physics`). `t` switches regime (per-topos layout persisted; the Physics panel stays identical, only the UI/UX sheaves change), `g` switches grammar (identical content), `n`/`x` append a valid/malformed line (diagnostic, last good site kept), `r` resets. Each regime carries an active subobject on its per-sort badges: click a Roles/Species badge (web) or `s`/space (terminals) to toggle a sort; switching transports it by `∃f`/`f*` and the status line names the morphism |
+| `trio` | two sites (the agent traces, parsed by `trace-lines` or `trace-json`, and the pinned OKF knowledge catalog, parsed by `okf`) read in three regimes (`topos-agentic`, `topos-membrane`, `topos-okf-catalog`), running one shared physics base (`topos-physics`). `s` switches site, `t` switches to the next regime the site can be read in, `g` switches grammar, `n`/`p` move the selection, `l` re-solves the graph layout, `r` resets the workspace layout. A regime switch keeps the arrangement and recolours it (the tuning is one base pullback, so only the sorts and colours move); a site or grammar switch re-solves. The pairs with no morphism — traces read in `okf-catalog` — are offered as disabled buttons carrying the reason |
 
 `dx build --example <name> --platform web` produces the same app
 statically under `target/dx/<name>/debug/web/public`.
@@ -402,6 +403,79 @@ export PANEL_KIT_TOPOS_A=$(nix build --no-link --print-out-paths ..#topos-agenti
 export PANEL_KIT_TOPOS_B=$(nix build --no-link --print-out-paths ..#topos-membrane-ascii)
 trunk serve browser_topos.html --example browser_topos --features spec-plan
 ```
+
+### Trio demo (web, terminal, browser terminal)
+
+One physics base, two sites, three regimes drive all three hosts. `topos-physics`
+is a regime-neutral base topos whose stalks are the only authored physics
+parameters (repulsion, mass per particle sort; stiffness, rest length per bond
+sort). Each regime carries a geometric morphism `p_R` into the base, so its
+tuning is the inverse image `p_R*` and is identical in every regime that reads
+one site: the Physics panel never moves, and so does the graph's arrangement.
+What moves along a morphism is presentation — the sort, and the colour that
+sort wears.
+
+`topos-agentic` reads the agent traces as planner/coder/reviewer roles and
+memory, `topos-membrane` as the same sessions as self-assembling lipid species,
+and `topos-okf-catalog` reads the OKF knowledge catalog as its normalised types
+and bundles. The three morphisms `f: agentic → membrane`,
+`ψ: okf-catalog → membrane`, and `χ: okf-catalog → agentic` all commute over the
+base, and the triangle holds: `f ∘ χ = ψ`. So a regime reads a site exactly when
+the site's native regime reaches it along one of them — traces in agentic
+(native) and membrane (along `f`); OKF in okf-catalog (native), agentic (along
+`χ`), and membrane (along `ψ`). Traces read in okf-catalog has no morphism, and
+the header offers it disabled, naming the reason, rather than inventing one.
+
+Physics is the invariant, presentation is not: crossing a morphism transports the
+selection by the image `∃` forward and the inverse image `*` back, recolours
+every node by the codomain's sorts without moving it, and names the route in the
+status line. Switching site or grammar brings different objects, so the graph
+re-solves instead. The graph panel is the workspace's declared `graph` external
+component: jump-cannon's WebGPU view when the browser has an adapter, and a
+force solve in panel-kit's own painters (web SVG, terminal braille) over the same
+positions otherwise, so the traces visibly assemble into chains, sheets, tubes,
+and closed membranes on every surface.
+
+Specs, grammars, and data come from Nix (`nix/specs/topos-{agentic,membrane,okf-catalog}.nix`,
+`nix/specs/topos-physics.nix`, `nix/specs/morphism-*.nix`, `nix/grammars/`,
+`nix/data/`) through the `PANEL_KIT_TRIO_*` variables the flake's `trioEnv`
+exports. The base and morphism specs are surface-neutral; `nix develop` exports
+the web set and overrides variables exported before entering it, so terminal
+surfaces set their own trio specs inside the shell.
+
+Every panel is a section over the **active subobject** `U` (the selected sorts):
+`Γ(U, F)` of the subsite `site.restrict_objects(object_sorting, U)`. Toggling or
+transporting `U` re-restricts every table, chart, gauge, meter, assembly and
+physics panel — the per-sort badges are the controls and keep listing all sorts.
+The **Morphism** panel renders `f` against `U` live (per-sort rows plus the
+`∃f`/`∀f`/`f*` summary), and the **Invariants** panel proves, as recomputed
+status rows, that the two grammars present one site, that the physics section is
+regime-invariant, and that it commutes with restriction to `U`.
+
+What to try: click the **Planner** badge so `U = {planner}` — every panel narrows
+to planner sessions. Press `t`: `∃f` widens `U` to `{head}`, and the membrane
+panels now cover the planner **and** reviewer objects f merges into head. Press
+`t` again: `f*` pulls `U` back to `{planner, reviewer}` — the whole fiber, the
+information f could not tell apart. Press `g` to switch grammar: nothing changes,
+because `trace-lines` and `trace-json` present the same site.
+
+```sh
+dx serve --example trio --platform web                     # web
+nix build .#trio-tui-native && ./result/bin/trio            # terminal
+nix build .#trio-browser-tui-wasm                           # browser terminal
+
+# browser terminal dev server, from crates/panel-kit-tui inside `nix develop ..`:
+export PANEL_KIT_TRIO_AGENTIC=$(nix build --no-link --print-out-paths ..#topos-agentic-ascii)
+export PANEL_KIT_TRIO_MEMBRANE=$(nix build --no-link --print-out-paths ..#topos-membrane-ascii)
+export PANEL_KIT_TRIO_OKF_CATALOG=$(nix build --no-link --print-out-paths ..#topos-okf-catalog-ascii)
+trunk serve browser_trio.html --example browser_trio --features spec-plan
+```
+
+`topos-trio-test` runs the trio host façade (`examples/support/trio_host.rs`) over
+the real Nix JSON: every workspace binding of every available (site, regime) pair
+resolves, the refused pair is refused by name, the graph's tuning is invariant
+across a site's regimes while its sorts and colours move, and a selection
+survives the trip along `ψ`.
 
 Note: `Cargo.lock` pins `wasm-bindgen` to the exact version of nixpkgs'
 `wasm-bindgen-cli` (dx refuses to bindgen with a mismatched CLI); keep the

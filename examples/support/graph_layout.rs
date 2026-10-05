@@ -4,8 +4,8 @@
 //! body in, one position per node out, in node declaration order. Every static
 //! [`LayoutAlgorithm`] maps 1:1 onto a vendored `graph-layouts` solver;
 //! [`LayoutAlgorithm::Force`] has no static solver, so it runs the
-//! deterministic CPU force solve in [`force_solve`] that stands in for the
-//! GPU simulation.
+//! deterministic CPU force solve in [`force_solve`] once per connected
+//! component; every surface draws that one arrangement.
 //!
 //! Parameters arrive as the spec's `params` map of `f64`. Scalar knobs map by
 //! name (`rank_separation`, `level_spacing`, …); the vendored enums map by
@@ -57,6 +57,12 @@ const FORCE_MAX_REST: f64 = 4.0;
 const FORCE_LENGTH: f64 = 200.0;
 /// Lightest a node may be treated as, so inertia never divides by zero.
 const FORCE_MIN_MASS: f64 = 0.05;
+/// Side of the square cell a solved component is packed into, in multiples of
+/// its own diameter: room enough that neighbouring shapes never touch.
+const FORCE_PACK_MARGIN: f32 = 1.5;
+/// Width over height the packed components aim for: a graph panel is wider
+/// than it is tall.
+const FORCE_PACK_ASPECT: f32 = 2.0;
 
 // Solver graphs are cached per topology, so one topology always solves through
 // one graph: the vendored `Graph` is `HashMap`-backed, `HashMap` hands each new
@@ -72,10 +78,11 @@ const GRAPH_CACHE_LIMIT: usize = 64;
 
 /// Solve `model` under `layout`, one `[x, y, z]` per node in declaration order.
 ///
-/// `seed` seeds the solvers that start from a known arrangement (the GPU sim's
-/// live positions when switching topos along a morphism); a seed of the wrong
+/// `seed` seeds the solvers that start from a known arrangement (the positions
+/// on screen when switching topos along a morphism); a seed of the wrong
 /// length falls back to [`fibonacci_sphere`]. Grouping partitions the graph
-/// into per-sort sub-solves that are composed back together; see [`compose`].
+/// into per-sort sub-solves that are composed back together, see [`compose`];
+/// `Force` partitions by connected component instead, see [`force_components`].
 /// A solver that errors or returns a non-finite arrangement degrades to the
 /// seed rather than painting a broken graph.
 pub fn solve(
@@ -92,6 +99,10 @@ pub fn solve(
         _ => fibonacci_sphere(count, FORCE_SEED_RADIUS),
     };
 
+    if layout.algorithm == LayoutAlgorithm::Force {
+        return force_components(model, layout, &seed_positions);
+    }
+
     let groups = groups(model, layout);
     if groups.len() <= 1 {
         let all: Vec<usize> = (0..count).collect();
@@ -104,6 +115,172 @@ pub fn solve(
         compose(layout, index, &solved, &mut out, members);
     }
     out
+}
+
+/// Force layouts assemble per connected component: each component relaxes on
+/// its own (so a closed surface becomes a shell, a tube a cylinder), is turned
+/// by [`face_the_viewer`] so its flattest axis runs along z, and the solved
+/// components are shelf-packed, widest first, into square cells sized
+/// to each one by [`FORCE_PACK_MARGIN`], rows wrapping so the whole is about
+/// [`FORCE_PACK_ASPECT`] times as wide as tall, centred on the seed. `group_by`
+/// does not apply: splitting a component by sort would tear the structure the
+/// physics is meant to reveal.
+fn force_components(model: &GraphModel, layout: &GraphLayout, seed: &[[f32; 3]]) -> Vec<[f32; 3]> {
+    let mut pieces: Vec<(Vec<usize>, Vec<[f32; 3]>, f32)> = connected_components(model)
+        .into_iter()
+        .map(|members| {
+            let points = face_the_viewer(&solve_members(model, layout, &members, seed));
+            let radius = reach(&points);
+            (members, points, radius)
+        })
+        .collect();
+    pieces.sort_by(|a, b| b.2.total_cmp(&a.2));
+    let widest = pieces.first().map_or(0.0, |piece| piece.2);
+    let unit = if widest > 0.0 { widest } else { reach(seed).max(1.0) };
+    let side = |radius: f32| 2.0 * FORCE_PACK_MARGIN * radius.max(0.25 * unit);
+    let area: f32 = pieces.iter().map(|piece| side(piece.2).powi(2)).sum();
+    let row_width = (area * FORCE_PACK_ASPECT).sqrt();
+
+    let mut out = vec![[0.0; 3]; model.nodes.len()];
+    let (mut x, mut top, mut row_height) = (0.0_f32, 0.0_f32, 0.0_f32);
+    for (members, points, radius) in &pieces {
+        let cell = side(*radius);
+        if x > 0.0 && x + cell > row_width {
+            (x, top, row_height) = (0.0, top - row_height, 0.0);
+        }
+        let origin = [x + 0.5 * cell, top - 0.5 * cell];
+        let [cx, cy, cz] = centroid(points);
+        for (slot, point) in members.iter().zip(points) {
+            out[*slot] = [point[0] - cx + origin[0], point[1] - cy + origin[1], point[2] - cz];
+        }
+        x += cell;
+        row_height = row_height.max(cell);
+    }
+    let packed = centroid(&out);
+    let wanted = centroid(seed);
+    for point in &mut out {
+        for axis in 0..3 {
+            point[axis] += wanted[axis] - packed[axis];
+        }
+    }
+    out
+}
+
+/// Largest distance of any point from the points' centroid.
+fn reach(points: &[[f32; 3]]) -> f32 {
+    let [cx, cy, cz] = centroid(points);
+    points
+        .iter()
+        .map(|p| ((p[0] - cx).powi(2) + (p[1] - cy).powi(2) + (p[2] - cz).powi(2)).sqrt())
+        .fold(0.0_f32, f32::max)
+}
+
+/// Sweeps of the Jacobi eigen-solve in [`face_the_viewer`]; a 3×3 symmetric
+/// matrix converges to machine precision well within this.
+const JACOBI_SWEEPS: usize = 8;
+
+/// `points` about their centroid, turned so their widest spread runs along x
+/// and their flattest along z: a ring, sheet or chain then faces a camera
+/// looking down z instead of standing edge-on to it. A proper rotation, never
+/// a mirror, so a shape keeps its handedness.
+fn face_the_viewer(points: &[[f32; 3]]) -> Vec<[f32; 3]> {
+    let centre = centroid(points).map(f64::from);
+    let centred: Vec<[f64; 3]> = points
+        .iter()
+        .map(|point| [0, 1, 2].map(|axis| f64::from(point[axis]) - centre[axis]))
+        .collect();
+    let mut spread = [[0.0_f64; 3]; 3];
+    for point in &centred {
+        for row in 0..3 {
+            for column in 0..3 {
+                spread[row][column] += point[row] * point[column];
+            }
+        }
+    }
+    let (values, vectors) = symmetric_eigen(spread);
+    let mut order = [0, 1, 2];
+    order.sort_by(|&a, &b| values[b].total_cmp(&values[a]));
+    let mut axes = order.map(|k| [vectors[0][k], vectors[1][k], vectors[2][k]]);
+    let [a, b, c] = axes;
+    let handedness = (a[1] * b[2] - a[2] * b[1]) * c[0] + (a[2] * b[0] - a[0] * b[2]) * c[1]
+        + (a[0] * b[1] - a[1] * b[0]) * c[2];
+    if handedness < 0.0 {
+        axes[2] = c.map(|v| -v);
+    }
+    centred
+        .iter()
+        .map(|point| axes.map(|axis| (axis[0] * point[0] + axis[1] * point[1] + axis[2] * point[2]) as f32))
+        .collect()
+}
+
+/// Eigenvalues and column eigenvectors of a symmetric 3×3 matrix, by cyclic
+/// Jacobi rotations.
+fn symmetric_eigen(mut matrix: [[f64; 3]; 3]) -> ([f64; 3], [[f64; 3]; 3]) {
+    let multiply = |lhs: [[f64; 3]; 3], rhs: [[f64; 3]; 3]| {
+        let mut out = [[0.0_f64; 3]; 3];
+        for row in 0..3 {
+            for column in 0..3 {
+                out[row][column] = (0..3).map(|k| lhs[row][k] * rhs[k][column]).sum();
+            }
+        }
+        out
+    };
+    let mut vectors = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    for _ in 0..JACOBI_SWEEPS {
+        for (p, q) in [(0, 1), (0, 2), (1, 2)] {
+            if matrix[p][q] == 0.0 {
+                continue;
+            }
+            let angle = 0.5 * (2.0 * matrix[p][q]).atan2(matrix[q][q] - matrix[p][p]);
+            let (sin, cos) = angle.sin_cos();
+            let mut turn = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+            turn[p][p] = cos;
+            turn[q][q] = cos;
+            turn[p][q] = sin;
+            turn[q][p] = -sin;
+            let mut back = turn;
+            (back[p][q], back[q][p]) = (turn[q][p], turn[p][q]);
+            matrix = multiply(back, multiply(matrix, turn));
+            vectors = multiply(vectors, turn);
+        }
+    }
+    ([matrix[0][0], matrix[1][1], matrix[2][2]], vectors)
+}
+
+/// Node indices of each connected component over the model's edges, in
+/// first-appearance order; isolated nodes are components of one.
+fn connected_components(model: &GraphModel) -> Vec<Vec<usize>> {
+    let count = model.nodes.len();
+    let mut neighbours = vec![Vec::new(); count];
+    for edge in &model.edges {
+        let (a, b) = (edge.source as usize, edge.target as usize);
+        if a < count && b < count && a != b {
+            neighbours[a].push(b);
+            neighbours[b].push(a);
+        }
+    }
+    let mut seen = vec![false; count];
+    let mut components = Vec::new();
+    for start in 0..count {
+        if seen[start] {
+            continue;
+        }
+        let mut members = Vec::new();
+        let mut stack = vec![start];
+        seen[start] = true;
+        while let Some(node) = stack.pop() {
+            members.push(node);
+            for &next in &neighbours[node] {
+                if !seen[next] {
+                    seen[next] = true;
+                    stack.push(next);
+                }
+            }
+        }
+        members.sort_unstable();
+        components.push(members);
+    }
+    components
 }
 
 /// `count` points spread evenly over a sphere by the golden angle, in the same
@@ -295,7 +472,7 @@ fn solve_members(
 }
 
 /// Positions for `LayoutAlgorithm::Force`: a deterministic 3-D force solve
-/// standing in for the GPU simulation on surfaces without WebGPU.
+/// over one connected component.
 ///
 /// Each of `FORCE_ITERATIONS` iterations sums, per node, the repulsion every
 /// other node pushes on it (Fruchterman-Reingold `k²/d`, scaled by each node's
