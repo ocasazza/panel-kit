@@ -497,6 +497,15 @@ impl Resolver<'_> {
             .unwrap_or_else(|| sort.to_owned())
     }
 
+    /// Regime label for a morphism sort, the sort itself when it has no stalk.
+    pub(crate) fn sort_morphism_label(&self, sort: &str) -> String {
+        self.stalks
+            .morphisms
+            .get(sort)
+            .map(|stalk| stalk.label.clone())
+            .unwrap_or_else(|| sort.to_owned())
+    }
+
     /// Badge-kind string for an object sort, defaulting to `generic`.
     pub(crate) fn sort_object_badge(&self, sort: &str) -> &str {
         self.stalks

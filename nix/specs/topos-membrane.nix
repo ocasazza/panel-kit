@@ -17,7 +17,7 @@ let
   topos = import ../lib/mkToposSpec.nix { inherit lib; };
   L = import ../lib/mkToposLayout.nix { inherit lib; };
   inherit (topos) mkTopos defaultTheme;
-  inherit (L) cell shelf textC tableC badgesC boxC gaugesC meterC editorC externalC;
+  inherit (L) cell shelf textC tableC badgesC boxC gaugesC editorC externalC;
 
   # The graph panel is an external `graph` component over the host-mounted
   # `membrane.graph` model, so the pulled-back force simulation assembles the
@@ -28,20 +28,21 @@ let
     params = { };
   };
 
+  # The trio grid (see topos-agentic.nix): same shelves and widths in every
+  # regime, so `t` swaps bodies without moving panels.
   shelves = [
     (shelf 4 [ (cell "graph" "Graph" "graph" 4 graphContent) ])
     (shelf 3 [
       (cell "stalks" "Stalks" "stalks" 1 (textC "membrane.stalks"))
+      (cell "spread" "Energy spread" "spread" 3 (boxC "membrane.spread"))
+    ])
+    (shelf 3 [
+      (cell "potential" "Species potential" "potential" 3 (gaugesC "membrane.gauges"))
       (cell "species" "Species" "species" 1 (badgesC "membrane.species"))
-      (cell "spread" "Energy spread" "spread" 2 (boxC "membrane.spread"))
     ])
     (shelf 3 [
       (cell "assembly" "Assembly" "assembly" 3 (tableC "membrane.assembly"))
       (cell "stages" "Stages" "stages" 1 (badgesC "membrane.stages"))
-    ])
-    (shelf 3 [
-      (cell "potential" "Species potential" "potential" 2 (gaugesC "membrane.gauges"))
-      (cell "total" "Total potential" "total" 2 (meterC "membrane.meter"))
     ])
     (shelf 3 [
       (cell "physics" "Physics" "physics" 2 (tableC "membrane.physics"))
@@ -112,14 +113,6 @@ mkTopos {
     "membrane.assembly" = { kind = "assembly"; morphism_sorts = [ "tail_bond" "lateral" ]; kinds = [ "continues" "shares" ]; };
     "membrane.stages" = { kind = "assembly_badges"; morphism_sorts = [ "tail_bond" "lateral" ]; kinds = [ "continues" "shares" ]; };
     "membrane.gauges" = { kind = "gauges"; scope = "kinds"; value = "weighted:energy"; scale = 45000.0; };
-    "membrane.meter" = {
-      kind = "meter";
-      label = "Total potential";
-      value = "weighted:energy";
-      agg = "sum";
-      scale = 60000.0;
-      unit = "pJ";
-    };
     "membrane.physics" = { kind = "physics"; scope = "objects"; };
 
   };

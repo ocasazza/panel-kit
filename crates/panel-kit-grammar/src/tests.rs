@@ -671,8 +671,8 @@ fn assembly_and_physics_sheaves_render() {
         Section::Table(table) => {
             assert_eq!(table.rows.len(), 4);
             let first = &table.rows[0].cells;
-            assert_eq!(cell_text(&first[0]), "p1");
-            assert_eq!(cell_text(&first[1]), "planner");
+            assert_eq!(cell_text(&first[0]), "P1");
+            assert_eq!(cell_text(&first[1]), "Planner");
             assert_eq!(cell_text(&first[2]), "9");
             assert_eq!(cell_text(&first[3]), "1");
         }

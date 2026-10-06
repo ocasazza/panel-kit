@@ -1230,6 +1230,14 @@ pub enum PhysicsScope {
 impl PhysicsSheaf {
     fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
         let section = resolver.physics_section(site);
+        // Rows name objects as every other panel does: by title, with the
+        // regime's own label for the sort.
+        let title = |id: &str| {
+            site.objects.iter().find(|object| object.id == id).map_or_else(|| id.to_owned(), |o| o.title.clone())
+        };
+        let sort_label = |sort: &str| {
+            if sort.is_empty() { "—".to_owned() } else { resolver.sort_object_label(sort) }
+        };
         let (columns, rows) = match self.scope {
             PhysicsScope::Objects => {
                 let columns = vec![
@@ -1245,8 +1253,8 @@ impl PhysicsSheaf {
                         id: format!("physics:{id}"),
                         tags: Vec::new(),
                         cells: vec![
-                            TableCell::Text(id.clone()),
-                            TableCell::Text(sort.clone()),
+                            TableCell::Text(title(id)),
+                            TableCell::Text(sort_label(sort)),
                             TableCell::Text(fmt_num(*repulsion)),
                             TableCell::Text(fmt_num(*mass)),
                         ],
@@ -1271,9 +1279,9 @@ impl PhysicsSheaf {
                         id,
                         tags: Vec::new(),
                         cells: vec![
-                            TableCell::Text(from.clone()),
-                            TableCell::Text(to.clone()),
-                            TableCell::Text(sort.clone()),
+                            TableCell::Text(title(from)),
+                            TableCell::Text(title(to)),
+                            TableCell::Text(if sort.is_empty() { "—".to_owned() } else { resolver.sort_morphism_label(sort) }),
                             TableCell::Text(fmt_num(*weight)),
                             TableCell::Text(fmt_num(*rest_length)),
                         ],

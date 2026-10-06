@@ -876,6 +876,31 @@ fn both_grammars_read_the_one_site() {
     assert_eq!(host.grammar_id(), GRAMMAR_LINES);
 }
 
+/// Every regime lays its panels on the same grid, slot for slot, so `t`
+/// swaps panel bodies and moves nothing.
+#[test]
+fn every_regime_shares_one_panel_grid() {
+    let Some(fixture) = Fixture::load() else { return };
+    let mut host = fixture.host();
+    let grid = |host: &TrioHost| {
+        host.workspace_spec()
+            .panels
+            .iter()
+            .map(|panel| {
+                let w = &panel.window;
+                (w.x.to_bits(), w.y.to_bits(), w.w.to_bits(), w.h.to_bits(), w.tile_w, w.tile_h)
+            })
+            .collect::<Vec<_>>()
+    };
+    host.set_regime(RegimeId::Agentic);
+    let agentic = grid(&host);
+    assert_eq!(agentic.len(), 10);
+    for regime in [RegimeId::Membrane, RegimeId::OkfCatalog] {
+        host.set_regime(regime);
+        assert_eq!(grid(&host), agentic, "{regime} lays its panels on the agentic grid");
+    }
+}
+
 #[test]
 fn the_graph_panel_declares_its_component_and_layout() {
     let Some(fixture) = Fixture::load() else { return };
