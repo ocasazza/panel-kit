@@ -408,6 +408,16 @@
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit --features web-runtime --example topos";
         });
+        # The trio as a static site under https://ocasazza.github.io/panel-kit/:
+        # trunk bundles the Dioxus example from examples/trio.html with the
+        # project path as public URL. Deployed by .github/workflows/pages.yml.
+        trio-web-pages = wasmCraneLib.buildTrunkPackage (commonArgs // trioEnv // {
+          pname = "panel-kit-trio-pages";
+          inherit cargoArtifacts;
+          trunkIndexPath = "examples/trio.html";
+          trunkExtraBuildArgs = "--example trio --features web-runtime --public-url /panel-kit/ --dist examples/dist";
+          wasm-bindgen-cli = pkgs.wasm-bindgen-cli;
+        });
         autoloop-web-wasm = wasmCraneLib.buildPackage (commonArgs // autoloopEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit --features web-runtime --example autoloop";
@@ -515,6 +525,7 @@
         packages.okf-knowledge-catalog = okf-knowledge-catalog;
         packages.trio-web-wasm = trio-web-wasm;
         packages.topos-web-wasm = topos-web-wasm;
+        packages.trio-web-pages = trio-web-pages;
         packages.autoloop-web-wasm = autoloop-web-wasm;
         packages.trio-tui-native = trio-tui-native;
         packages.trio-browser-tui-wasm = trio-browser-tui-wasm;

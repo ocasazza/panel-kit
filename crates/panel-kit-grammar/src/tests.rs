@@ -620,16 +620,25 @@ fn physics_section_is_regime_invariant() {
 
     let section_a = agentic.physics_section(&site, &physics_a());
     let section_m = membrane.physics_section(&site, &physics_b());
-    assert_eq!(section_a, section_m);
+    // The engine parameters agree; only each regime's own sort differs.
+    let engine = |s: &crate::topos::PhysicsSection| {
+        (
+            s.objects.iter().map(|(id, _, e, r, m)| (id.clone(), e.clone(), *r, *m)).collect::<Vec<_>>(),
+            s.morphisms.iter().map(|(a, b, _, e, k, l)| (a.clone(), b.clone(), e.clone(), *k, *l)).collect::<Vec<_>>(),
+        )
+    };
+    assert_eq!(engine(&section_a), engine(&section_m));
+    assert_eq!(section_a.objects[0].1, "planner");
+    assert_eq!(section_m.objects[0].1, "head");
 
     // Spot-check the shared engine parameters.
-    assert_eq!(section_a.objects[0], ("p1".to_owned(), "hydrophilic".to_owned(), 9.0, 1.0));
-    assert_eq!(section_a.objects[1], ("c1".to_owned(), "hydrophobic".to_owned(), 3.0, 2.0));
+    assert_eq!(section_a.objects[0], ("p1".to_owned(), "planner".to_owned(), "hydrophilic".to_owned(), 9.0, 1.0));
+    assert_eq!(section_a.objects[1], ("c1".to_owned(), "coder".to_owned(), "hydrophobic".to_owned(), 3.0, 2.0));
 
     // Altering p_membrane breaks the invariance.
     let physics_altered = Physics::new(&base(), &morphism(PM_ALT_JSON), &membrane).unwrap();
     let section_altered = membrane.physics_section(&site, &physics_altered);
-    assert_ne!(section_a, section_altered);
+    assert_ne!(engine(&section_m), engine(&section_altered));
 }
 
 // --- Sheaf rendering through a physics base ---------------------------------
@@ -663,7 +672,7 @@ fn assembly_and_physics_sheaves_render() {
             assert_eq!(table.rows.len(), 4);
             let first = &table.rows[0].cells;
             assert_eq!(cell_text(&first[0]), "p1");
-            assert_eq!(cell_text(&first[1]), "hydrophilic");
+            assert_eq!(cell_text(&first[1]), "planner");
             assert_eq!(cell_text(&first[2]), "9");
             assert_eq!(cell_text(&first[3]), "1");
         }

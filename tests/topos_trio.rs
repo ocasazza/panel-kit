@@ -209,8 +209,8 @@ fn every_workspace_binding_resolves_under_every_regime() {
             let section = host
                 .resolve(&binding)
                 .unwrap_or_else(|| panic!("{binding} unresolved in {regime}"));
-            if kind == "external" {
-                assert_eq!(section.kind(), "text", "{binding} answers with the host's placeholder");
+            if kind == "external" || kind == "editor" {
+                assert_eq!(section.kind(), "text", "{binding} answers with a host-owned document");
             } else {
                 assert_eq!(section.kind(), kind, "{binding} kind mismatch in {regime}");
             }
@@ -803,6 +803,56 @@ fn the_selected_overlay_names_the_object_its_route_and_its_neighbours() {
     );
     assert!(selected.contains("energy <- stale_after"), "{selected}");
     assert!(selected.contains("latency_ms <- stale_after"), "{selected}");
+}
+
+/// The Grammar editor shows the active grammar's own source, in that
+/// grammar's language, and follows `g`.
+#[test]
+fn the_grammar_panel_shows_the_active_grammars_source() {
+    let Some(fixture) = Fixture::load() else { return };
+    let mut host = fixture.host();
+    for regime in RegimeId::ALL {
+        host.set_regime(regime);
+        assert_eq!(host.grammar_language(), "pest", "{regime}");
+        let lines = text(&host, trio_host::GRAMMAR);
+        assert!(lines.contains('~'), "{regime}: a pest grammar: {lines}");
+        assert!(host.set_grammar(GRAMMAR_JSON));
+        assert_eq!(host.grammar_language(), "json");
+        let json = text(&host, trio_host::GRAMMAR);
+        assert_ne!(json, lines, "{regime}: `g` changes the document");
+        assert!(json.trim_start().starts_with('{'), "{regime}: a JSON grammar: {json}");
+        assert!(host.set_grammar(GRAMMAR_LINES));
+    }
+}
+
+/// Badges select what they name: a sort badge walks that sort, a tag badge
+/// walks that tag, an object badge names its object; the count suffix is
+/// ignored and a stranger changes nothing.
+#[test]
+fn badge_clicks_select_the_object_they_name() {
+    let Some(fixture) = Fixture::load() else { return };
+    let mut host = fixture.host_at(RegimeId::Agentic);
+    let kind_of = |host: &TrioHost, id: &str| {
+        host.site().objects.iter().find(|o| o.id == id).map(|o| o.kind.clone()).unwrap()
+    };
+    host.select_matching("kind", "Reviewer 9");
+    let first = host.selected().expect("a reviewer is selected").to_owned();
+    assert_eq!(kind_of(&host, &first), "reviewer");
+    host.select_matching("kind", "Reviewer 9");
+    let second = host.selected().unwrap().to_owned();
+    assert_ne!(first, second, "a repeated click walks to the next reviewer");
+    assert_eq!(kind_of(&host, &second), "reviewer");
+
+    host.set_regime(RegimeId::OkfCatalog);
+    host.select_matching("value", "okf 27");
+    let tagged = host.selected().unwrap().to_owned();
+    let tag = host.site().objects.iter().find(|o| o.id == tagged).and_then(|o| o.tags.first().cloned());
+    assert_eq!(tag.as_deref(), Some("okf"));
+
+    host.select_matching("object", "Session c3");
+    assert_eq!(host.selected(), Some("c3"));
+    host.select_matching("kind", "Nobody 0");
+    assert_eq!(host.selected(), Some("c3"), "an unmatched badge leaves the selection");
 }
 
 #[test]

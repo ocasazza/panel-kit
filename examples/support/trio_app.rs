@@ -153,13 +153,13 @@ pub struct BodyPaint {
     pub bound: bool,
 }
 
-/// One header control: pre-measured text plus the action it triggers.
+/// One header control: pre-measured text plus the action it triggers. The
+/// grammar is not one: the status line names it and `g` cycles it, and the
+/// Grammar panel shows the grammar that read the site.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HeaderAction {
     /// Read the site in the named regime.
     SetRegime(RegimeId),
-    /// Read the site with the named grammar.
-    SetGrammar(&'static str),
     /// Re-solve the layout.
     Solve,
     /// Clear the selection and re-solve.
@@ -220,7 +220,6 @@ pub struct TrioApp {
     graph_rect: Rect,
     reduced_motion: bool,
     grid: (f64, f64),
-    note: String,
 }
 
 impl TrioApp {
@@ -290,10 +289,9 @@ impl TrioApp {
             graph_rect: Rect::ZERO,
             grid: (1.0, 1.0),
             reduced_motion,
-            header_items: header_items(&host),
+            header_items: header_items(),
             positions,
             tween: None,
-            note: String::new(),
             host,
             scenes,
             active,
@@ -328,11 +326,6 @@ impl TrioApp {
         self.host.selected()
     }
 
-    /// Why the last refused grammar control was refused.
-    pub fn note(&self) -> &str {
-        &self.note
-    }
-
     /// Authored panel titles of the active regime, in catalog order.
     pub fn panel_titles(&self) -> Vec<String> {
         self.scenes[self.active]
@@ -346,6 +339,15 @@ impl TrioApp {
     /// Panel bodies painted by the most recent frame.
     pub fn paints(&self) -> &[BodyPaint] {
         &self.paints
+    }
+
+    /// Body rectangle the panel with authored id `id` was painted into by the
+    /// last frame, so a host can read one panel's text back out of the buffer.
+    pub fn body_rect(&self, id: &str) -> Option<Rect> {
+        let scene = &self.scenes[self.active];
+        let index = scene.resolved.panels.iter().position(|panel| panel.id == id)?;
+        let key = scene.snapshot.panels.get(index)?.kind;
+        self.paints.iter().find(|paint| paint.key == key).map(|paint| paint.rect)
     }
 
     /// Body rectangle the graph panel was painted into by the last frame.
@@ -437,7 +439,6 @@ impl TrioApp {
     /// on screen.
     pub fn cycle_grammar(&mut self, now_ms: f64) {
         self.host.cycle_grammar();
-        self.note.clear();
         self.relayout(now_ms, true);
     }
 
@@ -591,18 +592,10 @@ impl TrioApp {
         consumed || self.scenes[self.active].snapshot.workspace_scroll != before
     }
 
-    /// Run one header control: read a regime, a grammar, re-solve, or reset.
+    /// Run one header control: read a regime, re-solve, or reset.
     fn run_header(&mut self, action: HeaderAction, now_ms: f64) {
         match action {
             HeaderAction::SetRegime(regime) => self.enter_regime(regime, now_ms),
-            HeaderAction::SetGrammar(id) => {
-                if self.host.set_grammar(id) {
-                    self.note.clear();
-                    self.relayout(now_ms, true);
-                } else {
-                    self.note = format!("{id} cannot read the site");
-                }
-            }
             HeaderAction::Solve => self.relayout(now_ms, false),
             HeaderAction::Reset => {
                 self.host.select(None);
@@ -615,7 +608,6 @@ impl TrioApp {
     /// kept: the regime only re-sorts and re-colours the same nodes.
     fn enter_regime(&mut self, regime: RegimeId, _now_ms: f64) {
         self.host.set_regime(regime);
-        self.note.clear();
         if let Some(index) = self.scene_index(regime) {
             if index != self.active {
                 self.swap_scene(index);
@@ -745,11 +737,9 @@ impl TrioApp {
     fn draw_header(&mut self, frame: &mut ratatui::Frame, area: Rect) {
         let theme = self.theme;
         let regime = self.host.regime();
-        let grammar = self.host.grammar_id();
         for item in &mut self.header_items {
             item.active = match item.action {
                 HeaderAction::SetRegime(id) => id == regime,
-                HeaderAction::SetGrammar(id) => id == grammar,
                 _ => false,
             };
         }
@@ -808,18 +798,13 @@ impl TrioApp {
     /// many objects that covers, the grammar, the graph size, and the panels
     /// that cannot read the site, if any. The keys ride the control strip.
     pub fn status_line(&self) -> String {
-        let note = if self.note.is_empty() {
-            String::new()
-        } else {
-            format!(" · {}", self.note)
-        };
         let selection = self.host.selected().map_or_else(String::new, |id| format!(" · sel {id}"));
         let unreadable = match self.host.unreadable().len() {
             0 => String::new(),
             count => format!(" · {count} panels cannot read the site"),
         };
         format!(
-            "{} · {}{note} · {} · {} nodes · {} edges{selection}{unreadable}",
+            "{} · {} · {} · {} nodes · {} edges{selection}{unreadable}",
             self.host.regime(),
             self.host.route_summary(),
             self.host.grammar_id(),
@@ -902,19 +887,12 @@ impl TrioApp {
     }
 }
 
-/// The header controls: the three regimes, the site's grammars, and the two
-/// layout controls.
-fn header_items(host: &TrioHost) -> Vec<HeaderItem> {
+/// The header controls: the three regimes and the two layout controls.
+fn header_items() -> Vec<HeaderItem> {
     let mut items: Vec<HeaderItem> = RegimeId::ALL
         .into_iter()
         .map(|regime| HeaderItem::new(regime.label(), HeaderAction::SetRegime(regime)))
         .collect();
-    for grammar in host.grammar_ids() {
-        items.push(HeaderItem::new(
-            grammar.strip_prefix("trace-").unwrap_or(grammar),
-            HeaderAction::SetGrammar(grammar),
-        ));
-    }
     items.push(HeaderItem::new("solve", HeaderAction::Solve));
     items.push(HeaderItem::new("reset", HeaderAction::Reset));
     items

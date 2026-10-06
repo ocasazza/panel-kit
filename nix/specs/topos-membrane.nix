@@ -7,7 +7,8 @@
 # only UI/UX data; physics tuning comes from the base (p_membrane*). Sheaves:
 # Stalks text, Species badges, Assembly table + stage badges over the session
 # handoff kinds, energy Boxplot, per-species potential Gauges, total potential
-# Meter, Physics table, Morphism text, and the host-mounted Graph panel
+# Meter, Physics table, the Grammar and Morphism editors (the site's grammar
+# and the active route's morphism document), and the host-mounted Graph panel
 # (external `graph` component, force layout grouped by sort).
 
 { lib ? (import <nixpkgs> { }).lib, surface, glyphs ? "unicode" }:
@@ -16,7 +17,7 @@ let
   topos = import ../lib/mkToposSpec.nix { inherit lib; };
   L = import ../lib/mkToposLayout.nix { inherit lib; };
   inherit (topos) mkTopos defaultTheme;
-  inherit (L) cell shelf textC tableC badgesC boxC gaugesC meterC externalC;
+  inherit (L) cell shelf textC tableC badgesC boxC gaugesC meterC editorC externalC;
 
   # The graph panel is an external `graph` component over the host-mounted
   # `membrane.graph` model, so the pulled-back force simulation assembles the
@@ -44,8 +45,8 @@ let
     ])
     (shelf 3 [
       (cell "physics" "Physics" "physics" 2 (tableC "membrane.physics"))
-      (cell "morphism" "Morphism" "morphism" 1 (textC "membrane.morphism"))
-      (cell "invariants" "Invariants" "invariants" 1 (tableC "membrane.invariants"))
+      (cell "grammar" "Grammar" "grammar" 1 (editorC "trio.grammar"))
+      (cell "morphism" "Morphism" "morphism" 1 (editorC "membrane.morphism"))
     ])
   ];
 in
@@ -120,8 +121,7 @@ mkTopos {
       unit = "pJ";
     };
     "membrane.physics" = { kind = "physics"; scope = "objects"; };
-    "membrane.morphism" = { kind = "morphism"; };
-    "membrane.invariants" = { kind = "invariants"; };
+
   };
 
   workspace = L.mkWorkspace {

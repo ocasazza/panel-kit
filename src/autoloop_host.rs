@@ -183,7 +183,7 @@ impl AutoloopHost {
             .filter_map(|m| Some([*index.get(m.domain.as_str())?, *index.get(m.codomain.as_str())?]))
             .flatten()
             .collect();
-        let mass = regime.topos.physics_section(site, &regime.physics).objects.iter().map(|(_, _, _, mass)| *mass as f32).collect();
+        let mass = regime.topos.physics_section(site, &regime.physics).objects.iter().map(|(_, _, _, _, mass)| *mass as f32).collect();
         let sort_labels = regime.topos.stalks.objects.values().map(|stalk| stalk.label.clone()).collect();
         Some(GraphInputs { ids: site.objects.iter().map(|o| o.id.clone()).collect(), edges, sort_index, sort_labels, mass })
     }

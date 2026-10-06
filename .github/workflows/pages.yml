@@ -1,0 +1,56 @@
+# GitHub Pages deployment of the trio demo (examples/trio.rs): one site in
+# three regimes with the live WebGPU force simulation. Built through the
+# flake's `.#trio-web-pages` (trunk, `--public-url /panel-kit/`) and
+# published with the official Pages actions.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "crates/**"
+      - "examples/**"
+      - "nix/**"
+      - "vendor/**"
+      - "assets/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "flake.nix"
+      - "flake.lock"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+
+      - name: Build the Pages dist
+        run: nix build .#trio-web-pages --out-link dist
+
+      # `dist` is a symlink into the read-only store; stage a writable copy
+      # and add the SPA fallback.
+      - name: Stage the artifact
+        run: |
+          cp -rL dist pages-dist
+          chmod -R u+w pages-dist
+          cp pages-dist/index.html pages-dist/404.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages-dist
+      - uses: actions/deploy-pages@v4

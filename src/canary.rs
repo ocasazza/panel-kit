@@ -258,11 +258,7 @@ fn render_content(
             render_custom(id, spec, maximized, header_clicks)
                 .unwrap_or_else(|| binding(id, content))
         }
-        ContentSpec::Editor {
-            binding,
-            multiline,
-            placeholder,
-        } => paint_editor(binding, *multiline, placeholder),
+        ContentSpec::Editor { binding: id, .. } => binding(id, content),
         ContentSpec::Text { source, scroll } => match source {
             DataSource::Inline { value } => paint_text(&value.text, *scroll),
             DataSource::Binding { id } => binding(id, content),
@@ -331,7 +327,7 @@ pub fn canary_content(id: &str, content: &ContentSpec) -> Element {
             binding,
             multiline,
             placeholder,
-        } => paint_editor(binding, *multiline, placeholder),
+        } => editor_placeholder(binding, *multiline, placeholder),
         ContentSpec::External { component, layout, .. } => {
             paint_external(component, id, layout, &GraphModel::default())
         }
@@ -379,7 +375,9 @@ fn paint_text(text: &str, scroll: ScrollPolicy) -> Element {
     crate::widgets::content_view(ContentView::Text { text, scroll }, 0, noop_badge_action())
 }
 
-fn paint_editor(binding: &str, multiline: bool, placeholder: &str) -> Element {
+/// The editor body for a host that does not bind editors: the authored
+/// prompt in a plain textarea, so an editor panel is never a blank body.
+pub fn editor_placeholder(binding: &str, multiline: bool, placeholder: &str) -> Element {
     rsx! {
         textarea {
             class: "pk-editor",

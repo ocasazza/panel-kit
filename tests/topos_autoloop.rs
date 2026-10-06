@@ -157,7 +157,7 @@ fn sessions_assemble_under_the_trace_regime_and_events_are_solvent() {
     let engine: BTreeMap<&str, &str> = section
         .objects
         .iter()
-        .map(|(id, engine, _, _)| (id.as_str(), engine.as_str()))
+        .map(|(id, _, engine, _, _)| (id.as_str(), engine.as_str()))
         .collect();
     assert_eq!(engine["sa1"], "hydrophobic");
     assert_eq!(engine["rac6ec850"], "hydrophilic");

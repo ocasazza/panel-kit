@@ -1,0 +1,4 @@
+[application]
+# Copied verbatim into the served root: `assets/vendor/monaco-editor-0.56.0/`
+# is fetched at runtime by `editor::MonacoEditor` (README, "Monaco editor assets").
+asset_dir = "assets"

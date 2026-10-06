@@ -3,7 +3,8 @@
 # Sessions sort natively; the OKF kinds are pushed along χ. Sheaves: Stalks
 # text, an Objects table, a session handoff Flamegraph over `continues`, Roles
 # badges (per sort), Assembly table + stage badges over the session handoff
-# kinds, Morphism text, Physics table, and the host-mounted Graph panel
+# kinds, Physics table, the Grammar and Morphism editors (the site's grammar
+# and the active route's morphism document), and the host-mounted Graph panel
 # (external `graph` component, force layout grouped by sort).
 # `surface`/`glyphs` select units/chrome/glyphs; stalks, sheaves and binding
 # ids do not vary.
@@ -14,7 +15,7 @@ let
   topos = import ../lib/mkToposSpec.nix { inherit lib; };
   L = import ../lib/mkToposLayout.nix { inherit lib; };
   inherit (topos) mkTopos defaultTheme;
-  inherit (L) cell shelf textC tableC badgesC flameC textCell flex fixed externalC;
+  inherit (L) cell shelf textC tableC badgesC flameC editorC textCell flex fixed externalC;
 
   # The graph panel is an external `graph` component over the host-mounted
   # `agentic.graph` model, so the pulled-back force simulation runs: handoffs
@@ -41,8 +42,8 @@ let
     ])
     (shelf 3 [
       (cell "physics" "Physics" "physics" 2 (tableC "agentic.physics"))
-      (cell "morphism" "Morphism" "morphism" 1 (textC "agentic.morphism"))
-      (cell "invariants" "Invariants" "invariants" 1 (tableC "agentic.invariants"))
+      (cell "grammar" "Grammar" "grammar" 1 (editorC "trio.grammar"))
+      (cell "morphism" "Morphism" "morphism" 1 (editorC "agentic.morphism"))
     ])
   ];
 in
@@ -135,8 +136,7 @@ mkTopos {
     "agentic.assembly" = { kind = "assembly"; morphism_sorts = [ "continues" "shares" ]; kinds = [ "continues" "shares" ]; };
     "agentic.stages" = { kind = "assembly_badges"; morphism_sorts = [ "continues" "shares" ]; kinds = [ "continues" "shares" ]; };
     "agentic.physics" = { kind = "physics"; scope = "objects"; };
-    "agentic.morphism" = { kind = "morphism"; };
-    "agentic.invariants" = { kind = "invariants"; };
+
   };
 
   workspace = L.mkWorkspace {

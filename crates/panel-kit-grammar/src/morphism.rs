@@ -111,6 +111,12 @@ impl GeometricMorphism {
         serde_json::from_str(text).map_err(|error| MorphismError::Json(error.to_string()))
     }
 
+    /// The morphism as the indented JSON document it was authored as, for a
+    /// host that shows the morphism itself rather than a reading of it.
+    pub fn to_json_pretty(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
+    }
+
     /// The domain field the codomain reads `field` from; `field` itself when
     /// the attribute map is silent about it.
     pub fn attribute<'a>(&'a self, field: &'a str) -> &'a str {

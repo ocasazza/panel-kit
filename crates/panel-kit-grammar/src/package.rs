@@ -356,6 +356,29 @@ impl GrammarPackage {
             emitter,
         })
     }
+
+    /// The engine's own source document: the inline `.pest` grammar verbatim
+    /// for the pest engine, and the indented parser spec for the engines whose
+    /// rules are data (`json`, `okf`) rather than grammar text. A host that
+    /// shows the grammar shows this.
+    pub fn source_document(&self) -> String {
+        match &self.parser {
+            ParserSpec::Pest(spec) => spec.grammar.clone(),
+            ParserSpec::Json(_) | ParserSpec::Okf(_) => {
+                serde_json::to_string_pretty(&self.parser).unwrap_or_default()
+            }
+        }
+    }
+
+    /// Monaco language id the source document is written in: the `pest`
+    /// tokenizer for a pest grammar, Monaco's own `json` for the data-driven
+    /// engines.
+    pub fn source_language(&self) -> &'static str {
+        match &self.parser {
+            ParserSpec::Pest(_) => "pest",
+            ParserSpec::Json(_) | ParserSpec::Okf(_) => "json",
+        }
+    }
 }
 
 /// A compiled grammar bound to its effective limits, ready to parse input.

@@ -27,11 +27,14 @@ use std::sync::LazyLock;
 
 use dioxus::events::{Key, KeyboardEvent, PointerEvent as DioxusPointerEvent};
 use dioxus::prelude::*;
+use panel_kit::editor::MonacoEditor;
 use panel_kit::CSS;
+use panel_kit_core::badge::BadgeAction;
 use panel_kit_core::reducer::{Viewport, WorkspaceEvent};
 use panel_kit_core::spec::ComponentEvent;
 use panel_kit_core::widgets::ContentSpec;
 use panel_kit_core::Units;
+use panel_kit_grammar::Section;
 
 #[allow(dead_code, unused_imports)]
 #[path = "support/composable_workspace.rs"]
@@ -71,7 +74,8 @@ const DATA_LINES: &str = include_str!(env!("PANEL_KIT_TRIO_DATA_LINES"));
 const DATA_JSON: &str = include_str!(env!("PANEL_KIT_TRIO_DATA_JSON"));
 
 const HOST_CSS: &str = "
-.topbar { flex-wrap: wrap; height: auto; min-height: 36px; gap: .45rem; }
+.topbar { gap: .45rem; white-space: nowrap; overflow: hidden; }
+.dock .keys { color: var(--dim); font-size: .68rem; white-space: nowrap; }
 .topbar h1 { font-size: .74rem; text-transform: uppercase; }
 .topbar button { background: var(--bg); color: var(--fg); border: 1px solid var(--line2);
   border-radius: 3px; padding: .15rem .5rem; font-size: .72rem; cursor: pointer; }
@@ -80,10 +84,8 @@ const HOST_CSS: &str = "
 .topbar button:disabled { color: var(--dim); border-style: dashed; cursor: not-allowed; }
 .topbar .axis { color: var(--dim); font-size: .62rem; text-transform: uppercase;
   letter-spacing: .12em; }
-.topbar .axis-buttons, .topbar .switches { display: flex; gap: .35rem; align-items: center; }
-.topbar .routes { color: var(--dim); font-size: .64rem; }
+.topbar .axis-buttons { display: flex; gap: .35rem; align-items: center; }
 .topbar .status { color: var(--accent); font-size: .7rem; }
-.topbar .hint { color: var(--dim); font-size: .62rem; }
 .pk-content-unbound { color: var(--yellow); font-size: .78rem; }
 ";
 
@@ -120,7 +122,8 @@ fn browser_viewport() -> Viewport {
 }
 
 /// The one element every panel body comes from: the external graph component
-/// for the active regime's graph binding, the resolved section for every other.
+/// for the active regime's graph binding, a Monaco editor for an editor
+/// binding, the resolved section for every other.
 ///
 /// A binding the host does not resolve names itself rather than leaving a blank
 /// body, and a host that failed to start says so in every panel.
@@ -147,7 +150,50 @@ fn host_content(host: Host, positions: Signal<Vec<[f32; 3]>>, id: &str, content:
             }
         };
     };
-    section_view::paint(section, content, None, None)
+    if let ContentSpec::Editor { multiline, placeholder, .. } = content {
+        return editor_body(state, id, *multiline, placeholder, section);
+    }
+    section_view::paint(section, content, None, Some(on_badge(&host)))
+}
+
+/// The editor body for one binding: the active grammar's source under the
+/// grammar's own language, a morphism document as JSON, and the authored
+/// prompt otherwise. Monaco keeps its own model, so the element is keyed by
+/// regime and grammar to re-mount with the document that is now bound.
+fn editor_body(
+    state: &TrioHost,
+    id: &str,
+    multiline: bool,
+    placeholder: &str,
+    section: &Section,
+) -> Element {
+    let Section::Text(text) = section else {
+        return composable_workspace::web_canary::editor_placeholder(id, multiline, placeholder);
+    };
+    let language = if id == trio_host::GRAMMAR { state.grammar_language() } else { "json" };
+    let key = format!("{}-{}-{id}", state.regime().label(), state.grammar_id());
+    rsx! {
+        MonacoEditor { key: "{key}", initial: "{text.text}", language: "{language}", read_only: true }
+    }
+}
+
+/// Badge clicks select: the badge's own field and value go to the host, which
+/// moves the selection to the object that badge names.
+fn on_badge(host: &Host) -> EventHandler<BadgeAction> {
+    let mut host = *host;
+    EventHandler::new(move |action: BadgeAction| {
+        let (field, value) = match action {
+            BadgeAction::Toggle { field, value } | BadgeAction::Clicked { field, value } => {
+                (field, value)
+            }
+            _ => return,
+        };
+        host.with_mut(|state| {
+            if let Ok(state) = state {
+                state.select_matching(&field, &value);
+            }
+        });
+    })
 }
 
 /// The `graph` external component over the active regime's model.
@@ -303,16 +349,6 @@ fn App() -> Element {
         }
     };
 
-    let switch_grammar = move |id: &str| {
-        let read = host.with_mut(|state| match state {
-            Ok(state) => state.set_grammar(id),
-            Err(_) => false,
-        });
-        if read {
-            adopt(&mut host, &mut workspace, &mut positions, true);
-        }
-    };
-
     let key_workspace = workspace.read().clone();
     let mut on_key = move |event: KeyboardEvent| {
         let mut handled = false;
@@ -392,20 +428,8 @@ fn App() -> Element {
         .unwrap_or_default();
 
     let header = host.with(|state| match state {
-        Ok(state) => Header {
-            regime: state.regime(),
-            grammars: state.grammar_ids(),
-            grammar: state.grammar_id(),
-            status: state.status_line(),
-            routes: state.route_summary(),
-        },
-        Err(error) => Header {
-            regime: RegimeId::Agentic,
-            grammars: &[],
-            grammar: "",
-            status: error.clone(),
-            routes: String::new(),
-        },
+        Ok(state) => Header { regime: state.regime(), status: state.status_line() },
+        Err(error) => Header { regime: RegimeId::Agentic, status: error.clone() },
     });
 
     // rsx cannot nest iterator combinators producing rsx inside a for-loop.
@@ -423,25 +447,6 @@ fn App() -> Element {
                     aria_pressed: active,
                     onclick: move |_| switch(regime),
                     "{regime.label()}"
-                }
-            }
-        })
-        .collect();
-
-    let grammar_buttons: Vec<Element> = header
-        .grammars
-        .iter()
-        .map(|id| {
-            let id = *id;
-            let mut switch = switch_grammar;
-            rsx! {
-                button {
-                    key: "grammar-{id}",
-                    title: "Re-read this site with another of its grammars; the objects change, so the graph re-solves",
-                    class: if id == header.grammar { "active" },
-                    aria_pressed: id == header.grammar,
-                    onclick: move |_| switch(id),
-                    "{id}"
                 }
             }
         })
@@ -466,13 +471,7 @@ fn App() -> Element {
                 div { class: "axis-buttons",
                     {regime_buttons.into_iter()}
                 }
-                span { class: "axis", "grammar" }
-                div { class: "axis-buttons",
-                    {grammar_buttons.into_iter()}
-                }
                 span { class: "status", "{header.status}" }
-                span { class: "routes", "{header.routes}" }
-                span { class: "hint", "t next regime · g grammar · n/p next/prev selection · l re-solve · r reset layout · click a node to select it" }
             }
             div {
                 class: "{workspace_class}",
@@ -492,20 +491,20 @@ fn App() -> Element {
                     frame.dock,
                     &current.resolved.catalog,
                     emit,
-                    None,
+                    Some(rsx! {
+                        span { class: "keys", "t next regime · g grammar · n/p selection · l re-solve · r reset layout · click a node to select it" }
+                    }),
                 )}
             }
         }
     }
 }
 
-/// What the header reads out of the host in one render pass.
-struct Header<'a> {
+/// What the header reads out of the host in one render pass. The status line
+/// names the grammar, so the header only offers the regime axis.
+struct Header {
     regime: RegimeId,
-    grammars: &'a [&'a str],
-    grammar: &'a str,
     status: String,
-    routes: String,
 }
 
 /// The workspace spec the host mounts at startup: the site read in the agentic

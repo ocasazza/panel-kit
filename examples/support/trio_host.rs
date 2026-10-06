@@ -82,6 +82,16 @@ pub const PHYSICS: &str = "trio.physics";
 pub const SELECTED: &str = "trio.selected";
 /// The OKF catalog workspace's own Selected panel; it mounts [`SELECTED`].
 pub const SELECTED_OKF: &str = "okf.selected";
+/// The host overlay carrying the active grammar's own source document: the
+/// `.pest` grammar behind `trace-lines`, the pointer map behind `trace-json`.
+pub const GRAMMAR: &str = "trio.grammar";
+
+/// The Morphism editor's binding in the agentic regime.
+pub const MORPHISM_AGENTIC: &str = "agentic.morphism";
+/// The Morphism editor's binding in the membrane regime.
+pub const MORPHISM_MEMBRANE: &str = "membrane.morphism";
+/// The Morphism editor's binding in the OKF catalog regime.
+pub const MORPHISM_OKF: &str = "okf.morphism";
 
 /// The Nix-authored JSON a trio host is built from: three regime topoi, the one
 /// physics base, the four morphisms between the regimes, the three morphisms
@@ -254,23 +264,27 @@ fn path_text(path: &[MorphismId]) -> String {
     path.iter().map(|step| step.symbol()).collect::<Vec<_>>().join(" then ")
 }
 
-/// One grammar: its compiled parser and the data it is read against.
+/// One grammar: its compiled parser, the data it is read against, and the
+/// source document an editor panel shows.
 struct GrammarEntry {
     id: &'static str,
     grammar: CompiledGrammar,
     data: String,
+    source: String,
+    language: &'static str,
 }
 
 impl GrammarEntry {
     fn compile(id: &'static str, package: &str, data: &str) -> Result<Self, String> {
-        let grammar = GrammarPackage::from_json_str(package)
-            .map_err(|error| format!("{id}: {error}"))?
-            .compile()
-            .map_err(|error| format!("{id}: {error}"))?;
+        let parsed =
+            GrammarPackage::from_json_str(package).map_err(|error| format!("{id}: {error}"))?;
+        let source = parsed.source_document();
+        let language = parsed.source_language();
+        let grammar = parsed.compile().map_err(|error| format!("{id}: {error}"))?;
         if grammar.id() != id {
             return Err(format!("{id}: the package compiles the grammar {}", grammar.id()));
         }
-        Ok(GrammarEntry { id, grammar, data: data.to_owned() })
+        Ok(GrammarEntry { id, grammar, data: data.to_owned(), source, language })
     }
 }
 
@@ -354,17 +368,27 @@ struct Projection {
     unreadable: BTreeSet<String>,
 }
 
-/// The three host overlays, rebuilt on every selection or regime change.
+/// The host overlays, rebuilt on every selection, regime, or grammar change.
+/// `morphism` states the routes in prose; `morphism_spec` is the active
+/// route's morphism document, which the Morphism editor mounts.
 struct Overlays {
     selected: Section,
     morphism: Section,
+    morphism_spec: Section,
+    grammar: Section,
     physics: Section,
 }
 
 impl Overlays {
     fn empty() -> Self {
         let blank = || Section::Text(TextModel { text: String::new() });
-        Self { selected: blank(), morphism: blank(), physics: blank() }
+        Self {
+            selected: blank(),
+            morphism: blank(),
+            morphism_spec: blank(),
+            grammar: blank(),
+            physics: blank(),
+        }
     }
 }
 
@@ -604,6 +628,13 @@ impl TrioHost {
         self.use_grammar(next);
     }
 
+    /// Monaco language id the active grammar's source document is written in:
+    /// `pest` for the line grammar, `json` for the pointer map behind
+    /// `trace-json`.
+    pub fn grammar_language(&self) -> &'static str {
+        self.grammars[self.grammar].language
+    }
+
     /// Read the site in `regime`, transporting the active subobject along the
     /// route of the selected kind: `f*` back towards the native regime, `∃`
     /// out to the next one. Every regime reads every kind, so this always
@@ -632,9 +663,13 @@ impl TrioHost {
     }
 
     /// Resolved content for one binding id: the external graph panel's
-    /// placeholder, one of the three host overlays, else the active regime's
-    /// sheaf over the site, its foreign kinds read through the attribute maps
-    /// the route transports.
+    /// placeholder, one of the host overlays, else the active regime's sheaf
+    /// over the site, its foreign kinds read through the attribute maps the
+    /// route transports.
+    ///
+    /// [`GRAMMAR`] answers with the active grammar's source document, and a
+    /// regime's Morphism binding with the active route's morphism document, so
+    /// an editor panel mounts a real document in every regime.
     pub fn resolve(&self, binding: &str) -> Option<&Section> {
         let regime = self.regime_state();
         if binding == regime.id.graph_binding() {
@@ -642,8 +677,12 @@ impl TrioHost {
         }
         match binding {
             MORPHISM => Some(&self.overlays.morphism),
+            MORPHISM_AGENTIC | MORPHISM_MEMBRANE | MORPHISM_OKF => {
+                Some(&self.overlays.morphism_spec)
+            }
             PHYSICS => Some(&self.overlays.physics),
             SELECTED | SELECTED_OKF => Some(&self.overlays.selected),
+            GRAMMAR => Some(&self.overlays.grammar),
             other => self.projection().sections.get(other),
         }
     }
@@ -683,6 +722,41 @@ impl TrioHost {
             .map_or(-step, |index| index as isize);
         let next = (current + step).rem_euclid(count as isize) as usize;
         let id = self.site.objects[next].id.clone();
+        self.select(Some(&id));
+    }
+
+    /// Select the object a badge names.
+    ///
+    /// A badge's value is its label with the group's count appended, so the
+    /// trailing count is stripped first. `kind` (one badge per regime sort)
+    /// and `value` (one badge per distinct `tag:0`) walk to the next matching
+    /// object after the current selection and wrap around; `object` (one badge
+    /// per object) names its object outright. A badge that matches nothing
+    /// leaves the selection alone.
+    pub fn select_matching(&mut self, field: &str, value: &str) {
+        let wanted = strip_count(value);
+        let regime = self.regime_state();
+        let matches = |object: &Object| -> bool {
+            match field {
+                "kind" => regime.sort_label(regime.sort_of(&object.kind)) == wanted,
+                "value" => object.tags.first() == Some(&wanted),
+                "object" => object.title == value || object.title == wanted,
+                _ => false,
+            }
+        };
+        let start = self
+            .selected
+            .as_deref()
+            .and_then(|id| self.site.objects.iter().position(|object| object.id == id))
+            .map_or(0, |index| index + 1);
+        let count = self.site.objects.len();
+        let Some(found) = (0..count)
+            .map(|step| (start + step) % count)
+            .find(|index| matches(&self.site.objects[*index]))
+        else {
+            return;
+        };
+        let id = self.site.objects[found].id.clone();
         self.select(Some(&id));
     }
 
@@ -908,6 +982,9 @@ impl TrioHost {
     fn recompute(&mut self) {
         self.overlays.selected = Section::Text(TextModel { text: self.selected_text() });
         self.overlays.morphism = Section::Text(TextModel { text: self.morphism_text() });
+        self.overlays.morphism_spec = Section::Text(TextModel { text: self.morphism_spec_text() });
+        self.overlays.grammar =
+            Section::Text(TextModel { text: self.grammars[self.grammar].source.clone() });
         self.overlays.physics = self.physics_section();
     }
 
@@ -1018,6 +1095,24 @@ impl TrioHost {
             lines.push(format!("  {}: {}", id.name(), pairs.join(", ")));
         }
         lines.join("\n")
+    }
+
+    /// The active route's morphism document, indented JSON: the morphism the
+    /// selected kind takes into the active regime, or the first morphism whose
+    /// codomain is the active regime when nothing is selected.
+    fn morphism_spec_text(&self) -> String {
+        let id = self
+            .selected
+            .as_deref()
+            .and_then(|id| self.object(id))
+            .and_then(|object| self.route(&object.kind).path.last().copied())
+            .unwrap_or_else(|| {
+                MorphismId::ALL
+                    .into_iter()
+                    .find(|id| self.morphism(*id).codomain == self.regime.topos_id())
+                    .unwrap_or(MorphismId::F)
+            });
+        self.morphism(id).to_json_pretty()
     }
 
     /// The tuning the active regime pulls back from the base, one row per sort,
@@ -1505,6 +1600,15 @@ fn sort_names(sorts: &BTreeSet<String>) -> String {
         "∅".to_owned()
     } else {
         format!("{{{}}}", sorts.iter().cloned().collect::<Vec<_>>().join(", "))
+    }
+}
+
+/// A badge value without the group's trailing count: `Planner 12` is `Planner`,
+/// and a label with no count is itself.
+fn strip_count(value: &str) -> String {
+    match value.rsplit_once(' ') {
+        Some((label, count)) if count.parse::<usize>().is_ok() => label.to_owned(),
+        _ => value.to_owned(),
     }
 }
 

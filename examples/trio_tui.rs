@@ -27,10 +27,14 @@ use ratatui::Terminal;
 use trio_app::{BodyPaint, DemoKey, RegimeId, TrioApp, TRANSITION_MS};
 
 const CHECK_WIDTH: u16 = 128;
-const CHECK_HEIGHT: u16 = 52;
+const CHECK_HEIGHT: u16 = 72;
 const PAGE_ROWS: f64 = 4.0;
 /// Nodes the merged site graph carries.
 const SITE_NODES: usize = 70;
+/// A token only the line grammar's own source carries, and one only the json
+/// grammar's does; each survives the body's wrapping whole.
+const LINES_GRAMMAR_MARK: &str = "EOI";
+const JSON_GRAMMAR_MARK: &str = "/nodes";
 
 fn main() -> std::io::Result<()> {
     if std::env::args().any(|arg| arg == "--check-offscreen") {
@@ -117,20 +121,23 @@ fn check_offscreen() -> Result<(), String> {
     if !host.unreadable().is_empty() {
         diff.push(format!("panels cannot read the site: {:?}", host.unreadable()));
     }
-    for control in ["[agentic]", "[membrane]", "[okf-catalog]", "[lines]", "[json]"] {
+    for control in ["[agentic]", "[membrane]", "[okf-catalog]", "[solve]", "[reset]"] {
         if !frame.text.contains(control) {
             diff.push(format!("the header strip is missing {control}"));
         }
     }
-    for control in ["[solve]", "[reset]"] {
-        if !frame.text.contains(control) {
-            diff.push(format!("the header strip is missing {control}"));
-        }
-    }
-    for absent in ["[traces]", "[OKF]", "unavailable"] {
+    for absent in ["[traces]", "[OKF]", "[lines]", "[json]", "unavailable"] {
         if frame.text.contains(absent) {
             diff.push(format!("the frame still names {absent}"));
         }
+    }
+
+    // The Grammar panel shows the source document of the grammar that read
+    // the site: the line grammar's own pest rules first, the pointer map after
+    // `g`.
+    let grammar_lines = panel_body(&host, &frame, "grammar");
+    if !grammar_lines.contains(LINES_GRAMMAR_MARK) {
+        diff.push(format!("the Grammar panel does not show the pest grammar: {grammar_lines:?}"));
     }
     if host.node_ids().len() != SITE_NODES {
         diff.push(format!(
@@ -208,6 +215,10 @@ fn check_offscreen() -> Result<(), String> {
         diff.push("`g` did not re-solve the layout".to_owned());
     }
     frame = render(&mut host)?;
+    let grammar_json = panel_body(&host, &frame, "grammar");
+    if !grammar_json.contains(JSON_GRAMMAR_MARK) || grammar_json.contains(LINES_GRAMMAR_MARK) {
+        diff.push(format!("the Grammar panel did not follow `g` to the json grammar: {grammar_json:?}"));
+    }
     if !frame.brailled {
         diff.push("the graph panel painted no braille after `g`".to_owned());
     }
@@ -240,6 +251,7 @@ fn check_offscreen() -> Result<(), String> {
 
 /// One rendered frame, kept only for what the canary asserts.
 struct Frame {
+    buffer: Buffer,
     text: String,
     status: String,
     brailled: bool,
@@ -267,14 +279,19 @@ fn render(host: &mut TrioApp) -> Result<Frame, String> {
         .map_err(infallible)?;
     draw_result.map_err(|error| error.to_string())?;
     let buffer = terminal.backend().buffer().clone();
+    let brailled = body_has_braille(&buffer, host.graph_rect());
     let text = buffer_text(&buffer);
     let status = text.lines().next().unwrap_or_default().trim_end().to_owned();
-    Ok(Frame {
-        brailled: body_has_braille(&buffer, host.graph_rect()),
-        text,
-        status,
-        paints: host.paints().to_vec(),
-    })
+    Ok(Frame { buffer, brailled, text, status, paints: host.paints().to_vec() })
+}
+
+/// The text one panel's body carries in the frame the canary just rendered.
+fn panel_body(host: &TrioApp, frame: &Frame, id: &str) -> String {
+    let Some(rect) = host.body_rect(id) else { return format!("<no body for {id}>") };
+    (rect.y..rect.bottom())
+        .flat_map(|y| (rect.x..rect.right()).map(move |x| (x, y)))
+        .map(|(x, y)| frame.buffer[(x, y)].symbol())
+        .collect::<String>()
 }
 
 fn buffer_text(buffer: &Buffer) -> String {

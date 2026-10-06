@@ -6,8 +6,8 @@
 # sorting on the OKF kinds. The graph panel is an external `graph` component
 # running the one pulled-back force physics; the rest are the corpus' own
 # reads: Concepts table, tag badges, per-kind degree gauges, stable-share
-# meter, and the host overlays (selected concept, repository/grammar,
-# morphism, layout).
+# meter, and the Grammar and Morphism editors plus the host overlays (selected
+# concept, layout transport).
 # `surface`/`glyphs` select units/chrome/glyphs; stalks, sheaves, and binding
 # ids do not vary.
 
@@ -16,9 +16,8 @@
 let
   topos = import ../lib/mkToposSpec.nix { inherit lib; };
   L = import ../lib/mkToposLayout.nix { inherit lib; };
-  data = import ../lib/physicsData.nix;
   inherit (topos) mkTopos defaultTheme;
-  inherit (L) cell shelf textC tableC badgesC gaugesC meterC externalC flex textCell;
+  inherit (L) cell shelf textC tableC badgesC gaugesC meterC editorC externalC flex textCell;
 
   # The corpus' 160 morphisms, counted at both ends: the full degree of any
   # one object sort, so every gauge reads as a share of the whole graph.
@@ -44,8 +43,8 @@ let
       (cell "selected" "Selected" "selected" 1 (textC "okf.selected"))
     ])
     (shelf 3 [
-      (cell "repository" "Repository" "repository" 1 (textC "okf.repository"))
-      (cell "morphism" "Morphism" "morphism" 1 (textC "okf.morphism"))
+      (cell "grammar" "Grammar" "grammar" 1 (editorC "trio.grammar"))
+      (cell "morphism" "Morphism" "morphism" 1 (editorC "okf.morphism"))
       (cell "layout" "Layout" "layout" 1 (textC "okf.layout"))
     ])
   ];
@@ -112,11 +111,11 @@ mkTopos {
         { key = "stale"; title = "Stale after"; width = flex 3; align = "left"; cell = textCell "field?:stale_after"; }
       ];
     };
-    # One badge per concept's first tag. Bundles carry no tags, so the strip
-    # restricts to the site's concept sorts.
+    # One badge per distinct first tag with its count. Bundles carry no tags,
+    # so the strip restricts to the site's concept sorts.
     "okf.tags" = {
       kind = "badges";
-      group = "objects";
+      group = "values";
       value = "tag:0";
       restrict = [ "table" "dataset" "policy" "metric" "computation" "skill" "reference" "concept" "log" ];
     };
@@ -129,12 +128,10 @@ mkTopos {
       filter = { field = "status"; equals = "stable"; };
       scale = 53.0;
     };
-    # Host overlays: the selected concept's attributes and neighbours, the
-    # repository and grammar tables, f against the active subobject, and the
-    # layout transport.
+    # Host overlays: the selected concept's attributes and neighbours and the
+    # layout transport. The Grammar and Morphism panels are editors, which no
+    # sheaf backs: the host mounts their documents.
     "okf.selected" = { kind = "text"; heading = "Selected concept"; };
-    "okf.repository" = { kind = "text"; heading = "Repository"; };
-    "okf.morphism" = { kind = "text"; heading = data.catalogMorphismHeading; preface = data.catalogMorphismPreface; };
     "okf.layout" = { kind = "text"; heading = "Layout transport"; };
   };
 

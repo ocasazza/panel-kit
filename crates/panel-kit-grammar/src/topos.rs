@@ -99,15 +99,17 @@ pub struct Stages {
     pub membrane: String,
 }
 
-/// Per-object `(id, engine_type, repulsion, mass)` and per-morphism
-/// `(domain, codomain, engine_type, weight, rest_length)` over the whole site.
-/// Identical under any two regimes related by a base-commuting morphism.
+/// Per-object `(id, sort, engine_type, repulsion, mass)` and per-morphism
+/// `(domain, codomain, sort, engine_type, weight, rest_length)` over the whole
+/// site, `sort` being this regime's sort and `engine_type` the base stalk it
+/// pulls back from. The numbers are identical under any two regimes related
+/// by a base-commuting morphism; the sorts are each regime's own.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PhysicsSection {
-    /// `(id, engine_type, repulsion, mass)` in site object order.
-    pub objects: Vec<(String, String, f64, f64)>,
-    /// `(domain, codomain, engine_type, weight, rest_length)` in site morphism order.
-    pub morphisms: Vec<(String, String, String, f64, f64)>,
+    /// `(id, sort, engine_type, repulsion, mass)` in site object order.
+    pub objects: Vec<(String, String, String, f64, f64)>,
+    /// `(domain, codomain, sort, engine_type, weight, rest_length)` in site morphism order.
+    pub morphisms: Vec<(String, String, String, String, f64, f64)>,
 }
 
 impl Topos {
@@ -598,23 +600,18 @@ impl Resolver<'_> {
     pub(crate) fn physics_section(&self, site: &Site) -> PhysicsSection {
         let mut objects = Vec::with_capacity(site.objects.len());
         for object in &site.objects {
-            let tuning = self
-                .object_sorting
-                .get(&object.kind)
-                .and_then(|sort| self.physics.object(sort));
+            let sort = self.object_sorting.get(&object.kind);
+            let tuning = sort.and_then(|sort| self.physics.object(sort));
             let (engine_type, repulsion, mass) = match tuning {
                 Some(tuning) => (tuning.engine_type.clone(), tuning.repulsion, tuning.mass),
                 None => (String::new(), 0.0, 0.0),
             };
-            objects.push((object.id.clone(), engine_type, repulsion, mass));
+            objects.push((object.id.clone(), sort.cloned().unwrap_or_default(), engine_type, repulsion, mass));
         }
         let mut morphisms = Vec::with_capacity(site.morphisms.len());
         for morphism in &site.morphisms {
-            let tuning = morphism
-                .kind
-                .as_deref()
-                .and_then(|kind| self.morphism_sorting.get(kind))
-                .and_then(|sort| self.physics.morphism(sort));
+            let sort = morphism.kind.as_deref().and_then(|kind| self.morphism_sorting.get(kind));
+            let tuning = sort.and_then(|sort| self.physics.morphism(sort));
             let (engine_type, weight, rest_length) = match tuning {
                 Some(tuning) => (tuning.engine_type.clone(), tuning.weight, tuning.rest_length),
                 None => (String::new(), 0.0, 0.0),
@@ -622,6 +619,7 @@ impl Resolver<'_> {
             morphisms.push((
                 morphism.domain.clone(),
                 morphism.codomain.clone(),
+                sort.cloned().unwrap_or_default(),
                 engine_type,
                 weight,
                 rest_length,
