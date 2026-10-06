@@ -16,12 +16,13 @@
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     eprintln!(
-        "browser_tui is a wasm/Ratzilla example. Run it with trunk or the \
+        "workspace_browser_tui is a wasm/Ratzilla example. Run it with trunk or the \
          checks.workspace-spec-browser-tui-wasm flake lane."
     );
 }
 
 #[cfg(target_arch = "wasm32")]
+#[path = "support/workspace_canary.rs"]
 mod workspace_canary;
 
 #[cfg(target_arch = "wasm32")]

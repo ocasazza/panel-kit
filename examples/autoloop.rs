@@ -168,6 +168,8 @@ fn AutoloopGraph(host: Host, draft: Signal<Option<EditDraft>>) -> Element {
             edges: graph.edges,
             colors,
             sizes,
+            node_physics: None,
+            edge_physics: None,
         });
     });
     let pick = move |x: f32, y: f32| render::pick(x, y).and_then(|i| ids.read().get(i as usize).cloned());

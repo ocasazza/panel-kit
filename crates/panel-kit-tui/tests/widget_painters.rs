@@ -1,7 +1,7 @@
 #[path = "support/legacy_chart_painters.rs"]
 mod legacy_chart_painters;
 #[allow(dead_code)]
-#[path = "../examples/workspace_canary.rs"]
+#[path = "../../../examples/support/workspace_canary.rs"]
 mod workspace_canary;
 
 use panel_kit_core::badge::{display_label, BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec};

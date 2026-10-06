@@ -4,9 +4,10 @@
 # a coding session a `computation`, a memory store a `concept`), and morphism
 # sorts are the link kinds plus the session bonds read along ω. Identity
 # sorting on the OKF kinds. The graph panel is an external `graph` component
-# laid out concentric by sort; the rest are the corpus' own reads: Concepts
-# table, tag badges, per-kind degree gauges, stable-share meter, and the host
-# overlays (selected concept, repository/grammar, morphism, layout).
+# running the one pulled-back force physics; the rest are the corpus' own
+# reads: Concepts table, tag badges, per-kind degree gauges, stable-share
+# meter, and the host overlays (selected concept, repository/grammar,
+# morphism, layout).
 # `surface`/`glyphs` select units/chrome/glyphs; stalks, sheaves, and binding
 # ids do not vary.
 
@@ -23,17 +24,12 @@ let
   # one object sort, so every gauge reads as a share of the whole graph.
   degreeScale = 320.0;
 
+  # Force, like every regime: the physics is the one base pullback, so the
+  # arrangement survives a morphism and only the sorts and colours move.
   graphContent = externalC "graph" "okf.graph" {
-    algorithm = "concentric";
-    group_by = "sort";
-    params = {
-      # Concentric rings by degree, one bucket per OKF type.
-      metric = 0.0;
-      min_radius = 60.0;
-      level_spacing = 90.0;
-      bucket_count = 10.0;
-      clockwise = 1.0;
-    };
+    algorithm = "force";
+    group_by = null;
+    params = { };
   };
 
   shelves = [

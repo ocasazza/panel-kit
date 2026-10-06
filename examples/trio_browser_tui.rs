@@ -1,31 +1,35 @@
-//! Browser (Ratzilla WebGL2) backend for the shared topos/grammar demo host.
+//! Browser (Ratzilla WebGL2) backend for the shared trio demo host.
 //!
-//! Build with trunk from this crate directory:
+//! Build with trunk from the repo root:
 //!
 //! ```sh
-//! trunk serve browser_topos.html --example browser_topos --features spec-plan
+//! trunk serve --port 8099 --address 127.0.0.1 --no-autoreload=true \
+//!   --example trio_browser_tui --features spec-plan examples/trio_browser_tui.html
 //! ```
 //!
-//! The surface's topos, grammar, and data JSON are embedded at build time from
-//! the environment paths; the ASCII-glyph specs match the canvas font atlas
-//! Ratzilla can rasterize. Keys: `t` topos, `g` grammar, `n`/`x` append, `r`
-//! reset, `s`/space focus and toggle a sort in the active subobject, `p` palette.
+//! The one site, all three regimes, the four morphisms, and the grammars are
+//! embedded at build time from the environment paths; the ASCII-glyph specs
+//! match the canvas font atlas Ratzilla can rasterize, and the graph is painted
+//! with the same braille canvas as the native host. Keys: `t` next regime, `g`
+//! grammar, `n`/`p` next and previous node, `l` re-solve layout, `r` reset.
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     eprintln!(
-        "browser_topos is a wasm/Ratzilla example. Build it with trunk from \
-         crates/panel-kit-tui pointing at browser_topos.html."
+        "trio_browser_tui is a wasm/Ratzilla example. Build it with trunk from \
+         the repo root pointing at examples/trio_browser_tui.html."
     );
 }
 
 #[cfg(target_arch = "wasm32")]
-mod topos_app;
+#[path = "support/trio_app.rs"]
+mod trio_app;
 
 #[cfg(target_arch = "wasm32")]
 mod browser {
     use std::{cell::RefCell, rc::Rc};
 
+    use crate::trio_app::{DemoKey, TrioApp};
     use panel_kit_core::spec::BackendKind;
     use panel_kit_tui::input::{ratzilla_key_chord, RatzillaPointerTranslator};
     use panel_kit_tui::wheel::{self, WheelCell};
@@ -36,49 +40,53 @@ mod browser {
         KeyCode, KeyEvent, MouseButton as WebMouseButton, MouseEvent as WebMouseEvent,
         MouseEventKind as WebMouseEventKind,
     };
-    use ratzilla::web_sys::wasm_bindgen::JsValue;
+    use ratzilla::web_sys::js_sys::{Function, Reflect};
+    use ratzilla::web_sys::wasm_bindgen::{JsCast, JsValue};
     use ratzilla::{CursorShape, WebGl2Backend, WebRenderer};
 
-    use crate::topos_app::{DemoKey, ToposHost};
-
-    const CONTAINER_ID: &str = "panel-kit-topos";
+    const CONTAINER_ID: &str = "panel-kit-trio";
     const PAGE_ROWS: f64 = 4.0;
 
-    /// Browser entry host: the shared demo host plus ratzilla pointer state.
+    /// Browser entry host: the shared trio host plus ratzilla pointer state.
     struct BrowserHost {
-        app: ToposHost,
+        app: TrioApp,
         pointer: RatzillaPointerTranslator,
+        started: f64,
     }
 
     impl BrowserHost {
-        fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        fn new(started: f64) -> Result<Self, Box<dyn std::error::Error>> {
             Ok(Self {
-                app: ToposHost::new(BackendKind::BrowserTui)?,
+                app: TrioApp::new(BackendKind::BrowserTui, prefers_reduced_motion())?,
                 pointer: RatzillaPointerTranslator::new(),
+                started,
             })
+        }
+
+        /// Wall-clock milliseconds since the page load, the host's tween clock.
+        fn now_ms(&self) -> f64 {
+            now_ms() - self.started
         }
 
         fn handle_key(&mut self, event: KeyEvent) {
             let Some(intent) = demo_key(event) else {
                 return;
             };
-            let _ = self.app.handle_key(intent);
+            let _ = self.app.handle_key(intent, self.now_ms());
         }
 
-        /// Header controls get first refusal, then core owns the gesture.
+        /// Header controls and graph nodes first; the graph's own cells are not
+        /// draggable, so nothing else needs the pointer.
         fn handle_mouse(&mut self, event: WebMouseEvent) {
-            let at = Position::new(event.col, event.row);
-            if matches!(
-                event.kind,
-                WebMouseEventKind::ButtonDown(WebMouseButton::Left)
-            ) && self.app.press(at)
-            {
-                return;
+            if matches!(event.kind, WebMouseEventKind::ButtonDown(WebMouseButton::Left)) {
+                let at = Position::new(event.col, event.row);
+                if self.app.press(at, self.now_ms()) {
+                    return;
+                }
             }
-            let Some(pointer) = self.pointer.pointer_event(event) else {
-                return;
-            };
-            let _ = self.app.pointer_event(pointer);
+            if let Some(pointer) = self.pointer.pointer_event(event) {
+                let _ = self.app.pointer_event(pointer);
+            }
         }
 
         /// Report whether the gesture moved a panel body or the workspace.
@@ -93,6 +101,33 @@ mod browser {
             KeyCode::PageDown => Some(DemoKey::Page(PAGE_ROWS)),
             _ => ratzilla_key_chord(event).map(DemoKey::from_chord),
         }
+    }
+
+    /// The page's wall clock in milliseconds.
+    fn now_ms() -> f64 {
+        ratzilla::web_sys::js_sys::Date::now()
+    }
+
+    /// Whether the page asks for reduced motion, so the layout tween collapses.
+    fn prefers_reduced_motion() -> bool {
+        let Some(window) = ratzilla::web_sys::window() else {
+            return false;
+        };
+        let Ok(media) = Reflect::get(window.as_ref(), &JsValue::from_str("matchMedia")) else {
+            return false;
+        };
+        let Ok(query) = media.dyn_into::<Function>() else {
+            return false;
+        };
+        query
+            .call1(
+                window.as_ref(),
+                &JsValue::from_str("(prefers-reduced-motion: reduce)"),
+            )
+            .ok()
+            .and_then(|media| Reflect::get(&media, &JsValue::from_str("matches")).ok())
+            .and_then(|matches| matches.as_bool())
+            .unwrap_or(false)
     }
 
     fn install_wheel(host: Rc<RefCell<BrowserHost>>) -> Result<(), JsValue> {
@@ -126,7 +161,7 @@ mod browser {
                 )),
         )?;
         let mut terminal = ratatui::Terminal::new(backend)?;
-        let host = Rc::new(RefCell::new(BrowserHost::new()?));
+        let host = Rc::new(RefCell::new(BrowserHost::new(now_ms())?));
 
         install_wheel(host.clone())
             .map_err(|error| std::io::Error::other(format!("{error:?}")))?;
@@ -149,7 +184,11 @@ mod browser {
 
         terminal.draw_web(move |frame| {
             if let Ok(mut host) = host.try_borrow_mut() {
-                let _ = host.app.draw(frame);
+                let now = host.now_ms();
+                host.app.advance(now);
+                if let Err(error) = host.app.draw(frame) {
+                    ratzilla::web_sys::console::error_1(&format!("browser_trio draw: {error:?}").into());
+                }
             }
         });
         Ok(())
@@ -159,7 +198,7 @@ mod browser {
 #[cfg(target_arch = "wasm32")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(error) = browser::main() {
-        ratzilla::web_sys::console::error_1(&format!("browser_topos error: {error:?}").into());
+        ratzilla::web_sys::console::error_1(&format!("browser_trio error: {error:?}").into());
         return Err(error);
     }
     Ok(())

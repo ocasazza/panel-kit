@@ -1,30 +1,27 @@
-//! Trio host — two sites, three regimes, one physics base.
+//! Trio host — one site, three regimes, one physics base.
 //!
 //! Run with: `dx serve --example trio --platform web`, with the `trioEnv`
 //! variables in the environment (`nix develop` provides them).
 //!
-//! - The `trace-lines` (or equivalent `trace-json`) grammar reads the
-//!   agent-trace site and the `okf` grammar reads the pinned knowledge-catalog
-//!   site. `agentic`, `membrane`, and `okf-catalog` are three regimes over the
-//!   two, related by `f: agentic → membrane`, `ψ: okf-catalog → membrane`, and
-//!   `χ: okf-catalog → agentic`. A regime reads a site only when the site's
-//!   native regime reaches it along one of those, so the traces site in
-//!   okf-catalog is offered as a *disabled* button carrying the reason rather
-//!   than an invented morphism.
+//! - The `trace-lines` (or equivalent `trace-json`) grammar reads the one
+//!   site: agent sessions and the knowledge objects they produce and verify.
+//!   `agentic`, `membrane`, and `okf-catalog` are three regimes over it,
+//!   related by `f: agentic → membrane`, `ψ: okf-catalog → membrane`,
+//!   `χ: okf-catalog → agentic`, and `ω: agentic → okf-catalog`; every regime
+//!   reads every kind, natively or along the diagram.
 //! - Every regime pulls its tuning back from the one physics base, so a regime
 //!   switch keeps the arrangement and only recolours it: the same nodes in the
-//!   same places wearing the codomain's sorts. Switching site or grammar
-//!   re-solves, because the objects themselves changed.
+//!   same places wearing the codomain's sorts, the live simulation re-tuned in
+//!   place. Switching grammar re-solves, because the objects were re-read.
 //! - The graph panel is the active regime's declared `graph` external
 //!   component — jump-cannon's WebGPU view when `navigator.gpu` yields an
 //!   adapter, panel-kit's own SVG painter over the same positions otherwise.
 //!   The panel declares `keep_mounted`, so the canvas survives a spec swap.
 //! - Every other panel body is painted from `TrioHost::resolve(binding)`, so no
-//!   panel can show another panel's content, and a sheaf that cannot read the
-//!   active site says so instead of inventing a value.
+//!   panel can show another panel's content.
 //!
-//! Keys: `s` site, `t` next available regime, `g` grammar, `n`/`p` next/previous
-//! selection, `l` re-solve the layout, `r` reset the workspace layout.
+//! Keys: `t` next regime, `g` grammar, `n`/`p` next/previous selection, `l`
+//! re-solve the layout, `r` reset the workspace layout.
 
 use std::sync::LazyLock;
 
@@ -55,7 +52,7 @@ mod graph_component;
 use graph_component::graph_layout::solve;
 use graph_component::GraphComponent;
 use spec_workspace::SpecWorkspaceState;
-use trio_host::{RegimeId, SiteId, TrioHost, TrioSpecs};
+use trio_host::{RegimeId, TrioHost, TrioSpecs};
 
 const AGENTIC: &str = include_str!(env!("PANEL_KIT_TRIO_AGENTIC"));
 const MEMBRANE: &str = include_str!(env!("PANEL_KIT_TRIO_MEMBRANE"));
@@ -64,6 +61,7 @@ const BASE: &str = include_str!(env!("PANEL_KIT_TRIO_BASE"));
 const F: &str = include_str!(env!("PANEL_KIT_TRIO_F"));
 const PSI: &str = include_str!(env!("PANEL_KIT_TRIO_PSI"));
 const CHI: &str = include_str!(env!("PANEL_KIT_TRIO_CHI"));
+const OMEGA: &str = include_str!(env!("PANEL_KIT_TRIO_OMEGA"));
 const AGENTIC_PHYSICS: &str = include_str!(env!("PANEL_KIT_TRIO_AGENTIC_PHYSICS"));
 const MEMBRANE_PHYSICS: &str = include_str!(env!("PANEL_KIT_TRIO_MEMBRANE_PHYSICS"));
 const CATALOG_PHYSICS: &str = include_str!(env!("PANEL_KIT_TRIO_OKF_CATALOG_PHYSICS"));
@@ -71,8 +69,6 @@ const GRAMMAR_LINES: &str = include_str!(env!("PANEL_KIT_TRIO_GRAMMAR_LINES"));
 const GRAMMAR_JSON: &str = include_str!(env!("PANEL_KIT_TRIO_GRAMMAR_JSON"));
 const DATA_LINES: &str = include_str!(env!("PANEL_KIT_TRIO_DATA_LINES"));
 const DATA_JSON: &str = include_str!(env!("PANEL_KIT_TRIO_DATA_JSON"));
-const OKF_GRAMMAR: &str = include_str!(env!("PANEL_KIT_TRIO_OKF_GRAMMAR"));
-const OKF_DATA: &str = include_str!(env!("PANEL_KIT_TRIO_OKF_DATA"));
 
 const HOST_CSS: &str = "
 .topbar { flex-wrap: wrap; height: auto; min-height: 36px; gap: .45rem; }
@@ -85,13 +81,13 @@ const HOST_CSS: &str = "
 .topbar .axis { color: var(--dim); font-size: .62rem; text-transform: uppercase;
   letter-spacing: .12em; }
 .topbar .axis-buttons, .topbar .switches { display: flex; gap: .35rem; align-items: center; }
-.topbar .refused { color: var(--yellow); font-size: .62rem; }
+.topbar .routes { color: var(--dim); font-size: .64rem; }
 .topbar .status { color: var(--accent); font-size: .7rem; }
 .topbar .hint { color: var(--dim); font-size: .62rem; }
 .pk-content-unbound { color: var(--yellow); font-size: .78rem; }
 ";
 
-/// The sixteen Nix-authored documents `trioEnv` names.
+/// The fifteen Nix-authored documents `trioEnv` names.
 const SPECS: TrioSpecs<'static> = TrioSpecs {
     agentic: AGENTIC,
     membrane: MEMBRANE,
@@ -100,6 +96,7 @@ const SPECS: TrioSpecs<'static> = TrioSpecs {
     f: F,
     psi: PSI,
     chi: CHI,
+    omega: OMEGA,
     agentic_physics: AGENTIC_PHYSICS,
     membrane_physics: MEMBRANE_PHYSICS,
     catalog_physics: CATALOG_PHYSICS,
@@ -107,8 +104,6 @@ const SPECS: TrioSpecs<'static> = TrioSpecs {
     trace_lines_data: DATA_LINES,
     trace_json_grammar: GRAMMAR_JSON,
     trace_json_data: DATA_JSON,
-    okf_grammar: OKF_GRAMMAR,
-    okf_data: OKF_DATA,
 };
 
 /// The loaded host, or the reason it could not start.
@@ -260,22 +255,9 @@ fn adopt(
     }
 }
 
-/// The other site, wrapping around: the two sites are read in `SiteId` order.
-fn other_site(site: SiteId) -> SiteId {
-    SiteId::ALL[(site as usize + 1) % SiteId::ALL.len()]
-}
-
-/// The next regime the active site can be read in, after the active one.
-///
-/// A regime the site cannot carry is skipped rather than refused: `t` walks
-/// the offered regimes, while the header's disabled button is where the refusal
-/// and its reason live.
-fn next_regime(site: SiteId, active: RegimeId) -> Option<RegimeId> {
-    RegimeId::ALL
-        .iter()
-        .copied()
-        .filter(|regime| TrioHost::available(site, *regime).is_ok())
-        .find(|regime| *regime != active)
+/// The regime after `active`, wrapping around: `t` walks `RegimeId::ALL`.
+fn next_regime(active: RegimeId) -> RegimeId {
+    RegimeId::ALL[(active as usize + 1) % RegimeId::ALL.len()]
 }
 
 #[component]
@@ -289,8 +271,8 @@ fn App() -> Element {
             .unwrap_or_default()
     });
 
-    // The host opens on the trace site in its native regime, so the agentic
-    // workspace spec is the one to mount first.
+    // The host opens in the agentic regime, so that workspace spec is the one
+    // to mount first.
     let initial = spec_workspace::use_spec_workspace(INITIAL_WORKSPACE.as_str());
     let mut workspace = use_signal(move || initial.clone());
     let header_clicks = use_signal(|| 0_u32);
@@ -306,25 +288,13 @@ fn App() -> Element {
         });
     }));
 
-    let mut switch_site = move |site: SiteId| {
-        let moved = host.with_mut(|state| match state {
-            Ok(state) if state.site_id() != site => {
-                state.set_site(site);
+    let mut switch_regime = move |regime: RegimeId| {
+        let crossed = host.with_mut(|state| match state {
+            Ok(state) if state.regime() != regime => {
+                state.set_regime(regime);
                 true
             }
             _ => false,
-        });
-        if moved {
-            // A site switch brings different objects, so it re-solves; whether
-            // it also brought a new regime is `adopt`'s business.
-            adopt(&mut host, &mut workspace, &mut positions, true);
-        }
-    };
-
-    let mut switch_regime = move |regime: RegimeId| {
-        let crossed = host.with_mut(|state| match state {
-            Ok(state) => state.set_regime(regime).is_ok(),
-            Err(_) => false,
         });
         if crossed {
             // The pulled-back physics is one base, so the arrangement survives
@@ -349,20 +319,8 @@ fn App() -> Element {
         if !panel_kit::input::is_editing() {
             if let Key::Character(character) = event.key() {
                 match character.as_str() {
-                    "s" => {
-                        let site = host.with(|state| state.as_ref().ok().map(TrioHost::site_id));
-                        if let Some(site) = site {
-                            switch_site(other_site(site));
-                        }
-                        handled = true;
-                    }
                     "t" => {
-                        let next = host.with(|state| {
-                            state
-                                .as_ref()
-                                .ok()
-                                .and_then(|state| next_regime(state.site_id(), state.regime()))
-                        });
+                        let next = host.with(|state| state.as_ref().ok().map(|state| next_regime(state.regime())));
                         if let Some(regime) = next {
                             switch_regime(regime);
                         }
@@ -435,70 +393,36 @@ fn App() -> Element {
 
     let header = host.with(|state| match state {
         Ok(state) => Header {
-            site: state.site_id(),
             regime: state.regime(),
             grammars: state.grammar_ids(),
             grammar: state.grammar_id(),
             status: state.status_line(),
+            routes: state.route_summary(),
         },
         Err(error) => Header {
-            site: SiteId::Traces,
             regime: RegimeId::Agentic,
             grammars: &[],
             grammar: "",
             status: error.clone(),
+            routes: String::new(),
         },
     });
 
     // rsx cannot nest iterator combinators producing rsx inside a for-loop.
-    let site_buttons: Vec<Element> = SiteId::ALL
-        .iter()
-        .map(|site| {
-            let site = *site;
-            let mut switch = switch_site;
-            rsx! {
-                button {
-                    key: "site-{site}",
-                    title: "Read the other site's objects; the regime carries over when a morphism reaches it",
-                    class: if site == header.site { "active" },
-                    aria_pressed: site == header.site,
-                    onclick: move |_| switch(site),
-                    "{site}"
-                }
-            }
-        })
-        .collect();
-
     let regime_buttons: Vec<Element> = RegimeId::ALL
         .iter()
         .map(|regime| {
             let regime = *regime;
             let mut switch = switch_regime;
-            // A regime the site cannot carry is shown disabled, carrying the
-            // reason the host names for refusing it.
-            let offered = TrioHost::available(header.site, regime);
-            let refused = offered.as_ref().err().cloned();
             let active = regime == header.regime;
-            let label = if active {
-                regime.label().to_owned()
-            } else {
-                match &refused {
-                    Some(reason) => format!("{} — {reason}", regime.label()),
-                    None => regime.label().to_owned(),
-                }
-            };
             rsx! {
                 button {
                     key: "regime-{regime}",
-                    title: match &offered {
-                        Ok(route) => format!("Read this site along {}", route.text()),
-                        Err(reason) => reason.clone(),
-                    },
+                    title: "Read the site in this regime; the arrangement stays, the sorts and colours move",
                     class: if active { "active" },
-                    disabled: refused.is_some(),
                     aria_pressed: active,
                     onclick: move |_| switch(regime),
-                    "{label}"
+                    "{regime.label()}"
                 }
             }
         })
@@ -537,11 +461,7 @@ fn App() -> Element {
             onpointercancel: move |event: DioxusPointerEvent| spec_workspace::handle_pointer_up(&pointer_cancel_workspace, &event),
             onkeydown: move |event: KeyboardEvent| on_key(event),
             header { class: "topbar",
-                h1 { "trio: sites × regimes" }
-                span { class: "axis", "site" }
-                div { class: "axis-buttons",
-                    {site_buttons.into_iter()}
-                }
+                h1 { "trio: one site × three regimes" }
                 span { class: "axis", "regime" }
                 div { class: "axis-buttons",
                     {regime_buttons.into_iter()}
@@ -551,7 +471,8 @@ fn App() -> Element {
                     {grammar_buttons.into_iter()}
                 }
                 span { class: "status", "{header.status}" }
-                span { class: "hint", "s site · t next regime · g grammar · n/p next/prev selection · l re-solve · r reset layout · click a node to select it" }
+                span { class: "routes", "{header.routes}" }
+                span { class: "hint", "t next regime · g grammar · n/p next/prev selection · l re-solve · r reset layout · click a node to select it" }
             }
             div {
                 class: "{workspace_class}",
@@ -580,15 +501,15 @@ fn App() -> Element {
 
 /// What the header reads out of the host in one render pass.
 struct Header<'a> {
-    site: SiteId,
     regime: RegimeId,
     grammars: &'a [&'a str],
     grammar: &'a str,
     status: String,
+    routes: String,
 }
 
-/// The workspace spec the host mounts at startup: the trace site read in its
-/// own native regime. Resolved once for the spec resolver hook, which requires
+/// The workspace spec the host mounts at startup: the site read in the agentic
+/// regime. Resolved once for the spec resolver hook, which requires
 /// `&'static str`.
 static INITIAL_WORKSPACE: LazyLock<String> = LazyLock::new(|| {
     TrioHost::load(&SPECS)

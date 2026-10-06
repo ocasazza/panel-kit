@@ -60,24 +60,6 @@ rec {
       morphism_sorts = all "weak" [ "targets" "governs" "revises" "elsewhere" ];
     };
 
-  # f: topos-okf-catalog -> topos-okf-lineage. The OKF type-to-role map, so
-  # non-injective on objects (table, dataset, policy |-> source; bundle,
-  # reference, concept, log |-> context) and on morphisms (derived_from,
-  # computes |-> derivation; executed_by, attested_by |-> execution).
-  okfCatalogToLineage = {
-    object_sorts = {
-      table = "source"; dataset = "source"; policy = "source";
-      metric = "derived"; computation = "derived";
-      skill = "operator";
-      bundle = "context"; reference = "context"; concept = "context"; log = "context";
-    };
-    morphism_sorts = {
-      derived_from = "derivation"; computes = "derivation";
-      executed_by = "execution"; attested_by = "execution";
-      references = "citation"; contains = "containment";
-    };
-  };
-
   # p_catalog: topos-okf-catalog -> topos-physics. Provenance tables and
   # datasets anchor the graph (hydrophilic), computed artifacts sit between
   # them (hydrophobic), and bundles, references and untyped concepts drift as
@@ -93,19 +75,6 @@ rec {
       derived_from = "stiff"; computes = "stiff";
       executed_by = "lateral"; attested_by = "lateral";
       references = "weak"; contains = "weak";
-    };
-  };
-
-  # p_lineage: topos-okf-lineage -> topos-physics. Composed with f this is
-  # p_catalog on every sort, so both regimes induce one physics section.
-  okfLineageToPhysics = {
-    object_sorts = {
-      source = "hydrophilic"; derived = "hydrophobic";
-      operator = "hydrophobic"; context = "solvent";
-    };
-    morphism_sorts = {
-      derivation = "stiff"; execution = "lateral";
-      citation = "weak"; containment = "weak";
     };
   };
 

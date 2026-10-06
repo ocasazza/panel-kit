@@ -54,9 +54,9 @@ const FORCE_MIN_DISTANCE: f64 = 1.0e-3;
 /// Largest rest length, in canonical layout lengths, one edge may ask for.
 const FORCE_MAX_REST: f64 = 4.0;
 /// Canonical layout length: one `rest_length` of the pulled-back physics.
-const FORCE_LENGTH: f64 = 200.0;
+pub const FORCE_LENGTH: f64 = 200.0;
 /// Lightest a node may be treated as, so inertia never divides by zero.
-const FORCE_MIN_MASS: f64 = 0.05;
+pub const FORCE_MIN_MASS: f64 = 0.05;
 /// Side of the square cell a solved component is packed into, in multiples of
 /// its own diameter: room enough that neighbouring shapes never touch.
 const FORCE_PACK_MARGIN: f32 = 1.5;

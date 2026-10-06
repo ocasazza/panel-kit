@@ -8,7 +8,7 @@
 //! (transported by `∃f`/`f*` on a topos switch; the status line names it).
 // Each entry host uses a different subset of the shared model and host API.
 #[allow(dead_code)]
-#[path = "../../../examples/support/topos_demo.rs"]
+#[path = "topos_demo.rs"]
 mod topos_demo;
 
 use std::fmt;

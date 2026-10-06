@@ -44,7 +44,7 @@ web-runtime = [
     "panel-kit-core/spec-json",
 ]
 bevy = ["web-runtime"]
-spec-plan = ["dep:serde", "dep:serde_json", "panel-kit-core/spec-json"]
+spec-plan = ["dep:serde", "dep:serde_json", "panel-kit-core/spec-json", "panel-kit-tui/spec-plan"]
 
 [dependencies]
 panel-kit-core = { version = "1.2.0", path = "crates/panel-kit-core" }
@@ -76,7 +76,7 @@ parking_lot = "0.12"
 # Fake-async delays in the loading example's hydration arc demo.
 gloo-timers = { version = "0.3", features = ["futures"] }
 panel-kit-tui = { version = "1.2.0", path = "crates/panel-kit-tui" }
-# The grammar/topos host façades (examples/support/{topos_demo,trio_host}.rs)
+# The grammar/topos host façades (examples/support/{topos_demo,trio_host,graph_layout}.rs)
 # and their tests, plus the panel-kit-tui trio host.
 panel-kit-grammar = { version = "1.2.0", path = "crates/panel-kit-grammar" }
 # Fetch for the auto-loop host example (examples/autoloop.rs).
@@ -87,6 +87,56 @@ jump-cannon-graph-view = { path = "vendor/jump-cannon/graph-view" }
 # Static + GPU layout solvers behind the `graph` component contract
 # (examples/support/graph_layout.rs): vendor/jump-cannon/VENDORED.md.
 graph-layouts = { path = "vendor/jump-cannon/graph-layouts" }
+# The ratatui parts the TUI examples draw. Crossterm and the WGPU shim are
+# target-scoped: the native loops drive a real terminal, the browser loops a
+# WebGL2 canvas.
+ratatui = { version = "0.30.1", default-features = false, features = ["all-widgets", "layout-cache"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+crossterm = "0.29"
+ratatui = { version = "0.30.1", features = ["crossterm"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+# graph-layouts solves through wgpu, whose API types are neither `Send` nor
+# `Sync` on wasm without atomics unless this feature is on. `panel-kit` picks
+# it up transitively through jump-cannon-graph-view; an example that solves a
+# graph on its own declares the feature itself.
+wgpu = { version = "23", default-features = false, features = ["fragile-send-sync-non-atomic-wasm"] }
+
+# ratzilla drives the browser-hosted ratatui loop; its panic hook reports a
+# trapped panic into the page rather than into a bare wasm trap.
+ratzilla = "0.3.1"
+console_error_panic_hook = "0.1"
+critical-section = { version = "1.2", features = ["std"] }
+
+# The TUI demos are examples of this crate; each one drives a single surface.
+[[example]]
+name = "standalone_panel"
+required-features = ["spec-plan"]
+
+[[example]]
+name = "trio_tui"
+required-features = ["spec-plan"]
+
+[[example]]
+name = "trio_browser_tui"
+required-features = ["spec-plan"]
+
+[[example]]
+name = "topos_tui"
+required-features = ["spec-plan"]
+
+[[example]]
+name = "topos_browser_tui"
+required-features = ["spec-plan"]
+
+[[example]]
+name = "workspace_tui"
+required-features = ["spec-plan"]
+
+[[example]]
+name = "workspace_browser_tui"
+required-features = ["spec-plan"]
 
 # Injected by dioxus-cli on first `dx build` — dx builds the example demos
 # under these profiles.

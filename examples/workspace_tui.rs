@@ -6,8 +6,9 @@
 //! reusable scratch, then draws the independent ratatui parts in host order.
 //!
 //! Run through Nix: `nix build .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).workspace-spec-tui-native`.
-//! Run manually with `PANEL_KIT_WORKSPACE_SPEC=/path/to/workspace.json cargo run -p panel-kit-tui --features spec-plan --example workspace`.
+//! Run manually with `PANEL_KIT_WORKSPACE_SPEC=/path/to/workspace.json cargo run -p panel-kit --features spec-plan --example workspace_tui`.
 
+#[path = "support/workspace_canary.rs"]
 mod workspace_canary;
 
 use std::time::{Duration, Instant};

@@ -35,9 +35,11 @@ layer:
 - **`panel-kit-tui`** (`crates/panel-kit-tui`) — the ratatui shell: the same
   workspace drawn in terminal cells with crossterm input, printer-CMY
   controls, a dock line, and JSON-file persistence. Try it:
-  `cargo run -p panel-kit-tui --example workspace`. Via
+  `cargo run -p panel-kit --features spec-plan --example workspace_tui`. Via
   [ratzilla](https://github.com/orhun/ratzilla) this renderer can also
-  target the browser DOM — one panel codebase, web and terminal skins.
+  target the browser DOM — one panel codebase, web and terminal skins. Its
+  demos live in the root `examples/`: `workspace_tui`, `workspace_browser_tui`,
+  `trio_tui`, `trio_browser_tui`.
 - **`panel-kit-grammar`** (`crates/panel-kit-grammar`) — topos and grammar
   abstractions. A *grammar* is a declarative import package (`pest` runtime
   grammar with a capture map, or `json` pointers) that turns input into a
@@ -293,7 +295,7 @@ dx serve --example workspace --platform web
 | `theming` | the documented full-palette retheme path: `:root` variable overrides layered after `panel_kit::CSS`, with three switchable presets |
 | `editor` | `editor::MonacoEditor`: two-way `Signal<String>` binding, `on_change` event log, imperative `EditorHandle` (set/read value, language, read-only, layout), reactive `language`/`read_only` props, the `nix`/`pest`/`toml` Monarch tokenizers, the `on_submit` action, and the minimal `toml` language on real samples |
 | `topos` | two regimes (`topos-agentic`, `topos-membrane`) over one session site parsed by either the `trace-lines` (pest) or `trace-json` grammar, running one shared physics base (`topos-physics`). `t` switches regime (per-topos layout persisted; the Physics panel stays identical, only the UI/UX sheaves change), `g` switches grammar (identical content), `n`/`x` append a valid/malformed line (diagnostic, last good site kept), `r` resets. Each regime carries an active subobject on its per-sort badges: click a Roles/Species badge (web) or `s`/space (terminals) to toggle a sort; switching transports it by `∃f`/`f*` and the status line names the morphism |
-| `trio` | two sites (the agent traces, parsed by `trace-lines` or `trace-json`, and the pinned OKF knowledge catalog, parsed by `okf`) read in three regimes (`topos-agentic`, `topos-membrane`, `topos-okf-catalog`), running one shared physics base (`topos-physics`). `s` switches site, `t` switches to the next regime the site can be read in, `g` switches grammar, `n`/`p` move the selection, `l` re-solves the graph layout, `r` resets the workspace layout. A regime switch keeps the arrangement and recolours it (the tuning is one base pullback, so only the sorts and colours move); a site or grammar switch re-solves. The pairs with no morphism — traces read in `okf-catalog` — are offered as disabled buttons carrying the reason |
+| `trio` | one site — the agent sessions and the OKF knowledge objects, joined by `produces`/`verifies`, parsed by `trace-lines` or `trace-json` — read in three regimes (`topos-agentic`, `topos-membrane`, `topos-okf-catalog`), all of them always available, running one shared physics base (`topos-physics`). `t` switches to the next regime, `g` re-reads the site with the next grammar, `n`/`p` move the selection, `l` re-solves the graph layout, `r` resets the workspace layout. A regime switch keeps the arrangement and recolours it (the tuning is one base pullback, so only the sorts and colours move); a grammar switch re-solves from the positions on screen. No pair is ever refused, so no control is disabled |
 
 `dx build --example <name> --platform web` produces the same app
 statically under `target/dx/<name>/debug/web/public`.
@@ -315,8 +317,9 @@ multi-MB bundle is fetched at runtime, once.
 The ratatui backend also has a browser/WASM canary built with Ratzilla:
 
 ```sh
-trunk serve crates/panel-kit-tui/browser_tui.html \
-  --example browser_tui \
+trunk serve examples/workspace_browser_tui.html \
+  --example workspace_browser_tui \
+  --features spec-plan \
   --address 127.0.0.1 \
   --port 8082
 ```
@@ -461,14 +464,14 @@ because `trace-lines` and `trace-json` present the same site.
 
 ```sh
 dx serve --example trio --platform web                     # web
-nix build .#trio-tui-native && ./result/bin/trio            # terminal
+nix build .#trio-tui-native && ./result/bin/trio_tui        # terminal
 nix build .#trio-browser-tui-wasm                           # browser terminal
 
-# browser terminal dev server, from crates/panel-kit-tui inside `nix develop ..`:
-export PANEL_KIT_TRIO_AGENTIC=$(nix build --no-link --print-out-paths ..#topos-agentic-ascii)
-export PANEL_KIT_TRIO_MEMBRANE=$(nix build --no-link --print-out-paths ..#topos-membrane-ascii)
-export PANEL_KIT_TRIO_OKF_CATALOG=$(nix build --no-link --print-out-paths ..#topos-okf-catalog-ascii)
-trunk serve browser_trio.html --example browser_trio --features spec-plan
+# browser terminal dev server, from the repo root inside `nix develop`:
+export PANEL_KIT_TRIO_AGENTIC=$(nix build --no-link --print-out-paths .#topos-agentic-ascii)
+export PANEL_KIT_TRIO_MEMBRANE=$(nix build --no-link --print-out-paths .#topos-membrane-ascii)
+export PANEL_KIT_TRIO_OKF_CATALOG=$(nix build --no-link --print-out-paths .#topos-okf-catalog-ascii)
+trunk serve examples/trio_browser_tui.html --example trio_browser_tui --features spec-plan
 ```
 
 `topos-trio-test` runs the trio host façade (`examples/support/trio_host.rs`) over

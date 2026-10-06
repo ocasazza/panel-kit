@@ -6,12 +6,15 @@
 //! an honest notice. The host solves positions; every new target tweens from
 //! the current arrangement, so a topos switch animates on every surface.
 //!
-//! `Force` arrangements arrive solved by `graph_layout::solve`, which honours
-//! each node's and edge's own physics. The GPU engine draws that arrangement
-//! and never re-simulates it: its force options hold one global tuning, which
-//! would flatten the per-sort physics a membrane assembles from.
+//! `Force` arrangements arrive solved by `graph_layout::solve` and then keep
+//! relaxing live: the GPU engine runs with every node's own mass and
+//! repulsion and every edge's own weight and rest length ([`node_physics`],
+//! [`edge_physics`]), under options derived from the CPU solve's constants
+//! ([`force_options`]) so both reach the same equilibrium. A regime switch
+//! re-tunes the running simulation in place; it never re-seeds it.
 
 use dioxus::prelude::*;
+use graph_layouts::{EdgePhysics, GpuForceOptions, NodePhysics};
 use graph_view::render;
 use panel_kit::widgets::graph::{graph_notice, graph_svg};
 use panel_kit_core::spec::{
@@ -24,7 +27,7 @@ use wasm_bindgen::closure::Closure;
 #[path = "graph_layout.rs"]
 pub mod graph_layout;
 
-use graph_layout::{FORCE_SEED_RADIUS, Tween, fibonacci_sphere, project_2d};
+use graph_layout::{FORCE_LENGTH, FORCE_MIN_MASS, FORCE_SEED_RADIUS, Tween, fibonacci_sphere, project_2d};
 
 /// Milliseconds the renderer spends walking from the old arrangement to the
 /// codomain's, unless the page asks for reduced motion.
@@ -36,8 +39,10 @@ const FRAME_MS: i32 = 16;
 /// Mount the `graph` contract for `component` over `model`.
 ///
 /// `target` is the arrangement the host wants drawn — the codomain's solved
-/// layout when the topos switches. Every change tweens towards it. A `Force`
-/// graph first paints the solve's own seed sphere, so it visibly assembles.
+/// layout when the topos switches. Every new target tweens from the live
+/// arrangement. On WebGPU a `Force` graph mounts on the solve's seed sphere
+/// and assembles in front of the viewer under the model's physics; later
+/// targets (a re-solve, a re-read site) tween from wherever the simulation is.
 #[component]
 pub fn GraphComponent(
     model: GraphModel,
@@ -47,26 +52,28 @@ pub fn GraphComponent(
     on_event: EventHandler<ComponentEvent>,
     component: ExternalComponentSpec,
 ) -> Element {
-    let live: Signal<Vec<[f32; 3]>> = use_signal(|| match layout.algorithm {
-        LayoutAlgorithm::Force => fibonacci_sphere(target.len(), FORCE_SEED_RADIUS),
-        _ => target.clone(),
-    });
+    let live: Signal<Vec<[f32; 3]>> = use_signal(|| target.clone());
     let mut webgpu = use_signal(|| false);
     // `use_reactive` re-runs each memo when its prop changes; a bare memo over
     // a moved prop would keep the first render's value forever.
     let model = use_memo(use_reactive((&model,), |(model,)| model));
+    let layout = use_memo(use_reactive((&layout,), |(layout,)| layout));
     let wanted = use_memo(use_reactive((&target,), |(target,)| target));
     let chosen = use_memo(use_reactive((&selected,), |(selected,)| selected));
     let spec = use_memo(use_reactive((&component,), |(component,)| component));
 
     use_effect(move || {
         let request = wanted.read().clone();
-        let from = live.peek().clone();
+        let from = render::with_host(|host| {
+            host.pipes.positions_cpu().chunks_exact(3).map(|p| [p[0], p[1], p[2]]).collect::<Vec<_>>()
+        })
+        .filter(|positions| positions.len() == request.len())
+        .unwrap_or_else(|| live.peek().clone());
         if request.is_empty() || request == from {
             return;
         }
         let tween = Tween::new(from, request, TRANSITION_MS, reduced_motion());
-        drive(live, tween, now_ms());
+        drive(live, model, layout, tween, now_ms());
     });
 
     // Mount once the WebGPU canvas is in the DOM and again only when the node
@@ -78,9 +85,17 @@ pub fn GraphComponent(
             return;
         }
         nodes();
-        render::set_after_mount(frame);
-        mount(&model.peek(), &live.peek());
+        render::set_after_mount(mounted);
+        let graph = model.peek();
+        let seed = match layout.peek().algorithm {
+            LayoutAlgorithm::Force => fibonacci_sphere(graph.nodes.len(), FORCE_SEED_RADIUS),
+            _ => live.peek().clone(),
+        };
+        mount(&graph, &seed);
     });
+    // Colours, sizes and physics follow the model; a regime switch changes all
+    // three without touching the positions, so the running sim is re-tuned
+    // in place.
     use_effect(move || {
         let graph = model.read();
         let (colors, sizes) = (node_colors(&graph), node_sizes(&graph));
@@ -89,7 +104,7 @@ pub fn GraphComponent(
             pipes.update_colors(queue, colors);
             pipes.update_sizes(queue, sizes);
         });
-        settle();
+        settle(&graph, &layout.peek());
     });
 
     use_effect(move || {
@@ -169,9 +184,15 @@ pub fn GraphComponent(
 /// One tween step, then the next, until the arrangement lands.
 ///
 /// Each step updates `live` (read by the SVG fallback) and writes the same
-/// frame to the GPU through `RenderHost::apply_positions`; the landed
-/// arrangement is then framed per [`settle`].
-fn drive(mut live: Signal<Vec<[f32; 3]>>, tween: Tween, start: u32) {
+/// frame to the GPU through `RenderHost::apply_positions` with the simulation
+/// paused; the landed arrangement is then settled per [`settle`].
+fn drive(
+    mut live: Signal<Vec<[f32; 3]>>,
+    model: Memo<GraphModel>,
+    layout: Memo<GraphLayout>,
+    tween: Tween,
+    start: u32,
+) {
     let elapsed = now_ms().saturating_sub(start);
     let frame = tween.at(elapsed);
     live.set(frame.clone());
@@ -179,15 +200,15 @@ fn drive(mut live: Signal<Vec<[f32; 3]>>, tween: Tween, start: u32) {
     render::set_sim_running(false);
     let _ = render::with_host(|host| host.apply_positions(&flat));
     if tween.is_complete(elapsed) {
-        settle();
+        settle(&model.read(), &layout.read());
         return;
     }
     let next = tween.clone();
-    schedule(move || drive(live, next, start));
+    schedule_after(FRAME_MS, move || drive(live, model, layout, next, start));
 }
 
-/// Run `tick` on the next frame's timeout, off the browser too.
-fn schedule(tick: impl FnOnce() + 'static) {
+/// Run `tick` after `delay_ms`, off the browser too.
+fn schedule_after(delay_ms: i32, tick: impl FnOnce() + 'static) {
     let Some(window) = web_sys::window() else {
         return;
     };
@@ -195,7 +216,7 @@ fn schedule(tick: impl FnOnce() + 'static) {
     if window
         .set_timeout_with_callback_and_timeout_and_arguments_0(
             once.as_ref().unchecked_ref(),
-            FRAME_MS,
+            delay_ms,
         )
         .is_err()
     {
@@ -204,7 +225,10 @@ fn schedule(tick: impl FnOnce() + 'static) {
     once.forget();
 }
 
-/// Mount the graph view's scene over `positions`.
+/// Mount the graph view's scene over `positions`, and publish
+/// `window.panelKitGraphState()` — `{"running", "halted", "max_ke",
+/// "positions": [x, y, z, …]}` from the renderer's live mirror, as JSON, for
+/// headless checks that measure the arrangement and the simulation.
 fn mount(model: &GraphModel, positions: &[[f32; 3]]) {
     render::mount_canvas(render::Scene {
         positions: positions.iter().flat_map(|p| p.to_vec()).collect(),
@@ -215,7 +239,30 @@ fn mount(model: &GraphModel, positions: &[[f32; 3]]) {
             .collect(),
         colors: node_colors(model),
         sizes: node_sizes(model),
+        node_physics: Some(node_physics(model)),
+        edge_physics: Some(edge_physics(model)),
     });
+    if let Some(window) = web_sys::window() {
+        let read = Closure::<dyn Fn() -> String>::new(|| {
+            render::with_host(|host| {
+                format!(
+                    "{{\"running\":{},\"halted\":{},\"max_ke\":{},\"settings\":{},\"positions\":{:?}}}",
+                    host.pipes.sim_running(),
+                    host.pipes.is_halted(),
+                    host.pipes.last_max_ke(),
+                    host.pipes.layout_settings_json().unwrap_or(serde_json::Value::Null),
+                    host.pipes.positions_cpu()
+                )
+            })
+            .unwrap_or_else(|| "{\"running\":false,\"halted\":false,\"max_ke\":0,\"positions\":[]}".into())
+        });
+        let _ = js_sys::Reflect::set(
+            window.as_ref(),
+            &wasm_bindgen::JsValue::from_str("panelKitGraphState"),
+            read.as_ref(),
+        );
+        read.forget();
+    }
 }
 
 /// RGBA per node from the model's encoding.
@@ -240,10 +287,101 @@ fn node_sizes(model: &GraphModel) -> Vec<f32> {
     model.nodes.iter().map(|node| 2.0 + 8.0 * node.size / heaviest).collect()
 }
 
-/// Frame the landed arrangement; the simulation stays paused, so what the host
-/// solved is what stays on screen.
-fn settle() {
-    render::set_sim_running(false);
+/// Milliseconds after waking the simulation at which the camera is refitted:
+/// the arrangement inflates fastest at first and has settled by the last.
+const SETTLE_REFITS_MS: [i32; 3] = [1500, 5000, 12000];
+
+/// Frame the landed arrangement. A static layout stays as solved; `Force`
+/// hands the engine the model's physics and lets it relax live from here.
+fn settle(model: &GraphModel, layout: &GraphLayout) {
+    frame();
+    if layout.algorithm != LayoutAlgorithm::Force {
+        render::set_sim_running(false);
+        return;
+    }
+    render::with_host(|host| {
+        host.pipes.update_layout_options(force_options());
+        let _ = host.update_node_physics(node_physics(model));
+        let _ = host.update_edge_physics(edge_physics(model));
+        host.pipes.wake_physics_layout();
+    });
+    render::set_sim_running(true);
+    for delay in SETTLE_REFITS_MS {
+        schedule_after(delay, frame);
+    }
+}
+
+/// Per-node inertia and repulsion charge for the engine. Charges are
+/// normalised to unit mean, as the CPU solve normalises them, so the
+/// engine's `repulsion` option sets the scale and the model sets the ratios.
+pub fn node_physics(model: &GraphModel) -> Vec<NodePhysics> {
+    let declared: Vec<f64> = model
+        .nodes
+        .iter()
+        .map(|node| if node.repulsion.is_finite() && node.repulsion > 0.0 { node.repulsion } else { 0.0 })
+        .collect();
+    let positive = declared.iter().filter(|value| **value > 0.0).count();
+    let unit = if positive > 0 { declared.iter().sum::<f64>() / model.nodes.len() as f64 } else { 1.0 };
+    model
+        .nodes
+        .iter()
+        .zip(&declared)
+        .map(|(node, repulsion)| NodePhysics {
+            mass: if node.mass.is_finite() { node.mass.max(FORCE_MIN_MASS) } else { 1.0 } as f32,
+            repulsion: if *repulsion > 0.0 { repulsion / unit } else { 1.0 } as f32,
+        })
+        .collect()
+}
+
+/// Per-edge spring multiplier and rest length (in canonical lengths) for the
+/// engine, in the model's edge order.
+pub fn edge_physics(model: &GraphModel) -> Vec<EdgePhysics> {
+    model
+        .edges
+        .iter()
+        .map(|edge| EdgePhysics {
+            weight: if edge.weight.is_finite() { edge.weight.max(0.0) } else { 1.0 } as f32,
+            rest_length: if edge.rest_length.is_finite() { edge.rest_length.max(0.0) } else { 1.0 } as f32,
+        })
+        .collect()
+}
+
+/// Spring stiffness the engine runs at, per unit of edge `weight`. The base's
+/// heaviest bond (`weight` 5) then reaches the engine's default stiffness of 1,
+/// which its integrator (`dt` 0.1, `damping` 0.9, one-rest-length velocity
+/// clamp) is tuned for.
+const ENGINE_STIFFNESS: f64 = 0.2;
+/// Pull toward the origin per world unit. Weak enough that two assembled
+/// components repel each other apart rather than being gathered into one blob,
+/// strong enough that nothing drifts out of frame.
+const ENGINE_GRAVITY: f64 = 2.0e-4;
+
+/// Engine options for the model's physics in world units. The law differs from
+/// the CPU solve's (Coulomb `1/d²` repulsion against Fruchterman-Reingold
+/// `1/d`), so the two are made to agree where the engine is known to be
+/// stable rather than at one distance: `spring_len` is one canonical length,
+/// `spring_k` is [`ENGINE_STIFFNESS`], and `repulsion` keeps the engine's
+/// default ratio of repulsion to spring force at the rest length
+/// (`repulsion / (spring_k · spring_len³)`, 4000 / 400³ at the defaults), so
+/// a shell inflates and neighbours separate as the engine's own graphs do.
+/// Per-node charges and per-edge multipliers then carry the base's ratios.
+pub fn force_options() -> GpuForceOptions {
+    let defaults = GpuForceOptions::default();
+    let ratio = f64::from(defaults.repulsion) / (f64::from(defaults.spring_k) * f64::from(defaults.spring_len).powi(3));
+    GpuForceOptions {
+        spring_k: ENGINE_STIFFNESS as f32,
+        spring_len: FORCE_LENGTH as f32,
+        repulsion: (ratio * ENGINE_STIFFNESS * FORCE_LENGTH.powi(3)) as f32,
+        repulsion_radius: (4.0 * FORCE_LENGTH) as f32,
+        gravity: ENGINE_GRAVITY as f32,
+        ..defaults
+    }
+}
+
+/// After every canvas mount: the engine options the solve's laws derive
+/// (the host did not exist when `settle` first ran) and the camera.
+fn mounted() {
+    render::with_host(|host| host.pipes.update_layout_options(force_options()));
     frame();
 }
 

@@ -29,6 +29,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use panel_kit_core::badge::Rgb;
 use panel_kit_core::spec::WorkspaceSpec;
 use panel_kit_core::theme::ThemeTokens;
+use panel_kit_core::widgets::graph::LayoutAlgorithm;
 use panel_kit_grammar::{Section, Stage};
 
 use trio_host::{
@@ -839,7 +840,7 @@ fn the_graph_panel_declares_its_component_and_layout() {
         assert!(component.keep_mounted, "an imperative canvas stays mounted");
         assert_eq!(component.events.len(), 2, "select and hover");
         let layout = host.graph_layout();
-        assert_eq!(layout.group_by.as_deref(), Some("sort"));
+        assert_eq!(layout.algorithm, LayoutAlgorithm::Force, "{regime} runs the one pulled-back physics");
         assert!(
             text(&host, regime.graph_binding()).contains("TrioHost::graph()"),
             "the external panel's body is named"

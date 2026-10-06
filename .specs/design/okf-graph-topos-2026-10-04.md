@@ -1,11 +1,13 @@
 # OKF repository grammar, graph topoi, and the external-component contract
 
 A third grammar/topos demo: a GitHub repository in Google's Open Knowledge
-Format (OKF v0.2) is the **grammar**; two UI regimes over its knowledge base
-(`okf-catalog`, `okf-lineage`) are the **topoi**; a geometric morphism between
-them is visible as a **graph layout transported along the morphism**, drawn by
-jump-cannon's WebGPU graph view (vendored, `vendor/jump-cannon/VENDORED.md`)
-behind a new declarative **external-component contract** in core.
+Format (OKF v0.2) is the **grammar**; `okf-catalog` is the **topos** that reads
+it; the corpus joins the agent traces as one site read in three regimes
+(`agentic`, `membrane`, `okf-catalog`), and the geometric morphisms between
+those regimes are visible as a **graph layout transported along the
+morphism**, drawn by jump-cannon's WebGPU graph view (vendored,
+`vendor/jump-cannon/VENDORED.md`) behind a new declarative
+**external-component contract** in core.
 
 ## Data
 
@@ -99,50 +101,50 @@ pub struct GraphLayout { pub algorithm: LayoutAlgorithm,
                          pub group_by: Option<String>, pub params: BTreeMap<String, f64> }
 ```
 
-`LayoutAlgorithm` names map 1:1 onto vendored `graph-layouts` solvers; `Force`
-is the host's CPU force solve over each connected component with every node's
-and edge's own physics, packed on a grid. The WebGPU view draws that solve and
-never re-simulates it: the GPU engine's options hold one global tuning, which
-would flatten the per-sort physics that assembles a membrane.
+`LayoutAlgorithm` names map 1:1 onto vendored `graph-layouts` solvers. `Force`
+is the pulled-back physics itself: every node's mass and repulsion charge and
+every edge's weight and rest length. The host's CPU force solve
+(`graph_layout::solve`, one solve per connected component, packed on a grid)
+is the static answer every painter can draw; on WebGPU the vendored engine runs
+the same law live (`NodePhysics`/`EdgePhysics` per node and edge, options
+derived from the CPU solve's constants in `graph_component::force_options`),
+so the arrangement keeps relaxing and a morphism re-tunes the running
+simulation in place.
 
 ## Topoi and the morphism
 
 - `okf-catalog`: object sorts are normalised OKF types plus `bundle`; morphism
-  sorts are the link kinds plus `contains`. Graph laid out `concentric`,
-  grouped by sort. Panels: graph, concepts table (type, status, tags, trust,
+  sorts are the link kinds plus `contains`. Graph laid out `force`
+  under the one pulled-back physics. Panels: graph, concepts table (type, status, tags, trust,
   stale_after), tag badges, per-type gauges, stable-share meter, selected
   concept text, repository/grammar text, morphism text, layout text.
-- `okf-lineage`: coarser roles — `source` (table, dataset, policy), `derived`
-  (metric, computation), `operator` (skill, attester), `context` (bundle,
-  reference, concept); morphisms `derivation` (derived_from, computes),
-  `execution` (executed_by, attested_by), `citation` (references),
-  `containment` (contains). Graph laid out `dagre` along derivation.
-- `f: okf-catalog → okf-lineage` is the type→role map φ (non-injective). Both
-  regimes map to the existing physics base (`nix/lib/physicsData.nix`) and
-  must commute (`validate_over`), so physics is the pullback of one base.
+- The same catalog is one regime of the trio's site: `f: agentic → membrane`,
+  `ψ: okf-catalog → membrane`, `χ: okf-catalog → agentic` and
+  `ω: agentic → okf-catalog`. All three regimes map to the existing physics base
+  (`nix/lib/physicsData.nix`) and must commute (`validate_over`), so physics is
+  the pullback of one base.
 
-Switching topos along `f` is the visible morphism, on every surface:
+Switching regime along a morphism is the visible morphism, on every surface:
 
-1. Every node's colour and sort move along φ (fibres of φ merge clusters).
+1. Every node's colour and sort move along the morphism (fibres merge clusters).
 2. The codomain's layout is solved **seeded from the current positions**, and
    the renderer tweens old → new positions (≈800 ms; instant under
-   `prefers-reduced-motion`). A `Force` graph's first paint tweens from the
-   solve's seed sphere, so the components visibly assemble.
-3. Selection transports by `∃f` (forward) / `f*` (back), as `topos_demo.rs` does.
-4. The "Layout" text panel states domain algorithm → codomain algorithm, φ with
-   fibre sizes, and the pulled-back force parameters that changed.
-
-Selecting a node in the graph emits `Select`; the host restricts the selected
-concept's sheaves (attributes text, neighbours) to that object.
+   `prefers-reduced-motion`). On WebGPU a `Force` graph mounts on the solve's
+   seed sphere and assembles live; the physics the simulation runs is the
+   codomain's pullback, pushed into the engine without re-seeding.
+3. Selection transports by `∃` forward and `*` back, as `trio_host.rs` does.
+4. The "Layout" text panel states domain algorithm → codomain algorithm, the
+   morphism with fibre sizes, and the pulled-back force parameters that
+   changed.
 
 ## Surfaces
 
-- Web (`examples/okf.rs`): GraphView when `navigator.gpu` exists, else the SVG
+- Web (`examples/trio.rs`): GraphView when `navigator.gpu` exists, else the SVG
   fallback; the same positions drive both.
-- TUI native and browser (`crates/panel-kit-tui/examples/okf.rs`,
-  `browser_okf.rs`): braille painter over the same positions (no WebGPU in a
-  terminal), same panels, same keys.
-- Keys everywhere: `t` switch topos along f / back, `n`/`p` next/previous node
+- TUI native and browser (`examples/trio_tui.rs`, `examples/trio_browser_tui.rs`):
+  braille painter over the same positions (no WebGPU in a terminal), same
+  panels, same keys.
+- Keys everywhere: `t` next regime / back, `n`/`p` next/previous node
   selection, `l` re-solve layout, `r` reset.
 
 ## The trio: agentic, membrane, OKF

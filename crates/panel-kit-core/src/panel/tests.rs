@@ -4,7 +4,7 @@ use crate::{LayoutBuilder, PanelKind};
 use serde::{Deserialize, Serialize};
 
 /// Mirrors the TUI canary `Panel` enum
-/// (`crates/panel-kit-tui/examples/workspace_canary.rs`): serde's default
+/// (`examples/support/workspace_canary.rs`): serde's default
 /// variant names are the exact strings V1/V2 saves already contain, so
 /// they are the stable IDs a catalog over this enum must use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
