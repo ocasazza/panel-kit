@@ -124,6 +124,19 @@ pub fn focus(id: &str, scroll: bool) {
     let _ = (id, scroll);
 }
 
+/// The entry index a mounted row carries, if `id` is one.
+pub fn entry(id: &str) -> Option<usize> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        element(id)?.get_attribute("data-index")?.parse().ok()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = id;
+        None
+    }
+}
+
 /// Whether a focus-out moved focus to an element outside `root`. A row that
 /// unmounts under the cursor blurs to nothing, which is not leaving.
 pub fn left_for_outside(event: &dioxus::prelude::FocusEvent, root: &str) -> bool {

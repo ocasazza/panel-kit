@@ -266,6 +266,11 @@ pub fn DataTable(
         .iter()
         .position(|e| matches!(e, Entry::Row(_)))
         .map(|at| at + mounted.start);
+    // Each entry's key, so a window shift keeps the rows both windows mount.
+    let entry_key = |index: usize| match &view.entries[index] {
+        Entry::Group { value, .. } => format!("group-{value}"),
+        Entry::Row(at) => data.id(*at).to_string(),
+    };
     let controls = toolbar.clone().unwrap_or_else(|| Control::ALL.to_vec());
     let shows = |control: Control| controls.contains(&control);
     let narrow: Vec<String> = columns
@@ -354,13 +359,21 @@ pub fn DataTable(
     };
 
     // The cursor row is the one tab stop; when it moves while the grid has
-    // focus, focus follows it. A scaled table scrolls by its own map, not by
-    // the browser's scroll into view.
+    // focus, focus follows it. A scaled table scrolls the row into view by its
+    // own map: the browser's scroll into view moves it by offset.
     let cursor_dom = current.cursor.as_ref().map(|c| format!("{id}-{c}"));
+    let focus_scroll = scroll_id.clone();
     use_effect(use_reactive!(|(cursor_dom,)| {
         if let Some(dom_id) = cursor_dom {
             if *focused.peek() {
                 dom::focus(&dom_id, !scaled);
+                let row = dom::entry(&dom_id).zip(dom::scroll(&focus_scroll));
+                if let (true, Some((entry, scroll))) = (scaled, row) {
+                    let map = ScrollMap::new(total, row_height, scroll.visible);
+                    if let Some(top) = map.reveal(scroll.top, entry) {
+                        dom::scroll_to(&focus_scroll, top);
+                    }
+                }
             }
         }
     }));
@@ -1044,6 +1057,7 @@ pub fn DataTable(
                             }
                         }
                         for index in mounted.start..mounted.end {
+                            Fragment { key: "{entry_key(index)}",
                             match &view.entries[index] {
                                 Entry::Group { value, count, folded } => {
                                     let name = value.clone();
@@ -1160,6 +1174,7 @@ pub fn DataTable(
                                         }
                                     }
                                 }
+                            }
                             }
                         }
                         if mounted.below_px > 0.0 {
