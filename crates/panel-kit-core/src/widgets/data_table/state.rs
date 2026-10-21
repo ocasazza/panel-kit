@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::rc::Rc;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -259,6 +260,21 @@ pub enum TableKey {
     SelectAll,
 }
 
+/// Where the cursor and anchor rows last rendered in the view. A hint only:
+/// lookups verify the id at the position, so a stale one costs a scan, not a
+/// wrong answer. Never affects equality.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PositionHint {
+    cursor: usize,
+    anchor: usize,
+}
+
+impl PartialEq for PositionHint {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
 /// One table's whole user-facing state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TableState {
@@ -286,12 +302,14 @@ pub struct TableState {
     pub view: ViewMode,
     /// How many rows may be selected.
     pub selectable: Selectable,
-    /// Selected row ids.
-    pub selection: BTreeSet<String>,
+    /// Selected row ids. Shared between clones; a change copies on write.
+    pub selection: Rc<BTreeSet<String>>,
     /// The row a range grows from.
     pub anchor: Option<String>,
     /// The keyboard's row: the one tab stop.
     pub cursor: Option<String>,
+    /// Where the cursor and anchor last rendered. Never trusted unchecked.
+    pub pos: PositionHint,
     /// The mounted window.
     pub window: TableWindow,
     /// The tag filter.
@@ -352,9 +370,10 @@ impl TableState {
             density: defaults.density,
             view: defaults.view,
             selectable: defaults.selectable,
-            selection: BTreeSet::new(),
+            selection: Rc::default(),
             anchor: None,
             cursor: None,
+            pos: PositionHint::default(),
             window: TableWindow::default(),
             tag_filter: BTreeSet::new(),
             tag_mode: TagMode::Any,
@@ -550,35 +569,31 @@ impl TableState {
             Selectable::None => {}
             Selectable::Single => {
                 if self.selection.contains(id) {
-                    self.selection.clear();
-                    self.anchor = None;
+                    self.clear_selection();
                 } else {
-                    self.selection = BTreeSet::from([id.to_string()]);
+                    self.selection = Rc::new(BTreeSet::from([id.to_string()]));
                     self.anchor = Some(id.to_string());
                 }
             }
             Selectable::Multi => match (mode, self.anchor.clone()) {
                 (SelectMode::Only, _) => {
-                    self.selection = BTreeSet::from([id.to_string()]);
+                    self.selection = Rc::new(BTreeSet::from([id.to_string()]));
                     self.anchor = Some(id.to_string());
                 }
                 (SelectMode::Range, Some(anchor)) => {
-                    match (view.position(data, &anchor), view.position(data, id)) {
+                    match (self.find(view, data, &anchor), self.find(view, data, id)) {
                         (Some(a), Some(b)) => {
+                            self.pos.anchor = a;
                             let (lo, hi) = (a.min(b), a.max(b));
-                            let span = view.rows[lo..=hi]
-                                .iter()
-                                .map(|&row| data.id(row).to_string());
-                            self.selection.extend(span);
+                            self.add_ids(view.rows[lo..=hi].iter().map(|&row| data.id(row)));
                         }
-                        _ => {
-                            self.selection.insert(id.to_string());
-                        }
+                        _ => self.add_ids(std::iter::once(id)),
                     }
                 }
                 _ => {
-                    if !self.selection.remove(id) {
-                        self.selection.insert(id.to_string());
+                    let set = Rc::make_mut(&mut self.selection);
+                    if !set.remove(id) {
+                        set.insert(id.to_string());
                     }
                     self.anchor = Some(id.to_string());
                 }
@@ -588,21 +603,57 @@ impl TableState {
 
     /// Select every rendered row, or deselect them when all already are.
     pub fn select_all(&mut self, view: &View, data: &TableData) {
-        if self.selectable != Selectable::Multi {
+        if self.selectable != Selectable::Multi || view.rows.is_empty() {
             return;
         }
-        if view.ids(data).all(|id| self.selection.contains(id)) {
-            for id in view.ids(data) {
-                self.selection.remove(id);
-            }
+        // A selection smaller than the view cannot hold every row of it.
+        let all = self.selection.len() >= view.rows.len()
+            && view.ids(data).all(|id| self.selection.contains(id));
+        if !all {
+            self.add_ids(view.ids(data));
+        } else if self.selection.len() == view.rows.len() {
+            self.selection = Rc::default();
         } else {
-            self.selection.extend(view.ids(data).map(str::to_string));
+            let set = Rc::make_mut(&mut self.selection);
+            for id in view.ids(data) {
+                set.remove(id);
+            }
         }
+    }
+
+    /// Add ids to the selection, allocating only those not already in it.
+    /// A shared selection is copied only when something is added.
+    fn add_ids<'a>(&mut self, ids: impl Iterator<Item = &'a str>) {
+        let fresh: Vec<String> = ids
+            .filter(|id| !self.selection.contains(*id))
+            .map(str::to_string)
+            .collect();
+        if fresh.is_empty() {
+            return;
+        }
+        let set = Rc::make_mut(&mut self.selection);
+        // `append` bulk-builds in linear time but walks the whole set.
+        if set.is_empty() || fresh.len() > set.len() / 8 {
+            set.append(&mut fresh.into_iter().collect());
+        } else {
+            set.extend(fresh);
+        }
+    }
+
+    /// Where the row `id` renders: a remembered position when it still holds
+    /// that row, else a scan.
+    fn find(&self, view: &View, data: &TableData, id: &str) -> Option<usize> {
+        [self.pos.cursor, self.pos.anchor]
+            .into_iter()
+            .find(|&at| at < view.rows.len() && view.id(data, at) == id)
+            .or_else(|| view.position(data, id))
     }
 
     /// Clear the selection and the anchor.
     pub fn clear_selection(&mut self) {
-        self.selection.clear();
+        if !self.selection.is_empty() {
+            self.selection = Rc::default();
+        }
         self.anchor = None;
     }
 
@@ -624,7 +675,7 @@ impl TableState {
             TableKey::Escape => self.clear_selection(),
             TableKey::SelectAll => {
                 if self.selectable == Selectable::Multi {
-                    self.selection.extend(view.ids(data).map(str::to_string));
+                    self.add_ids(view.ids(data));
                 }
             }
             nav => {
@@ -633,7 +684,10 @@ impl TableState {
                 }
                 let page = page.clamp(1, 1_000);
                 let last = view.rows.len() - 1;
-                let from = self.cursor.as_deref().and_then(|c| view.position(data, c));
+                let from = self
+                    .cursor
+                    .as_deref()
+                    .and_then(|c| self.find(view, data, c));
                 let to = match (nav, from) {
                     (TableKey::Down, Some(at)) => (at + 1).min(last),
                     (TableKey::Up, Some(at)) => at.saturating_sub(1),
@@ -645,9 +699,11 @@ impl TableState {
                 };
                 let id = view.id(data, to).to_string();
                 let left = self.cursor.replace(id.clone());
+                self.pos.cursor = to;
                 if shift && self.selectable == Selectable::Multi {
                     if self.anchor.is_none() {
                         self.anchor = left.or_else(|| Some(id.clone()));
+                        self.pos.anchor = from.unwrap_or(to);
                     }
                     self.select(&id, SelectMode::Range, view, data);
                 }
@@ -1224,4 +1280,141 @@ fn valid_sort<'a>(
         }
     }
     sort
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::widgets::data_table::{BuildOptions, TableDataBuilder, Value};
+    use proptest::prelude::*;
+
+    fn columns() -> Vec<DataColumnSpec> {
+        vec![
+            DataColumnSpec::new("item", "item"),
+            DataColumnSpec::new("since", "since").number(),
+        ]
+    }
+
+    fn data(n: usize) -> TableData {
+        let columns = columns();
+        let mut builder = TableDataBuilder::with_capacity(&columns, n);
+        for i in 0..n {
+            let id = format!("r{i}");
+            builder.row(
+                id.as_str(),
+                [Value::Text(&id), Value::Number(((i * 7) % 11) as f64)],
+            );
+        }
+        builder.build()
+    }
+
+    fn multi() -> TableState {
+        TableState {
+            selectable: Selectable::Multi,
+            ..TableState::new(&columns(), TableDefaults::default())
+        }
+    }
+
+    /// Insertion order, newest-first, or only the rows matching "1".
+    fn view_of(kind: u8, data: &TableData) -> View {
+        let mut query = multi();
+        match kind % 3 {
+            0 => {}
+            1 => query.sort = vec![SortSpec::new("since", SortDir::Desc)],
+            _ => query.set_quick("1"),
+        }
+        View::build(&columns(), data, &query, BuildOptions::default())
+    }
+
+    const KEYS: [TableKey; 6] = [
+        TableKey::Down,
+        TableKey::Up,
+        TableKey::PageDown,
+        TableKey::PageUp,
+        TableKey::Home,
+        TableKey::End,
+    ];
+
+    proptest! {
+        // A hint left over from another view order must give the scan's answer.
+        #[test]
+        fn keys_over_changing_views_match_the_scan(
+            n in 1usize..60,
+            steps in prop::collection::vec((0u8..3, 0usize..6, any::<bool>()), 1..30),
+        ) {
+            let data = data(n);
+            let mut hinted = multi();
+            let mut scanned = multi();
+            for (kind, key, shift) in steps {
+                let view = view_of(kind, &data);
+                scanned.pos = PositionHint { cursor: usize::MAX, anchor: usize::MAX };
+                hinted.key(KEYS[key], shift, &view, &data, 7);
+                scanned.key(KEYS[key], shift, &view, &data, 7);
+                prop_assert_eq!(&hinted.cursor, &scanned.cursor);
+                prop_assert_eq!(&hinted.anchor, &scanned.anchor);
+                prop_assert_eq!(&hinted.selection, &scanned.selection);
+                prop_assert_eq!(hinted.window, scanned.window);
+            }
+        }
+
+        // Select-all is the set union, or the set difference once every row is in.
+        #[test]
+        fn select_all_matches_set_algebra(
+            n in 1usize..80,
+            picked in prop::collection::vec(0usize..100, 0..90),
+            kind in 0u8..3,
+        ) {
+            let data = data(n);
+            let view = view_of(kind, &data);
+            let mut state = multi();
+            state.selection = Rc::new(picked.iter().map(|i| format!("r{i}")).collect());
+            let before = state.selection.clone();
+            let rows: BTreeSet<String> = view.ids(&data).map(str::to_string).collect();
+            let want: BTreeSet<String> = if rows.is_subset(&before) {
+                before.difference(&rows).cloned().collect()
+            } else {
+                before.union(&rows).cloned().collect()
+            };
+            state.select_all(&view, &data);
+            prop_assert_eq!(&*state.selection, &want);
+        }
+    }
+
+    #[test]
+    fn a_clone_shares_the_selection_until_either_side_changes_it() {
+        let data = data(50);
+        let view = view_of(0, &data);
+        let mut state = multi();
+        state.select_all(&view, &data);
+        let mut copy = state.clone();
+        assert!(Rc::ptr_eq(&state.selection, &copy.selection));
+        copy.clear_selection();
+        assert_eq!(state.selection.len(), 50);
+        assert!(copy.selection.is_empty());
+    }
+
+    #[test]
+    fn selecting_rows_already_selected_leaves_a_shared_selection_shared() {
+        let data = data(20);
+        let view = view_of(0, &data);
+        let mut state = multi();
+        state.select_all(&view, &data);
+        let copy = state.clone();
+        state.key(TableKey::SelectAll, false, &view, &data, 7);
+        assert!(Rc::ptr_eq(&state.selection, &copy.selection));
+    }
+
+    #[test]
+    fn a_cursor_off_the_view_starts_navigation_from_the_edge() {
+        let data = data(30);
+        let all = view_of(0, &data);
+        let narrowed = view_of(2, &data);
+        let mut state = multi();
+        state.cursor = Some("r5".into());
+        state.key(TableKey::Down, false, &all, &data, 7);
+        assert_eq!(state.cursor.as_deref(), Some("r6"));
+        // r6 is filtered out: the stale hint must not resolve it.
+        state.key(TableKey::Down, false, &narrowed, &data, 7);
+        assert_eq!(state.cursor.as_deref(), Some(narrowed.id(&data, 0)));
+    }
 }

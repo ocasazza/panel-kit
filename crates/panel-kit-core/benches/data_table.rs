@@ -4,7 +4,7 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use panel_kit_core::widgets::data_table::{
     BuildOptions, ColumnFilter, DataColumnSpec, SortDir, SortSpec, TableData, TableDataBuilder,
-    TableDefaults, TableState, Value, View,
+    Selectable, TableDefaults, TableKey, TableState, Value, View,
 };
 
 const STATES: [&str; 6] = [
@@ -135,5 +135,68 @@ fn view_build(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, load, view_build);
+/// What the painter pays per render and per keystroke at 1M rows: selecting
+/// every row, cloning the state that holds them, and one arrow key.
+fn state_ops(c: &mut Criterion) {
+    let columns = columns();
+    let data = data(1_000_000);
+    let multi = TableState {
+        selectable: Selectable::Multi,
+        ..TableState::new(&columns, TableDefaults::default())
+    };
+    let view = View::build(&columns, &data, &multi, BuildOptions::default());
+    let mut group = c.benchmark_group("state/1000000");
+    group.sample_size(10);
+    group.bench_function("select_all", |b| {
+        b.iter_batched(
+            || multi.clone(),
+            |mut s| {
+                s.select_all(&view, &data);
+                s
+            },
+            BatchSize::LargeInput,
+        )
+    });
+    let mut all = multi.clone();
+    all.select_all(&view, &data);
+    group.bench_function("clone_after_select_all", |b| b.iter(|| all.clone()));
+    group.bench_function("select_all_again_deselects", |b| {
+        b.iter_batched(
+            || all.clone(),
+            |mut s| {
+                s.select_all(&view, &data);
+                s
+            },
+            BatchSize::LargeInput,
+        )
+    });
+    let mut parked = multi.clone();
+    parked.cursor = Some(view.id(&data, 900_000).to_string());
+    // Cursor set by a click: no remembered position, so the first key scans.
+    group.bench_function("key_down_cold", |b| {
+        b.iter_batched(
+            || parked.clone(),
+            |mut s| {
+                s.key(TableKey::Down, false, &view, &data, 20);
+                s
+            },
+            BatchSize::LargeInput,
+        )
+    });
+    // Cursor already moved by a key: its position is remembered.
+    parked.key(TableKey::Down, false, &view, &data, 20);
+    group.bench_function("key_down", |b| {
+        b.iter_batched(
+            || parked.clone(),
+            |mut s| {
+                s.key(TableKey::Down, false, &view, &data, 20);
+                s
+            },
+            BatchSize::LargeInput,
+        )
+    });
+    group.finish();
+}
+
+criterion_group!(benches, load, view_build, state_ops);
 criterion_main!(benches);

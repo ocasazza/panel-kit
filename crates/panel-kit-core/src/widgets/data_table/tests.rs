@@ -611,7 +611,7 @@ fn multi_toggle_only_range_from_the_anchor_and_select_all_over_the_visible_rows(
     let state = script(
         selectable(Selectable::Multi),
         &rows,
-        |s| s.selection.clone(),
+        |s| (*s.selection).clone(),
         vec![
             (select("imp-2", SelectMode::Toggle), set("imp-2")),
             (
@@ -650,7 +650,7 @@ fn single_selects_one_row_at_a_time_and_none_selects_nothing(
     script(
         selectable(mode),
         &rows(3),
-        |s| s.selection.clone(),
+        |s| (*s.selection).clone(),
         steps
             .into_iter()
             .map(|(event, want)| (event, set(want)))
@@ -696,7 +696,7 @@ fn space_toggles_the_cursor_row_shift_extends_escape_clears_ctrl_a_selects_all()
     let state = script(
         selectable(Selectable::Multi),
         &rows,
-        |s| (s.cursor.clone().unwrap_or_default(), s.selection.clone()),
+        |s| (s.cursor.clone().unwrap_or_default(), (*s.selection).clone()),
         vec![
             (
                 TableEvent::Cursor("imp-2".into()),
