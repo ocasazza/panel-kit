@@ -8,6 +8,9 @@
 #[path = "event_graph_swimlane/bodies.rs"]
 mod bodies;
 
+#[path = "event_graph_swimlane/inspector.rs"]
+mod inspector;
+
 use std::rc::Rc;
 
 use dioxus::prelude::*;

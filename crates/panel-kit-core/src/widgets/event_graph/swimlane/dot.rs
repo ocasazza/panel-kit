@@ -28,6 +28,8 @@ pub struct Dot {
     pub title: String,
     /// Events merged; 2 or more is a cluster glyph.
     pub count: u32,
+    /// Every member event's id, in draw order; `members[0]` is `id`.
+    pub members: Vec<String>,
     /// Pixel of the event, or of the first event of a cluster.
     pub x: f64,
 }
@@ -43,6 +45,7 @@ impl Dot {
             tone: event.tone(),
             title: title(event),
             count: 1,
+            members: vec![event.id.clone()],
             x,
         }
     }
@@ -76,6 +79,7 @@ impl Dot {
         self.title.push('\n');
         push_title(&mut self.title, event);
         self.count += 1;
+        self.members.push(event.id.clone());
     }
 }
 
@@ -166,6 +170,7 @@ pub fn merge(mut dots: Vec<Dot>) -> Vec<Dot> {
                 last.title.push('\n');
                 last.title.push_str(&dot.title);
                 last.count += dot.count;
+                last.members.extend(dot.members);
             }
             _ => out.push(dot),
         }

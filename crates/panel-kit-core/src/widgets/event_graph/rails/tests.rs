@@ -282,7 +282,7 @@ fn rows_are_buttons_only_when_selectable_exactly_the_selected_one_is_marked() {
 }
 
 #[test]
-fn a_marker_row_is_never_a_button_and_never_selected() {
+fn a_marker_row_is_a_button_once_interactive_but_is_never_selected() {
     let tree = vtree(
         vec![vlane("b", 10, 20, None, LaneKind::Branch, "x")],
         vec![],
@@ -294,6 +294,12 @@ fn a_marker_row_is_never_a_button_and_never_selected() {
         ..RailOptions::default()
     });
     let marker = view
+        .canvas
+        .as_ref()
+        .and_then(|c| c.rows.iter().find(|r| r.lane_marker));
+    assert!(marker.is_some_and(|r| r.hit == Hit::Button && !r.selected));
+    let plain = g.view(&RailOptions::default());
+    let marker = plain
         .canvas
         .as_ref()
         .and_then(|c| c.rows.iter().find(|r| r.lane_marker));
@@ -997,6 +1003,131 @@ fn inputs_round_trip_and_reject_unknown_fields() {
     assert_eq!(default, SessionTree::default());
 }
 
+// -- open nodes ---------------------------------------------------------------
+
+fn claimed() -> ItemRef {
+    ItemRef {
+        id: "imp-16".to_owned(),
+        status: Some("claimed".to_owned()),
+    }
+}
+
+#[test]
+fn vertical_with_a_closed_set_is_identical_to_vertical() {
+    let events = [
+        vev("e1", 0, "clara"),
+        vev("e2", 10, "omp"),
+        vev("e3", 20, "clara"),
+    ];
+    let tree = vtree(
+        vec![collab(10, 10, "omp")],
+        vec![
+            fork_at("imp-16/collab/omp", 10),
+            merge_at("imp-16/collab/omp", 10),
+        ],
+    );
+    let g = vgraph(&events, &tree);
+    assert_eq!(
+        g,
+        vertical_with(&events, &claimed(), &tree, &Expansion::new(), facts::WRAP_COLS)
+    );
+}
+
+#[test]
+fn an_open_row_adds_its_fact_lines_and_shifts_everything_below() {
+    let events = [vev("e1", 0, "clara"), vev("e2", 10, "clara"), vev("e3", 20, "clara")];
+    let tree = vtree(vec![], vec![]);
+    let mut open = Expansion::new();
+    open.open_all(["e1"]);
+    let added = facts::line_count(&facts::event_facts(&events[0], facts::WRAP_COLS)) as i32;
+    let g = vertical_with(&events, &claimed(), &tree, &open, facts::WRAP_COLS);
+    let ys: Vec<i32> = g.item.rows.iter().map(|r| r.y).collect();
+    assert_eq!(ys, [11, 33 + added * 22, 55 + added * 22]);
+    assert_eq!(g.height, 3 * 22 + added * 22);
+    assert_eq!((g.item.y0, g.item.y1), (Some(11), Some(55 + added * 22)));
+    assert_eq!(
+        g.item.rows[0].facts,
+        facts::event_facts(&events[0], facts::WRAP_COLS)
+    );
+    assert!(g.item.rows[1].facts.is_empty());
+}
+
+#[test]
+fn lanes_and_edges_span_the_grown_canvas_through_open_blocks() {
+    let events = [
+        vev("e1", 0, "clara"),
+        vev("e2", 10, "omp"),
+        vev("e3", 20, "clara"),
+    ];
+    let tree = vtree(
+        vec![collab(10, 10, "omp"), collab(20, 20, "eve")],
+        vec![
+            fork_at("imp-16/collab/omp", 10),
+            merge_at("imp-16/collab/omp", 10),
+            fork_at("imp-16/collab/eve", 20),
+        ],
+    );
+    let mut open = Expansion::new();
+    open.open_all(["e1"]);
+    let added = facts::line_count(&facts::event_facts(&events[0], facts::WRAP_COLS)) as i32;
+    let g = vertical_with(&events, &claimed(), &tree, &open, facts::WRAP_COLS);
+    let shifted = 33 + added * 22;
+    // the merge elbow lands on the row it merged at, now shifted
+    assert_eq!(g.item.edges[0].d, format!("M7.0 {shifted}.0H21.0"));
+    assert_eq!(g.item.edges[1].d, format!("M21.0 {shifted}.0H7.0"));
+    // the open lane still runs to 4px above the grown bottom
+    assert_eq!(g.item.forks[1].y1, g.height - 4);
+}
+
+#[test]
+fn an_open_lane_marker_carries_its_lane_facts() {
+    let events = [vev("e1", 0, "clara"), vev("e2", 30, "clara")];
+    let tree = vtree(
+        vec![vlane("b", 10, 20, None, LaneKind::Branch, "feat/x")],
+        vec![],
+    );
+    let mut open = Expansion::new();
+    open.open_all(["lane:b"]);
+    let added = facts::line_count(&facts::lane_facts(&tree.lanes[0], facts::WRAP_COLS)) as i32;
+    let g = vertical_with(&events, &claimed(), &tree, &open, facts::WRAP_COLS);
+    let marker = g
+        .item
+        .rows
+        .iter()
+        .find(|r| r.kind == RowKind::Lane)
+        .unwrap();
+    assert_eq!(marker.facts, facts::lane_facts(&tree.lanes[0], facts::WRAP_COLS));
+    let ys: Vec<i32> = g.item.rows.iter().map(|r| r.y).collect();
+    // the open marker keeps its own row; only the rows below it shift
+    assert_eq!(ys, [11, 33, 55 + added * 22]);
+    assert_eq!(g.height, 66 + added * 22);
+}
+
+#[test]
+fn the_view_resolves_open_facts_and_detail_ids() {
+    let events = [vev("e1", 0, "clara")];
+    let tree = vtree(vec![vlane("b", 10, 20, None, LaneKind::Branch, "x")], vec![]);
+    let mut open = Expansion::new();
+    open.open_all(["e1"]);
+    let g = vertical_with(&events, &claimed(), &tree, &open, facts::WRAP_COLS);
+    let view = g.view(&RailOptions {
+        dom_id: "st".into(),
+        on_select: true,
+        ..RailOptions::default()
+    });
+    let canvas = view.canvas.as_ref().expect("rows");
+    let e1 = canvas.rows.iter().find(|r| r.row_id == "e1").unwrap();
+    assert!(e1.open);
+    assert_eq!(e1.facts, facts::event_facts(&events[0], facts::WRAP_COLS));
+    assert_eq!(e1.detail_dom_id, "st-detail-e1");
+    let marker = canvas.rows.iter().find(|r| r.lane_marker).unwrap();
+    assert!(!marker.open && marker.facts.is_empty());
+    assert_eq!(marker.detail_dom_id, "st-detail-lane:b");
+    let plain = vertical(&events, &claimed(), &tree).view(&RailOptions::default());
+    let canvas = plain.canvas.as_ref().expect("rows");
+    assert!(canvas.rows.iter().all(|r| !r.open && r.facts.is_empty()));
+}
+
 // -- invariants -----------------------------------------------------------------
 
 #[derive(Clone, Debug)]
@@ -1197,5 +1328,40 @@ proptest! {
             });
             prop_assert!(fork_in_col);
         }
+    }
+
+    #[test]
+    fn open_rails_shift_rows_and_grow_height_exactly(
+        events in proptest::collection::vec((0i64..200, 0usize..4, 0usize..20, any::<bool>()), 1..10),
+        lanes in proptest::collection::vec(lane_spec(), 0..4),
+    ) {
+        let (evs, tree) = build(&events, &lanes);
+        let mut ids: Vec<String> = evs
+            .iter()
+            .filter(|e| e.item_id.as_deref() == Some("imp-16"))
+            .map(|e| e.id.clone())
+            .collect();
+        ids.extend(tree.lanes.iter().map(|l| format!("lane:{}", l.id)));
+        let mut open = Expansion::new();
+        for (i, id) in ids.iter().enumerate() {
+            if i % 2 == 0 {
+                open.toggle(id);
+            }
+        }
+        let g = vertical_with(&evs, &claimed(), &tree, &open, facts::WRAP_COLS);
+        let rows = &g.item.rows;
+        let mut total = 0;
+        for row in rows {
+            prop_assert_eq!(row.y, total + 11);
+            prop_assert_eq!(!row.facts.is_empty(), open.is_open(&row.id));
+            total += 22 + facts::line_count(&row.facts) as i32 * 22;
+        }
+        prop_assert_eq!(g.height, total);
+        prop_assert!(rows.windows(2).all(|w| w[1].y > w[0].y));
+        prop_assert!(g
+            .item
+            .forks
+            .iter()
+            .all(|f| f.y0 <= f.y1 && f.y1 <= g.height.max(0)));
     }
 }

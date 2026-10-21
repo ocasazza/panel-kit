@@ -190,7 +190,7 @@ pub fn session_tree() -> Rail {
             at(10, 5, 3, 43, 40),
             EventKind::Note,
             "operator",
-            "reviewed the ingest path after the raft step-down",
+            "reviewed the ingest path after the raft step-down\nthe step-down at 03:41 left two shards without a leader; ingest retried 3 times, then dropped the batch",
             None,
         ),
         (
@@ -232,9 +232,22 @@ pub fn session_tree() -> Rail {
         if let Some(status) = status {
             e = e.status(*status);
         }
-        if i == 0 {
-            e = e.title("Ingest drops rows after a raft step-down");
-        }
+        e = match i {
+            0 => e.title("Ingest drops rows after a raft step-down"),
+            1 => e.run("run-imp-16-1").branch("fix/ingest-stepdown"),
+            3 => e
+                .run("run-imp-16-1")
+                .branch("fix/ingest-stepdown")
+                .commit("9f3c2ab"),
+            4 => e.title("Handoff: ingest fix").from("clara"),
+            5 => e.from("clara").branch("fix/ingest-stepdown"),
+            6 => e
+                .run("run-imp-16-2")
+                .branch("fix/ingest-stepdown")
+                .commit("9f3c2ab")
+                .pr(207),
+            _ => e,
+        };
         events.push(e);
     }
     // Lanes of one event each; the handoff lane stays open, the orchestrator
@@ -328,7 +341,7 @@ pub fn item_timeline() -> Rail {
         (10, 3, 9, 34, 0, K::ItemCreated, None, "created".into(), None),
         (
             10, 4, 3, 41, 0, K::Note, Some(OMP),
-            "SEAT SCHEDULING STAGE 1 \u{2014} investigation, read-only. No code changed. Two Raft seats stay unplaced because the embedding capacity gate rejects them.".into(),
+            "SEAT SCHEDULING STAGE 1 \u{2014} investigation, read-only. No code changed.\nTwo Raft seats stay unplaced because the embedding capacity gate rejects them; the reasoning-format validator is the second blocker.".into(),
             None,
         ),
         (10, 4, 3, 52, 0, K::RunTool, Some(OMP), "tool: read placement ledger".into(), None),
@@ -575,6 +588,7 @@ pub fn item_timeline() -> Rail {
         None,
     ));
 
+    let mut run = 0;
     let events: Vec<Event> = rows
         .iter()
         .enumerate()
@@ -593,6 +607,26 @@ pub fn item_timeline() -> Rail {
             if i == 0 {
                 e = e.title("Raft seat scheduling");
             }
+            if *kind == K::RunStarted {
+                run += 1;
+            }
+            e = match kind {
+                K::RunStarted | K::RunTool | K::RunThought | K::RunFinished | K::RunFailed => e
+                    .run(format!("run-{ITEM}-{run}"))
+                    .branch("fix/seat-placement"),
+                K::Commit => e
+                    .branch("fix/seat-placement")
+                    .commit(format!("{:07x}", 0x3a91c0 + i * 0x1d3f)),
+                K::PrOpened => e
+                    .pr(214)
+                    .branch("fix/seat-placement")
+                    .commit("b7e04d1")
+                    .title("Emitter fix + capacity gate")
+                    .commits(["b7e04d1", "c2f9a58"]),
+                K::PrReviewed | K::PrMerged => e.pr(214).branch("fix/seat-placement"),
+                K::Handoff => e.from(SELF_L96),
+                _ => e,
+            };
             e
         })
         .collect();
@@ -971,6 +1005,8 @@ fn hero_events(rng: &mut Lcg, h: &Hero) -> Vec<Event> {
     // Oldest first; the sort is stable, so ties keep their draw order.
     drafts.sort_by_key(|d| std::cmp::Reverse(d.age));
 
+    let branch = format!("fix/{}-ingest", h.id);
+    let mut run = 0u32;
     drafts
         .into_iter()
         .enumerate()
@@ -984,7 +1020,7 @@ fn hero_events(rng: &mut Lcg, h: &Hero) -> Vec<Event> {
                 Some(h.id),
                 &d.summary,
             );
-            if i == 0 {
+            if i <= 1 {
                 e = e.title(h.title);
             }
             if let Some(status) = d.status {
@@ -993,9 +1029,63 @@ fn hero_events(rng: &mut Lcg, h: &Hero) -> Vec<Event> {
             if let Some(pr) = d.pr {
                 e = e.pr(pr);
             }
-            e
+            hero_context(e, h.id, &branch, i, &mut run)
         })
         .collect()
+}
+
+/// The facts a hero event carries beyond its summary, all derived from the
+/// item and the event's index so the sample stays deterministic: the run it
+/// belongs to, the branch and commit of code events, a pull request number
+/// on review events and a few multi-line summaries.
+fn hero_context(mut e: Event, item: &str, branch: &str, index: usize, run: &mut u32) -> Event {
+    let seed = item
+        .bytes()
+        .chain(index.to_le_bytes())
+        .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+        });
+    let kind = e.kind;
+    match kind {
+        EventKind::RunStarted => {
+            *run += 1;
+            e = e.run(format!("run-{item}-{run}"));
+        }
+        EventKind::RunTool
+        | EventKind::RunThought
+        | EventKind::RunReasoning
+        | EventKind::RunModel
+        | EventKind::RunFinished
+        | EventKind::RunFailed => {
+            e = e.run(format!("run-{item}-{}", (*run).max(1)));
+        }
+        EventKind::Commit => {
+            e = e
+                .branch(branch)
+                .commit(format!("{:07x}", seed & 0x0fff_ffff));
+            if index.is_multiple_of(2) {
+                let first = e.summary.clone().unwrap_or_default();
+                e = e.summary(format!(
+                    "{first}\n\nThe flush ran after the leader term moved, so rows queued in the \
+                     old term were dropped.\nFlush first, then step down."
+                ));
+            }
+        }
+        EventKind::PrOpened | EventKind::PrReviewed => {
+            e = e.branch(branch).pr(200 + seed % 60);
+        }
+        EventKind::PrMerged => {
+            e = e.branch(branch);
+        }
+        _ => {}
+    }
+    if kind == EventKind::RunFailed
+        && index % 2 == 1
+        && e.summary.as_deref() == Some("run failed: provider timeout")
+    {
+        e = e.summary("run failed: provider timeout\nprovider: anthropic, 3 of 3 attempts\nlast error: 504 after 30s");
+    }
+    e
 }
 
 /// Lane templates: kind, label (`{id}` and `{host}` filled in), verdict.
@@ -1217,6 +1307,29 @@ mod tests {
             .collect();
         assert!(chips.contains(&"user") && chips.contains(&"clara") && chips.contains(&"operator"));
         assert!(graph.item.rows.iter().any(|r| !r.selectable));
+    }
+
+    #[test]
+    fn rail_samples_carry_facts_worth_expanding() {
+        use crate::widgets::event_graph::facts;
+        for rail in [session_tree(), item_timeline()] {
+            let labels: BTreeSet<&str> = rail
+                .events
+                .iter()
+                .flat_map(|e| facts::event_facts(e, facts::WRAP_COLS))
+                .map(|f| f.label)
+                .collect();
+            for want in ["run", "branch", "commit", "from", "title", "text"] {
+                assert!(labels.contains(want), "{want} missing in {labels:?}");
+            }
+            let tall = rail
+                .events
+                .iter()
+                .filter(|e| facts::line_count(&facts::event_facts(e, facts::WRAP_COLS)) >= 8)
+                .count();
+            assert!(tall >= 1, "no multi-line event");
+        }
+        assert!(item_timeline().events.iter().any(|e| e.pr == Some(214)));
     }
 
     #[test]

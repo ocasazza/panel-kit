@@ -16,6 +16,7 @@ use std::collections::HashSet;
 use serde::Serialize;
 use serde::Serializer;
 
+use super::facts::{self, Expansion, Fact};
 use super::model::EdgeKind;
 use super::model::Event;
 use super::model::EventKind;
@@ -119,6 +120,8 @@ pub struct Row {
     pub label: String,
     /// Raw event summary; `None` for markers.
     pub detail: Option<String>,
+    /// Node facts when the row is open; empty when closed.
+    pub facts: Vec<Fact>,
     /// Events the dot stands for; always 1 on a rail.
     pub count: u32,
     /// 0 is the item line, 1+ a fork-lane column.
@@ -365,6 +368,7 @@ fn event_row(event: &Event, placed: &[Placed<'_>], owner: Option<&str>) -> Row {
         title: row_title(event, &kind_label),
         label,
         detail: event.summary.clone(),
+        facts: Vec::new(),
         count: 1,
         col,
         selectable: true,
@@ -386,6 +390,7 @@ fn marker_row(p: &Placed<'_>) -> Row {
         title: text.clone(),
         label: text,
         detail: None,
+        facts: Vec::new(),
         count: 1,
         col: p.col,
         selectable: false,
@@ -450,8 +455,22 @@ fn edge_paths(forks: &[Fork]) -> Vec<EdgePath> {
     out
 }
 
-/// Lay out one item's events and session tree as a vertical rail.
+/// Lay out one item's events and session tree as a vertical rail, all closed.
 pub fn vertical(events: &[Event], item: &ItemRef, tree: &SessionTree) -> VerticalGraph {
+    vertical_with(events, item, tree, &Expansion::new(), facts::WRAP_COLS)
+}
+
+/// [`vertical`] with the rows in `open` expanded: each open row carries its
+/// facts and gains `line_count(facts)` rows beneath it, every row below shifts
+/// down, and the trunk, lane lines and elbows span the grown canvas. `cols`
+/// wraps the fact values; `RailOptions::wrap` is the caller's usual source.
+pub fn vertical_with(
+    events: &[Event],
+    item: &ItemRef,
+    tree: &SessionTree,
+    open: &Expansion,
+    cols: usize,
+) -> VerticalGraph {
     let owner = tree.agent.as_deref();
     let mut evs: Vec<&Event> = events
         .iter()
@@ -470,21 +489,36 @@ pub fn vertical(events: &[Event], item: &ItemRef, tree: &SessionTree) -> Vertica
     }
     let placed = place_lanes(&tree.lanes, &merges);
 
-    let mut rows: Vec<Row> = evs.iter().map(|e| event_row(e, &placed, owner)).collect();
+    let mut rows: Vec<Row> = evs
+        .iter()
+        .map(|e| {
+            let mut row = event_row(e, &placed, owner);
+            if open.is_open(&row.id) {
+                row.facts = facts::event_facts(e, cols);
+            }
+            row
+        })
+        .collect();
     let markers: Vec<Row> = placed
         .iter()
         .filter(|p| !rows.iter().any(|row| p.covers(row.col, row.at)))
-        .map(marker_row)
+        .map(|p| {
+            let mut row = marker_row(p);
+            if open.is_open(&row.id) {
+                row.facts = facts::lane_facts(p.lane, cols);
+            }
+            row
+        })
         .collect();
     rows.extend(markers);
     rows.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id)));
     decorate(&mut rows, &placed);
-    for (index, row) in rows.iter_mut().enumerate() {
+    let mut height = 0;
+    for row in rows.iter_mut() {
         row.x = col_x(row.col);
-        row.y = index as i32 * ROW_PX + ROW_PX / 2;
+        row.y = height + ROW_PX / 2;
+        height += ROW_PX + facts::line_count(&row.facts) as i32 * ROW_PX;
     }
-
-    let height = rows.len() as i32 * ROW_PX;
     let bottom = (height - 4).max(0);
     let forks: Vec<Fork> = placed
         .iter()

@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 use panel_kit_core::widgets::event_graph::query::{show_all_label, GraphAction, LegendChip};
-use panel_kit_core::widgets::event_graph::swimlane::{content_width, Graph, StripRow};
+use panel_kit_core::widgets::event_graph::swimlane::{content_width, Graph, Node, StripRow};
 
 use super::canvas::Canvas;
 use super::dom;
@@ -68,6 +68,7 @@ pub(super) fn GraphBody(
     selected: Option<String>,
     on_action: EventHandler<GraphAction>,
     on_select: EventHandler<String>,
+    on_open: EventHandler<Node>,
 ) -> Element {
     let mut ticket = use_signal(|| 0u64);
     let laid_out = graph.width;
@@ -125,6 +126,7 @@ pub(super) fn GraphBody(
                     selected,
                     on_action,
                     on_select,
+                    on_open,
                 }
             }
         }

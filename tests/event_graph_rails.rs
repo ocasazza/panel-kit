@@ -3,7 +3,10 @@
 
 use dioxus::prelude::*;
 use panel_kit::widgets::event_graph::EventRail;
-use panel_kit_core::widgets::event_graph::rails::{vertical, RailOptions, RailView, VerticalGraph};
+use panel_kit_core::widgets::event_graph::facts::{event_facts, lane_facts, line_count, Expansion};
+use panel_kit_core::widgets::event_graph::rails::{
+    vertical, vertical_with, RailOptions, RailView, VerticalGraph,
+};
 use panel_kit_core::widgets::event_graph::time::from_utc;
 use panel_kit_core::widgets::event_graph::{
     Edge, EdgeKind, Event, EventKind, ItemRef, Lane, LaneKind, Micros, SessionTree,
@@ -103,12 +106,22 @@ fn opts() -> RailOptions {
 }
 
 #[component]
-fn Probe(view: RailView) -> Element {
-    rsx! { EventRail { view, on_select: move |_id: String| {} } }
+fn Probe(view: RailView, #[props(default)] expanded: Expansion) -> Element {
+    rsx! { EventRail { view, expanded, on_select: move |_id: String| {} } }
 }
 
 fn render(view: RailView) -> Html {
-    let mut dom = VirtualDom::new_with_props(Probe, ProbeProps { view });
+    render_with(view, &Expansion::new())
+}
+
+fn render_with(view: RailView, open: &Expansion) -> Html {
+    let mut dom = VirtualDom::new_with_props(
+        Probe,
+        ProbeProps {
+            view,
+            expanded: open.clone(),
+        },
+    );
     dom.rebuild_in_place();
     Html(dioxus_ssr::render(&dom))
 }
@@ -345,26 +358,34 @@ fn rows_are_static_spans_without_on_select() {
 }
 
 #[test]
-fn with_on_select_event_rows_are_buttons_and_markers_stay_static() {
+fn with_on_select_every_row_is_a_disclosure_button() {
     let html = render(graph().view(&RailOptions {
         on_select: true,
         ..opts()
     }));
-    assert_eq!(html.tags("button").len(), 7);
-    assert_eq!(
-        html.with_class("span", "pk-rail-hit").len(),
-        1,
-        "the marker"
+    let expanded: Vec<_> = html
+        .tags("button")
+        .into_iter()
+        .filter(|b| b.contains("aria-expanded"))
+        .collect();
+    assert_eq!(expanded.len(), 8, "7 events + the marker are all toggleable");
+    assert!(expanded.iter().all(|b| b.contains("type=\"button\"")));
+    assert!(expanded
+        .iter()
+        .all(|b| b.contains("aria-controls=\"rail-detail-")));
+    assert!(
+        !html.0.contains("aria-pressed"),
+        "selection is no longer a pressed state"
     );
-    assert!(html
-        .tags("button")
-        .iter()
-        .all(|b| b.contains("type=\"button\"")));
-    assert!(html
-        .tags("button")
-        .iter()
-        .all(|b| b.contains("aria-pressed=\"false\"")));
     assert_eq!(html.with_class("li", "on").len(), 0);
+    // the heading gains the two quiet actions
+    let heading: Vec<_> = html
+        .tags("button")
+        .into_iter()
+        .filter(|b| b.contains("pk-dt-btn"))
+        .collect();
+    assert_eq!(heading.len(), 2, "expand all and collapse all");
+    assert!(html.tags("button").len() == 10, "8 rows + 2 heading actions");
 }
 
 #[test]
@@ -374,14 +395,9 @@ fn the_selected_row_row_hit_and_dot_all_read_as_on() {
         selected: Some("e2".to_owned()),
         ..opts()
     }));
-    let pressed: Vec<_> = html
-        .tags("button")
-        .into_iter()
-        .filter(|b| b.contains("aria-pressed=\"true\""))
-        .collect();
-    assert_eq!(pressed.len(), 1, "exactly one selected button");
-    assert!(class_of(pressed[0]).split(' ').any(|c| c == "on"));
     let row = html.row("e2");
+    assert!(row.contains("class=\"pk-rail-hit on\""), "{row}");
+    assert!(row.contains("aria-expanded=\"false\""), "{row}");
     assert!(
         row.starts_with("<li") && class_of(row).split(' ').any(|c| c == "on"),
         "{row}"
@@ -390,6 +406,8 @@ fn the_selected_row_row_hit_and_dot_all_read_as_on() {
     let on_dots = html.with_class("circle", "on");
     assert_eq!(on_dots.len(), 1);
     assert!(on_dots[0].contains("blue"));
+    // markers are toggleable but never take the selection
+    assert!(!html.row("lane:l/feat").contains("pk-rail-hit on"));
 }
 
 #[test]
@@ -400,6 +418,140 @@ fn selection_is_ignored_on_a_rail_without_on_select() {
     }));
     assert_eq!(html.with_class("li", "on").len(), 0);
     assert_eq!(html.with_class("circle", "on").len(), 0);
+}
+
+fn item() -> ItemRef {
+    ItemRef {
+        id: "imp-16".to_owned(),
+        status: Some("claimed".to_owned()),
+    }
+}
+
+fn open_only(ids: &[&str]) -> Expansion {
+    let mut open = Expansion::new();
+    open.open_all(ids.iter().copied());
+    open
+}
+
+#[test]
+fn a_closed_rail_renders_its_rows_byte_for_byte_unchanged() {
+    // static rows: the pre-expansion markup, byte for byte
+    let html = render(graph().view(&opts()));
+    assert_eq!(
+        html.row("e1"),
+        concat!(
+            "<li id=\"rail-row-e1\" class=\"pk-rail-row\" data-kind=\"note\">",
+            "<span class=\"pk-rail-hit\" title=\"Oct 1 00:00 · note · clara · e1 said\">",
+            "<time class=\"pk-rail-time\" datetime=\"2026-10-01T00:00:00Z\">00:00</time>",
+            "<span class=\"pk-rail-label\">e1 said</span></span>"
+        )
+    );
+    // interactive rows: closed disclosure buttons with a quiet caret
+    let live = render(graph().view(&RailOptions {
+        on_select: true,
+        ..opts()
+    }));
+    assert_eq!(
+        live.row("e1"),
+        concat!(
+            "<li id=\"rail-row-e1\" class=\"pk-rail-row\" data-kind=\"note\">",
+            "<button class=\"pk-rail-hit\" type=\"button\" title=\"Oct 1 00:00 · note · clara · e1 said\" aria-expanded=\"false\" aria-controls=\"rail-detail-e1\">",
+            "<time class=\"pk-rail-time\" datetime=\"2026-10-01T00:00:00Z\">00:00</time>",
+            "<span class=\"pk-rail-caret\" aria-hidden=\"true\">▸</span>",
+            "<span class=\"pk-rail-label\">e1 said</span></button>"
+        )
+    );
+    assert!(!live.0.contains("pk-rail-detail"));
+}
+
+fn open_graph(ids: &[&str]) -> VerticalGraph {
+    vertical_with(&events(), &item(), &tree(), &open_only(ids), 56)
+}
+
+#[test]
+fn an_open_row_lists_its_facts_as_sibling_rows_and_shifts_the_rest() {
+    let g = open_graph(&["e1"]);
+    let html = render(g.view(&RailOptions {
+        on_select: true,
+        ..opts()
+    }));
+    // the fact block sits between its row and the next row
+    let row_at = html.0.find("id=\"rail-row-e1\"").unwrap();
+    let detail_at = html.0.find("id=\"rail-detail-e1\"").unwrap();
+    let next_at = html.0.find("id=\"rail-row-e2\"").unwrap();
+    assert!(row_at < detail_at && detail_at < next_at, "{}", html.0);
+    let lines = line_count(&event_facts(&events()[0], 56));
+    assert_eq!(html.count("pk-rail-fact-line"), lines);
+    assert!(html.0.contains("aria-label=\"e1 said details\""));
+    // the row reads as an expanded disclosure: open caret, blue frame class
+    let row = html.row("e1");
+    assert!(row.contains("aria-expanded=\"true\""), "{row}");
+    assert!(row.contains("aria-controls=\"rail-detail-e1\""), "{row}");
+    assert!(row.contains("\u{25be}"), "{row}");
+    assert!(class_of(row).split(' ').any(|c| c == "open"), "{row}");
+    // other rows stay closed with their own detail id
+    let closed = html.row("e2");
+    assert!(closed.contains("aria-expanded=\"false\""), "{closed}");
+    assert!(closed.contains("\u{25b8}"), "{closed}");
+    assert!(!html.0.contains("id=\"rail-detail-e2\""));
+    // the gutter follows the shifted geometry
+    let e2 = g.item.rows.iter().find(|r| r.id == "e2").unwrap();
+    assert!(html.has(&format!("cy=\"{}\"", e2.y)));
+    assert!(html.tags("svg")[0].contains(&format!("height=\"{}\"", g.height)));
+}
+
+#[test]
+fn an_open_lane_marker_shows_its_lane_facts() {
+    let g = open_graph(&["lane:l/feat"]);
+    let html = render(g.view(&RailOptions {
+        on_select: true,
+        ..opts()
+    }));
+    let tree = tree();
+    let feat = tree.lanes.iter().find(|l| l.id == "l/feat").unwrap();
+    assert_eq!(
+        html.count("pk-rail-fact-line"),
+        line_count(&lane_facts(feat, 56))
+    );
+    assert!(html.0.contains("id=\"rail-detail-lane:l/feat\""));
+    let row = html.row("lane:l/feat");
+    assert!(row.contains("aria-expanded=\"true\""), "{row}");
+    assert!(row.contains("aria-controls=\"rail-detail-lane:l/feat\""));
+}
+
+fn heading_buttons(html: &Html) -> Vec<&str> {
+    html.tags("button")
+        .into_iter()
+        .filter(|b| b.contains("pk-dt-btn"))
+        .collect()
+}
+
+#[test]
+fn expand_and_collapse_disable_when_there_is_nothing_to_do() {
+    let none = render(graph().view(&RailOptions {
+        on_select: true,
+        ..opts()
+    }));
+    let h = heading_buttons(&none);
+    assert_eq!(h.len(), 2);
+    assert!(!h[0].contains("disabled"), "something to expand: {:?}", h);
+    assert!(h[1].contains("disabled=true"), "nothing to collapse: {:?}", h);
+
+    let ids = ["e1", "e2", "e3", "e4", "e5", "e6", "e7", "lane:l/feat"];
+    let all = render_with(
+        open_graph(&ids).view(&RailOptions {
+            on_select: true,
+            ..opts()
+        }),
+        &open_only(&ids),
+    );
+    let h = heading_buttons(&all);
+    assert_eq!(h.len(), 2);
+    assert!(h[0].contains("disabled=true"), "nothing to expand: {:?}", h);
+    assert!(!h[1].contains("disabled"), "something to collapse: {:?}", h);
+
+    // a rail without on_select has no actions at all
+    assert!(heading_buttons(&render(graph().view(&opts()))).is_empty());
 }
 
 #[test]
@@ -501,10 +653,14 @@ fn hostile_text_is_escaped_and_no_script_is_emitted() {
 
 #[test]
 fn stylesheet_covers_every_class_the_painter_emits_and_only_known_variables() {
-    let html = render(graph().view(&RailOptions {
+    let closed = render(graph().view(&RailOptions {
         on_select: true,
         selected: Some("e2".to_owned()),
         separators: true,
+        ..opts()
+    }));
+    let open = render(open_graph(&["e1", "lane:l/feat"]).view(&RailOptions {
+        on_select: true,
         ..opts()
     }));
     let css = CSS
@@ -513,13 +669,15 @@ fn stylesheet_covers_every_class_the_painter_emits_and_only_known_variables() {
         .and_then(|rest| rest.split("/* ── Event graph: swimlane").next())
         .expect("the rail rules sit between the event graph section markers");
     let mut tokens: Vec<String> = Vec::new();
-    for (at, _) in html.0.match_indices("class=\"") {
-        let rest = &html.0[at + 7..];
-        tokens.extend(
-            rest[..rest.find('"').unwrap()]
-                .split(' ')
-                .map(str::to_owned),
-        );
+    for html in [&closed, &open] {
+        for (at, _) in html.0.match_indices("class=\"") {
+            let rest = &html.0[at + 7..];
+            tokens.extend(
+                rest[..rest.find('"').unwrap()]
+                    .split(' ')
+                    .map(str::to_owned),
+            );
+        }
     }
     tokens.sort();
     tokens.dedup();
@@ -546,6 +704,7 @@ fn stylesheet_covers_every_class_the_painter_emits_and_only_known_variables() {
         "--label-size",
         "--label-tracking",
         "--pk-rail-row",
+        "--pk-rail-labels",
         "--pk-rail-gutter",
     ];
     for (at, _) in css.match_indices("var(") {

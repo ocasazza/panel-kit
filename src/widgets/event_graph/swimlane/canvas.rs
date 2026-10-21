@@ -2,14 +2,15 @@
 //! strip, one row per item with its dots, forks and labels, and the axis.
 //!
 //! The layout arrives with every coordinate resolved; this only emits DOM.
-//! Dots carry no handlers and no signals: a click on one reaches its item's
-//! row, which is the one thing that listens.
+//! A dot or a fork leaf opens its own node in the inspector and stops the click
+//! there; any other click on an item reaches the item's row, which opens the
+//! item. The rows are the only keyboard stops.
 
 use dioxus::prelude::*;
 use panel_kit_core::widgets::event_graph::query::GraphAction;
 use panel_kit_core::widgets::event_graph::swimlane::metrics::{label_px, FORK_NODE_PX};
 use panel_kit_core::widgets::event_graph::swimlane::{
-    fmt1, slug, Dot, Fork, Graph, LooseRow, StripRow, TickKind,
+    fmt1, slug, Dot, Fork, Graph, LooseRow, Node, StripRow, TickKind,
 };
 
 use super::shared::Shared;
@@ -61,12 +62,24 @@ fn presses(event: &KeyboardEvent) -> bool {
 }
 
 /// One dot: a ring or disc for an event, a numbered bubble for a burst.
-fn glyph(dot: &Dot, y: f64) -> Element {
+fn glyph(dot: &Dot, y: f64, on_pick: EventHandler<Node>) -> Element {
     let name = dot.tone.name();
     let (cx, cy) = (fmt1(dot.x), fmt1(y));
+    let node = if dot.is_cluster() {
+        Node::Cluster(dot.members.clone())
+    } else {
+        Node::Event(dot.id.clone())
+    };
+    let pick = move |event: MouseEvent| {
+        event.stop_propagation();
+        on_pick.call(node.clone());
+    };
     if dot.is_cluster() {
         rsx! {
-            g { class: "pk-ag-cluster pk-ag-glyph pk-ag-{name}", "data-count": "{dot.count}",
+            g {
+                class: "pk-ag-cluster pk-ag-glyph pk-ag-{name}",
+                "data-count": "{dot.count}",
+                onclick: pick,
                 circle {
                     class: "pk-ag-dot pk-ag-{name}",
                     cx: "{cx}",
@@ -88,6 +101,7 @@ fn glyph(dot: &Dot, y: f64) -> Element {
         rsx! {
             circle {
                 class: "pk-ag-dot pk-ag-glyph pk-ag-{name}",
+                onclick: pick,
                 cx: "{cx}",
                 cy: "{cy}",
                 r: "3",
@@ -98,17 +112,22 @@ fn glyph(dot: &Dot, y: f64) -> Element {
 }
 
 /// A fork lane under its item: its line, a square tip node and the caption.
-fn fork_row(fork: &Fork) -> Element {
+fn fork_row(fork: &Fork, on_pick: EventHandler<Node>) -> Element {
     let name = fork.tone.name();
     let y = fmt1(fork.y);
     let node_x = fork.node_left();
     let caption_x = fork.x1 + FORK_NODE_PX;
     let hit_x = node_x - 2.0;
     let hit_w = caption_x + label_px(&fork.label) + 4.0 - hit_x;
+    let lane = fork.id.clone();
     rsx! {
         g {
             class: if fork.dead { "pk-ag-fork pk-ag-dead" } else { "pk-ag-fork" },
             "data-kind": "{fork.kind.as_str()}",
+            onclick: move |event| {
+                event.stop_propagation();
+                on_pick.call(Node::Lane(lane.clone()));
+            },
             rect {
                 class: "pk-ag-hit",
                 x: "{fmt1(hit_x)}",
@@ -152,6 +171,7 @@ fn ItemRow(
     at: usize,
     picked: bool,
     on_select: EventHandler<String>,
+    on_open: EventHandler<Node>,
 ) -> Element {
     let item = &graph.items[at];
     let name = item.tone.name();
@@ -166,6 +186,15 @@ fn ItemRow(
     let hit = item.hit_rect();
     let y = fmt1(item.y);
     let (click, press) = (item.id.clone(), item.id.clone());
+    let pick = {
+        let owner = item.id.clone();
+        move |node: Node| {
+            on_select.call(owner.clone());
+            on_open.call(node);
+        }
+    };
+    let pick = use_callback(pick);
+    let (click_node, press_node) = (Node::Item(click.clone()), Node::Item(press.clone()));
     rsx! {
         g {
             id: "{id}-graph-{slug(&item.id)}",
@@ -175,11 +204,15 @@ fn ItemRow(
             "aria-pressed": "{picked}",
             "aria-label": "{tooltip}",
             "data-id": "{item.id}",
-            onclick: move |_| on_select.call(click.clone()),
+            onclick: move |_| {
+                on_select.call(click.clone());
+                on_open.call(click_node.clone());
+            },
             onkeydown: move |event| {
                 if presses(&event) {
                     event.prevent_default();
                     on_select.call(press.clone());
+                    on_open.call(press_node.clone());
                 }
             },
             rect {
@@ -198,10 +231,10 @@ fn ItemRow(
                 y2: "{y}",
             }
             for dot in item.dots.iter() {
-                {glyph(dot, item.y)}
+                {glyph(dot, item.y, pick)}
             }
             for fork in item.forks.iter() {
-                {fork_row(fork)}
+                {fork_row(fork, pick)}
             }
             for edge in item.edges.iter() {
                 path {
@@ -276,6 +309,7 @@ fn loose_row(
     width: u32,
     height: f64,
     on_action: EventHandler<GraphAction>,
+    on_open: EventHandler<Node>,
 ) -> Element {
     let kind = row.kind.as_str();
     let y = fmt1(row.y);
@@ -299,7 +333,7 @@ fn loose_row(
             }
             line { class: "pk-ag-loose-line", x1: "0", x2: "{width}", y1: "{y}", y2: "{y}" }
             for dot in row.dots.iter() {
-                {glyph(dot, row.y)}
+                {glyph(dot, row.y, on_open)}
             }
         }
     }
@@ -314,6 +348,7 @@ pub(super) fn Canvas(
     selected: Option<String>,
     on_action: EventHandler<GraphAction>,
     on_select: EventHandler<String>,
+    on_open: EventHandler<Node>,
 ) -> Element {
     let layout: &Graph = &graph;
     let hatch = format!("{id}-hatch");
@@ -369,7 +404,7 @@ pub(super) fn Canvas(
                     {strip_row(&id, row, width, row_h, on_action)}
                 }
                 for row in layout.loose.iter() {
-                    {loose_row(row, width, row_h, on_action)}
+                    {loose_row(row, width, row_h, on_action, on_open)}
                 }
                 for (at , item) in layout.items.iter().enumerate() {
                     ItemRow {
@@ -379,6 +414,7 @@ pub(super) fn Canvas(
                         at,
                         picked: selected.as_deref() == Some(item.id.as_str()),
                         on_select,
+                        on_open,
                     }
                 }
                 g { class: "pk-ag-axis", "aria-hidden": "true",

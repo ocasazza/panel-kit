@@ -5,7 +5,11 @@
 //!
 //! The host owns the [`GraphState`] and applies every [`GraphAction`] the
 //! component raises with `GraphState::reduce`; the component keeps only the
-//! query box's draft and, unless the host passes `selected`, the clicked item.
+//! query box's draft, the open inspector node and, unless the host passes
+//! `selected`, the clicked item. Clicking an item, a dot, a burst or a fork
+//! leaf of the GRAPH docks that node's facts under the canvas (`open` seeds it,
+//! `on_open` reports it; the close button or Escape clears it); in LANES a node
+//! row opens its event's facts in place.
 //! Layouts are memoised on the identity of `events` and `tree`, so a host that
 //! keeps its `Rc`s keeps its layout. Styled by the `pk-ag-*` rules in
 //! `assets/panel-kit.css`.
@@ -38,6 +42,7 @@ mod canvas;
 mod collab;
 mod dom;
 mod graph;
+mod inspector;
 mod lanes;
 mod legend;
 mod shared;
@@ -48,14 +53,16 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use dioxus::prelude::*;
+use panel_kit_core::widgets::event_graph::facts::Expansion;
 use panel_kit_core::widgets::event_graph::query::{
     Completion, Filters, Followed, GraphAction, GraphState, Mode, Queryable,
 };
-use panel_kit_core::widgets::event_graph::swimlane::{view, Collaboration, Graph, Split};
+use panel_kit_core::widgets::event_graph::swimlane::{view, Collaboration, Graph, Node, Split};
 use panel_kit_core::widgets::event_graph::{Event, SessionTree};
 
 use collab::CollabBody;
 use graph::GraphBody;
+use inspector::Inspector;
 use lanes::LanesBody;
 use legend::legend;
 use shared::{Shared, Slot};
@@ -253,6 +260,17 @@ pub fn EventGraph(
     /// An item row was activated.
     #[props(default)]
     on_select: EventHandler<String>,
+    /// The node open in the inspector when the graph mounts; the component
+    /// owns it from then on. GRAPH mode only.
+    #[props(default)]
+    open: Option<Node>,
+    /// The inspector opened a node (`Some`) or was closed (`None`).
+    #[props(default)]
+    on_open: EventHandler<Option<Node>>,
+    /// LANES rows open when the graph mounts, by the DOM-safe event id the row
+    /// carries (`{id}-node-<slug>`); the component owns them from then on.
+    #[props(default)]
+    expanded: Expansion,
 ) -> Element {
     // Handles that outlive the host's closures keep memoised children from
     // re-rendering when only a closure was rebuilt.
@@ -266,6 +284,21 @@ pub fn EventGraph(
         on_select.call(item);
     });
     let highlighted = selected.or_else(|| picked.read().clone());
+    let mut revealed = use_signal(|| open.clone());
+    let reveal = use_callback(move |node: Node| {
+        revealed.set(Some(node.clone()));
+        on_open.call(Some(node));
+    });
+    let dismiss = use_callback(move |_: ()| {
+        if revealed.peek().is_some() {
+            revealed.set(None);
+            on_open.call(None);
+        }
+    });
+    let mut lane_open = use_signal(|| expanded.clone());
+    let toggle_node = use_callback(move |node: String| {
+        lane_open.write().toggle(&node);
+    });
     let caches = use_hook(|| Rc::new(RefCell::new(Caches::default())));
 
     let mode = state.mode;
@@ -302,6 +335,7 @@ pub fn EventGraph(
                     selected: highlighted.clone(),
                     on_action: act,
                     on_select: pick,
+                    on_open: reveal,
                 }
             }
         }
@@ -313,6 +347,9 @@ pub fn EventGraph(
                     split,
                     unattributed_open: state.unattributed_open,
                     on_action: act,
+                    events: events.clone(),
+                    open: lane_open.read().clone(),
+                    on_toggle: toggle_node,
                 }
             }
         }
@@ -371,7 +408,25 @@ pub fn EventGraph(
             if mode.has_query_line() {
                 {tokens(&id, &active, act)}
             }
-            div { class: "pk-ag-body", {body} }
+            div {
+                class: "pk-ag-body",
+                onkeydown: move |event| {
+                    if inspector::dismisses(&event) {
+                        dismiss.call(());
+                    }
+                },
+                {body}
+            }
+            if let (Mode::Graph, Some(node)) = (mode, revealed.read().clone()) {
+                Inspector {
+                    key: "{node.key()}",
+                    id: id.clone(),
+                    node,
+                    events: events.clone(),
+                    tree: if state.tree { tree.clone() } else { None },
+                    on_close: dismiss,
+                }
+            }
         }
     }
 }

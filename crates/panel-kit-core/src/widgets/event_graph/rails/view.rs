@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 
+use super::super::facts::{self, Fact};
 use super::super::query::Tone;
 use super::super::time;
 use super::chip_text;
@@ -29,6 +30,9 @@ pub struct RailOptions {
     pub on_select: bool,
     /// Draw a 1px rule under each row.
     pub separators: bool,
+    /// Fact wrap width the layout used; [`vertical_with`](super::vertical_with)
+    /// takes it as its `cols`.
+    pub wrap: usize,
 }
 
 impl Default for RailOptions {
@@ -40,6 +44,7 @@ impl Default for RailOptions {
             selected: None,
             on_select: false,
             separators: false,
+            wrap: facts::WRAP_COLS,
         }
     }
 }
@@ -48,9 +53,10 @@ impl Default for RailOptions {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Hit {
-    /// Clickable.
+    /// Clickable: opens and closes its facts; selectable rows also move the
+    /// selection.
     Button,
-    /// Inert: lane markers, or a rail without `on_select`.
+    /// Inert: a rail without `on_select`.
     Static,
 }
 
@@ -96,6 +102,12 @@ pub struct RailRow {
     pub chip: Option<String>,
     /// One-line caption.
     pub label: String,
+    /// The row's facts are shown beneath it.
+    pub open: bool,
+    /// The node's facts, in reading order; empty when closed.
+    pub facts: Vec<Fact>,
+    /// Element id of the detail block; the row button's `aria-controls`.
+    pub detail_dom_id: String,
     /// 1px rule under the row.
     pub separator: bool,
 }
@@ -141,7 +153,7 @@ pub struct RailView {
 }
 
 fn rail_row(graph: &VerticalGraph, row: &Row, opts: &RailOptions) -> RailRow {
-    let hit = if row.selectable && opts.on_select {
+    let hit = if opts.on_select {
         Hit::Button
     } else {
         Hit::Static
@@ -153,7 +165,9 @@ fn rail_row(graph: &VerticalGraph, row: &Row, opts: &RailOptions) -> RailRow {
         lane_marker: row.kind == RowKind::Lane,
         dead: row.dead,
         hit,
-        selected: hit == Hit::Button && opts.selected.as_deref() == Some(row.id.as_str()),
+        selected: opts.on_select
+            && row.selectable
+            && opts.selected.as_deref() == Some(row.id.as_str()),
         tone: row.tone,
         x: row.x,
         y: row.y,
@@ -162,6 +176,9 @@ fn rail_row(graph: &VerticalGraph, row: &Row, opts: &RailOptions) -> RailRow {
         iso: time::format_iso8601(row.at),
         chip: row.lane.as_deref().map(chip_text),
         label: row.label.clone(),
+        open: !row.facts.is_empty(),
+        facts: row.facts.clone(),
+        detail_dom_id: format!("{}-detail-{}", opts.dom_id, row.id),
         separator: opts.separators,
     }
 }

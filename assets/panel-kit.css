@@ -1615,15 +1615,24 @@ button.pk-rail-hit:focus-visible {
   outline-offset: -1px;
 }
 
-/* Selected: filled row, solid blue frame and a 3px bar; hover and focus use neither. */
-.pk-rail-hit.on {
+/* Selected or open: filled row, solid blue frame and a 3px bar; hover and focus use neither. */
+.pk-rail-hit.on,
+.pk-rail-hit.open {
   background: var(--panel);
   outline: 1px solid var(--blue);
   outline-offset: -1px;
   box-shadow: inset 3px 0 0 var(--blue);
 }
-.pk-rail-hit.on .pk-rail-label { font-weight: 700; }
-.pk-rail-hit.on .pk-rail-time { color: var(--fg); }
+.pk-rail-hit.on .pk-rail-label,
+.pk-rail-hit.open .pk-rail-label { font-weight: 700; }
+.pk-rail-hit.on .pk-rail-time,
+.pk-rail-hit.open .pk-rail-time { color: var(--fg); }
+
+/* Disclosure caret: the table's fold glyphs; quiet until hover, focus or open. */
+.pk-rail-caret { flex: none; width: 1ch; color: var(--dim); }
+button.pk-rail-hit:hover .pk-rail-caret,
+button.pk-rail-hit:focus-visible .pk-rail-caret,
+.pk-rail-hit.open .pk-rail-caret { color: var(--fg); }
 
 .pk-rail-time {
   flex: none;
@@ -1673,6 +1682,46 @@ button.pk-rail-hit:focus-visible {
 .pk-rail-dot.red { fill: var(--red); }
 .pk-rail-dot.dead { opacity: 0.35; }
 .pk-rail-dot.on { stroke: var(--fg); stroke-width: 2; }
+
+/* Heading actions reuse the table's quiet text buttons. */
+.pk-rail-head .pk-dt-btn { flex: none; }
+
+/* An open row's facts: one 22px row per line, label column fixed to the
+   node's longest label, values clipped with ellipsis under `title`. */
+.pk-rail-ghost { visibility: hidden; }
+
+.pk-rail-detail-in {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 8px 0 4px;
+}
+
+.pk-rail-facts { flex: 1; min-width: 0; }
+.pk-rail-fact { display: flex; gap: 8px; }
+
+.pk-rail-fact-label {
+  flex: none;
+  width: calc(var(--pk-rail-labels) + 1ch);
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: var(--pk-rail-row);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pk-rail-fact-value { flex: 1; min-width: 0; }
+
+.pk-rail-fact-line {
+  display: block;
+  height: var(--pk-rail-row);
+  line-height: var(--pk-rail-row);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 
 /* ── Event graph: swimlane ─────────────────────────────── */
 
@@ -2235,6 +2284,17 @@ circle.pk-ag-dot.pk-ag-err {
   stroke: color-mix(in srgb, var(--fg) 65%, var(--bg));
 }
 
+/* A dot, a burst and a fork leaf open their own node: they are clickable. */
+.pk-ag-glyph,
+.pk-ag-fork {
+  cursor: pointer;
+}
+
+circle.pk-ag-glyph:hover,
+.pk-ag-cluster:hover > circle.pk-ag-dot {
+  stroke: var(--fg);
+}
+
 .pk-ag-cluster-count {
   fill: var(--bg);
   font: 8px/1 var(--mono);
@@ -2303,21 +2363,45 @@ circle.pk-ag-dot.pk-ag-err {
 
 .pk-ag-node,
 .pk-ag-earlier {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   min-width: 0;
   min-height: 16px;
-  padding: 0 0 0 4px;
   border-top: 1px solid var(--line);
   font: var(--text-label) var(--mono);
   color: var(--fg);
 }
 
 .pk-ag-earlier {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 0 4px;
   color: var(--dim);
   letter-spacing: .06em;
   text-transform: uppercase;
+}
+
+/* A node is a disclosure button: caret, dot, one-line caption. */
+.pk-ag-node-hit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 16px;
+  margin: 0;
+  padding: 0 0 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pk-ag .pk-ag-node-hit:focus-visible {
+  outline-offset: -1px;
 }
 
 .pk-ag-node:hover {
@@ -2325,7 +2409,29 @@ circle.pk-ag-dot.pk-ag-err {
   outline-offset: -1px;
 }
 
-.pk-ag-node > .pk-ag-dot {
+/* Open: the same solid blue frame and 3px bar as an open rail row. */
+.pk-ag-node.open {
+  outline: 1px solid var(--blue);
+  outline-offset: -1px;
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.pk-ag-node.open .pk-ag-caption {
+  font-weight: 700;
+}
+
+/* The caret is quiet until hover, focus or open. */
+.pk-ag-node-hit > .pk-ag-caret {
+  color: var(--dim);
+}
+
+.pk-ag-node-hit:hover > .pk-ag-caret,
+.pk-ag-node-hit:focus-visible > .pk-ag-caret,
+.pk-ag-node.open > .pk-ag-node-hit > .pk-ag-caret {
+  color: var(--fg);
+}
+
+.pk-ag-node-hit > .pk-ag-dot {
   flex: none;
   box-sizing: border-box;
   width: 10px;
@@ -2334,13 +2440,13 @@ circle.pk-ag-dot.pk-ag-err {
   background: var(--dim);
 }
 
-.pk-ag-node.pk-ag-info > .pk-ag-dot { background: var(--blue); }
-.pk-ag-node.pk-ag-ok > .pk-ag-dot { background: var(--green); }
-.pk-ag-node.pk-ag-warn > .pk-ag-dot { background: var(--yellow); }
-.pk-ag-node.pk-ag-err > .pk-ag-dot { background: var(--red); }
+.pk-ag-node.pk-ag-info .pk-ag-node-hit > .pk-ag-dot { background: var(--blue); }
+.pk-ag-node.pk-ag-ok .pk-ag-node-hit > .pk-ag-dot { background: var(--green); }
+.pk-ag-node.pk-ag-warn .pk-ag-node-hit > .pk-ag-dot { background: var(--yellow); }
+.pk-ag-node.pk-ag-err .pk-ag-node-hit > .pk-ag-dot { background: var(--red); }
 
 /* Neutral is a hollow ring, distinct from the filled tones by shape. */
-.pk-ag-node.pk-ag-neutral > .pk-ag-dot {
+.pk-ag-node.pk-ag-neutral .pk-ag-node-hit > .pk-ag-dot {
   background: var(--bg);
   box-shadow: inset 0 0 0 1.5px var(--dim);
 }
@@ -2351,6 +2457,149 @@ circle.pk-ag-dot.pk-ag-err {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* An open node's facts start under its caption: caret, dot and both gaps. */
+.pk-ag-node-facts {
+  padding: 0 8px 0 calc(4px + 1ch + 26px);
+}
+
+/* ── Facts: one 22px row per value line ─────────────────────────── */
+
+/* Label column fixed to the longest label, values clipped with an ellipsis
+   under a `title` with the full line: the rail's fact grid, for LANES nodes
+   and the inspector. */
+.pk-ag-facts {
+  --pk-ag-row: 22px;
+  min-width: 0;
+}
+
+.pk-ag-fact {
+  display: flex;
+  gap: 8px;
+}
+
+.pk-ag-fact-label {
+  flex: none;
+  width: calc(var(--pk-ag-labels) + 1ch);
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: var(--pk-ag-row);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pk-ag-fact-value {
+  flex: 1;
+  min-width: 0;
+}
+
+.pk-ag-fact-line {
+  display: block;
+  height: var(--pk-ag-row);
+  line-height: var(--pk-ag-row);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ── The inspector: the clicked node's facts, docked under the canvas ── */
+
+.pk-ag-ins {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 40%;
+  border-top: 1px solid var(--line);
+}
+
+.pk-ag-ins-bar {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--line);
+  font: var(--text-label) var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pk-ag-ins-kind {
+  flex: none;
+  color: var(--dim);
+}
+
+.pk-ag-ins-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-weight: 700;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.pk-ag-ins-close {
+  flex: none;
+}
+
+.pk-ag-ins-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 8px;
+}
+
+/* The nested rail sits flush: its own 8px padding would double the inset. */
+.pk-ag-ins-rail {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.pk-ag-ins-rail .pk-rail {
+  padding: 4px 0 0;
+}
+
+/* The status's toned dot, the same shapes as a lane node's. */
+.pk-ag-ins-dot {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.pk-ag-ins-dot.pk-ag-info { background: var(--blue); }
+.pk-ag-ins-dot.pk-ag-ok { background: var(--green); }
+.pk-ag-ins-dot.pk-ag-warn { background: var(--yellow); }
+.pk-ag-ins-dot.pk-ag-err { background: var(--red); }
+.pk-ag-ins-dot.pk-ag-neutral {
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1.5px var(--dim);
+}
+
+.pk-ag-ins-more,
+.pk-ag-ins-cap {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dim);
+  font: var(--text-label) var(--mono);
+  letter-spacing: 0.06em;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pk-ag-ins-block + .pk-ag-ins-block {
+  border-top: 1px solid var(--line);
 }
 
 /* ── LANES: the unattributed section ───────────────────────────── */

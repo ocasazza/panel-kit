@@ -36,6 +36,7 @@ mod dot;
 mod lanes;
 mod layout;
 pub mod metrics;
+mod node;
 mod num;
 mod pack;
 mod strip;
@@ -53,6 +54,7 @@ pub use lanes::{node, slug, split, Lane as ActivityLane, Node as ActivityNode, S
 pub use layout::{
     content_width, summarize, EdgePath, Fork, Graph, Item, Options, Range, Rect, Summary,
 };
+pub use node::{FactBlock, Inspection, ItemHeader, Node, CLUSTER_OPEN_CAP};
 pub use num::{fmt1, round_half_up};
 pub use strip::{strip, Cell, LooseOpen, LooseRow, StripRow};
 pub use warp::{Gap, Params as WarpParams, Tick, TickKind, Warp};
