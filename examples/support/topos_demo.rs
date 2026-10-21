@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 
 use panel_kit_grammar::{
     BadgeGroup, BaseTopos, CompiledGrammar, GeometricMorphism, GlobalSections, GrammarPackage,
-    status_table, MorphismSide, Physics, PhysicsSection, Section, Sheaf, Site, Topos,
+    Limits, status_table, MorphismSide, Physics, PhysicsSection, Section, Sheaf, Site, Topos,
 };
 
 /// Agentic-trace regime topos id (slot A).
@@ -74,11 +74,12 @@ struct GrammarEntry {
 }
 
 impl GrammarEntry {
-    fn compile(id: &'static str, package: &str, data: &'static str, syntax: Syntax) -> Self {
-        let grammar = GrammarPackage::from_json_str(package)
-            .expect("grammar package decodes")
-            .compile()
-            .expect("grammar package compiles");
+    fn compile(id: &'static str, package: &str, data: &'static str, syntax: Syntax, limits: Option<Limits>) -> Self {
+        let mut package = GrammarPackage::from_json_str(package).expect("grammar package decodes");
+        if let Some(limits) = limits {
+            package.limits = limits;
+        }
+        let grammar = package.compile().expect("grammar package compiles");
         debug_assert_eq!(grammar.id(), id);
         Self {
             id,
@@ -170,9 +171,19 @@ impl ToposDemo {
     /// and the three morphisms, build one [`Physics`] per regime, and take
     /// global sections of the lines site under the agentic topos.
     pub fn new() -> Self {
+        Self::build(None)
+    }
+
+    /// [`ToposDemo::new`] with both grammars' declared limits replaced, for
+    /// hosts that append more records than the packages admit.
+    pub fn with_limits(limits: Limits) -> Self {
+        Self::build(Some(limits))
+    }
+
+    fn build(limits: Option<Limits>) -> Self {
         let grammars = vec![
-            GrammarEntry::compile(GRAMMAR_LINES, GRAMMAR_LINES_PACKAGE, DATA_LINES, Syntax::Lines),
-            GrammarEntry::compile(GRAMMAR_JSON, GRAMMAR_JSON_PACKAGE, DATA_JSON, Syntax::Json),
+            GrammarEntry::compile(GRAMMAR_LINES, GRAMMAR_LINES_PACKAGE, DATA_LINES, Syntax::Lines, limits),
+            GrammarEntry::compile(GRAMMAR_JSON, GRAMMAR_JSON_PACKAGE, DATA_JSON, Syntax::Json, limits),
         ];
 
         let base = BaseTopos::from_json_str(TOPOS_PHYSICS_JSON).expect("physics base decodes");
@@ -337,6 +348,12 @@ impl ToposDemo {
         &self.site
     }
 
+    /// The text the site was parsed from: the active grammar's data file plus
+    /// the lines appended since the last reset.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
     /// The current topos spec (sortings, stalks, sheaves).
     pub fn current_topos(&self) -> &Topos {
         &self.topoi[self.topos].spec
@@ -436,15 +453,15 @@ impl ToposDemo {
         self.contents.get(binding)
     }
 
-    /// Parse `source` plus `suffix`; commit and re-project on success, else keep
-    /// the last good site and record the grammar error.
+    /// Append `suffix` as a line of the source and extend the site by it, then
+    /// re-project; on failure keep the last good site and source and record the
+    /// grammar error.
     fn apply_suffix(&mut self, suffix: &str) {
         self.appended += 1;
-        let trial = joined(&self.source, suffix);
-        match self.grammars[self.grammar].grammar.parse(&trial) {
-            Ok(site) => {
-                self.source = trial;
-                self.site = site;
+        let grammar = &self.grammars[self.grammar].grammar;
+        match grammar.parse_append(&mut self.site, &self.source, suffix) {
+            Ok(()) => {
+                push_line(&mut self.source, suffix);
                 self.reproject();
             }
             Err(error) => self.diagnostics.push(error.to_string()),
@@ -695,14 +712,13 @@ fn sites_agree(grammars: &[GrammarEntry]) -> bool {
     }
 }
 
-/// Join a parsed source with an append suffix on its own line; an empty suffix
-/// leaves the source unchanged.
-fn joined(source: &str, suffix: &str) -> String {
+/// Add `suffix` to `source` on its own line; an empty suffix adds nothing.
+fn push_line(source: &mut String, suffix: &str) {
     if suffix.is_empty() {
-        return source.to_owned();
+        return;
     }
-    let mut text = source.trim_end().to_owned();
-    text.push('\n');
-    text.push_str(suffix);
-    text
+    if !source.is_empty() && !source.ends_with('\n') {
+        source.push('\n');
+    }
+    source.push_str(suffix);
 }

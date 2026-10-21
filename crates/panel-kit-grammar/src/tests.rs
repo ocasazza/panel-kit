@@ -1412,6 +1412,8 @@ fn a_grammar_that_does_not_declare_line_records_is_parsed_whole() {
     let ParserSpec::Pest(spec) = &mut package.parser else { unreachable!("trace-lines is a pest package") };
     spec.line_records = false;
     let undeclared = package.compile().unwrap();
+    assert!(lines_grammar().appends_incrementally());
+    assert!(!undeclared.appends_incrementally());
     let (prefix, suffix) = ("N|a|A|coder||\n", "N|b|B|coder||");
     let mut site = undeclared.parse(prefix).unwrap();
     assert!(undeclared.extension(&site, suffix).is_none());
@@ -1420,6 +1422,7 @@ fn a_grammar_that_does_not_declare_line_records_is_parsed_whole() {
 
     let json = json_grammar();
     let mut document = json.parse(DATA_JSON).unwrap();
+    assert!(!json.appends_incrementally());
     assert!(json.extension(&document, "{}").is_none());
     let error = json.parse(&format!("{DATA_JSON}!")).unwrap_err();
     assert_eq!(json.parse_append(&mut document, DATA_JSON, "!"), Err(error));

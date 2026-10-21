@@ -407,6 +407,12 @@ impl CompiledGrammar {
         Ok(())
     }
 
+    /// Whether [`parse_append`](Self::parse_append) parses only the suffix: the package
+    /// declares `line_records`. Otherwise it parses the whole text.
+    pub fn appends_incrementally(&self) -> bool {
+        matches!(&self.engine, CompiledEngine::Pest(engine) if engine.line_records())
+    }
+
     /// The records `suffix` adds to `site`, or `None` when they cannot be parsed apart from it.
     pub(crate) fn extension(&self, site: &Site, suffix: &str) -> Option<pest_engine::Mapped> {
         match &self.engine {
