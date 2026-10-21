@@ -1519,10 +1519,14 @@ mod tests {
             query in query(),
             quick in either_quick(),
             tags in any::<bool>(),
+            filtered in prop::sample::subsequence(vec!["a", "b", "c"], 0..=3),
+            all_of in any::<bool>(),
         ) {
             let columns = columns();
             let data = data_of(&rows);
-            let state = state_of(&query, &quick);
+            let mut state = state_of(&query, &quick);
+            state.tag_filter = filtered.iter().map(|tag| tag.to_string()).collect();
+            state.tag_mode = if all_of { TagMode::All } else { TagMode::Any };
             let options = BuildOptions { mode: QueryMode::Client, tags };
             let ordered = Ordered::build(&columns, &data, &state, options);
             let passing: Vec<usize> = (0..rows.len())
