@@ -15,7 +15,7 @@ use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::ops::Range;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use super::column::{natural_cmp, ColumnKind, DataColumnSpec};
 use super::scan::{mark_rows, next_non_ascii, row_of, Needle, RowSet};
@@ -507,6 +507,19 @@ impl std::fmt::Debug for TableData {
     }
 }
 
+/// A table named without being held: a record of which table it was does
+/// not keep the rows alive. See [`TableData::downgrade`].
+#[derive(Clone)]
+pub(super) struct WeakData(Weak<Store>);
+
+impl WeakData {
+    /// Whether this names `data`. The allocation outlives its rows while it
+    /// is named, so an address is never taken by another table.
+    pub(super) fn is(&self, data: &TableData) -> bool {
+        std::ptr::eq(self.0.as_ptr(), Rc::as_ptr(&data.0))
+    }
+}
+
 impl TableData {
     /// Start a table of `columns`; each column's kind decides its storage.
     pub fn builder(columns: &[DataColumnSpec]) -> TableDataBuilder {
@@ -546,6 +559,11 @@ impl TableData {
                 None => return false,
             }
         }
+    }
+
+    /// This table without its rows: what a record keeps to tell it again.
+    pub(super) fn downgrade(&self) -> WeakData {
+        WeakData(Rc::downgrade(&self.0))
     }
 
     /// Derive a column's sort order now rather than on its first sort. A
@@ -1602,6 +1620,7 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use rstest::rstest;
+    use std::collections::BTreeSet;
 
     const KINDS: [&str; 7] = ["a", "B", "b", "10", "9", "", "ä"];
     const NUMBERS: [f64; 8] = [0.0, -1.5, 3.0, 1e15, 2.5, 1e-7, f64::NAN, f64::INFINITY];
@@ -2200,5 +2219,80 @@ mod tests {
             table.memory_bytes()
         );
         assert!(build(&[]).memory_bytes() < 1_024);
+    }
+
+    #[derive(Clone, Debug)]
+    enum Make {
+        /// A table built apart from the rest, of this many rows.
+        Build(usize),
+        /// One of the tables so far, with this many rows appended.
+        Append(prop::sample::Index, usize),
+    }
+
+    fn make() -> impl Strategy<Value = Make> {
+        prop_oneof![
+            1 => (0usize..12).prop_map(Make::Build),
+            3 => (any::<prop::sample::Index>(), 0usize..6).prop_map(|(at, count)| Make::Append(at, count)),
+        ]
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(200))]
+
+        /// Over tables made by building apart and by appending, with forks:
+        /// `extends` is exactly "is this table or one it was appended from".
+        #[test]
+        fn extends_is_the_ancestry_of_appends(ops in prop::collection::vec(make(), 1..30)) {
+            let rows = chunked(300);
+            let mut tables: Vec<TableData> = Vec::new();
+            // The tables each one descends from, itself included.
+            let mut ancestry: Vec<BTreeSet<usize>> = Vec::new();
+            for op in &ops {
+                match op {
+                    Make::Build(count) => {
+                        ancestry.push(BTreeSet::from([tables.len()]));
+                        tables.push(build(&rows[..*count]));
+                    }
+                    Make::Append(at, count) if !tables.is_empty() => {
+                        let at = at.index(tables.len());
+                        let parent = &tables[at];
+                        let grown = append(parent, &rows[parent.len()..parent.len() + count]);
+                        if *count == 0 {
+                            prop_assert!(grown == *parent, "appending nothing is the same table");
+                            continue;
+                        }
+                        let mut from = ancestry[at].clone();
+                        from.insert(tables.len());
+                        ancestry.push(from);
+                        tables.push(grown);
+                    }
+                    Make::Append(..) => {}
+                }
+            }
+            let count = tables.len();
+            for a in 0..count {
+                prop_assert!(tables[a].extends(&tables[a].clone()), "table {} extends itself", a);
+                for b in 0..count {
+                    let (later, earlier) = (&tables[a], &tables[b]);
+                    let extends = later.extends(earlier);
+                    prop_assert_eq!(extends, ancestry[a].contains(&b), "table {} over table {}", a, b);
+                    if extends {
+                        prop_assert!(later.len() >= earlier.len());
+                        prop_assert!(
+                            (0..earlier.len()).all(|row| later.id(row) == earlier.id(row)),
+                            "table {} holds the first rows of table {}", a, b
+                        );
+                        if earlier.extends(later) {
+                            prop_assert!(later == earlier, "tables {} and {} extend each other", a, b);
+                        }
+                    }
+                    for c in 0..count {
+                        if extends && tables[b].extends(&tables[c]) {
+                            prop_assert!(tables[a].extends(&tables[c]), "{} over {} over {}", a, b, c);
+                        }
+                    }
+                }
+            }
+        }
     }
 }

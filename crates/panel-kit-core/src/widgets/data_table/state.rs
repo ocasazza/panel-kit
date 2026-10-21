@@ -7,13 +7,15 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::rc::Rc;
+use std::collections::HashSet;
+use std::rc::{Rc, Weak};
 
 use serde::Deserialize;
 use serde::Serialize;
 
 use super::column::{DataColumnSpec, SortDir, SortSpec};
-use super::data::TableData;
+use super::data::{TableData, WeakData};
+use super::scan::RowSet;
 use super::scroll::{clean, ScrollMap};
 use super::stored::{Field, StoredFilter, StoredTable};
 use super::tags::{canonical_tag, TagMode};
@@ -300,6 +302,68 @@ impl PartialEq for PositionHint {
     }
 }
 
+/// The selection `select_all` last made hold every row of a view, and which
+/// rows those were, so [`TableState::all_selected`] needs no lookup per row.
+/// It holds the selection weakly: any change to the selection ends the claim.
+/// Never affects equality.
+#[derive(Clone, Default)]
+pub struct Covered(Option<Cover>);
+
+#[derive(Clone)]
+struct Cover {
+    selection: Weak<BTreeSet<String>>,
+    data: WeakData,
+    rows: Rc<RowSet>,
+}
+
+impl Covered {
+    /// A record that `selection` holds the id of every row of `view`.
+    fn of(selection: &Rc<BTreeSet<String>>, view: &View, data: &TableData) -> Covered {
+        let mut rows = RowSet::empty(data.len());
+        for &row in view.rows.iter().filter(|&&row| row < data.len()) {
+            rows.insert(row);
+        }
+        Covered(Some(Cover {
+            selection: Rc::downgrade(selection),
+            data: data.downgrade(),
+            rows: Rc::new(rows),
+        }))
+    }
+
+    /// Whether the record shows that `selection` holds every row of `view`:
+    /// the same selection, untouched since, over the same data.
+    fn holds(&self, selection: &Rc<BTreeSet<String>>, view: &View, data: &TableData) -> bool {
+        let Some(cover) = &self.0 else {
+            return false;
+        };
+        cover
+            .selection
+            .upgrade()
+            .is_some_and(|held| Rc::ptr_eq(&held, selection))
+            && cover.data.is(data)
+            && view
+                .rows
+                .iter()
+                .all(|&row| row < data.len() && cover.rows.contains(row))
+    }
+}
+
+impl PartialEq for Covered {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for Covered {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() {
+            "Covered(..)"
+        } else {
+            "Covered(-)"
+        })
+    }
+}
+
 /// One table's whole user-facing state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TableState {
@@ -335,6 +399,8 @@ pub struct TableState {
     pub cursor: Option<String>,
     /// Where the cursor and anchor last rendered. Never trusted unchecked.
     pub pos: PositionHint,
+    /// Whether the selection still holds the rows `select_all` selected.
+    pub covered: Covered,
     /// What the client's scroller shows.
     pub viewport: Viewport,
     /// The mounted window.
@@ -401,6 +467,7 @@ impl TableState {
             anchor: None,
             cursor: None,
             pos: PositionHint::default(),
+            covered: Covered::default(),
             viewport: Viewport::default(),
             window: TableWindow::default(),
             tag_filter: BTreeSet::new(),
@@ -629,16 +696,24 @@ impl TableState {
         }
     }
 
+    /// Whether every rendered row is selected. Right after `select_all` made
+    /// it so this reads one bit per row; otherwise it looks each id up.
+    pub fn all_selected(&self, view: &View, data: &TableData) -> bool {
+        // A selection smaller than the view cannot hold every row of it.
+        !view.rows.is_empty()
+            && self.selection.len() >= view.rows.len()
+            && (self.covered.holds(&self.selection, view, data)
+                || view.ids(data).all(|id| self.selection.contains(id)))
+    }
+
     /// Select every rendered row, or deselect them when all already are.
     pub fn select_all(&mut self, view: &View, data: &TableData) {
         if self.selectable != Selectable::Multi || view.rows.is_empty() {
             return;
         }
-        // A selection smaller than the view cannot hold every row of it.
-        let all = self.selection.len() >= view.rows.len()
-            && view.ids(data).all(|id| self.selection.contains(id));
-        if !all {
+        if !self.all_selected(view, data) {
             self.add_ids(view.ids(data));
+            self.cover(view, data);
         } else if self.selection.len() == view.rows.len() {
             self.selection = Rc::default();
         } else {
@@ -646,6 +721,13 @@ impl TableState {
             for id in view.ids(data) {
                 set.remove(id);
             }
+        }
+    }
+
+    /// Record that the selection holds every row of `view`.
+    fn cover(&mut self, view: &View, data: &TableData) {
+        if !self.covered.holds(&self.selection, view, data) {
+            self.covered = Covered::of(&self.selection, view, data);
         }
     }
 
@@ -685,6 +767,46 @@ impl TableState {
         self.anchor = None;
     }
 
+    /// Drop what names a row `data` does not hold: selected ids, the anchor,
+    /// the cursor and the tag focus; whether any was dropped. A selection
+    /// that loses nothing stays shared. One pass over `data`, however the
+    /// state shrinks.
+    pub fn retain_rows(&mut self, data: &TableData) -> bool {
+        self.covered = Covered::default();
+        let (wanted, found) = {
+            let wanted: HashSet<&str> = self
+                .selection
+                .iter()
+                .map(String::as_str)
+                .chain(self.cursor.as_deref())
+                .chain(self.anchor.as_deref())
+                .chain(self.tag_focus.as_ref().map(|(row, _)| row.as_str()))
+                .collect();
+            if wanted.is_empty() {
+                return false;
+            }
+            let mut found: HashSet<&str> = HashSet::with_capacity(wanted.len());
+            for row in 0..data.len() {
+                let id = data.id(row);
+                if wanted.contains(id) && found.insert(id) && found.len() == wanted.len() {
+                    break;
+                }
+            }
+            (wanted.len(), found)
+        };
+        if found.len() == wanted {
+            return false;
+        }
+        let keep = |id: &str| found.contains(id);
+        if self.selection.iter().any(|id| !keep(id)) {
+            Rc::make_mut(&mut self.selection).retain(|id| keep(id));
+        }
+        self.anchor = self.anchor.take().filter(|id| keep(id));
+        self.cursor = self.cursor.take().filter(|id| keep(id));
+        self.tag_focus = self.tag_focus.take().filter(|(row, _)| keep(row));
+        true
+    }
+
     /// A key over the view. Navigation moves the cursor through the rendered
     /// rows and pulls the window along; shift extends a multi selection from
     /// the anchor (or the row the cursor left).
@@ -704,6 +826,9 @@ impl TableState {
             TableKey::SelectAll => {
                 if self.selectable == Selectable::Multi {
                     self.add_ids(view.ids(data));
+                    if !view.rows.is_empty() {
+                        self.cover(view, data);
+                    }
                 }
             }
             nav => {
@@ -1115,6 +1240,9 @@ pub enum TableEvent {
     Restore(StoredTable),
     /// Back to the defaults.
     Reset,
+    /// The table's rows were replaced by `data`: selected ids, the anchor, the
+    /// cursor and the tag focus that name no row of it are dropped.
+    RowsReplaced,
 }
 
 impl TableEvent {
@@ -1157,6 +1285,9 @@ impl TableEvent {
             TableEvent::TagsExpand(on) => state.tags_expand = *on,
             TableEvent::Restore(payload) => state.restore(payload),
             TableEvent::Reset => state.reset(),
+            TableEvent::RowsReplaced => {
+                state.retain_rows(data);
+            }
         }
     }
 
@@ -1176,6 +1307,7 @@ impl TableEvent {
                 | TableEvent::TagFocus(_)
                 | TableEvent::TagsExpand(_)
                 | TableEvent::ToggleGroup(_)
+                | TableEvent::RowsReplaced
         )
     }
 
@@ -1519,5 +1651,591 @@ mod tests {
         // r6 is filtered out: the stale hint must not resolve it.
         state.key(TableKey::Down, false, &narrowed, &data, 7);
         assert_eq!(state.cursor.as_deref(), Some(narrowed.id(&data, 0)));
+    }
+
+    #[test]
+    fn retaining_rows_drops_what_names_a_row_the_data_lacks() {
+        let rows = data(10);
+        let mut state = multi();
+        state.selection = Rc::new(["r1", "gone", "r8"].map(String::from).into());
+        state.anchor = Some("r8".into());
+        state.cursor = Some("lost".into());
+        state.tag_focus = Some(("lost".into(), "a".into()));
+        assert!(state.retain_rows(&rows), "something was dropped");
+        assert_eq!(
+            *state.selection,
+            BTreeSet::from(["r1".to_string(), "r8".to_string()])
+        );
+        assert_eq!(state.anchor.as_deref(), Some("r8"));
+        assert_eq!((state.cursor.as_deref(), &state.tag_focus), (None, &None));
+        // Nothing lost: the selection stays the one allocation.
+        let before = state.selection.clone();
+        assert!(!state.retain_rows(&rows), "nothing left to drop");
+        assert!(Rc::ptr_eq(&state.selection, &before));
+        assert!(state.retain_rows(&data(0)));
+        assert!(state.selection.is_empty() && state.anchor.is_none());
+    }
+
+    #[test]
+    fn select_all_records_the_rows_it_covered_until_the_selection_or_the_data_changes() {
+        let rows = data(30);
+        let view = view_of(0, &rows);
+        let mut state = multi();
+        state.select_all(&view, &rows);
+        assert!(state.covered.holds(&state.selection, &view, &rows));
+        // Any view of rows it covered is covered: another order, fewer rows.
+        let narrowed = view_of(2, &rows);
+        let sorted = view_of(1, &rows);
+        assert!(state.covered.holds(&state.selection, &narrowed, &rows));
+        assert!(state.covered.holds(&state.selection, &sorted, &rows));
+        // A clone that changes its selection ends the claim for itself alone.
+        let mut copy = state.clone();
+        copy.select("r3", SelectMode::Toggle, &view, &rows);
+        assert!(!copy.covered.holds(&copy.selection, &view, &rows));
+        assert!(state.covered.holds(&state.selection, &view, &rows));
+        // Rows the selection never saw are not covered.
+        let grown = rows.append(|builder| {
+            builder.row("r30", [Value::Text("r30"), Value::Number(0.0)]);
+        });
+        let longer = view_of(0, &grown);
+        assert!(!state.covered.holds(&state.selection, &longer, &grown));
+        assert!(!state.all_selected(&longer, &grown));
+    }
+
+    // -- laws over the events ------------------------------------------------
+
+    fn law_columns() -> Vec<DataColumnSpec> {
+        vec![
+            DataColumnSpec::new("item", "item").pinned(),
+            DataColumnSpec::new("kind", "kind").enumerated(),
+            DataColumnSpec::new("since", "since").number(),
+            DataColumnSpec::new("note", "note"),
+        ]
+    }
+
+    /// Rows `r{n}` for each `n`, in that order.
+    fn law_rows(builder: &mut TableDataBuilder, ids: &[usize]) {
+        for &n in ids {
+            let id = format!("r{n}");
+            let tags: &[&str] = match n % 4 {
+                0 => &[],
+                1 => &["a"],
+                2 => &["b"],
+                _ => &["a", "b"],
+            };
+            builder
+                .row(
+                    id.as_str(),
+                    [
+                        Value::Text(&id),
+                        Value::Text(["open", "done", "hold"][n % 3]),
+                        Value::Number((n % 7) as f64),
+                        Value::Text(if n % 2 == 0 { "even" } else { "odd" }),
+                    ],
+                )
+                .tags(tags);
+        }
+    }
+
+    fn law_data(ids: &[usize]) -> TableData {
+        let mut builder = TableDataBuilder::with_capacity(&law_columns(), ids.len());
+        law_rows(&mut builder, ids);
+        builder.build()
+    }
+
+    fn law_state() -> TableState {
+        TableState {
+            selectable: Selectable::Multi,
+            ..TableState::new(&law_columns(), TableDefaults::default())
+        }
+    }
+
+    fn distinct(ids: &[usize]) -> Vec<usize> {
+        let mut seen = BTreeSet::new();
+        ids.iter().copied().filter(|n| seen.insert(*n)).collect()
+    }
+
+    /// `event` over the view the state gives now, as a painter raises it.
+    fn run(event: &TableEvent, state: &mut TableState, data: &TableData) {
+        let view = View::build(&law_columns(), data, state, BuildOptions::default());
+        event.apply(state, &law_columns(), &view, data);
+    }
+
+    fn column() -> impl Strategy<Value = String> {
+        prop::sample::select(vec!["item", "kind", "since", "note", "nope"]).prop_map(String::from)
+    }
+
+    fn word() -> impl Strategy<Value = String> {
+        prop::sample::select(vec![
+            "", " ", "1", "a", "b", " r1 ", "R2", "open", "even", "zz",
+        ])
+        .prop_map(String::from)
+    }
+
+    /// The tags rows hold, one that folds to one of them, and a blank.
+    fn tag() -> impl Strategy<Value = String> {
+        prop::sample::select(vec!["a", "b", " A ", ""]).prop_map(String::from)
+    }
+
+    fn column_filter() -> impl Strategy<Value = Option<ColumnFilter>> {
+        prop_oneof![
+            Just(None),
+            word().prop_map(|w| ColumnFilter::text(&w)),
+            prop::collection::vec(word(), 0..3)
+                .prop_map(|v| ColumnFilter::values(v.iter().map(String::as_str))),
+            (prop::option::of(-2i32..8), prop::option::of(-2i32..8))
+                .prop_map(|(lo, hi)| ColumnFilter::range(lo.map(f64::from), hi.map(f64::from))),
+        ]
+    }
+
+    fn stored() -> impl Strategy<Value = StoredTable> {
+        prop::sample::select(vec![
+            r#"{"sort":[["since","desc"]],"quick":"r1"}"#,
+            r#"{"filters":{"kind":["open"]},"hidden":["note"],"density":"compact"}"#,
+            r#"{"order":["note","item"],"group_by":"kind","view":"detail_cards"}"#,
+            r#"{"sort":[["nope","asc"],["item","asc"]],"widths":{"item":120},"filters_open":true}"#,
+            r#"{"hidden":["item","kind","since","note"],"quick":"  "}"#,
+            "{}",
+        ])
+        .prop_map(|json| serde_json::from_str(json).expect("a stored table"))
+    }
+
+    fn key() -> impl Strategy<Value = TableKey> {
+        prop::sample::select(vec![
+            TableKey::Down,
+            TableKey::Up,
+            TableKey::Home,
+            TableKey::End,
+            TableKey::PageDown,
+            TableKey::PageUp,
+            TableKey::Space,
+            TableKey::Escape,
+            TableKey::SelectAll,
+        ])
+    }
+
+    fn select_mode() -> impl Strategy<Value = SelectMode> {
+        prop::sample::select(vec![
+            SelectMode::Toggle,
+            SelectMode::Only,
+            SelectMode::Range,
+        ])
+    }
+
+    /// Every event that names no row.
+    fn plain_event() -> impl Strategy<Value = TableEvent> {
+        let target = prop_oneof![
+            Just(MoveTarget::Left),
+            Just(MoveTarget::Right),
+            column().prop_map(MoveTarget::Before),
+            column().prop_map(MoveTarget::After),
+        ];
+        let modes = prop::sample::select(vec![
+            ViewMode::Rows,
+            ViewMode::CompactCards,
+            ViewMode::DetailCards,
+        ]);
+        let groups = prop::sample::select(vec!["open", "done", "hold", "x"]).prop_map(String::from);
+        prop_oneof![
+            (column(), any::<bool>())
+                .prop_map(|(column, append)| TableEvent::Sort { column, append }),
+            (column(), target).prop_map(|(column, to)| TableEvent::MoveColumn(column, to)),
+            (column(), -50.0..5000.0f64)
+                .prop_map(|(column, width)| TableEvent::Resize(column, width)),
+            column().prop_map(TableEvent::ToggleColumn),
+            word().prop_map(TableEvent::Quick),
+            (column(), column_filter())
+                .prop_map(|(column, filter)| TableEvent::Filter(column, filter)),
+            Just(TableEvent::ToggleFilters),
+            Just(TableEvent::Clear),
+            prop::option::of(column()).prop_map(TableEvent::Group),
+            groups.prop_map(TableEvent::ToggleGroup),
+            Just(TableEvent::ToggleDensity),
+            modes.prop_map(TableEvent::View),
+            (0usize..200, 0usize..100, prop::option::of(-5.0..40.0f64)).prop_map(
+                |(start, count, row_height)| TableEvent::Window {
+                    start,
+                    count,
+                    row_height
+                }
+            ),
+            (-10.0..5000.0f64, -10.0..800.0f64)
+                .prop_map(|(top, visible)| TableEvent::Scroll { top, visible }),
+            (tag(), any::<bool>()).prop_map(|(tag, all)| TableEvent::Tag { tag, all }),
+            prop::sample::select(vec![TagMode::Any, TagMode::All]).prop_map(TableEvent::TagMode),
+            Just(TableEvent::ClearTags),
+            any::<bool>().prop_map(TableEvent::TagsExpand),
+            stored().prop_map(TableEvent::Restore),
+            Just(TableEvent::Reset),
+            Just(TableEvent::RowsReplaced),
+        ]
+    }
+
+    /// Rows the pool may or may not hold: the ids events name.
+    fn row_id() -> impl Strategy<Value = String> {
+        prop::sample::select(vec!["r0", "r1", "r2", "r3", "r4", "r5", "ghost"])
+            .prop_map(String::from)
+    }
+
+    fn row_event() -> impl Strategy<Value = TableEvent> {
+        prop_oneof![
+            (row_id(), select_mode()).prop_map(|(id, mode)| TableEvent::Select { id, mode }),
+            Just(TableEvent::SelectAll),
+            row_id().prop_map(TableEvent::Cursor),
+            (key(), any::<bool>(), 0usize..30).prop_map(|(key, shift, page)| TableEvent::Key {
+                key,
+                shift,
+                page
+            }),
+            prop::option::of((row_id(), tag())).prop_map(TableEvent::TagFocus),
+        ]
+    }
+
+    fn event() -> impl Strategy<Value = TableEvent> {
+        prop_oneof![3 => plain_event(), 2 => row_event()]
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(1_000))]
+
+        /// A false flag is a promise: the event leaves the query, or the state a
+        /// host stores, as it found it.
+        #[test]
+        fn an_event_that_does_not_requery_or_persist_leaves_those_alone(
+            rows in 1usize..12,
+            before in prop::collection::vec(event(), 0..12),
+            event in event(),
+        ) {
+            let data = law_data(&(0..rows).collect::<Vec<_>>());
+            let mut state = law_state();
+            for earlier in &before {
+                run(earlier, &mut state, &data);
+            }
+            let (query, persisted) = (state.query(), state.persisted());
+            run(&event, &mut state, &data);
+            if !event.requeries() {
+                prop_assert_eq!(state.query(), query, "{:?} changed the query", event);
+            }
+            if !event.persists() {
+                prop_assert_eq!(state.persisted(), persisted, "{:?} changed what persists", event);
+            }
+        }
+
+        /// The painter keeps a view while the order key and the folds hold: an
+        /// event applied over that view does what it does over a fresh one.
+        #[test]
+        fn a_reused_view_serves_events_as_a_fresh_one_does(
+            rows in 1usize..16,
+            events in prop::collection::vec(event(), 1..40),
+        ) {
+            let columns = law_columns();
+            let data = law_data(&(0..rows).collect::<Vec<_>>());
+            let options = BuildOptions::default();
+            let (mut fresh, mut reused) = (law_state(), law_state());
+            let mut held: Option<(OrderKey, BTreeSet<String>, View)> = None;
+            for event in &events {
+                let now = View::build(&columns, &data, &fresh, options);
+                let (key, folds) = (reused.order_key(), reused.collapsed.clone());
+                if held.as_ref().is_none_or(|(k, f, _)| *k != key || *f != folds) {
+                    held = Some((key, folds, View::build(&columns, &data, &reused, options)));
+                }
+                let (_, _, kept) = held.as_ref().expect("a view is held");
+                prop_assert_eq!(kept, &now, "the view held for {:?}", event);
+                event.apply(&mut fresh, &columns, &now, &data);
+                event.apply(&mut reused, &columns, kept, &data);
+                prop_assert_eq!(&fresh, &reused, "after {:?}", event);
+            }
+        }
+
+        /// Only selection, select-all, keys and a replacement read the rows: any
+        /// other event does the same over any view and any data.
+        #[test]
+        fn events_that_read_no_rows_ignore_the_view_and_the_data(
+            rows in 1usize..12,
+            before in prop::collection::vec(event(), 0..12),
+            event in event(),
+        ) {
+            prop_assume!(!matches!(
+                event,
+                TableEvent::Select { .. }
+                    | TableEvent::SelectAll
+                    | TableEvent::Key { .. }
+                    | TableEvent::RowsReplaced
+            ));
+            let data = law_data(&(0..rows).collect::<Vec<_>>());
+            let mut seeing = law_state();
+            for earlier in &before {
+                run(earlier, &mut seeing, &data);
+            }
+            let mut blind = seeing.clone();
+            let view = View::build(&law_columns(), &data, &seeing, BuildOptions::default());
+            event.apply(&mut seeing, &law_columns(), &view, &data);
+            event.apply(&mut blind, &law_columns(), &View::default(), &law_data(&[]));
+            prop_assert_eq!(&seeing, &blind, "{:?}", event);
+        }
+    }
+
+    /// One of each event, each with a parameter that changes something.
+    fn every_event() -> Vec<TableEvent> {
+        let stored = serde_json::from_str(
+            r#"{"sort":[["since","desc"]],"quick":"r1","hidden":["note"],"density":"compact"}"#,
+        )
+        .expect("a stored table");
+        vec![
+            TableEvent::Sort {
+                column: "item".into(),
+                append: false,
+            },
+            TableEvent::MoveColumn("item".into(), MoveTarget::Right),
+            TableEvent::Resize("item".into(), 140.0),
+            TableEvent::ToggleColumn("note".into()),
+            TableEvent::Quick("zz".into()),
+            TableEvent::Filter("kind".into(), ColumnFilter::values(["open"])),
+            TableEvent::ToggleFilters,
+            TableEvent::Clear,
+            TableEvent::Group(Some("kind".into())),
+            TableEvent::ToggleGroup("open".into()),
+            TableEvent::ToggleDensity,
+            TableEvent::View(ViewMode::DetailCards),
+            TableEvent::Select {
+                id: "r1".into(),
+                mode: SelectMode::Toggle,
+            },
+            TableEvent::SelectAll,
+            TableEvent::Cursor("r2".into()),
+            TableEvent::Key {
+                key: TableKey::Down,
+                shift: false,
+                page: 5,
+            },
+            TableEvent::Window {
+                start: 10,
+                count: 30,
+                row_height: Some(30.0),
+            },
+            TableEvent::Scroll {
+                top: 100.0,
+                visible: 400.0,
+            },
+            TableEvent::Tag {
+                tag: "a".into(),
+                all: true,
+            },
+            TableEvent::TagMode(TagMode::All),
+            TableEvent::ClearTags,
+            TableEvent::TagFocus(Some(("r1".into(), "a".into()))),
+            TableEvent::TagsExpand(true),
+            TableEvent::Restore(stored),
+            TableEvent::Reset,
+            TableEvent::RowsReplaced,
+        ]
+    }
+
+    /// A flag that is true is true because some state it changes names it; a
+    /// flag that is false leaves every state alone.
+    #[test]
+    fn a_flag_is_true_exactly_when_some_state_can_change_what_it_names() {
+        // Adding an event breaks this match until the list above holds it.
+        fn slot(event: &TableEvent) -> usize {
+            match event {
+                TableEvent::Sort { .. } => 0,
+                TableEvent::MoveColumn(..) => 1,
+                TableEvent::Resize(..) => 2,
+                TableEvent::ToggleColumn(_) => 3,
+                TableEvent::Quick(_) => 4,
+                TableEvent::Filter(..) => 5,
+                TableEvent::ToggleFilters => 6,
+                TableEvent::Clear => 7,
+                TableEvent::Group(_) => 8,
+                TableEvent::ToggleGroup(_) => 9,
+                TableEvent::ToggleDensity => 10,
+                TableEvent::View(_) => 11,
+                TableEvent::Select { .. } => 12,
+                TableEvent::SelectAll => 13,
+                TableEvent::Cursor(_) => 14,
+                TableEvent::Key { .. } => 15,
+                TableEvent::Window { .. } => 16,
+                TableEvent::Scroll { .. } => 17,
+                TableEvent::Tag { .. } => 18,
+                TableEvent::TagMode(_) => 19,
+                TableEvent::ClearTags => 20,
+                TableEvent::TagFocus(_) => 21,
+                TableEvent::TagsExpand(_) => 22,
+                TableEvent::Restore(_) => 23,
+                TableEvent::Reset => 24,
+                TableEvent::RowsReplaced => 25,
+            }
+        }
+        let events = every_event();
+        let slots: Vec<usize> = events.iter().map(slot).collect();
+        assert_eq!(
+            slots,
+            (0..events.len()).collect::<Vec<_>>(),
+            "one of each event"
+        );
+
+        let data = law_data(&(0..8).collect::<Vec<_>>());
+        let worked = [
+            TableEvent::Sort {
+                column: "since".into(),
+                append: false,
+            },
+            TableEvent::Sort {
+                column: "note".into(),
+                append: true,
+            },
+            TableEvent::Quick("e".into()),
+            TableEvent::Filter("kind".into(), ColumnFilter::values(["open", "done"])),
+            TableEvent::Group(Some("kind".into())),
+            TableEvent::ToggleGroup("open".into()),
+            TableEvent::Tag {
+                tag: "a".into(),
+                all: false,
+            },
+            TableEvent::ToggleColumn("note".into()),
+            TableEvent::Resize("item".into(), 90.0),
+            TableEvent::ToggleDensity,
+            TableEvent::ToggleFilters,
+            TableEvent::View(ViewMode::CompactCards),
+            TableEvent::MoveColumn("note".into(), MoveTarget::Left),
+        ];
+        let touched = [
+            TableEvent::Select {
+                id: "r1".into(),
+                mode: SelectMode::Toggle,
+            },
+            TableEvent::Cursor("r2".into()),
+            TableEvent::TagFocus(Some(("r1".into(), "a".into()))),
+            TableEvent::TagsExpand(true),
+        ];
+        let mut states = vec![law_state()];
+        for setup in [&worked[..], &touched[..]] {
+            let mut state = law_state();
+            for event in setup {
+                run(event, &mut state, &data);
+            }
+            states.push(state);
+        }
+        for event in &events {
+            let (mut queries, mut persists) = (false, false);
+            for state in &states {
+                let mut next = state.clone();
+                run(event, &mut next, &data);
+                queries |= next.query() != state.query();
+                persists |= next.persisted() != state.persisted();
+            }
+            assert_eq!(event.requeries(), queries, "{event:?}: requeries");
+            assert_eq!(event.persists(), persists, "{event:?}: persists");
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    enum Step {
+        Select(prop::sample::Index, SelectMode),
+        SelectAll,
+        Key(TableKey, bool),
+        Cursor(prop::sample::Index),
+        Focus(prop::sample::Index),
+        Plain(TableEvent),
+        /// Ids the host put in the selection, held by the data or not.
+        Foreign(Vec<usize>),
+        Append(usize),
+        /// New data built apart, and the state pruned to it.
+        Replace(Vec<usize>),
+        /// New data built apart that the state is not told of.
+        Swap(Vec<usize>),
+    }
+
+    fn step() -> impl Strategy<Value = Step> {
+        prop_oneof![
+            3 => (any::<prop::sample::Index>(), select_mode()).prop_map(|(at, mode)| Step::Select(at, mode)),
+            3 => Just(Step::SelectAll),
+            2 => (key(), any::<bool>()).prop_map(|(key, shift)| Step::Key(key, shift)),
+            1 => any::<prop::sample::Index>().prop_map(Step::Cursor),
+            1 => any::<prop::sample::Index>().prop_map(Step::Focus),
+            3 => plain_event().prop_map(Step::Plain),
+            1 => prop::collection::vec(0usize..40, 1..4).prop_map(Step::Foreign),
+            2 => (1usize..6).prop_map(Step::Append),
+            2 => prop::collection::vec(0usize..40, 0..20).prop_map(Step::Replace),
+            1 => prop::collection::vec(0usize..40, 0..20).prop_map(Step::Swap),
+        ]
+    }
+
+    proptest! {
+        /// Replacing the data keeps of the selection, the anchor, the cursor and
+        /// the tag focus what the new rows hold; appending touches none of them,
+        /// so ids the host selected ahead of their rows wait for them. Whatever
+        /// happened, `all_selected` is what looking each row up says.
+        #[test]
+        fn selection_follows_the_rows_through_replacements_and_appends(
+            first in prop::collection::vec(0usize..40, 1..20),
+            steps in prop::collection::vec(step(), 1..40),
+        ) {
+            let columns = law_columns();
+            let mut data = law_data(&distinct(&first));
+            let mut fresh = 40;
+            let mut state = law_state();
+            for step in steps {
+                let view = View::build(&columns, &data, &state, BuildOptions::default());
+                let ids: Vec<String> = view.ids(&data).map(str::to_string).collect();
+                let row = |at: &prop::sample::Index| ids.get(at.index(ids.len().max(1))).cloned();
+                let before = state.clone();
+                match &step {
+                    Step::Select(at, mode) => {
+                        if let Some(id) = row(at) {
+                            TableEvent::Select { id, mode: *mode }.apply(&mut state, &columns, &view, &data);
+                        }
+                    }
+                    Step::SelectAll => TableEvent::SelectAll.apply(&mut state, &columns, &view, &data),
+                    Step::Key(key, shift) => {
+                        TableEvent::Key { key: *key, shift: *shift, page: 7 }
+                            .apply(&mut state, &columns, &view, &data);
+                    }
+                    Step::Cursor(at) => {
+                        if let Some(id) = row(at) {
+                            TableEvent::Cursor(id).apply(&mut state, &columns, &view, &data);
+                        }
+                    }
+                    Step::Focus(at) => {
+                        if let Some(id) = row(at) {
+                            TableEvent::TagFocus(Some((id, "a".into()))).apply(&mut state, &columns, &view, &data);
+                        }
+                    }
+                    Step::Plain(event) => event.apply(&mut state, &columns, &view, &data),
+                    Step::Foreign(ids) => {
+                        let mut set = (*state.selection).clone();
+                        set.extend(ids.iter().map(|n| format!("r{n}")));
+                        state.selection = Rc::new(set);
+                    }
+                    Step::Append(count) => {
+                        let earlier = data.clone();
+                        let added: Vec<usize> = (fresh..fresh + count).collect();
+                        fresh += count;
+                        data = data.append(|builder| law_rows(builder, &added));
+                        prop_assert!(data.extends(&earlier));
+                        prop_assert_eq!(&state, &before, "appending changed the state");
+                    }
+                    Step::Replace(ids) => {
+                        let earlier = data.clone();
+                        data = law_data(&distinct(ids));
+                        prop_assert!(!data.extends(&earlier));
+                        let dropped = state.retain_rows(&data);
+                        let present: BTreeSet<String> =
+                            (0..data.len()).map(|row| data.id(row).to_string()).collect();
+                        let mut want = before.clone();
+                        want.selection = Rc::new(before.selection.intersection(&present).cloned().collect());
+                        want.anchor = before.anchor.clone().filter(|id| present.contains(id));
+                        want.cursor = before.cursor.clone().filter(|id| present.contains(id));
+                        want.tag_focus = before.tag_focus.clone().filter(|(row, _)| present.contains(row));
+                        prop_assert_eq!(&state, &want, "replacing the rows");
+                        prop_assert_eq!(dropped, want != before, "the report of what was dropped");
+                    }
+                    Step::Swap(ids) => data = law_data(&distinct(ids)),
+                }
+                let view = View::build(&columns, &data, &state, BuildOptions::default());
+                let every = !view.rows.is_empty() && view.ids(&data).all(|id| state.selection.contains(id));
+                prop_assert_eq!(state.all_selected(&view, &data), every, "after {:?}", step);
+            }
+        }
     }
 }

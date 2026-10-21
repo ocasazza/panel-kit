@@ -4,10 +4,49 @@
 use dioxus::prelude::*;
 use panel_kit::widgets::{Control, DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
 use panel_kit_core::widgets::data_table::{
-    Align, ColumnFilter, Density, ScrollMap, Selectable, SortDir, SortSpec, TableDefaults,
-    TableState, TableWindow, ViewMode, Viewport, MAX_SCROLL, WINDOW_COUNT,
+    Align, BuildOptions, ColumnFilter, Density, ScrollMap, SelectMode, Selectable, SortDir,
+    SortSpec, TableDefaults, TableEvent, TableState, TableWindow, View, ViewMode, Viewport,
+    MAX_SCROLL, WINDOW_COUNT,
 };
 use rstest::rstest;
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::{Cell, RefCell};
+use std::collections::BTreeSet;
+use std::rc::Rc;
+
+thread_local! {
+    static ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// The system allocator, counting the allocations each thread makes.
+struct Counting;
+
+// Safety: every call is the system allocator's own.
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        ALLOCATIONS.with(|n| n.set(n.get() + 1));
+        System.alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        System.dealloc(ptr, layout)
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+        ALLOCATIONS.with(|n| n.set(n.get() + 1));
+        System.realloc(ptr, layout, size)
+    }
+}
+
+#[global_allocator]
+static COUNTING: Counting = Counting;
+
+/// The allocations `work` makes on this thread.
+fn allocations(work: impl FnOnce()) -> usize {
+    let before = ALLOCATIONS.with(Cell::get);
+    work();
+    ALLOCATIONS.with(Cell::get) - before
+}
 
 // -- fixtures -----------------------------------------------------------------
 
@@ -81,8 +120,7 @@ fn rows(count: usize) -> Vec<Item> {
         .collect()
 }
 
-fn table(columns: &[DataColumnSpec], items: &[Item]) -> TableData {
-    let mut builder = TableDataBuilder::with_capacity(columns, items.len());
+fn push_rows(builder: &mut TableDataBuilder, items: &[Item]) {
     for item in items {
         let values = item.cells.iter().map(|cell| match cell {
             C::T(text) => Value::Text(text),
@@ -91,6 +129,11 @@ fn table(columns: &[DataColumnSpec], items: &[Item]) -> TableData {
         });
         builder.row(&item.id, values).tags(&item.tags);
     }
+}
+
+fn table(columns: &[DataColumnSpec], items: &[Item]) -> TableData {
+    let mut builder = TableDataBuilder::with_capacity(columns, items.len());
+    push_rows(&mut builder, items);
     builder.build()
 }
 
@@ -873,4 +916,200 @@ fn every_tag_slot_is_declared_in_the_stylesheet() {
             "{rule} missing"
         );
     }
+}
+
+// -- a table whose rows change under its selection ------------------------------
+
+/// What a test keeps of a running table: the data and host state it swaps, and
+/// the events the host heard.
+struct Rig {
+    first: (TableData, TableState),
+    data: Cell<Option<Signal<TableData>>>,
+    state: Cell<Option<Signal<TableState>>>,
+    heard: RefCell<Vec<TableEvent>>,
+}
+
+/// A host that owns the state and applies each event the table raises.
+#[component]
+fn Hosted() -> Element {
+    let rig = use_context::<Rc<Rig>>();
+    let data = use_signal(|| rig.first.0.clone());
+    let mut state = use_signal(|| rig.first.1.clone());
+    rig.data.set(Some(data));
+    rig.state.set(Some(state));
+    let on_event = Some(EventHandler::new(move |event: TableEvent| {
+        rig.heard.borrow_mut().push(event.clone());
+        let mut next = state.peek().clone();
+        event.apply(&mut next, &columns(), &View::default(), &data.peek());
+        state.set(next);
+    }));
+    rsx! { DataTable { id: "t", columns: columns(), data: data(), state: state(), on_event } }
+}
+
+fn hosted(data: TableData, state: TableState) -> (VirtualDom, Rc<Rig>) {
+    let rig = Rc::new(Rig {
+        first: (data, state),
+        data: Cell::new(None),
+        state: Cell::new(None),
+        heard: RefCell::default(),
+    });
+    let mut dom = VirtualDom::new(Hosted);
+    dom.provide_root_context(rig.clone());
+    dom.rebuild_in_place();
+    (dom, rig)
+}
+
+fn chosen(ids: &[&str]) -> TableState {
+    TableState {
+        selectable: Selectable::Multi,
+        selection: Rc::new(ids.iter().map(|id| id.to_string()).collect()),
+        ..state()
+    }
+}
+
+fn painted(dom: &VirtualDom) -> Html {
+    Html(dioxus_ssr::render(dom))
+}
+
+#[test]
+fn replaced_rows_drop_a_host_owned_selection_of_rows_they_lack_and_tell_the_host() {
+    let state = TableState {
+        cursor: Some("imp-6".into()),
+        ..chosen(&["imp-1", "imp-6"])
+    };
+    let (mut dom, rig) = hosted(table(&columns(), &rows(6)), state);
+    assert!(painted(&dom).has(">6 rows, 2 selected<"));
+
+    let mut data = rig.data.get().expect("the table rendered");
+    dom.in_runtime(|| data.set(table(&columns(), &rows(3))));
+    dom.render_immediate_to_vec();
+    // The render that brings the new rows already leaves the lost one uncounted.
+    let html = painted(&dom);
+    assert!(html.has(">3 rows, 1 selected<"), "{}", html.0);
+    dom.process_events();
+    assert_eq!(*rig.heard.borrow(), [TableEvent::RowsReplaced]);
+
+    // The host applied it; nothing more is raised.
+    let state = rig.state.get().expect("the host holds state");
+    let host = dom.in_runtime(|| state.peek().clone());
+    assert_eq!(*host.selection, BTreeSet::from(["imp-1".to_string()]));
+    assert_eq!(host.cursor, None);
+    dom.render_immediate_to_vec();
+    dom.process_events();
+    assert_eq!(rig.heard.borrow().len(), 1);
+    assert!(painted(&dom).has(">3 rows, 1 selected<"));
+}
+
+#[test]
+fn appended_rows_leave_a_selection_alone_so_an_id_chosen_ahead_of_its_row_waits() {
+    let (mut dom, rig) = hosted(table(&columns(), &rows(3)), chosen(&["imp-1", "imp-20"]));
+    assert!(painted(&dom).has(">3 rows, 2 selected<"));
+
+    let mut data = rig.data.get().expect("the table rendered");
+    let mut append_to = |dom: &mut VirtualDom, count: usize| {
+        dom.in_runtime(|| {
+            let have = data.peek().len();
+            let grown = data
+                .peek()
+                .append(|builder| push_rows(builder, &rows(count)[have..]));
+            data.set(grown);
+        });
+        dom.render_immediate_to_vec();
+        dom.process_events();
+        painted(dom)
+    };
+    // Rows arrive, but not the one chosen ahead of its row: still chosen.
+    let html = append_to(&mut dom, 8);
+    assert!(html.has(">8 rows, 2 selected<"), "{}", html.0);
+    // Then its row arrives, selected.
+    let html = append_to(&mut dom, 20);
+    assert!(html.has(">20 rows, 2 selected<"), "{}", html.0);
+    assert!(html.row("imp-20").contains("aria-selected=\"true\""));
+    assert!(rig.heard.borrow().is_empty(), "{:?}", rig.heard.borrow());
+}
+
+/// The header box, from the markup.
+fn all_box(dom: &VirtualDom) -> String {
+    painted(dom).tag("input", "data-dt-check-all").to_string()
+}
+
+/// Select-all leaves a record of what it covered, held against the selection
+/// and the data: the header box follows it, and follows the selection once a
+/// row is deselected.
+#[test]
+fn the_header_box_follows_select_all_and_a_row_deselected_after_it() {
+    let columns = columns();
+    let data = table(&columns, &rows(5));
+    let mut state = TableState {
+        selectable: Selectable::Multi,
+        ..state()
+    };
+    let view = View::build(&columns, &data, &state, BuildOptions::default());
+    state.select_all(&view, &data);
+    let (mut dom, rig) = hosted(data.clone(), state.clone());
+    assert!(all_box(&dom).contains("checked"), "{}", all_box(&dom));
+    assert!(painted(&dom).has(">5 rows, 5 selected<"));
+
+    let host = rig.state.get().expect("the host holds state");
+    dom.in_runtime(|| {
+        let mut next = state.clone();
+        next.select("imp-3", SelectMode::Toggle, &view, &data);
+        host.clone().set(next);
+    });
+    dom.render_immediate_to_vec();
+    assert!(!all_box(&dom).contains("checked"), "{}", all_box(&dom));
+    assert!(painted(&dom).has(">5 rows, 4 selected<"));
+}
+
+/// The ids a host selected, and the handle that re-renders the table around them.
+struct Pick {
+    ids: RefCell<Vec<String>>,
+    tick: Cell<Option<Signal<u32>>>,
+}
+
+/// A table over a host selection; each tick changes the placeholder, so the
+/// table renders again with the same, or a changed, list.
+#[component]
+fn Chosen() -> Element {
+    let pick = use_context::<Rc<Pick>>();
+    let tick = use_signal(|| 0u32);
+    pick.tick.set(Some(tick));
+    let selected = pick.ids.borrow().clone();
+    let columns = columns();
+    let data = table(&columns, &rows(3));
+    rsx! { DataTable { id: "t", columns, data, state: chosen(&[]), selected, placeholder: "{tick}" } }
+}
+
+/// An unchanged host selection is not turned into a set again: a render over
+/// a list that changed makes at least one more allocation per id (the id
+/// cloned into the new set) than one over the same list.
+#[test]
+fn an_unchanged_host_selection_is_not_rebuilt_on_each_render() {
+    const IDS: usize = 20_000;
+    let pick = Rc::new(Pick {
+        ids: RefCell::new((0..IDS).map(|n| format!("imp-{n}")).collect()),
+        tick: Cell::new(None),
+    });
+    let mut dom = VirtualDom::new(Chosen);
+    dom.provide_root_context(pick.clone());
+    dom.rebuild_in_place();
+    let mut tick = pick.tick.get().expect("the table rendered");
+
+    let mut render = |change: bool| -> usize {
+        if change {
+            let mut ids = pick.ids.borrow_mut();
+            let last = ids.len() - 1;
+            ids[last] = format!("moved-{}", ids[last]);
+        }
+        dom.in_runtime(|| tick += 1);
+        allocations(|| {
+            dom.render_immediate_to_vec();
+        })
+    };
+    let same = render(false);
+    let changed = render(true);
+    assert!(
+        changed > same + IDS / 2,
+        "{same} allocations over an unchanged list, {changed} over a changed one, of {IDS} ids"
+    );
 }
