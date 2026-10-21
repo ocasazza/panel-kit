@@ -2081,6 +2081,7 @@ dependencies = [
  "pest",
  "pest_meta",
  "pest_vm",
+ "proptest",
  "serde",
  "serde_json",
 ]

@@ -13,7 +13,7 @@
 //! "Group by kind" sheaves group by **regime sort**, so a non-injective sorting
 //! merges site kinds (e.g. planner + reviewer → head).
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -248,13 +248,15 @@ pub fn status_table(checks_title: &str, holds_title: &str, rows: &[(String, bool
             align: TextAlign::Center,
         },
     ];
+    let ids = unique_row_ids(rows.iter().map(|(label, _)| format!("gate:{label}")));
     let rows = rows
         .iter()
-        .map(|(label, ok)| {
+        .zip(ids)
+        .map(|((label, ok), id)| {
             let word = if *ok { "ok" } else { "error" };
             let (_, color) = status_of(word);
             TableRow {
-                id: format!("gate:{label}"),
+                id,
                 tags: Vec::new(),
                 cells: vec![
                     TableCell::Text(label.clone()),
@@ -264,6 +266,39 @@ pub fn status_table(checks_title: &str, holds_title: &str, rows: &[(String, bool
         })
         .collect();
     Section::Table(TableModel { columns, rows })
+}
+
+/// Row ids for rows whose natural ids are `bases`, in row order. The first row
+/// to take a base keeps it; each repeat takes `{base}#{n}` for the least
+/// `n >= 2` no row already has, so ids are unique and depend only on row order.
+fn unique_row_ids(bases: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut taken = HashSet::new();
+    let mut ordinals: HashMap<String, usize> = HashMap::new();
+    bases
+        .into_iter()
+        .map(|base| {
+            if taken.insert(base.clone()) {
+                return base;
+            }
+            let ordinal = ordinals.entry(base.clone()).or_insert(1);
+            loop {
+                *ordinal += 1;
+                let id = format!("{base}#{ordinal}");
+                if taken.insert(id.clone()) {
+                    return id;
+                }
+            }
+        })
+        .collect()
+}
+
+/// Id of the row a morphism paints as: `prefix`, its endpoints, and its kind,
+/// so parallel morphisms of different kinds differ.
+fn morphism_row_id(prefix: &str, morphism: &Morphism) -> String {
+    match &morphism.kind {
+        Some(kind) => format!("{prefix}:{}->{}:{kind}", morphism.domain, morphism.codomain),
+        None => format!("{prefix}:{}->{}", morphism.domain, morphism.codomain),
+    }
 }
 
 /// Whether a restriction names object sorts or morphism sorts.
@@ -502,14 +537,15 @@ impl TableSheaf {
                 }
             }
             RowScope::Morphisms => {
-                for morphism in &site.morphisms {
+                let ids = unique_row_ids(site.morphisms.iter().map(|morphism| morphism_row_id("morphism", morphism)));
+                for (morphism, id) in site.morphisms.iter().zip(ids) {
                     let cells = self
                         .columns
                         .iter()
                         .map(|column| morphism_cell(&column.cell, morphism, resolver))
                         .collect::<Result<Vec<_>, _>>()?;
                     rows.push(TableRow {
-                        id: format!("morphism:{}->{}", morphism.domain, morphism.codomain),
+                        id,
                         tags: Vec::new(),
                         cells,
                     });
@@ -944,7 +980,7 @@ impl AssemblySheaf {
                 TableCell::Text(stage_label(&resolver.stalks.stages, component.stage).to_owned()),
             ];
             rows.push(TableRow {
-                id: format!("component:{}", component.b0),
+                id: format!("component:{}", component.representative),
                 tags: Vec::new(),
                 cells,
             });
@@ -1020,11 +1056,13 @@ impl PhysicsSheaf {
                     physics_column("k", "k", TextAlign::Right),
                     physics_column("rest", "Rest", TextAlign::Right),
                 ];
+                let ids = unique_row_ids(site.morphisms.iter().map(|morphism| morphism_row_id("bond", morphism)));
                 let rows = section
                     .morphisms
                     .iter()
-                    .map(|(from, to, engine_type, weight, rest_length)| TableRow {
-                        id: format!("bond:{from}->{to}"),
+                    .zip(ids)
+                    .map(|((from, to, engine_type, weight, rest_length), id)| TableRow {
+                        id,
                         tags: Vec::new(),
                         cells: vec![
                             TableCell::Text(from.clone()),

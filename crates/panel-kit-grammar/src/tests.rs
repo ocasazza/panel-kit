@@ -8,6 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use panel_kit_core::widgets::table::TableCell;
+use proptest::prelude::{prop, prop_assert, prop_assert_eq, proptest, Strategy};
 
 use crate::error::SheafError;
 use crate::package::CompiledGrammar;
@@ -1179,4 +1180,142 @@ fn edit_decode_rejects_unknown_keys_and_validation_rejects_max_zero() {
         let table = EDIT_TABLE;
         assert!(matches!(table_topos(table, &edits).validate(), Err(ToposError::InvalidEdit { .. })), "{ty}");
     }
+}
+
+// --- Table row ids ------------------------------------------------------------
+
+const EDGE_KINDS: [&str; 3] = ["continues", "shares", "consolidates"];
+
+/// One table sheaf per row-id format: object and morphism rows, assembly
+/// components, physics objects and physics bonds.
+fn row_id_topos() -> Topos {
+    let column = |key: &str, expr: &str| {
+        format!(r##"{{"key":"{key}","title":"{key}","width":{{"flex":{{"weight":1}}}},"align":"left","cell":{{"cell":"text","expr":"{expr}"}}}}"##)
+    };
+    let sheaves = format!(
+        r##"{{"objs":{{"kind":"table","scope":"objects","edits":["triage"],"columns":[{id}]}},"edges":{{"kind":"table","scope":"morphisms","columns":[{source},{target},{edge}]}},"asm":{{"kind":"assembly","morphism_sorts":["continues","shares","consolidates"]}},"po":{{"kind":"physics","scope":"objects"}},"pm":{{"kind":"physics","scope":"morphisms"}}}}"##,
+        id = column("id", "id"),
+        source = column("from", "source"),
+        target = column("to", "target"),
+        edge = column("kind", "edge_kind"),
+    );
+    let mut topos = agentic_topos(&sheaves);
+    topos.edits = serde_json::from_str(STATUS_EDIT).unwrap();
+    topos
+}
+
+fn row_ids(sections: &crate::GlobalSections, binding: &str) -> Vec<String> {
+    match sections.get(binding) {
+        Some(Section::Table(table)) => table.rows.iter().map(|row| row.id.clone()).collect(),
+        other => panic!("{binding} is not a table: {other:?}"),
+    }
+}
+
+#[test]
+fn parallel_morphisms_get_distinct_row_ids_named_by_endpoints_and_kind() {
+    let mut site = demo_site();
+    site.morphisms = vec![
+        typed("p1", "c1", "continues"),
+        typed("p1", "c1", "shares"),
+        typed("p1", "c1", "continues"),
+        Morphism { domain: "p1".to_owned(), codomain: "c1".to_owned(), kind: None },
+    ];
+    let sections = row_id_topos().global_sections(&site, &physics_a()).unwrap();
+    let expected = [
+        "p1->c1:continues",
+        "p1->c1:shares",
+        "p1->c1:continues#2",
+        "p1->c1",
+    ];
+    assert_eq!(row_ids(&sections, "edges"), expected.map(|id| format!("morphism:{id}")));
+    assert_eq!(row_ids(&sections, "pm"), expected.map(|id| format!("bond:{id}")));
+}
+
+#[test]
+fn assembly_rows_are_identified_by_their_component() {
+    // Two disjoint pairs: every component has β0 = 1, so β0 cannot name a row.
+    let mut site = demo_site();
+    site.morphisms = vec![typed("p1", "c1", "continues"), typed("r1", "m1", "consolidates")];
+    let sections = row_id_topos().global_sections(&site, &physics_a()).unwrap();
+    assert_eq!(row_ids(&sections, "asm"), ["component:p1", "component:r1"]);
+}
+
+#[test]
+fn status_table_row_ids_stay_unique_when_labels_repeat_or_look_like_suffixes() {
+    let rows = [("a", true), ("a", false), ("a#2", true), ("a", true)].map(|(label, ok)| (label.to_owned(), ok));
+    let Section::Table(model) = status_table("Check", "Holds", &rows) else {
+        panic!("status table is a table");
+    };
+    let ids: Vec<&str> = model.rows.iter().map(|row| row.id.as_str()).collect();
+    assert_eq!(ids, ["gate:a", "gate:a#2", "gate:a#2#2", "gate:a#3"]);
+}
+
+/// Sites with unique object ids and morphisms inside up to three groups of
+/// objects, so a site often has several components: parallel, repeated,
+/// untyped and self-loop morphisms included.
+fn arb_site() -> impl Strategy<Value = Site> {
+    (2usize..8, 1usize..4).prop_flat_map(|(objects, groups)| {
+        let kinds = prop::collection::vec(0..E_OBJ.len(), objects);
+        let edge = (0..objects, 0..objects, prop::option::of(0..EDGE_KINDS.len()));
+        (kinds, prop::collection::vec(edge, 0..16)).prop_map(move |(kinds, edges)| Site {
+            objects: kinds.iter().enumerate().map(|(at, kind)| object(&format!("o{at}"), E_OBJ[*kind], "5")).collect(),
+            morphisms: edges
+                .into_iter()
+                .filter(|(from, to, _)| from % groups == to % groups)
+                .map(|(from, to, kind)| Morphism {
+                    domain: format!("o{from}"),
+                    codomain: format!("o{to}"),
+                    kind: kind.map(|kind| EDGE_KINDS[kind].to_owned()),
+                })
+                .collect(),
+        })
+    })
+}
+
+#[test]
+fn every_table_section_lists_unique_row_ids_that_name_their_rows() {
+    let topos = row_id_topos();
+    let physics = physics_a();
+    let extra = (0usize..64, 0usize..64, prop::option::of(0..EDGE_KINDS.len()));
+    proptest!(|(site in arb_site(), extra in extra)| {
+        let sections = topos.global_sections(&site, &physics).unwrap();
+        for binding in ["objs", "edges", "asm", "po", "pm"] {
+            let ids = row_ids(&sections, binding);
+            let distinct: BTreeSet<&String> = ids.iter().collect();
+            prop_assert_eq!(distinct.len(), ids.len(), "{} repeats a row id: {:?}", binding, ids);
+        }
+
+        // One row per object, morphism or bond: no row is dropped to make ids unique.
+        prop_assert_eq!(row_ids(&sections, "objs").len(), site.objects.len());
+        prop_assert_eq!(row_ids(&sections, "po").len(), site.objects.len());
+        prop_assert_eq!(row_ids(&sections, "edges").len(), site.morphisms.len());
+        prop_assert_eq!(row_ids(&sections, "pm").len(), site.morphisms.len());
+
+        // An object row's id is the id of the row edits behind it.
+        let edits: Vec<String> = sections.row_edits("objs").unwrap().iter().map(crate::RowEdits::row_id).collect();
+        prop_assert_eq!(row_ids(&sections, "objs"), edits);
+
+        // A morphism row's id names its endpoints and kind: it follows the
+        // morphism, not its position among parallel ones.
+        for (id, morphism) in row_ids(&sections, "edges").iter().zip(&site.morphisms) {
+            let named = match &morphism.kind {
+                Some(kind) => format!("morphism:{}->{}:{kind}", morphism.domain, morphism.codomain),
+                None => format!("morphism:{}->{}", morphism.domain, morphism.codomain),
+            };
+            prop_assert!(*id == named || id.starts_with(&format!("{named}#")), "{} does not name {:?}", id, morphism);
+        }
+
+        // Appending a morphism renames no existing row.
+        let mut grown = site.clone();
+        grown.morphisms.push(Morphism {
+            domain: format!("o{}", extra.0 % site.objects.len()),
+            codomain: format!("o{}", extra.1 % site.objects.len()),
+            kind: extra.2.map(|kind| EDGE_KINDS[kind].to_owned()),
+        });
+        let after = topos.global_sections(&grown, &physics).unwrap();
+        for binding in ["edges", "pm"] {
+            let before = row_ids(&sections, binding);
+            prop_assert_eq!(&row_ids(&after, binding)[..before.len()], &before[..], "{} renamed a row", binding);
+        }
+    });
 }
