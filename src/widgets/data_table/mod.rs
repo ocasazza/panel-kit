@@ -44,6 +44,8 @@ type OrderCache = Rc<
 type ViewCache = Rc<RefCell<Option<(Rc<Ordered>, BTreeSet<String>, Rc<View>)>>>;
 /// The selection and view last checked for every row selected, and the answer.
 type AllCache = Rc<RefCell<Option<(Rc<BTreeSet<String>>, Rc<View>, bool)>>>;
+/// The host's selection as last given, and the set built from it.
+type HostSelection = Rc<RefCell<Option<(Vec<String>, Rc<BTreeSet<String>>)>>>;
 
 /// How long the quick filter waits after a keystroke before re-querying.
 const QUICK_DEBOUNCE_MS: i32 = 150;
@@ -189,6 +191,35 @@ pub fn DataTable(
     let host_owned = state.is_some();
     let mut current = state.unwrap_or_else(|| owned.read().clone());
     current.sync(&columns);
+    // Rows that are not the last rows plus appended ones drop what the state
+    // holds of rows they lack: selection, anchor, cursor and tag focus. This
+    // render paints the pruned state; the effect below hands it on.
+    let rows_seen: Rc<RefCell<Option<TableData>>> = use_hook(|| Rc::new(RefCell::new(None)));
+    let replaced = rows_seen
+        .borrow_mut()
+        .replace(data.clone())
+        .is_some_and(|before| !data.extends(&before));
+    let dropped = replaced && current.retain_rows(&data);
+    // A replacement that dropped something is raised once: an owned state
+    // takes it, a host that owns the state applies the event, observers see it.
+    let drops = use_hook(|| Rc::new(Cell::new(0u32)));
+    drops.set(drops.get() + u32::from(dropped));
+    let drops = drops.get();
+    let rows = data.clone();
+    use_effect(use_reactive!(|(drops,)| {
+        if drops == 0 {
+            return;
+        }
+        if !host_owned {
+            let mut next = owned.peek().clone();
+            if next.retain_rows(&rows) {
+                owned.set(next);
+            }
+        }
+        if let Some(on_event) = on_event {
+            on_event.call(TableEvent::RowsReplaced);
+        }
+    }));
     let options = BuildOptions {
         mode: if on_query.is_some() {
             QueryMode::Server
@@ -249,8 +280,21 @@ pub fn DataTable(
     let visible_at: Vec<usize> = visible.iter().filter_map(|c| index_of(&c.id)).collect();
     let selectable = current.selectable;
     let multi = selectable == Selectable::Multi;
-    let selection: Rc<BTreeSet<String>> = match &selected {
-        Some(ids) => Rc::new(ids.iter().cloned().collect()),
+    // A host's list becomes a set once per change, not once per render.
+    let host_selection: HostSelection = use_hook(|| Rc::new(RefCell::new(None)));
+    let hosted = selected.is_some();
+    let selection: Rc<BTreeSet<String>> = match selected {
+        Some(ids) => {
+            let mut held = host_selection.borrow_mut();
+            match held.as_ref() {
+                Some((was, set)) if *was == ids => set.clone(),
+                _ => {
+                    let set: Rc<BTreeSet<String>> = Rc::new(ids.iter().cloned().collect());
+                    *held = Some((ids, set.clone()));
+                    set
+                }
+            }
+        }
         None => current.selection.clone(),
     };
     // Whether every row in view is selected: one lookup per row, so it is
@@ -261,7 +305,12 @@ pub fn DataTable(
         match slot.as_ref() {
             Some((s, v, all)) if Rc::ptr_eq(s, &selection) && Rc::ptr_eq(v, &view) => *all,
             _ => {
-                let all = view.ids(&data).all(|i| selection.contains(i));
+                // The state knows when select-all just made it so.
+                let all = if hosted {
+                    view.ids(&data).all(|i| selection.contains(i))
+                } else {
+                    current.all_selected(&view, &data)
+                };
                 *slot = Some((selection.clone(), view.clone(), all));
                 all
             }
