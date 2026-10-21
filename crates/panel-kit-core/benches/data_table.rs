@@ -193,6 +193,45 @@ fn state_ops(c: &mut Criterion) {
             BatchSize::LargeInput,
         )
     });
+    // The painter's every-row-selected check once select-all has left its
+    // record of what it covered, and the same selection without one.
+    group.bench_function("all_selected_after_select_all", |b| {
+        b.iter(|| all.all_selected(&view, &data))
+    });
+    let plain = TableState {
+        selection: all.selection.clone(),
+        ..multi.clone()
+    };
+    group.bench_function("all_selected_by_lookup", |b| {
+        b.iter(|| plain.all_selected(&view, &data))
+    });
+    // The rows were rebuilt: what the replacement costs the state, with every
+    // selected id kept and with one id selected.
+    let rebuilt = self::data(1_000_000);
+    group.bench_function("retain_rows_every_id_kept", |b| {
+        b.iter_batched(
+            || all.clone(),
+            |mut s| {
+                s.retain_rows(&rebuilt);
+                s
+            },
+            BatchSize::LargeInput,
+        )
+    });
+    let one = TableState {
+        selection: std::rc::Rc::new([view.id(&data, 900_000).to_string()].into()),
+        ..multi.clone()
+    };
+    group.bench_function("retain_rows_one_id_selected", |b| {
+        b.iter_batched(
+            || one.clone(),
+            |mut s| {
+                s.retain_rows(&rebuilt);
+                s
+            },
+            BatchSize::LargeInput,
+        )
+    });
     let mut parked = multi.clone();
     parked.cursor = Some(view.id(&data, 900_000).to_string());
     // Cursor set by a click: no remembered position, so the first key scans.
