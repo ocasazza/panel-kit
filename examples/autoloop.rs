@@ -19,7 +19,6 @@ use dioxus::events::{Key, KeyboardEvent, PointerEvent as DioxusPointerEvent};
 use dioxus::prelude::*;
 use panel_kit::CSS;
 use panel_kit_core::reducer::{Viewport, WorkspaceEvent};
-use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::ContentSpec;
 use panel_kit_core::Units;
 use panel_kit_grammar::Topos;

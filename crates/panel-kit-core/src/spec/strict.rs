@@ -419,7 +419,13 @@ fn walk_badge_spec(value: &serde_json::Value, pointer: &str, errors: &mut ErrorS
     let Some(object) = object_at(value, pointer, errors) else {
         return;
     };
-    check_fields(object, pointer, BADGE_SPEC_FIELDS, errors);
+    check_fields_with_optional(
+        object,
+        pointer,
+        BADGE_SPEC_FIELDS,
+        BADGE_SPEC_OPTIONAL_FIELDS,
+        errors,
+    );
 }
 
 fn walk_table_model(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
@@ -789,6 +795,7 @@ const BADGE_SPEC_FIELDS: &[&str] = &[
     "click_kind",
     "emit_hover",
 ];
+const BADGE_SPEC_OPTIONAL_FIELDS: &[&str] = &["tone", "variant"];
 const TABLE_MODEL_FIELDS: &[&str] = &["columns", "rows"];
 const TABLE_COLUMN_FIELDS: &[&str] = &["key", "title", "width", "align"];
 const TABLE_ROW_FIELDS: &[&str] = &["cells"];

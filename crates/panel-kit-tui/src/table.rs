@@ -11,8 +11,8 @@
 //! horizontally, and records the measured extent so wheel routing can consume
 //! the gesture.
 
-use panel_kit_core::widgets::meter as core_meter;
 use panel_kit_core::widgets::data_table::{SortDir, TableState};
+use panel_kit_core::widgets::meter as core_meter;
 use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableView, TextAlign};
 use panel_kit_core::PanelKey;
 use ratatui::layout::{Constraint, Rect};
@@ -85,7 +85,8 @@ pub fn table<K: PanelKey>(
     }))
     .style(Style::default().fg(t.dim));
     let rows = view.rows.iter().skip(offset.1 as usize).map(|row| {
-        let style = match (state.is_cursor(&row.id), state.is_selected(&row.id)) {
+        let cursor = state.cursor.as_deref() == Some(row.id.as_str());
+        let style = match (cursor, state.selection.contains(&row.id)) {
             (true, _) => Style::default().bg(t.accent).fg(t.bg),
             (false, true) => Style::default().fg(t.accent),
             (false, false) => Style::default(),

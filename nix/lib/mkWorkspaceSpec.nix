@@ -163,7 +163,7 @@ let
   normalizeText = pointer: value: normalizeByShape pointer [ "text" ] value value;
   normalizeBadges = pointer: items: mapIndex (index: normalizeBadge (join pointer index)) items;
   normalizeBadge = pointer: value:
-    let input = allowed pointer [ "kind" "field" "value" "active" "with_x" "with_plus" "small" "override_color" "accent_color" "click_kind" "emit_hover" ] value; in {
+    let input = allowed pointer [ "kind" "field" "value" "active" "with_x" "with_plus" "small" "override_color" "accent_color" "click_kind" "emit_hover" "tone" "variant" ] value; in {
       kind = normalizeBadgeKind (require pointer input "kind");
       field = require pointer input "field";
       value = require pointer input "value";
@@ -175,7 +175,8 @@ let
       accent_color = require pointer input "accent_color";
       click_kind = normalizeBadgeClick (require pointer input "click_kind");
       emit_hover = require pointer input "emit_hover";
-    };
+    } // lib.optionalAttrs (input ? tone) { inherit (input) tone; }
+      // lib.optionalAttrs (input ? variant) { inherit (input) variant; };
   normalizeBadgeKind = kind: if builtins.isString kind then { tag = "Tag"; doctype = "Doctype"; folder = "Folder"; author = "Author"; date = "Date"; status = "Status"; generic = "Generic"; }.${kind} or kind else kind;
   normalizeBadgeClick = click: if click == "toggle" then "Toggle" else if click == "clicked" then "Clicked" else click;
   normalizeTable = pointer: value:

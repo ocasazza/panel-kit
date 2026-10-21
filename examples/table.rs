@@ -1,71 +1,288 @@
-//! Table demo — one component, every table feature.
+//! Table demo: the board's work ledger in the one table component.
 //!
 //! Run with: `dx serve --example table --platform web`
 //!
-//! What it demonstrates:
-//! - Multi-column sort from the headers, each carrying its rank (1, 2, …).
-//! - A quick filter over every cell, plus a per-column filter row.
-//! - A tag ribbon with counts, any/all modes, and an expand control.
-//! - Column order, visibility, grouping with collapsed groups, and density.
-//! - Selection: single click toggles, shift extends a range, `a` selects all,
-//!   `Escape` clears; a keyboard cursor moves with the arrows.
-//! - A virtual window: only a slice of rows is mounted, with spacers sized by
-//!   the row height.
-//! - The state persisted in localStorage and exported as TSV or CSV by the
-//!   host (export is the host's call: it owns the clipboard and the file).
+//! A tag ribbon in the gutter, a bold id with its priority, layered status
+//! badges, finished rows dimmed, rows grouped by state, typed column filters,
+//! multi-column sort, drag-to-reorder and drag-to-resize headers, density,
+//! cards, a virtual window over ~270 rows, copy as TSV and CSV download, and
+//! the layout persisted in localStorage.
 
 use dioxus::prelude::*;
-use panel_kit::widgets::{csv, tsv, DataColumnSpec, DataRow, DataTable};
+use panel_kit::badge::Badge;
+use panel_kit::widgets::{DataColumnSpec, DataRow, DataTable};
 use panel_kit::CSS;
-use panel_kit_core::widgets::data_table::{
-    Density, Selectable, SortDir, SortSpec, TableDefaults, ViewMode,
-};
+use panel_kit_core::badge::{BadgeKind, BadgeSpec, BadgeTone, BadgeVariant};
+use panel_kit_core::widgets::data_table::{Selectable, SortKey, TableDefaults};
 
 const DEMO_CSS: &str = "
-body { overflow:auto !important; }
-.demo { max-width:72rem; margin:0 auto; padding:2rem; }
-.demo h1 { margin:0 0 .3rem; font-size:.8rem; }
-.demo p.hint { margin:0 0 1rem; color:var(--dim); font-size:.72rem; }
-.pk-dt-cursor td { outline:1px solid var(--accent); outline-offset:-1px; }
-.export { margin-top:.6rem; display:flex; gap:.4rem; align-items:center; }
-.export button { background:var(--bg); color:var(--dim); border:1px solid var(--line2);
-  border-radius:3px; padding:.15rem .5rem; font-size:.68rem; cursor:pointer; }
-.export pre { flex:1; margin:0; color:var(--dim); font-size:.66rem; max-height:7rem; overflow:auto;
-  white-space:pre-wrap; }
+body { overflow:hidden !important; }
+.demo { height:100vh; box-sizing:border-box; padding:1.5rem 2rem; display:flex; flex-direction:column; }
+.demo h1 { margin:0 0 .5rem; font:700 11px/1.4 var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--dim); }
+.demo .pk-dt { flex:1 1 auto; min-height:0; }
+.item-id { font-weight:700; }
+.item-priority { margin-left:8px; font:11px/1.4 var(--mono); letter-spacing:.06em; color:var(--dim); }
+.badges { display:inline-flex; gap:0; }
 ";
+
+struct Work {
+    id: u32,
+    priority: u8,
+    title: &'static str,
+    agent: Option<&'static str>,
+    state: &'static str,
+    stale: bool,
+    age_secs: u64,
+    tags: Vec<&'static str>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn item(
+    id: u32,
+    priority: u8,
+    title: &'static str,
+    agent: Option<&'static str>,
+    state: &'static str,
+    stale: bool,
+    age_secs: u64,
+    tags: &[&'static str],
+) -> Work {
+    Work {
+        id,
+        priority,
+        title,
+        agent,
+        state,
+        stale,
+        age_secs,
+        tags: tags.to_vec(),
+    }
+}
+
+const DAY: u64 = 86_400;
+const MBP: Option<&str> = Some("FHKDV644W6-MBP");
+const SELFDEV: Option<&str> = Some("selfdev@FHKDV644W6-MBP");
+
+const TOPICS: [&str; 12] = [
+    "Trace the ingest path end to end",
+    "Dock restore forgets the section it held",
+    "Model health lag hides a demotion",
+    "Raft mux retries a refused key",
+    "The ledger prunes a done item twice",
+    "Seat restart keeps the warm weights",
+    "Quorum check steps down on one missed beat",
+    "Board column widths survive a reload",
+    "Book-keeper drops an orphaned claim",
+    "Cluster view groups hosts by rack",
+    "Asks toast stacks under the dock",
+    "Gateway retries a 429 with backoff",
+];
+const TAGS: [&str; 9] = [
+    "infra",
+    "ui",
+    "raft",
+    "ops",
+    "docs",
+    "gpu",
+    "api",
+    "design",
+    "book-keeper",
+];
+
+fn work() -> Vec<Work> {
+    let mut all = vec![
+        item(
+            42,
+            2,
+            "Assistant role: the human \u{2194} agents bridge",
+            MBP,
+            "claimed",
+            true,
+            11 * DAY,
+            &["agent", "ux", "web"],
+        ),
+        item(
+            41,
+            2,
+            "Jujutsu (jj) for imp work tracking",
+            MBP,
+            "claimed",
+            true,
+            11 * DAY,
+            &["agent", "git", "web"],
+        ),
+        item(
+            36,
+            2,
+            "Agent roles imps can assume (github, ops, review)",
+            MBP,
+            "claimed",
+            true,
+            11 * DAY,
+            &["agent", "web"],
+        ),
+        item(
+            32,
+            2,
+            "Program-of-Thought and Graph-of-Thought planners",
+            MBP,
+            "claimed",
+            true,
+            11 * DAY,
+            &["agent", "research"],
+        ),
+        item(
+            2100,
+            1,
+            "Judge: confirm a goal once, not every turn",
+            SELFDEV,
+            "done",
+            false,
+            5 * DAY,
+            &["kitchen"],
+        ),
+        item(
+            2088,
+            1,
+            "Appendix A.1 planner reserve prose",
+            SELFDEV,
+            "done",
+            false,
+            5 * DAY,
+            &["kitchen"],
+        ),
+        item(
+            45,
+            0,
+            "err clara: ask failed 17:25:58 provider timeout",
+            None,
+            "open",
+            false,
+            3_600,
+            &[],
+        ),
+        item(
+            31,
+            1,
+            "Seats executor: launch llama-server per seat",
+            None,
+            "open",
+            false,
+            3_600,
+            &["inference", "roles"],
+        ),
+    ];
+    for n in 0..259usize {
+        let tags: Vec<&str> = match n % 4 {
+            0 => vec![],
+            1 => vec![TAGS[(n * 7) % TAGS.len()]],
+            _ => vec![TAGS[(n * 7) % TAGS.len()], TAGS[(n * 3 + 1) % TAGS.len()]],
+        };
+        all.push(item(
+            100 + n as u32,
+            (n % 4) as u8,
+            TOPICS[n % TOPICS.len()],
+            None,
+            "open",
+            false,
+            3_600 * (1 + n as u64 % 90),
+            &tags,
+        ));
+    }
+    all
+}
+
+fn ago(secs: u64) -> String {
+    match secs {
+        s if s >= DAY => format!("{}d", s / DAY),
+        s if s >= 3_600 => format!("{}h", s / 3_600),
+        s => format!("{}m", s / 60),
+    }
+}
+
+fn badge(value: &str, tone: BadgeTone, variant: BadgeVariant) -> Element {
+    let spec = BadgeSpec {
+        small: true,
+        ..BadgeSpec::new("state", value, BadgeKind::Status)
+    }
+    .with_tone(tone, variant);
+    rsx! { Badge { spec, on_action: move |_| {} } }
+}
+
+fn state_tone(state: &str) -> BadgeTone {
+    match state {
+        "claimed" | "in_progress" => BadgeTone::Info,
+        "review" => BadgeTone::Warn,
+        "blocked" => BadgeTone::Err,
+        "done" => BadgeTone::Ok,
+        _ => BadgeTone::Neutral,
+    }
+}
 
 fn columns() -> Vec<DataColumnSpec> {
     vec![
-        DataColumnSpec::new("id", "Item").pinned(),
-        DataColumnSpec::new("priority", "P"),
-        DataColumnSpec::new("title", "Title"),
-        DataColumnSpec::new("tokens", "Tokens"),
-        DataColumnSpec::new("state", "State"),
-        DataColumnSpec::new("agent", "Agent"),
+        DataColumnSpec::new("item", "item").pinned().width("15ch"),
+        DataColumnSpec::new("title", "title").class("pk-dt-col-title"),
+        DataColumnSpec::new("agent", "agent")
+            .enumerated()
+            .width("26ch")
+            .narrow(),
+        DataColumnSpec::new("state", "state")
+            .enumerated()
+            .width("20ch"),
+        DataColumnSpec::new("since", "since").number().width("7ch"),
+        DataColumnSpec::new("type", "type")
+            .enumerated()
+            .width("6ch")
+            .narrow(),
     ]
 }
 
 fn rows() -> Vec<DataRow> {
-    let data: [(&str, &str, &str, u32, &str, &str, &[&str]); 8] = [
-        ("imp-9", "P2", "Trace the ingest path end to end", 940, "open", "—", &["ingest"]),
-        ("imp-10", "P1", "Seat restart keeps the warm weights", 12_400, "claimed", "selfdev", &["p1", "seat"]),
-        ("imp-3", "P2", "The ledger prunes a done item twice", 310, "review", "—", &["ingest"]),
-        ("imp-1", "P0", "Quorum check steps down on one missed beat", 88_150, "done", "selfdev", &["p1"]),
-        ("imp-42", "P3", "Dock restore forgets the section it held", 75, "open", "—", &["seat"]),
-        ("imp-7", "P1", "Model health lag hides a demotion", 2_050, "blocked", "selfdev", &["p1", "ingest"]),
-        ("imp-51", "P1", "Seats executor launches llama-server", 6_400, "open", "—", &["seat"]),
-        ("imp-64", "P2", "Raft mux retries a refused key", 480, "review", "selfdev", &["p1"]),
-    ];
-    data.into_iter()
-        .map(|(id, priority, title, tokens, state, agent, tags)| {
-            DataRow::new(id)
-                .text(id)
-                .text(priority)
-                .text(title)
-                .num(Some(f64::from(tokens)), tokens.to_string())
-                .text(state)
-                .text(agent)
-                .tags(tags)
+    work()
+        .into_iter()
+        .map(|w| {
+            let id = format!("imp-{}", w.id);
+            let agent = w.agent.unwrap_or("\u{2014}");
+            let row = DataRow::new(id.clone())
+                .tags(&w.tags)
+                .cell(
+                    rsx! {
+                        span { class: "item-id", "{id}" }
+                        span { class: "item-priority", "P{w.priority}" }
+                    },
+                    SortKey::text(&id),
+                    id.clone(),
+                )
+                .text(w.title)
+                .cell(
+                    rsx! { "{agent}" },
+                    w.agent.map(SortKey::text).unwrap_or(SortKey::Missing),
+                    w.agent.unwrap_or(""),
+                )
+                .cell(
+                    rsx! {
+                        span { class: "badges",
+                            {badge(w.state, state_tone(w.state), BadgeVariant::Solid)}
+                            if w.stale {
+                                {badge("stale\u{2026}", BadgeTone::Warn, BadgeVariant::Outline)}
+                            }
+                        }
+                    },
+                    SortKey::text(w.state),
+                    w.state,
+                )
+                .cell(
+                    rsx! { "{ago(w.age_secs)}" },
+                    SortKey::num(w.age_secs as f64),
+                    w.age_secs.to_string(),
+                )
+                .text("T");
+            if w.state == "done" {
+                row.muted()
+            } else {
+                row
+            }
         })
         .collect()
 }
@@ -76,64 +293,23 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    let columns = use_hook(columns);
-    let rows = use_hook(rows);
-    let mut export = use_signal(|| None::<String>);
-
-    let visible: Vec<bool> = columns.iter().map(|_| true).collect();
-    let shown: Vec<usize> = (0..rows.len()).collect();
-
     rsx! {
         style { {CSS} }
         style { {DEMO_CSS} }
         main { class: "demo",
-            h1 { "table · one component" }
-            p { class: "hint",
-                "headers sort (ranked) · type to filter · #tags narrow · columns / group / dense in the bar · click selects, shift extends, arrows move, a selects all, esc clears"
-            }
+            h1 { "work" }
             DataTable {
-                columns: columns.clone(),
-                rows: rows.clone(),
+                id: "work",
+                label: "work",
+                columns: columns(),
+                rows: rows(),
                 defaults: TableDefaults {
-                    sort: vec![SortSpec { column: "id".into(), dir: SortDir::Asc }],
-                    density: Density::Normal,
-                    group_by: None,
-                    selectable: Selectable::Multi,
-                    view: ViewMode::Rows,
-                    hidden: Default::default(),
+                    group_by: Some("state".into()),
+                    selectable: Selectable::Single,
+                    ..TableDefaults::default()
                 },
-                storage_key: Some("panel_kit_example_table".to_string()),
-                placeholder: "filter items…",
-            }
-            div { class: "export",
-                {
-                    let tsv_columns = columns.clone();
-                    let tsv_rows = rows.clone();
-                    let tsv_visible = visible.clone();
-                    let tsv_shown = shown.clone();
-                    rsx! {
-                        button {
-                            onclick: move |_| {
-                                export.set(Some(tsv(&tsv_columns, &tsv_rows, &tsv_visible, &tsv_shown)));
-                            },
-                            "copy as TSV"
-                        }
-                    }
-                }
-                {
-                    let csv_columns = columns.clone();
-                    let csv_rows = rows.clone();
-                    let csv_shown = shown.clone();
-                    rsx! {
-                        button {
-                            onclick: move |_| {
-                                export.set(Some(csv(&csv_columns, &csv_rows, &visible, &csv_shown)));
-                            },
-                            "download as CSV"
-                        }
-                    }
-                }
-                pre { {export.read().clone().unwrap_or_default()} }
+                windowed: true,
+                storage_key: Some("panel_kit_example_work".to_string()),
             }
         }
     }
