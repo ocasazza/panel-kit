@@ -4,6 +4,7 @@ mod support;
 use panel_kit_core::frame::ProjectionBuffer;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
 use panel_kit_core::widgets::table::{
+    TableState,
     ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
 };
 use panel_kit_core::Mode;
@@ -105,6 +106,8 @@ fn node_columns() -> Vec<TableColumn> {
 fn node_rows(count: usize) -> Vec<TableRow> {
     (0..count)
         .map(|i| TableRow {
+            id: format!("row-{i}"),
+            tags: Vec::new(),
             cells: vec![
                 TableCell::Text(format!("n{i:02}")),
                 TableCell::Text(format!("{}", i % 10)),
@@ -353,7 +356,9 @@ fn table_bodies_scroll_rows_under_a_sticky_header() {
             &mut panels,
             TableView {
                 columns: &columns,
-                rows: &rows,
+                rows: &rows.iter().collect::<Vec<_>>(),
+                state: &TableState::default(),
+                total: rows.len(),
             },
         );
     });
@@ -372,7 +377,9 @@ fn table_bodies_scroll_rows_under_a_sticky_header() {
             &mut panels,
             TableView {
                 columns: &columns,
-                rows: &rows,
+                rows: &rows.iter().collect::<Vec<_>>(),
+                state: &TableState::default(),
+                total: rows.len(),
             },
         );
     });
@@ -398,7 +405,9 @@ fn table_wheels_scroll_columns_horizontally_when_fixed_widths_overflow() {
             &mut panels,
             TableView {
                 columns: &columns,
-                rows: &rows,
+                rows: &rows.iter().collect::<Vec<_>>(),
+                state: &TableState::default(),
+                total: rows.len(),
             },
         );
     });
@@ -420,7 +429,9 @@ fn table_wheels_scroll_columns_horizontally_when_fixed_widths_overflow() {
             &mut panels,
             TableView {
                 columns: &columns,
-                rows: &rows,
+                rows: &rows.iter().collect::<Vec<_>>(),
+                state: &TableState::default(),
+                total: rows.len(),
             },
         );
     });

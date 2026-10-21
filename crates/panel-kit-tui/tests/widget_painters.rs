@@ -11,6 +11,7 @@ use panel_kit_core::widgets::charts::{
 use panel_kit_core::widgets::meter::{self as core_meter, MeterModel};
 use panel_kit_core::widgets::status::{StatusModel, StatusState};
 use panel_kit_core::widgets::table::{
+    TableState,
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
 };
 use panel_kit_tui::scroll::PanelScroll;
@@ -91,7 +92,9 @@ fn canary_node_table_is_buffer_identical_after_core_model_switch() {
     let area = Rect::new(0, 0, 38, 4);
     let view = TableView {
         columns: &model.columns,
-        rows: &model.rows,
+        rows: &model.rows.iter().collect::<Vec<_>>(),
+        state: &TableState::default(),
+        total: model.rows.len(),
     };
 
     let mut panels = test_registry();
@@ -157,6 +160,8 @@ fn widget_painters_render_core_models_to_test_backend() {
         },
     ];
     let rows = vec![TableRow {
+        id: "r1".into(),
+        tags: Vec::new(),
         cells: vec![
             TableCell::Status {
                 label: "pdx-01".into(),
@@ -172,7 +177,9 @@ fn widget_painters_render_core_models_to_test_backend() {
     }];
     let view = TableView {
         columns: &columns,
-        rows: &rows,
+        rows: &rows.iter().collect::<Vec<_>>(),
+        state: &TableState::default(),
+        total: rows.len(),
     };
     let status_model = StatusModel {
         label: "ready".into(),
@@ -338,7 +345,9 @@ fn render_core_canary_provider_buffer() -> ratatui::buffer::Buffer {
     let boxes = metrics.boxes();
     let table_view = TableView {
         columns: &table_model.columns,
-        rows: &table_model.rows,
+        rows: &table_model.rows.iter().collect::<Vec<_>>(),
+        state: &TableState::default(),
+        total: table_model.rows.len(),
     };
 
     render_to_buffer_size(96, 24, |frame| {

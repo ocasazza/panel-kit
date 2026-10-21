@@ -610,6 +610,14 @@ button { font-family:var(--mono); }
   box-shadow:inset 2px 0 0 var(--accent);
   background:color-mix(in srgb, var(--accent) 8%, var(--bg)); }
 .pk-table-empty { padding:.5rem .55rem; color:var(--dim); text-align:center; }
+/* A header asks for a sort; the marker is painted by the painter, so the
+   affordance is "this is clickable", not a second glyph. */
+.pk-table-sortable { cursor:pointer; user-select:none; }
+.pk-table-sortable:hover { color:var(--fg); }
+.pk-table-sortable.sorted { color:var(--fg); }
+/* Focus is an outline rather than a background, so a focused row that is
+   also selected keeps both facts legible. */
+.pk-table-row.focused { outline:1px solid var(--accent); outline-offset:-1px; }
 
 /* === data table: filter, sort, column visibility === */
 .pk-dt { display:flex; flex-direction:column; gap:.3rem; min-height:0; }

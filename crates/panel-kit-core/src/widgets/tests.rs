@@ -96,6 +96,8 @@ fn all_content_spec_variants() -> [ContentSpec; 12] {
                         align: table::TextAlign::Left,
                     }],
                     rows: vec![table::TableRow {
+                        id: "api".into(),
+                        tags: vec![],
                         cells: vec![table::TableCell::Text("api".into())],
                     }],
                 },

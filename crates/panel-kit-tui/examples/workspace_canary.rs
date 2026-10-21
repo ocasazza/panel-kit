@@ -10,7 +10,7 @@ use panel_kit_core::widgets::charts::{
 };
 #[cfg(feature = "spec-plan")]
 use panel_kit_core::widgets::table::{
-    ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
+    ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableState, TextAlign,
 };
 #[cfg(feature = "spec-plan")]
 use panel_kit_tui::badge::hue_color;
@@ -105,6 +105,8 @@ pub fn node_rows() -> TableModel {
 fn node_row(name: &str, healthy: bool, load: f64, detail: &str) -> TableRow {
     let color = if healthy { GREEN.rgb } else { RED.rgb };
     TableRow {
+    id: name.to_string(),
+    tags: Vec::new(),
         cells: vec![
             TableCell::Status {
                 label: name.into(),
@@ -652,7 +654,9 @@ pub mod content {
             &mut demo.panels,
             TableView {
                 columns: &model.columns,
-                rows: &model.rows,
+                rows: &model.rows.iter().collect::<Vec<_>>(),
+                state: &panel_kit_core::widgets::table::TableState::default(),
+                total: model.rows.len(),
             },
         );
     }

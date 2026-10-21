@@ -70,13 +70,24 @@ pub fn table<K: PanelKey>(
     let columns: &[TableColumn] = &view.columns[offset.0.min(view.columns.len() as u16) as usize..];
 
     let widths = columns.iter().map(|column| width_constraint(column.width));
-    let header = Row::new(
-        columns
-            .iter()
-            .map(|column| Cell::from(align_line(Line::from(column.title.as_str()), column.align))),
-    )
+    // A sorted column carries its direction in the header, as the web painter
+    // does, so a reader knows why the rows are in this order.
+    let header = Row::new(columns.iter().map(|column| {
+        let marker = match view.state.sort_direction(&column.key) {
+            Some(true) => "\u{25bc}",
+            Some(false) => "\u{25b2}",
+            None => "",
+        };
+        let title = format!("{}{marker}", column.title);
+        Cell::from(align_line(Line::from(title), column.align))
+    }))
     .style(Style::default().fg(t.dim));
     let rows = view.rows.iter().skip(offset.1 as usize).map(|row| {
+        let style = match (view.state.is_focused(&row.id), view.state.is_selected(&row.id)) {
+            (true, _) => Style::default().bg(t.accent).fg(t.bg),
+            (false, true) => Style::default().fg(t.accent),
+            (false, false) => Style::default(),
+        };
         Row::new(
             row.cells
                 .iter()
@@ -84,6 +95,7 @@ pub fn table<K: PanelKey>(
                 .zip(columns)
                 .map(|(cell, column)| Cell::from(align_line(semantic_line(cell, t), column.align))),
         )
+        .style(style)
     });
 
     f.render_widget(Table::new(rows, widths).header(header), body);

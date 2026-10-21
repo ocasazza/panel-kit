@@ -19,6 +19,7 @@ use dioxus::events::{Key, KeyboardEvent, PointerEvent as DioxusPointerEvent};
 use dioxus::prelude::*;
 use panel_kit::CSS;
 use panel_kit_core::reducer::{Viewport, WorkspaceEvent};
+use panel_kit_core::widgets::table::{TableCommand, TableState};
 use panel_kit_core::widgets::ContentSpec;
 use panel_kit_core::Units;
 use panel_kit_grammar::Topos;
@@ -168,11 +169,26 @@ fn host_content(host: Host, mut draft: Signal<Option<EditDraft>>, id: &str, cont
             .as_ref()
             .filter(|d| d.binding == id)
             .and_then(|d| offered.iter().position(|(object, _)| *object == d.object));
+        // The draft is the source of truth; this render derives the table's
+        // focus from it and turns a focused row back into an open draft.
         let binding = id.to_owned();
+        let shown: Vec<String> = offered.iter().map(|(object, _)| object.clone()).collect();
+        let focus = selected.and_then(|index| shown.get(index).cloned());
+        let state = TableState {
+            focus,
+            ..TableState::default()
+        };
+        let chosen = shown.clone();
         RowSelect {
-            selected,
-            on_row: EventHandler::new(move |row: usize| {
-                if let Some((object, Some(edit))) = offered.get(row) {
+            state,
+            on_command: EventHandler::new(move |command: TableCommand| {
+                let TableCommand::Focus(id) = command else {
+                    return;
+                };
+                let Some(index) = chosen.iter().position(|object| object == &id) else {
+                    return;
+                };
+                if let Some((object, Some(edit))) = offered.get(index) {
                     draft.set(open_draft(host, &binding, object, edit));
                 }
             }),

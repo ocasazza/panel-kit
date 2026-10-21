@@ -8,7 +8,8 @@ use panel_kit_core::frame::{DockProjection, Placement, TileGridProjection};
 use panel_kit_core::panel::PanelCatalog;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
 use panel_kit_core::widgets::table::{
-    ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
+    ColumnWidth, Density, TableCell, TableColumn, TableCommand, TableRow, TableState, TableView,
+    TextAlign,
 };
 use panel_kit_core::{
     FocusContext, Key, KeyChord, PointerButton, PointerEvent, PointerEventKind, Region,
@@ -192,24 +193,34 @@ fn InteractiveTableProbe() -> Element {
         align: TextAlign::Left,
     }];
     let rows = [TableRow {
+        id: "r1".into(),
+        tags: Vec::new(),
         cells: vec![TableCell::Text(
             "a long policy value preserved in the tooltip".into(),
         )],
     }];
 
     rsx! {
-        {panel_kit::widgets::table::table(
-            TableView { columns: &columns, rows: &rows },
-            Some(0),
-            Some(EventHandler::new(|_: usize| {})),
-            true,
-        )}
-        {panel_kit::widgets::table::table(
-            TableView { columns: &columns, rows: &[] },
-            None,
-            None,
-            false,
-        )}
+        {{
+            let state = TableState {
+                focus: Some("r1".into()),
+                selected: vec!["r1".into()],
+                density: Density::Dense,
+                ..TableState::default()
+            };
+            let shown: Vec<&TableRow> = rows.iter().collect();
+            panel_kit::widgets::table::table(
+                TableView { columns: &columns, rows: &shown, state: &state, total: rows.len() },
+                Some(EventHandler::new(|_: TableCommand| {})),
+            )
+        }}
+        {{
+            let state = TableState::default();
+            panel_kit::widgets::table::table(
+                TableView { columns: &columns, rows: &[], state: &state, total: 3 },
+                None,
+            )
+        }}
     }
 }
 
@@ -221,16 +232,22 @@ fn table_exposes_host_selection_density_tooltips_and_empty_state() {
         html.contains("class=\"pk-widget pk-table pk-table-dense\""),
         "{html}"
     );
+    // Focus and selection come from the host state, keyed by row id.
     assert!(
-        html.contains("class=\"pk-table-row selected clickable\""),
+        html.contains("class=\"pk-table-row focused selected clickable\""),
         "{html}"
     );
+    assert!(html.contains("aria-current=\"true\""), "{html}");
+    assert!(html.contains("aria-selected=true"), "{html}");
+    // A sortable header says its own state before anyone sorts it.
+    assert!(html.contains("aria-sort=\"none\""), "{html}");
     assert!(
         html.contains("title=\"a long policy value preserved in the tooltip\""),
         "{html}"
     );
+    // The empty state of a filtered table names what it hid.
     assert!(html.contains("class=\"pk-table-empty\""), "{html}");
-    assert!(html.contains("no rows"), "{html}");
+    assert!(html.contains("3 rows, none matching the filter"), "{html}");
 }
 
 #[test]

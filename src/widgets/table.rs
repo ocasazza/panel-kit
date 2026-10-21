@@ -2,7 +2,9 @@
 
 use dioxus::prelude::*;
 use panel_kit_core::badge::Rgb;
-use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableView, TextAlign};
+use panel_kit_core::widgets::table::{
+    ColumnWidth, Density, TableCell, TableColumn, TableCommand, TableView, TextAlign,
+};
 
 fn align_css(align: TextAlign) -> &'static str {
     match align {
@@ -61,58 +63,83 @@ fn cell(cell: &TableCell, align: TextAlign) -> Element {
     }
 }
 
-/// Paint borrowed semantic table data with host-owned selection and row actions.
+/// Paint one table episode: the ordered, filtered window the host computed,
+/// with the host's sort, focus and selection shown.
 ///
-/// `selected` only controls presentation; this painter never retains selection
-/// state. `on_row_click` makes rows interactive when present, while `dense`
-/// selects the compact padding variant. Every cell carries its complete value
-/// in a `title` tooltip so clipped text remains available.
-pub fn table(
-    view: TableView<'_>,
-    selected: Option<usize>,
-    on_row_click: Option<EventHandler<usize>>,
-    dense: bool,
-) -> Element {
-    let table_class = if dense {
-        "pk-widget pk-table pk-table-dense"
-    } else {
-        "pk-widget pk-table"
+/// The painter owns no state. A header click asks for `SortBy`, a row click
+/// focuses by id, and both arrive through `on_command` — a host that wants a
+/// read-only table passes `None` and gets plain headers.
+pub fn table(view: TableView<'_>, on_command: Option<EventHandler<TableCommand>>) -> Element {
+    let table_class = match view.state.density {
+        Density::Dense => "pk-widget pk-table pk-table-dense",
+        Density::Comfortable => "pk-widget pk-table",
     };
-    let clickable = on_row_click.is_some();
     let column_count = view.columns.len().max(1);
+    let interactive = on_command.is_some();
 
     rsx! {
         div { class: "pk-table-wrap",
-            table { class: "{table_class}",
+            table { class: "{table_class}", role: "grid",
                 thead {
                     tr {
                         for column in view.columns.iter() {
-                            th {
-                                scope: "col",
-                                title: "{column.title}",
-                                style: "{column_style(column)}",
-                                "{column.title}"
+                            {
+                                let key = column.key.clone();
+                                let clicked = key.clone();
+                                let direction = view.state.sort_direction(&key);
+                                let marker = match direction {
+                                    Some(true) => " \u{25bc}",
+                                    Some(false) => " \u{25b2}",
+                                    None => "",
+                                };
+                                let header_class = match direction {
+                                    Some(_) => "pk-table-sortable sorted",
+                                    None => "pk-table-sortable",
+                                };
+                                rsx! {
+                                    th {
+                                        scope: "col",
+                                        class: "{header_class}",
+                                        title: "{column.title}",
+                                        style: "{column_style(column)}",
+                                        aria_sort: match direction {
+                                            Some(true) => "descending",
+                                            Some(false) => "ascending",
+                                            None => "none",
+                                        },
+                                        onclick: move |_| {
+                                            if let Some(handler) = on_command {
+                                                handler.call(TableCommand::SortBy(clicked.clone()));
+                                            }
+                                        },
+                                        "{column.title}{marker}"
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 tbody {
-                    for (row_index, row) in view.rows.iter().enumerate() {
+                    for row in view.rows.iter().copied() {
                         {
-                            let row_class = match (selected == Some(row_index), clickable) {
-                                (true, true) => "pk-table-row selected clickable",
-                                (true, false) => "pk-table-row selected",
-                                (false, true) => "pk-table-row clickable",
-                                (false, false) => "pk-table-row",
+                            let focused = view.state.is_focused(&row.id);
+                            let selected = view.state.is_selected(&row.id);
+                            let id = row.id.clone();
+                            let row_class = match (focused, selected, interactive) {
+                                (true, _, true) => "pk-table-row focused selected clickable",
+                                (false, true, true) => "pk-table-row selected clickable",
+                                (_, _, true) => "pk-table-row clickable",
+                                _ => "pk-table-row",
                             };
                             rsx! {
                                 tr {
-                                    key: "row-{row_index}",
+                                    key: "{row.id}",
                                     class: "{row_class}",
-                                    aria_selected: selected.map(|index| index == row_index),
+                                    aria_selected: selected,
+                                    aria_current: if focused { "true" } else { "false" },
                                     onclick: move |_| {
-                                        if let Some(handler) = on_row_click {
-                                            handler.call(row_index);
+                                        if let Some(handler) = on_command {
+                                            handler.call(TableCommand::Focus(id.clone()));
                                         }
                                     },
                                     for (index, cell_value) in row.cells.iter().enumerate() {
@@ -133,7 +160,11 @@ pub fn table(
                             td {
                                 class: "pk-table-empty",
                                 colspan: "{column_count}",
-                                "no rows"
+                                if view.total > 0 {
+                                    "{view.total} rows, none matching the filter"
+                                } else {
+                                    "no rows"
+                                }
                             }
                         }
                     }
