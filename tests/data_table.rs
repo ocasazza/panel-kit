@@ -4,8 +4,9 @@
 use dioxus::prelude::*;
 use panel_kit::widgets::{Control, DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
 use panel_kit_core::widgets::data_table::{
-    Align, ColumnFilter, Density, ScrollMap, Selectable, SortDir, SortSpec, TableDefaults,
-    TableEvent, TableState, TableWindow, View, ViewMode, Viewport, MAX_SCROLL, WINDOW_COUNT,
+    Align, BuildOptions, ColumnFilter, Density, ScrollMap, SelectMode, Selectable, SortDir,
+    SortSpec, TableDefaults, TableEvent, TableState, TableWindow, View, ViewMode, Viewport,
+    MAX_SCROLL, WINDOW_COUNT,
 };
 use rstest::rstest;
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -914,9 +915,9 @@ fn Hosted() -> Element {
     rsx! { DataTable { id: "t", columns: columns(), data: data(), state: state(), on_event } }
 }
 
-fn hosted(first_rows: usize, state: TableState) -> (VirtualDom, Rc<Rig>) {
+fn hosted(data: TableData, state: TableState) -> (VirtualDom, Rc<Rig>) {
     let rig = Rc::new(Rig {
-        first: (table(&columns(), &rows(first_rows)), state),
+        first: (data, state),
         data: Cell::new(None),
         state: Cell::new(None),
         heard: RefCell::default(),
@@ -945,7 +946,7 @@ fn replaced_rows_drop_a_host_owned_selection_of_rows_they_lack_and_tell_the_host
         cursor: Some("imp-6".into()),
         ..chosen(&["imp-1", "imp-6"])
     };
-    let (mut dom, rig) = hosted(6, state);
+    let (mut dom, rig) = hosted(table(&columns(), &rows(6)), state);
     assert!(painted(&dom).has(">6 rows, 2 selected<"));
 
     let mut data = rig.data.get().expect("the table rendered");
@@ -970,7 +971,7 @@ fn replaced_rows_drop_a_host_owned_selection_of_rows_they_lack_and_tell_the_host
 
 #[test]
 fn appended_rows_leave_a_selection_alone_so_an_id_chosen_ahead_of_its_row_waits() {
-    let (mut dom, rig) = hosted(3, chosen(&["imp-1", "imp-20"]));
+    let (mut dom, rig) = hosted(table(&columns(), &rows(3)), chosen(&["imp-1", "imp-20"]));
     assert!(painted(&dom).has(">3 rows, 2 selected<"));
 
     let mut data = rig.data.get().expect("the table rendered");
@@ -994,6 +995,39 @@ fn appended_rows_leave_a_selection_alone_so_an_id_chosen_ahead_of_its_row_waits(
     assert!(html.has(">20 rows, 2 selected<"), "{}", html.0);
     assert!(html.row("imp-20").contains("aria-selected=\"true\""));
     assert!(rig.heard.borrow().is_empty(), "{:?}", rig.heard.borrow());
+}
+
+/// The header box, from the markup.
+fn all_box(dom: &VirtualDom) -> String {
+    painted(dom).tag("input", "data-dt-check-all").to_string()
+}
+
+/// Select-all leaves a record of what it covered, held against the selection
+/// and the data: the header box follows it, and follows the selection once a
+/// row is deselected.
+#[test]
+fn the_header_box_follows_select_all_and_a_row_deselected_after_it() {
+    let columns = columns();
+    let data = table(&columns, &rows(5));
+    let mut state = TableState {
+        selectable: Selectable::Multi,
+        ..state()
+    };
+    let view = View::build(&columns, &data, &state, BuildOptions::default());
+    state.select_all(&view, &data);
+    let (mut dom, rig) = hosted(data.clone(), state.clone());
+    assert!(all_box(&dom).contains("checked"), "{}", all_box(&dom));
+    assert!(painted(&dom).has(">5 rows, 5 selected<"));
+
+    let host = rig.state.get().expect("the host holds state");
+    dom.in_runtime(|| {
+        let mut next = state.clone();
+        next.select("imp-3", SelectMode::Toggle, &view, &data);
+        host.clone().set(next);
+    });
+    dom.render_immediate_to_vec();
+    assert!(!all_box(&dom).contains("checked"), "{}", all_box(&dom));
+    assert!(painted(&dom).has(">5 rows, 4 selected<"));
 }
 
 /// The ids a host selected, and the handle that re-renders the table around them.
