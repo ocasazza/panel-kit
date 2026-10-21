@@ -104,16 +104,18 @@ impl SortSpec {
     }
 }
 
-/// What a column holds, which decides its filter control.
+/// What a column holds, which decides how it sorts and its filter control.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ColumnKind {
-    /// Free text: a contains filter.
+    /// Free text: sorted naturally, a contains filter.
     #[default]
     Text,
     /// One of a few values: a checklist of the values present.
     Enum,
-    /// A number: a min/max range.
+    /// A number: sorted by value, a min/max range. A table model's meter cell
+    /// holds its ratio and a text cell its parsed text, missing when it is no number.
     Number,
 }
 

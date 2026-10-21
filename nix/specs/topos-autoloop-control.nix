@@ -20,7 +20,9 @@ let
   identity = names: lib.genAttrs names (name: name);
 
   col = key: title: weight: expr: { inherit key title; width = flex weight; align = "left"; cell = textCell expr; };
-  num = key: title: expr: { inherit key title; width = fixed 8; align = "right"; cell = textCell expr; };
+  num = key: title: expr: { inherit key title; width = fixed 8; align = "right"; kind = "number"; cell = textCell expr; };
+  # A column over a small vocabulary: the table offers its values as a filter.
+  vocab = key: title: weight: expr: col key title weight expr // { kind = "enum"; };
   table = sort: columns: edits: { kind = "table"; scope = "objects"; restrict = [ sort ]; inherit columns edits; };
 
   shelves = [
@@ -84,7 +86,7 @@ mkTopos {
       (col "session" "Session" 2 "field:session")
       (col "reason" "Settled" 2 "field:reason")
       (col "judge" "Judge" 2 "field:judge")
-      (col "decision" "Decision" 1 "field:decision")
+      (vocab "decision" "Decision" 1 "field:decision")
       (col "note" "Note" 2 "field:note")
     ] [ "ratify" ];
     "autoloop.proposals" = table "proposal" [
@@ -92,18 +94,18 @@ mkTopos {
       (col "before" "Before" 1 "field:before")
       (col "after" "After" 1 "field:after")
       (col "rationale" "Rationale" 3 "field:rationale")
-      (col "status" "Status" 1 "field:status")
+      (vocab "status" "Status" 1 "field:status")
     ] [ "decide" ];
     "autoloop.queue" = table "queued_goal" [
       (col "goal" "Goal" 3 "title")
       (col "repo" "Repository" 2 "field:repo")
       (num "priority" "Priority" "field:priority")
-      (col "status" "Status" 1 "field:status")
+      (vocab "status" "Status" 1 "field:status")
       (col "claimed_by" "Claimed by" 2 "field:claimed_by")
     ] [ "prioritize" "retire" ];
     "autoloop.repos" = table "repo_policy" [
       (col "repo" "Repository" 2 "title")
-      (col "verification" "Verification" 1 "tag:0")
+      (vocab "verification" "Verification" 1 "tag:0")
       (col "gates" "Gates" 3 "field:gates")
       (col "criteria" "Done criteria" 3 "field:criteria")
     ] [ "set_gates" "set_criteria" ];
@@ -122,7 +124,7 @@ mkTopos {
       (col "vocabulary" "Vocabulary" 1 "field:vocabulary")
       (col "usage" "Usage" 1 "tag:1")
       (num "count" "Count" "field:count")
-      (col "hidden" "Hidden" 1 "field:hidden")
+      (vocab "hidden" "Hidden" 1 "field:hidden")
       (col "description" "Description" 3 "field:description")
     ] [ "describe" "hide" ];
     "autoloop.kinds" = { kind = "badges"; group = "kinds"; restrict = controlSorts; };

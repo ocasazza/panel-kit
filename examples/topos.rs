@@ -98,7 +98,7 @@ fn demo_content(demo: Signal<ToposDemo>, id: &str, content: &ContentSpec) -> Ele
         };
     };
     let on_badge = (state.active_binding() == Some(id)).then(|| badge_toggle_action(demo));
-    section_view::paint(section, content, None, on_badge)
+    section_view::paint(id, section, content, None, on_badge)
 }
 
 /// A toggle on a per-sort badge flips that sort in the active subobject.

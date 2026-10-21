@@ -450,7 +450,7 @@ fn walk_table_column(value: &serde_json::Value, pointer: &str, errors: &mut Erro
     let Some(object) = object_at(value, pointer, errors) else {
         return;
     };
-    check_fields(object, pointer, TABLE_COLUMN_FIELDS, errors);
+    check_fields_with_optional(object, pointer, TABLE_COLUMN_FIELDS, TABLE_COLUMN_OPTIONAL_FIELDS, errors);
     if let Some(width) = object.get("width") {
         walk_column_width(width, &join(pointer, "width"), errors);
     }
@@ -490,7 +490,7 @@ fn walk_table_row(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSi
     let Some(object) = object_at(value, pointer, errors) else {
         return;
     };
-    check_fields(object, pointer, TABLE_ROW_FIELDS, errors);
+    check_fields_with_optional(object, pointer, TABLE_ROW_FIELDS, TABLE_ROW_OPTIONAL_FIELDS, errors);
     if let Some(cells) = object.get("cells") {
         walk_array_items(cells, &join(pointer, "cells"), errors, walk_table_cell);
     }
@@ -798,7 +798,9 @@ const BADGE_SPEC_FIELDS: &[&str] = &[
 const BADGE_SPEC_OPTIONAL_FIELDS: &[&str] = &["tone", "variant"];
 const TABLE_MODEL_FIELDS: &[&str] = &["columns", "rows"];
 const TABLE_COLUMN_FIELDS: &[&str] = &["key", "title", "width", "align"];
-const TABLE_ROW_FIELDS: &[&str] = &["cells"];
+const TABLE_COLUMN_OPTIONAL_FIELDS: &[&str] = &["kind"];
+const TABLE_ROW_FIELDS: &[&str] = &["id", "cells"];
+const TABLE_ROW_OPTIONAL_FIELDS: &[&str] = &["tags"];
 const TABLE_CELL_TEXT_FIELDS: &[&str] = &["kind", "value"];
 const TABLE_CELL_VALUE_FIELDS: &[&str] = &["kind", "value"];
 const COLUMN_WIDTH_FIXED_FIELDS: &[&str] = &["value"];

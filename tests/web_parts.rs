@@ -10,6 +10,7 @@ use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceE
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
 };
+use panel_kit_core::widgets::data_table::ColumnKind;
 use panel_kit_core::{
     FocusContext, Key, KeyChord, PointerButton, PointerEvent, PointerEventKind, Region,
     SurfaceCapabilities, SurfaceClass,
@@ -190,6 +191,7 @@ fn InteractiveTableProbe() -> Element {
         title: "Policy".into(),
         width: ColumnWidth::Flex { weight: 1 },
         align: TextAlign::Left,
+        kind: ColumnKind::Text,
     }];
     let rows = [TableRow {
         id: "r1".into(),
@@ -202,10 +204,10 @@ fn InteractiveTableProbe() -> Element {
     rsx! {
         {{
             let shown: Vec<&TableRow> = rows.iter().collect();
-            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &shown }, None)
+            panel_kit::widgets::table::table("filled", TableView { columns: &columns, rows: &shown }, None)
         }}
         {{
-            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &[] }, None)
+            panel_kit::widgets::table::table("empty", TableView { columns: &columns, rows: &[] }, None)
         }}
     }
 }
@@ -227,6 +229,73 @@ fn table_paints_through_the_one_component_with_its_toolbar_and_empty_state() {
     // The empty state names the caller's message when the model has no rows.
     assert!(html.contains("class=\"pk-dt-empty\""), "{html}");
     assert!(html.contains("no rows"), "{html}");
+}
+
+/// Two panels over the same columns are two tables: their ids must differ, or
+/// the browser finds one grid for both and a row id repeats on the page.
+#[test]
+fn tables_over_the_same_columns_get_the_ids_they_are_named_by() {
+    let html = dioxus_ssr::render_element(rsx! { InteractiveTableProbe {} });
+    for name in ["filled", "empty"] {
+        assert_eq!(html.matches(&format!("id=\"pk-table-{name}\"")).count(), 1, "{name}: {html}");
+    }
+    assert!(html.contains("id=\"pk-table-filled-r1\""), "{html}");
+}
+
+/// A column's declared alignment is painted whatever its kind: numbers are
+/// right-aligned when the spec says so, not otherwise.
+#[test]
+fn a_columns_declared_alignment_is_painted_whatever_its_kind() {
+    let paint = |kind, align| {
+        let columns = [TableColumn {
+            key: "count".into(),
+            title: "Count".into(),
+            width: ColumnWidth::Flex { weight: 1 },
+            align,
+            kind,
+        }];
+        let rows = [TableRow { id: "r1".into(), tags: Vec::new(), cells: vec![TableCell::Text("1.5".into())] }];
+        let shown: Vec<&TableRow> = rows.iter().collect();
+        dioxus_ssr::render_element(rsx! {
+            {panel_kit::widgets::table::table("kinds", TableView { columns: &columns, rows: &shown }, None)}
+        })
+    };
+    let declared_left = paint(ColumnKind::Number, TextAlign::Left);
+    assert!(declared_left.contains("pk-dt-align-left") && !declared_left.contains("pk-dt-align-right"));
+    let declared_right = paint(ColumnKind::Number, TextAlign::Right);
+    assert!(declared_right.contains("pk-dt-align-right") && !declared_right.contains("pk-dt-align-left"));
+}
+
+/// Two panels over the same columns, painted through `content_view`.
+#[component]
+fn OwnedTablesProbe() -> Element {
+    let columns = [TableColumn {
+        key: "policy".into(),
+        title: "Policy".into(),
+        width: ColumnWidth::Flex { weight: 1 },
+        align: TextAlign::Left,
+        kind: ColumnKind::Text,
+    }];
+    let rows = [TableRow { id: "r1".into(), tags: Vec::new(), cells: vec![TableCell::Text("p".into())] }];
+    let shown: Vec<&TableRow> = rows.iter().collect();
+    let noop = EventHandler::new(|_: panel_kit_core::badge::BadgeAction| {});
+    let table = |binding| panel_kit_core::widgets::ContentView::Table {
+        binding,
+        view: TableView { columns: &columns, rows: &shown },
+    };
+    rsx! {
+        {panel_kit::widgets::content_view(table("panel-a"), 0, noop)}
+        {panel_kit::widgets::content_view(table("panel-b"), 0, noop)}
+    }
+}
+
+#[test]
+fn content_view_names_each_table_by_the_panel_that_owns_it() {
+    let html = dioxus_ssr::render_element(rsx! { OwnedTablesProbe {} });
+    for owner in ["panel-a", "panel-b"] {
+        assert_eq!(html.matches(&format!("id=\"pk-table-{owner}\"")).count(), 1, "{owner}: {html}");
+        assert!(html.contains(&format!("id=\"pk-table-{owner}-r1\"")), "{owner}: {html}");
+    }
 }
 
 #[test]

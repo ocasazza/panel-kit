@@ -187,6 +187,7 @@ pub mod web_canary {
     use panel_kit_core::widgets::table::{
         ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
     };
+    use panel_kit_core::widgets::data_table::ColumnKind;
     use panel_kit_core::widgets::{ContentSpec, ContentView, DataSource, ScrollPolicy};
     use panel_kit_core::SpecPanelId;
 
@@ -394,7 +395,7 @@ pub mod web_canary {
                 DataSource::Binding { id } => binding(id, content),
             },
             ContentSpec::Table { source } => match source {
-                DataSource::Inline { value } => paint_table(value),
+                DataSource::Inline { value } => paint_table(&spec.id, value),
                 DataSource::Binding { id } => binding(id, content),
             },
             ContentSpec::TimeSeries { source, unit } => match source {
@@ -436,7 +437,7 @@ pub mod web_canary {
         match content {
             ContentSpec::Text { scroll, .. } => paint_text(bound_text(id), *scroll),
             ContentSpec::Badges { .. } => paint_badges(&bound_badges(id)),
-            ContentSpec::Table { .. } => paint_table(&bound_table(id)),
+            ContentSpec::Table { .. } => paint_table(id, &bound_table(id)),
             ContentSpec::TimeSeries { unit, .. } => paint_series(&bound_series(id), unit),
             ContentSpec::Gauges { .. } => paint_gauges(&bound_gauges(id)),
             ContentSpec::Flamegraph { .. } => paint_flamegraph(&bound_flamegraph(id)),
@@ -504,12 +505,16 @@ pub mod web_canary {
         panel_kit::widgets::content_view(ContentView::Badges(specs), 0, noop_badge_action())
     }
 
-    fn paint_table(table: &TableModel) -> Element {
+    /// A table painted under `owner`: the panel or binding id it belongs to.
+    fn paint_table(owner: &str, table: &TableModel) -> Element {
         panel_kit::widgets::content_view(
-            ContentView::Table(TableView {
-                columns: &table.columns,
-                rows: &table.rows.iter().collect::<Vec<_>>(),
-            }),
+            ContentView::Table {
+                binding: owner,
+                view: TableView {
+                    columns: &table.columns,
+                    rows: &table.rows.iter().collect::<Vec<_>>(),
+                },
+            },
             0,
             noop_badge_action(),
         )
@@ -599,18 +604,21 @@ pub mod web_canary {
                     title: "Node".into(),
                     width: ColumnWidth::Flex { weight: 2 },
                     align: TextAlign::Left,
+                    kind: ColumnKind::Text,
                 },
                 TableColumn {
                     key: "health".into(),
                     title: "Health".into(),
                     width: ColumnWidth::Fixed { value: 8 },
                     align: TextAlign::Center,
+                    kind: ColumnKind::Enum,
                 },
                 TableColumn {
                     key: "load".into(),
                     title: "Load".into(),
                     width: ColumnWidth::Fixed { value: 10 },
                     align: TextAlign::Right,
+                    kind: ColumnKind::Number,
                 },
             ],
             rows: vec![

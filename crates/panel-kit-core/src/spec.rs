@@ -862,8 +862,8 @@ mod tests {
                 "source": {
                     "source": "inline",
                     "value": {
-                        "columns": [{ "key": "name", "title": "Name", "width": { "Fixed": { "value": 12 } }, "align": "left" }],
-                        "rows": [{ "cells": [{ "kind": "text", "value": "alpha" }] }]
+                        "columns": [{ "key": "name", "title": "Name", "width": { "Fixed": { "value": 12 } }, "align": "left", "kind": "number" }],
+                        "rows": [{ "id": "alpha", "cells": [{ "kind": "text", "value": "alpha" }] }]
                     }
                 }
             }),

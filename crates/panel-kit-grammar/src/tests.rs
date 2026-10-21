@@ -7,7 +7,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use panel_kit_core::widgets::table::TableCell;
+use panel_kit_core::widgets::data_table::{
+    natural_cmp, BuildOptions, ColumnKind, SortDir, SortSpec, TableDefaults, TableState, View,
+};
+use panel_kit_core::widgets::table::{TableCell, TableModel, TextAlign};
+use proptest::prelude::{prop, prop_assert, prop_assert_eq, proptest, Strategy};
 
 use crate::error::SheafError;
 use crate::package::CompiledGrammar;
@@ -1179,4 +1183,344 @@ fn edit_decode_rejects_unknown_keys_and_validation_rejects_max_zero() {
         let table = EDIT_TABLE;
         assert!(matches!(table_topos(table, &edits).validate(), Err(ToposError::InvalidEdit { .. })), "{ty}");
     }
+}
+
+// --- Table row ids ------------------------------------------------------------
+
+const EDGE_KINDS: [&str; 3] = ["continues", "shares", "consolidates"];
+
+/// One table sheaf per row-id format: object and morphism rows, assembly
+/// components, physics objects and physics bonds.
+fn row_id_topos() -> Topos {
+    let column = |key: &str, expr: &str| {
+        format!(r##"{{"key":"{key}","title":"{key}","width":{{"flex":{{"weight":1}}}},"align":"left","cell":{{"cell":"text","expr":"{expr}"}}}}"##)
+    };
+    let sheaves = format!(
+        r##"{{"objs":{{"kind":"table","scope":"objects","edits":["triage"],"columns":[{id}]}},"edges":{{"kind":"table","scope":"morphisms","columns":[{source},{target},{edge}]}},"asm":{{"kind":"assembly","morphism_sorts":["continues","shares","consolidates"]}},"po":{{"kind":"physics","scope":"objects"}},"pm":{{"kind":"physics","scope":"morphisms"}}}}"##,
+        id = column("id", "id"),
+        source = column("from", "source"),
+        target = column("to", "target"),
+        edge = column("kind", "edge_kind"),
+    );
+    let mut topos = agentic_topos(&sheaves);
+    topos.edits = serde_json::from_str(STATUS_EDIT).unwrap();
+    topos
+}
+
+fn row_ids(sections: &crate::GlobalSections, binding: &str) -> Vec<String> {
+    match sections.get(binding) {
+        Some(Section::Table(table)) => table.rows.iter().map(|row| row.id.clone()).collect(),
+        other => panic!("{binding} is not a table: {other:?}"),
+    }
+}
+
+#[test]
+fn parallel_morphisms_get_distinct_row_ids_named_by_endpoints_and_kind() {
+    let mut site = demo_site();
+    site.morphisms = vec![
+        typed("p1", "c1", "continues"),
+        typed("p1", "c1", "shares"),
+        typed("p1", "c1", "continues"),
+        Morphism { domain: "p1".to_owned(), codomain: "c1".to_owned(), kind: None },
+    ];
+    let sections = row_id_topos().global_sections(&site, &physics_a()).unwrap();
+    let expected = [
+        "p1->c1:continues",
+        "p1->c1:shares",
+        "p1->c1:continues#2",
+        "p1->c1",
+    ];
+    assert_eq!(row_ids(&sections, "edges"), expected.map(|id| format!("morphism:{id}")));
+    assert_eq!(row_ids(&sections, "pm"), expected.map(|id| format!("bond:{id}")));
+}
+
+#[test]
+fn assembly_rows_are_identified_by_their_component() {
+    // Two disjoint pairs: every component has β0 = 1, so β0 cannot name a row.
+    let mut site = demo_site();
+    site.morphisms = vec![typed("p1", "c1", "continues"), typed("r1", "m1", "consolidates")];
+    let sections = row_id_topos().global_sections(&site, &physics_a()).unwrap();
+    assert_eq!(row_ids(&sections, "asm"), ["component:p1", "component:r1"]);
+}
+
+#[test]
+fn status_table_row_ids_stay_unique_when_labels_repeat_or_look_like_suffixes() {
+    let rows = [("a", true), ("a", false), ("a#2", true), ("a", true)].map(|(label, ok)| (label.to_owned(), ok));
+    let Section::Table(model) = status_table("Check", "Holds", &rows) else {
+        panic!("status table is a table");
+    };
+    let ids: Vec<&str> = model.rows.iter().map(|row| row.id.as_str()).collect();
+    assert_eq!(ids, ["gate:a", "gate:a#2", "gate:a#2#2", "gate:a#3"]);
+}
+
+/// Sites with unique object ids and morphisms inside up to three groups of
+/// objects, so a site often has several components: parallel, repeated,
+/// untyped and self-loop morphisms included.
+fn arb_site() -> impl Strategy<Value = Site> {
+    (2usize..8, 1usize..4).prop_flat_map(|(objects, groups)| {
+        let kinds = prop::collection::vec(0..E_OBJ.len(), objects);
+        let edge = (0..objects, 0..objects, prop::option::of(0..EDGE_KINDS.len()));
+        (kinds, prop::collection::vec(edge, 0..16)).prop_map(move |(kinds, edges)| Site {
+            objects: kinds.iter().enumerate().map(|(at, kind)| object(&format!("o{at}"), E_OBJ[*kind], "5")).collect(),
+            morphisms: edges
+                .into_iter()
+                .filter(|(from, to, _)| from % groups == to % groups)
+                .map(|(from, to, kind)| Morphism {
+                    domain: format!("o{from}"),
+                    codomain: format!("o{to}"),
+                    kind: kind.map(|kind| EDGE_KINDS[kind].to_owned()),
+                })
+                .collect(),
+        })
+    })
+}
+
+#[test]
+fn every_table_section_lists_unique_row_ids_that_name_their_rows() {
+    let topos = row_id_topos();
+    let physics = physics_a();
+    let extra = (0usize..64, 0usize..64, prop::option::of(0..EDGE_KINDS.len()));
+    proptest!(|(site in arb_site(), extra in extra)| {
+        let sections = topos.global_sections(&site, &physics).unwrap();
+        for binding in ["objs", "edges", "asm", "po", "pm"] {
+            let ids = row_ids(&sections, binding);
+            let distinct: BTreeSet<&String> = ids.iter().collect();
+            prop_assert_eq!(distinct.len(), ids.len(), "{} repeats a row id: {:?}", binding, ids);
+        }
+
+        // One row per object, morphism or bond: no row is dropped to make ids unique.
+        prop_assert_eq!(row_ids(&sections, "objs").len(), site.objects.len());
+        prop_assert_eq!(row_ids(&sections, "po").len(), site.objects.len());
+        prop_assert_eq!(row_ids(&sections, "edges").len(), site.morphisms.len());
+        prop_assert_eq!(row_ids(&sections, "pm").len(), site.morphisms.len());
+
+        // An object row's id is the id of the row edits behind it.
+        let edits: Vec<String> = sections.row_edits("objs").unwrap().iter().map(crate::RowEdits::row_id).collect();
+        prop_assert_eq!(row_ids(&sections, "objs"), edits);
+
+        // A morphism row's id names its endpoints and kind: it follows the
+        // morphism, not its position among parallel ones.
+        for (id, morphism) in row_ids(&sections, "edges").iter().zip(&site.morphisms) {
+            let named = match &morphism.kind {
+                Some(kind) => format!("morphism:{}->{}:{kind}", morphism.domain, morphism.codomain),
+                None => format!("morphism:{}->{}", morphism.domain, morphism.codomain),
+            };
+            prop_assert!(*id == named || id.starts_with(&format!("{named}#")), "{} does not name {:?}", id, morphism);
+        }
+
+        // Appending a morphism renames no existing row.
+        let mut grown = site.clone();
+        grown.morphisms.push(Morphism {
+            domain: format!("o{}", extra.0 % site.objects.len()),
+            codomain: format!("o{}", extra.1 % site.objects.len()),
+            kind: extra.2.map(|kind| EDGE_KINDS[kind].to_owned()),
+        });
+        let after = topos.global_sections(&grown, &physics).unwrap();
+        for binding in ["edges", "pm"] {
+            let before = row_ids(&sections, binding);
+            prop_assert_eq!(&row_ids(&after, binding)[..before.len()], &before[..], "{} renamed a row", binding);
+        }
+    });
+}
+
+// --- Typed table columns ------------------------------------------------------
+
+fn column_json(key: &str, kind: Option<&str>, cell: &str) -> String {
+    column_json_aligned(key, kind, Some("left"), cell)
+}
+
+fn column_json_aligned(key: &str, kind: Option<&str>, align: Option<&str>, cell: &str) -> String {
+    let kind = kind.map_or(String::new(), |kind| format!(r##""kind":"{kind}","##));
+    let align = align.map_or(String::new(), |align| format!(r##""align":"{align}","##));
+    format!(r##"{{"key":"{key}","title":"{key}","width":{{"flex":{{"weight":1}}}},{align}{kind}"cell":{cell}}}"##)
+}
+
+fn text_cell(expr: &str) -> String {
+    format!(r##"{{"cell":"text","expr":"{expr}"}}"##)
+}
+
+fn meter_cell(value: &str, scale: f64) -> String {
+    format!(r##"{{"cell":"meter","value":"{value}","scale":{scale:?},"text":"{value}"}}"##)
+}
+
+fn table_sheaf(scope: &str, columns: &[String]) -> String {
+    format!(r##"{{"kind":"table","scope":"{scope}","columns":[{}]}}"##, columns.join(","))
+}
+
+fn model_of<'a>(sections: &'a crate::GlobalSections, binding: &str) -> &'a TableModel {
+    match sections.get(binding) {
+        Some(Section::Table(model)) => model,
+        other => panic!("{binding} is not a table: {other:?}"),
+    }
+}
+
+#[test]
+fn table_columns_take_their_kind_from_the_spec_or_else_from_their_cell() {
+    use ColumnKind::{Enum, Number, Text};
+    let objects = [
+        ("id", None, text_cell("id"), Text),
+        ("title", None, text_cell("title"), Text),
+        ("kind", None, text_cell("kind"), Enum),
+        ("degree", None, text_cell("degree"), Number),
+        ("in", None, text_cell("in_degree"), Number),
+        ("out", None, text_cell("out_degree"), Number),
+        ("repulsion", None, text_cell("repulsion"), Number),
+        ("mass", None, text_cell("mass"), Number),
+        ("weighted", None, text_cell("weighted:energy"), Number),
+        ("load", None, meter_cell("field:energy", 100.0), Number),
+        ("status", None, r##"{"cell":"status","from":"kind"}"##.to_owned(), Enum),
+        ("field", None, text_cell("field:energy"), Text),
+        ("tag", None, text_cell("tag:0"), Text),
+        ("energy", Some("number"), text_cell("field:energy"), Number),
+        ("tag_enum", Some("enum"), text_cell("tag:0"), Enum),
+        ("degree_text", Some("text"), text_cell("degree"), Text),
+        ("kind_number", Some("number"), text_cell("kind"), Number),
+    ];
+    let edges = [
+        ("source", None, text_cell("source"), Text),
+        ("target", None, text_cell("target"), Text),
+        ("edge", None, text_cell("edge_kind"), Enum),
+        ("weight", None, text_cell("weight"), Number),
+        ("rest", None, text_cell("rest_length"), Number),
+    ];
+    let json = |rows: &[(&str, Option<&str>, String, ColumnKind)]| -> Vec<String> {
+        rows.iter().map(|(key, kind, cell, _)| column_json(key, *kind, cell)).collect()
+    };
+    let sheaves = format!(
+        r##"{{"objs":{},"edges":{}}}"##,
+        table_sheaf("objects", &json(&objects)),
+        table_sheaf("morphisms", &json(&edges)),
+    );
+    let sections = agentic_topos(&sheaves).global_sections(&demo_site(), &physics_a()).unwrap();
+
+    for (binding, expected) in [("objs", &objects[..].iter().map(|c| (c.0, c.3)).collect::<Vec<_>>()), ("edges", &edges[..].iter().map(|c| (c.0, c.3)).collect())] {
+        let kinds: Vec<(&str, ColumnKind)> =
+            model_of(&sections, binding).columns.iter().map(|column| (column.key.as_str(), column.kind)).collect();
+        assert_eq!(&kinds, expected, "{binding}");
+    }
+}
+
+#[test]
+fn a_column_without_a_kind_encodes_without_one_and_a_named_kind_round_trips() {
+    let bare: crate::ColumnSpec = serde_json::from_str(&column_json("k", None, &text_cell("degree"))).unwrap();
+    assert_eq!(bare.kind, None);
+    assert!(!serde_json::to_string(&bare).unwrap().contains("kind\":"));
+    let named: crate::ColumnSpec = serde_json::from_str(&column_json("k", Some("number"), &text_cell("id"))).unwrap();
+    assert_eq!(named.kind, Some(ColumnKind::Number));
+    assert_eq!(serde_json::from_str::<crate::ColumnSpec>(&serde_json::to_string(&named).unwrap()).unwrap(), named);
+}
+
+#[test]
+fn an_undeclared_alignment_follows_the_kind_and_a_declared_one_wins() {
+    use crate::CellAlign::{Center, Left, Right};
+    let cases = [
+        // (key, kind, declared alignment, cell, alignment painted)
+        ("degree", None, None, text_cell("degree"), Right),
+        ("load", None, None, meter_cell("field:energy", 10.0), Right),
+        ("energy", Some("number"), None, text_cell("field:energy"), Right),
+        ("id", None, None, text_cell("id"), Left),
+        ("kind", None, None, text_cell("kind"), Left),
+        ("degree_left", None, Some("left"), text_cell("degree"), Left),
+        ("degree_centre", None, Some("center"), text_cell("degree"), Center),
+        ("load_left", None, Some("left"), meter_cell("field:energy", 10.0), Left),
+        ("id_right", None, Some("right"), text_cell("id"), Right),
+    ];
+    let columns: Vec<String> =
+        cases.iter().map(|(key, kind, align, cell, _)| column_json_aligned(key, *kind, *align, cell)).collect();
+    let sections = agentic_topos(&format!(r##"{{"objs":{}}}"##, table_sheaf("objects", &columns)))
+        .global_sections(&demo_site(), &physics_a())
+        .unwrap();
+    let painted: Vec<(&str, TextAlign)> =
+        model_of(&sections, "objs").columns.iter().map(|column| (column.key.as_str(), column.align)).collect();
+    let expected: Vec<(&str, TextAlign)> = cases
+        .iter()
+        .map(|(key, .., painted)| (*key, match painted { Left => TextAlign::Left, Center => TextAlign::Center, Right => TextAlign::Right }))
+        .collect();
+    assert_eq!(painted, expected);
+
+    // An undeclared alignment stays undeclared when the spec is written back.
+    let bare: crate::ColumnSpec = serde_json::from_str(&column_json_aligned("k", None, None, &text_cell("degree"))).unwrap();
+    assert_eq!(bare.align, None);
+    assert!(!serde_json::to_string(&bare).unwrap().contains("align\":"));
+}
+
+/// Row ids in the order the interactive table shows `model` sorted on `column`.
+fn sorted_on(model: &TableModel, column: &str, dir: SortDir) -> Vec<String> {
+    let columns = model.data_columns();
+    let data = model.data();
+    let defaults = TableDefaults { sort: vec![SortSpec::new(column, dir)], ..TableDefaults::default() };
+    let state = TableState::new(&columns, defaults);
+    View::build(&columns, &data, &state, BuildOptions::default()).ids(&data).map(str::to_owned).collect()
+}
+
+/// Sites whose objects carry a decimal `energy`, negatives and repeats included,
+/// and a few morphisms so degrees differ.
+fn arb_energy_site() -> impl Strategy<Value = Site> {
+    (prop::collection::vec((0..E_OBJ.len(), -5000i32..5000), 1..12), prop::collection::vec((0usize..64, 0usize..64), 0..16))
+        .prop_map(|(objects, edges)| {
+            let count = objects.len();
+            Site {
+                objects: objects
+                    .iter()
+                    .enumerate()
+                    .map(|(at, (kind, hundredths))| {
+                        object(&format!("o{at}"), E_OBJ[*kind], &format!("{}", f64::from(*hundredths) / 100.0))
+                    })
+                    .collect(),
+                morphisms: edges
+                    .into_iter()
+                    .map(|(from, to)| typed(&format!("o{}", from % count), &format!("o{}", to % count), "continues"))
+                    .collect(),
+            }
+        })
+}
+
+#[test]
+fn a_grammar_tables_number_columns_sort_by_value_and_its_enum_columns_offer_their_values() {
+    let columns = [
+        column_json("id", None, &text_cell("id")),
+        column_json("energy", Some("number"), &text_cell("field:energy")),
+        column_json("load", None, &meter_cell("field:energy", 10.0)),
+        column_json("degree", None, &text_cell("degree")),
+        column_json("sort", None, &text_cell("kind")),
+    ];
+    let topos = agentic_topos(&format!(r##"{{"objs":{}}}"##, table_sheaf("objects", &columns)));
+    let physics = physics_a();
+    proptest!(|(site in arb_energy_site())| {
+        let sections = topos.global_sections(&site, &physics).unwrap();
+        let model = model_of(&sections, "objs");
+        let energy = |object: &Object| object.number("energy").unwrap();
+        let number = |object: &Object, column: &str| match column {
+            "energy" => energy(object),
+            "load" => energy(object) / 10.0,
+            _ => site.degree(&object.id) as f64,
+        };
+        for column in ["energy", "load", "degree"] {
+            for dir in [SortDir::Asc, SortDir::Desc] {
+                let shown: Vec<f64> = sorted_on(model, column, dir)
+                    .iter()
+                    .map(|id| number(site.objects.iter().find(|object| crate::edit::object_row_id(&object.id) == *id).unwrap(), column))
+                    .collect();
+                let mut expected: Vec<f64> = site.objects.iter().map(|object| number(object, column)).collect();
+                expected.sort_by(f64::total_cmp);
+                if dir == SortDir::Desc {
+                    expected.reverse();
+                }
+                prop_assert_eq!(shown, expected, "{} {:?}", column, dir);
+            }
+        }
+
+        // The enum column offers each regime label present once, in natural order.
+        let mut labels: Vec<String> = site
+            .objects
+            .iter()
+            .map(|object| topos.stalks.objects[&topos.object_sorting[&object.kind]].label.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        labels.sort_by(|a, b| natural_cmp(a, b));
+        let columns = model.data_columns();
+        let view = View::build(&columns, &model.data(), &TableState::new(&columns, TableDefaults::default()), BuildOptions::default());
+        prop_assert_eq!(view.options.get("sort").cloned().unwrap_or_default(), labels);
+    });
 }

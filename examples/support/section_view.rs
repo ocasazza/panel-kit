@@ -18,9 +18,11 @@ fn noop_badge_action() -> EventHandler<BadgeAction> {
 }
 
 /// Paint one section with the panel's authored content spec (text keeps its
-/// scroll policy, a series its unit). `rows` receives a clicked table row's
-/// id; `on_badge` receives badge actions.
+/// scroll policy, a series its unit). `binding` is the id the section resolved
+/// under: a table is named and keeps its sort and filters by it. `rows`
+/// receives a clicked table row's id; `on_badge` receives badge actions.
 pub fn paint(
+    binding: &str,
     section: &Section,
     content: &ContentSpec,
     rows: Option<EventHandler<String>>,
@@ -28,17 +30,7 @@ pub fn paint(
 ) -> Element {
     let badge = on_badge.unwrap_or_else(noop_badge_action);
     match section {
-        Section::Table(table) => {
-            let shown: Vec<&panel_kit_core::widgets::table::TableRow> =
-                table.rows.iter().collect();
-            panel_kit::widgets::table::table(
-                panel_kit_core::widgets::table::TableView {
-                    columns: &table.columns,
-                    rows: &shown,
-                },
-                rows,
-            )
-        }
+        Section::Table(table) => panel_kit::widgets::table::bound_table(binding, table, rows),
         Section::Text(text) => {
             let scroll = match content {
                 ContentSpec::Text { scroll, .. } => *scroll,

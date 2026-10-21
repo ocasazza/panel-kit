@@ -56,7 +56,7 @@ mkWorkspaceSpec {
     (panel 1 "text" "Text" { kind = "text"; source = { source = "inline"; value = { text = "hello"; }; }; scroll = "wrap"; })
     (panel 2 "editor" "Editor" { kind = "editor"; binding = "canary.editor"; multiline = true; placeholder = "Write"; })
     (panel 3 "badges" "Badges" { kind = "badges"; source = { source = "inline"; value = [ { kind = "tag"; field = "tag"; value = "nix"; active = false; with_x = false; with_plus = true; small = false; override_color = [ 80 180 130 ]; accent_color = null; click_kind = "toggle"; emit_hover = false; } ]; }; })
-    (panel 4 "table" "Table" { kind = "table"; source = { source = "inline"; value = { columns = [ { key = "name"; title = "Name"; width = { Fixed = { value = 12; }; }; align = "left"; } ]; rows = [ { cells = [ { kind = "text"; value = "alpha"; } ]; } ]; }; }; })
+    (panel 4 "table" "Table" { kind = "table"; source = { source = "inline"; value = { columns = [ { key = "name"; title = "Name"; width = { Fixed = { value = 12; }; }; align = "left"; kind = "number"; } ]; rows = [ { id = "alpha"; cells = [ { kind = "text"; value = "alpha"; } ]; } ]; }; }; })
     (panel 5 "time-series" "Time Series" { kind = "time_series"; source = { source = "inline"; value = [ { name = "load"; points = [ [ 0.0 1.0 ] [ 1.0 2.0 ] ]; } ]; }; unit = "req/s"; })
     (panel 6 "gauges" "Gauges" { kind = "gauges"; source = { source = "inline"; value = [ { label = "cpu"; ratio = 0.42; text = "42%"; } ]; }; })
     (panel 7 "flamegraph" "Flamegraph" { kind = "flamegraph"; source = { source = "inline"; value = [ { label = "root"; depth = 0; value = 1.0; color = null; } ]; }; })

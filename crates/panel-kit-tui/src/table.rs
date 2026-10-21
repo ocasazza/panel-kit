@@ -182,6 +182,7 @@ fn width_constraint(width: ColumnWidth) -> Constraint {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use panel_kit_core::widgets::data_table::ColumnKind;
 
     fn columns() -> Vec<TableColumn> {
         vec![
@@ -190,18 +191,21 @@ mod tests {
                 title: "a".into(),
                 width: ColumnWidth::Fixed { value: 12 },
                 align: TextAlign::Left,
+                kind: ColumnKind::Text,
             },
             TableColumn {
                 key: "b".into(),
                 title: "b".into(),
                 width: ColumnWidth::Fixed { value: 10 },
                 align: TextAlign::Left,
+                kind: ColumnKind::Text,
             },
             TableColumn {
                 key: "c".into(),
                 title: "c".into(),
                 width: ColumnWidth::Flex { weight: 1 },
                 align: TextAlign::Left,
+                kind: ColumnKind::Text,
             },
         ]
     }
