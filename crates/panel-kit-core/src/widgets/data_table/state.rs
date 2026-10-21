@@ -1768,6 +1768,11 @@ mod tests {
         .prop_map(String::from)
     }
 
+    /// The tags rows hold, one that folds to one of them, and a blank.
+    fn tag() -> impl Strategy<Value = String> {
+        prop::sample::select(vec!["a", "b", " A ", ""]).prop_map(String::from)
+    }
+
     fn column_filter() -> impl Strategy<Value = Option<ColumnFilter>> {
         prop_oneof![
             Just(None),
@@ -1852,7 +1857,7 @@ mod tests {
             ),
             (-10.0..5000.0f64, -10.0..800.0f64)
                 .prop_map(|(top, visible)| TableEvent::Scroll { top, visible }),
-            (word(), any::<bool>()).prop_map(|(tag, all)| TableEvent::Tag { tag, all }),
+            (tag(), any::<bool>()).prop_map(|(tag, all)| TableEvent::Tag { tag, all }),
             prop::sample::select(vec![TagMode::Any, TagMode::All]).prop_map(TableEvent::TagMode),
             Just(TableEvent::ClearTags),
             any::<bool>().prop_map(TableEvent::TagsExpand),
@@ -1878,7 +1883,7 @@ mod tests {
                 shift,
                 page
             }),
-            prop::option::of((row_id(), word())).prop_map(TableEvent::TagFocus),
+            prop::option::of((row_id(), tag())).prop_map(TableEvent::TagFocus),
         ]
     }
 
@@ -1887,6 +1892,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(1_000))]
+
         /// A false flag is a promise: the event leaves the query, or the state a
         /// host stores, as it found it.
         #[test]
