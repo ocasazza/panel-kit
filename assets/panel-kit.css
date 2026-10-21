@@ -464,7 +464,7 @@ button { font-family:var(--mono); }
 .badge-tone-ok { --chip-tone: var(--green); }
 .badge-tone-warn, .badge-tone-alert { --chip-tone: var(--yellow); }
 .badge-tone-err { --chip-tone: var(--red); }
-.badge-tone-info { --chip-tone: var(--blue); }
+.badge-tone-info { --chip-tone: var(--badge-info); }
 .badge-tone-neutral { --chip-tone: var(--dim); }
 .badge-chip.badge-variant-solid {
   --badge-c: var(--chip-tone); --badge-fg: var(--inv-fg);
@@ -651,7 +651,7 @@ button { font-family:var(--mono); }
 .pk-dt-card-title { display:flex; align-items:baseline; gap:.5rem; min-width:0; }
 .pk-dt-card-meta { display:flex; flex-wrap:wrap; gap:.2rem 1rem; }
 .pk-dt-card-field { display:inline-flex; gap:.3rem; }
-.pk-dt-card-field-label { color:var(--line2); font:var(--text-label) var(--mono);
+.pk-dt-card-field-label { color:var(--dim); font:var(--text-label) var(--mono);
   letter-spacing:.06em; text-transform:uppercase; }
 .pk-dt-card-field-value { color:var(--fg); }
 .pk-dt-card-tags { display:flex; flex-wrap:wrap; gap:.25rem; }
@@ -739,18 +739,18 @@ button { font-family:var(--mono); }
   color: var(--fg);
   font: inherit;
   line-height: 1.4;
-  caret-color: var(--blue);
+  caret-color: var(--accent);
 }
 
 .pk-dt input::placeholder {
-  color: var(--line2);
+  color: var(--dim);
 }
 
 .pk-dt input:focus-visible,
 .pk-dt select:focus-visible,
 .pk-dt button:focus-visible,
 .pk-dt summary:focus-visible {
-  outline: 1px solid var(--blue);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -759,7 +759,7 @@ button { font-family:var(--mono); }
   height: 11px;
   margin: 0;
   padding: 0;
-  accent-color: var(--blue);
+  accent-color: var(--accent);
 }
 
 .pk-dt input[type="search"]::-webkit-search-decoration,
@@ -793,13 +793,13 @@ button { font-family:var(--mono); }
 
 .pk-dt-btn.on,
 .pk-dt-btn[aria-pressed="true"] {
-  border-color: var(--blue);
-  color: var(--blue);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .pk-dt-btn:disabled,
 .pk-dt-mini:disabled {
-  color: var(--line2);
+  color: var(--dim);
   border-color: var(--line);
   background: var(--bg);
   cursor: default;
@@ -811,7 +811,7 @@ button { font-family:var(--mono); }
 
 .pk-dt-n {
   margin-left: 4px;
-  color: var(--blue);
+  color: var(--accent);
 }
 
 .pk-dt-field {
@@ -829,6 +829,40 @@ button { font-family:var(--mono); }
   margin: 0;
 }
 
+/* Active filters: one removable chip per thing narrowing the rows, so the
+   query is visible without opening the filter row. */
+.pk-dt-active {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-dt-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pk-dt-active-label {
+  font: var(--text-label) var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.pk-dt-th.pk-dt-filtered {
+  color: var(--fg);
+}
+
+.pk-dt-filtered-mark {
+  color: var(--accent);
+  font-size: 9px;
+}
+
 .pk-dt-tally {
   margin-left: auto;
   font-size: 11px;
@@ -839,7 +873,7 @@ button { font-family:var(--mono); }
 }
 
 .pk-dt-faint {
-  color: var(--line2);
+  color: var(--dim);
 }
 
 /* Menus are <details>: no script to open them, square like everything. */
@@ -859,8 +893,8 @@ button { font-family:var(--mono); }
 }
 
 .pk-dt-menu[open] > summary {
-  border-color: var(--blue);
-  color: var(--blue);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .pk-dt-menu-body {
@@ -1004,15 +1038,15 @@ button { font-family:var(--mono); }
 }
 
 .pk-dt-th.pk-dt-dragging {
-  color: var(--line2);
+  color: var(--dim);
 }
 
 .pk-dt-th.pk-dt-drop-before {
-  box-shadow: inset 2px 0 0 var(--blue);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .pk-dt-th.pk-dt-drop-after {
-  box-shadow: inset -2px 0 0 var(--blue);
+  box-shadow: inset -2px 0 0 var(--accent);
 }
 
 /* The sort control is the header text itself; the mark is blue, the
@@ -1052,7 +1086,7 @@ button { font-family:var(--mono); }
 }
 
 .pk-dt-mark {
-  color: var(--blue);
+  color: var(--fg);
   font-size: 9px;
 }
 
@@ -1061,7 +1095,7 @@ button { font-family:var(--mono); }
 }
 
 .pk-dt-rank {
-  color: var(--line2);
+  color: var(--dim);
   font-weight: 400;
 }
 
@@ -1076,7 +1110,7 @@ button { font-family:var(--mono); }
 }
 
 .pk-dt-resize:hover {
-  box-shadow: inset -1px 0 0 var(--blue);
+  box-shadow: inset -1px 0 0 var(--fg);
 }
 
 /* ── Rows ──────────────────────────────────────────────────────── */
@@ -1098,35 +1132,36 @@ button { font-family:var(--mono); }
 }
 
 .pk-dt tbody tr[data-id]:focus-visible > .pk-dt-td {
-  box-shadow: inset 0 1px 0 var(--blue), inset 0 -1px 0 var(--blue);
+  box-shadow: inset 0 1px 0 var(--focus-ring), inset 0 -1px 0 var(--focus-ring);
 }
 
 .pk-dt tbody tr[data-id]:focus-visible > .pk-dt-td:first-child {
-  box-shadow: inset 1px 1px 0 var(--blue), inset 0 -1px 0 var(--blue);
+  box-shadow: inset 1px 1px 0 var(--focus-ring), inset 0 -1px 0 var(--focus-ring);
 }
 
 .pk-dt tbody tr[data-id]:focus-visible > .pk-dt-td:last-child {
-  box-shadow: inset -1px 1px 0 var(--blue), inset 0 -1px 0 var(--blue);
+  box-shadow: inset -1px 1px 0 var(--focus-ring), inset 0 -1px 0 var(--focus-ring);
 }
 
-/* A selected row is the raised surface with a 1px --blue outline. */
+/* A selected row is the raised surface with a 1px accent outline: selection
+   is live state. */
 
 .pk-dt tbody tr[aria-selected="true"] > .pk-dt-td {
   background: var(--panel);
-  border-bottom-color: var(--blue);
-  box-shadow: inset 0 1px 0 var(--blue);
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 1px 0 var(--accent);
 }
 
 .pk-dt tbody tr[aria-selected="true"] > .pk-dt-td:first-child {
-  box-shadow: inset 1px 1px 0 var(--blue);
+  box-shadow: inset 1px 1px 0 var(--accent);
 }
 
 .pk-dt tbody tr[aria-selected="true"] > .pk-dt-td:last-child {
-  box-shadow: inset -1px 1px 0 var(--blue);
+  box-shadow: inset -1px 1px 0 var(--accent);
 }
 
 .pk-dt tbody tr[aria-selected="true"]:focus-visible > .pk-dt-td {
-  box-shadow: inset 0 1px 0 var(--blue), inset 0 -1px 0 var(--blue);
+  box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--focus-ring);
 }
 
 /* Virtual mode needs every row the same height; the window arithmetic
@@ -1190,11 +1225,11 @@ button { font-family:var(--mono); }
 .pk-dt-caret {
   display: inline-block;
   width: 1ch;
-  color: var(--line2);
+  color: var(--dim);
 }
 
 .pk-dt-group-count {
-  color: var(--line2);
+  color: var(--dim);
   font-weight: 400;
 }
 
@@ -1349,14 +1384,20 @@ button { font-family:var(--mono); }
   /* In the filter: an --blue ring plus a doubled seam, so "pulled out of the
      stack" is also a shape change and not only a hue. */
   box-shadow:
-    inset 1px 0 0 var(--tag-seam),
-    inset 0 -1px 0 var(--tag-rule),
-    inset 0 0 0 1px var(--blue),
-    inset 0 0 0 2px var(--tag-seam);
+    inset 0 0 0 2px var(--accent),
+    inset 0 0 0 3px var(--tag-seam);
+}
+
+/* While a tag filter is on, the segments it does not name drop to outlines,
+   so the filtering ones are the only filled shapes in the gutter. */
+.pk-dt[data-tag-filter="true"] .pk-dt-tag:not(.on):not(.pk-dt-tag-tail) {
+  background: var(--bg);
+  color: var(--tag-fill);
+  box-shadow: inset 0 0 0 1px var(--tag-fill);
 }
 
 .pk-dt-tag:focus-visible {
-  outline: 1px solid var(--blue);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 1px;
 }
 

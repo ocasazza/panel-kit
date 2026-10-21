@@ -2,10 +2,10 @@
 //! the LiveView data table's suites, against real SSR output.
 
 use dioxus::prelude::*;
-use panel_kit::widgets::{Control, DataColumnSpec, DataRow, DataTable};
+use panel_kit::widgets::{Control, DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
 use panel_kit_core::widgets::data_table::{
-    Align, ColumnFilter, Selectable, SortDir, SortKey, SortSpec, TableDefaults, TableState,
-    TableWindow, ViewMode, WINDOW_COUNT,
+    Align, ColumnFilter, Selectable, SortDir, SortSpec, TableDefaults, TableState, TableWindow,
+    ViewMode, WINDOW_COUNT,
 };
 use rstest::rstest;
 
@@ -38,34 +38,60 @@ fn columns() -> Vec<DataColumnSpec> {
     ]
 }
 
-fn item(n: usize, title: &str, status: &str) -> DataRow {
-    let id = format!("imp-{n}");
-    let priority = (n % 5) as f64;
-    let agent = (!n.is_multiple_of(3)).then(|| format!("agent-{}", n % 4));
-    DataRow::new(id.clone())
-        .cell(
-            rsx! { b { class: "item-id", "{id}" } },
-            SortKey::text(&id),
-            id.clone(),
-        )
-        .text(title)
-        .text(status)
-        .num(Some(priority), format!("{priority}"))
-        .cell(
-            rsx! { {agent.clone().unwrap_or_default()} },
-            agent
-                .as_deref()
-                .map(SortKey::text)
-                .unwrap_or(SortKey::Missing),
-            agent.unwrap_or_default(),
-        )
-        .num(Some(n as f64), format!("{n}s"))
+/// A cell as a fixture writes it.
+#[derive(Clone)]
+enum C {
+    T(String),
+    N(f64),
+    Nil,
 }
 
-fn rows(count: usize) -> Vec<DataRow> {
+/// One row before it goes into a table.
+#[derive(Clone)]
+struct Item {
+    id: String,
+    cells: Vec<C>,
+    tags: Vec<String>,
+}
+
+fn t(text: &str) -> C {
+    C::T(text.to_string())
+}
+
+fn item(n: usize, title: &str, status: &str) -> Item {
+    let id = format!("imp-{n}");
+    let agent = (!n.is_multiple_of(3)).then(|| format!("agent-{}", n % 4));
+    Item {
+        cells: vec![
+            t(&id),
+            t(title),
+            t(status),
+            C::N((n % 5) as f64),
+            agent.map(C::T).unwrap_or(C::Nil),
+            C::N(n as f64),
+        ],
+        id,
+        tags: Vec::new(),
+    }
+}
+
+fn rows(count: usize) -> Vec<Item> {
     (1..=count)
         .map(|n| item(n, &format!("item {n}"), STATUSES[n % STATUSES.len()]))
         .collect()
+}
+
+fn table(columns: &[DataColumnSpec], items: &[Item]) -> TableData {
+    let mut builder = TableDataBuilder::with_capacity(columns, items.len());
+    for item in items {
+        let values = item.cells.iter().map(|cell| match cell {
+            C::T(text) => Value::Text(text),
+            C::N(n) => Value::Number(*n),
+            C::Nil => Value::Missing,
+        });
+        builder.row(&item.id, values).tags(&item.tags);
+    }
+    builder.build()
 }
 
 fn state() -> TableState {
@@ -75,7 +101,7 @@ fn state() -> TableState {
 /// What a table renders, with the knobs the cases turn.
 #[derive(Clone)]
 struct Grid {
-    rows: Vec<DataRow>,
+    rows: Vec<Item>,
     columns: Vec<DataColumnSpec>,
     state: TableState,
     selected: Option<Vec<String>>,
@@ -90,7 +116,7 @@ impl PartialEq for Grid {
     }
 }
 
-fn grid(rows: Vec<DataRow>) -> Grid {
+fn grid(rows: Vec<Item>) -> Grid {
     Grid {
         rows,
         columns: columns(),
@@ -102,16 +128,23 @@ fn grid(rows: Vec<DataRow>) -> Grid {
     }
 }
 
-/// Handlers need a runtime, so the table is built inside a component.
+/// Handlers need a runtime, so the table is built inside a component. The
+/// first column renders as a bold id, as a host's custom cell would.
 #[component]
 fn Probe(grid: Grid) -> Element {
     let on_row = grid.on_row.then(|| EventHandler::new(|_: String| {}));
+    let data = table(&grid.columns, &grid.rows);
+    let text = data.clone();
     rsx! {
         DataTable {
             id: "t",
             label: "things",
             columns: grid.columns,
-            rows: grid.rows,
+            data,
+            cell: move |(row, column): (usize, usize)| {
+                let value = text.text(row, column).into_owned();
+                if column == 0 { rsx! { b { class: "item-id", "{value}" } } } else { rsx! { "{value}" } }
+            },
             state: grid.state,
             selected: grid.selected,
             on_row,
@@ -385,19 +418,15 @@ fn a_single_key_sort_draws_no_rank_and_missing_values_sort_last() {
         DataColumnSpec::new("score", "Score").number(),
         DataColumnSpec::new("cost", "Cost").hidden(),
     ];
+    let row = |id: &str, name: &str, score: Option<f64>, cost: &str| Item {
+        id: id.to_string(),
+        cells: vec![t(name), score.map(C::N).unwrap_or(C::Nil), t(cost)],
+        tags: Vec::new(),
+    };
     let rows = vec![
-        DataRow::new("a")
-            .text("alpha")
-            .num(Some(1.0), "1")
-            .num(Some(9.0), "cost-a"),
-        DataRow::new("b")
-            .text("beta")
-            .num(Some(3.0), "3")
-            .num(Some(8.0), "cost-b"),
-        DataRow::new("c")
-            .text("gamma")
-            .num(None, "-")
-            .num(None, "cost-c"),
+        row("a", "alpha", Some(1.0), "cost-a"),
+        row("b", "beta", Some(3.0), "cost-b"),
+        row("c", "gamma", None, "cost-c"),
     ];
     let state = TableState {
         sort: vec![SortSpec::new("score", SortDir::Desc)],
@@ -538,7 +567,7 @@ fn the_toolbar_draws_the_controls_asked_for(
     #[case] absent: &[&str],
 ) {
     let html = Html(dioxus_ssr::render_element(rsx! {
-        DataTable { id: "t", columns: columns(), rows: rows(2), toolbar }
+        DataTable { id: "t", columns: columns(), data: table(&columns(), &rows(2)), toolbar }
     }));
     for needle in present {
         assert!(html.has(needle), "{needle} missing");
@@ -570,7 +599,7 @@ fn tag_columns() -> Vec<DataColumnSpec> {
     ]
 }
 
-fn tag_rows() -> Vec<DataRow> {
+fn tag_rows() -> Vec<Item> {
     [
         ("a", "one", &["raft"][..]),
         ("b", "two", &["ui", "raft"]),
@@ -578,7 +607,11 @@ fn tag_rows() -> Vec<DataRow> {
         ("d", "four", &[]),
     ]
     .into_iter()
-    .map(|(id, title, tags)| DataRow::new(id).text(id).text(title).tags(tags))
+    .map(|(id, title, tags)| Item {
+        id: id.to_string(),
+        cells: vec![t(id), t(title)],
+        tags: tags.iter().map(|tag| tag.to_string()).collect(),
+    })
     .collect()
 }
 

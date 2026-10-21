@@ -19,7 +19,7 @@ pub mod status;
 pub mod table;
 
 pub use cascade::{CascadeAction, CascadeItem, CascadeState, CascadingDropdown};
-pub use data_table::{csv, tsv, Control, DataColumnSpec, DataRow, DataTable};
+pub use data_table::{csv, tsv, Control, DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
 pub use dropdown::{Dropdown, DropdownAction, DropdownItem, DropdownState};
 
 use dioxus::prelude::*;

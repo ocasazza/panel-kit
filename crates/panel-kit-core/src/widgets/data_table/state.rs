@@ -12,6 +12,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::column::{DataColumnSpec, SortDir, SortSpec};
+use super::data::TableData;
 use super::stored::{Field, StoredFilter, StoredTable};
 use super::tags::{canonical_tag, TagMode};
 use super::view::View;
@@ -542,9 +543,9 @@ impl TableState {
 
     /// Select a row. `none` selects nothing; `single` holds one row and a
     /// second click clears it; `multi` toggles, takes only, or adds the span
-    /// from the anchor through `id` in `ids` (an anchor out of view spans
-    /// just `id`).
-    pub fn select(&mut self, id: &str, mode: SelectMode, ids: &[String]) {
+    /// of rendered rows from the anchor through `id` (an anchor out of view
+    /// spans just `id`).
+    pub fn select(&mut self, id: &str, mode: SelectMode, view: &View, data: &TableData) {
         match self.selectable {
             Selectable::None => {}
             Selectable::Single => {
@@ -562,11 +563,13 @@ impl TableState {
                     self.anchor = Some(id.to_string());
                 }
                 (SelectMode::Range, Some(anchor)) => {
-                    let at = |row: &str| ids.iter().position(|visible| visible == row);
-                    match (at(&anchor), at(id)) {
+                    match (view.position(data, &anchor), view.position(data, id)) {
                         (Some(a), Some(b)) => {
                             let (lo, hi) = (a.min(b), a.max(b));
-                            self.selection.extend(ids[lo..=hi].iter().cloned());
+                            let span = view.rows[lo..=hi]
+                                .iter()
+                                .map(|&row| data.id(row).to_string());
+                            self.selection.extend(span);
                         }
                         _ => {
                             self.selection.insert(id.to_string());
@@ -583,17 +586,17 @@ impl TableState {
         }
     }
 
-    /// Select every visible row, or deselect them when all already are.
-    pub fn select_all(&mut self, ids: &[String]) {
+    /// Select every rendered row, or deselect them when all already are.
+    pub fn select_all(&mut self, view: &View, data: &TableData) {
         if self.selectable != Selectable::Multi {
             return;
         }
-        if ids.iter().all(|id| self.selection.contains(id)) {
-            for id in ids {
+        if view.ids(data).all(|id| self.selection.contains(id)) {
+            for id in view.ids(data) {
                 self.selection.remove(id);
             }
         } else {
-            self.selection.extend(ids.iter().cloned());
+            self.selection.extend(view.ids(data).map(str::to_string));
         }
     }
 
@@ -603,11 +606,10 @@ impl TableState {
         self.anchor = None;
     }
 
-    /// A key over the view. Navigation moves the cursor through the visible
+    /// A key over the view. Navigation moves the cursor through the rendered
     /// rows and pulls the window along; shift extends a multi selection from
     /// the anchor (or the row the cursor left).
-    pub fn key(&mut self, key: TableKey, shift: bool, view: &View, page: usize) {
-        let ids = &view.ids;
+    pub fn key(&mut self, key: TableKey, shift: bool, view: &View, data: &TableData, page: usize) {
         match key {
             TableKey::Space => {
                 if let Some(id) = self.cursor.clone() {
@@ -616,25 +618,22 @@ impl TableState {
                     } else {
                         SelectMode::Toggle
                     };
-                    self.select(&id, mode, ids);
+                    self.select(&id, mode, view, data);
                 }
             }
             TableKey::Escape => self.clear_selection(),
             TableKey::SelectAll => {
                 if self.selectable == Selectable::Multi {
-                    self.selection.extend(ids.iter().cloned());
+                    self.selection.extend(view.ids(data).map(str::to_string));
                 }
             }
             nav => {
-                if ids.is_empty() {
+                if view.rows.is_empty() {
                     return;
                 }
                 let page = page.clamp(1, 1_000);
-                let last = ids.len() - 1;
-                let from = self
-                    .cursor
-                    .as_ref()
-                    .and_then(|c| ids.iter().position(|id| id == c));
+                let last = view.rows.len() - 1;
+                let from = self.cursor.as_deref().and_then(|c| view.position(data, c));
                 let to = match (nav, from) {
                     (TableKey::Down, Some(at)) => (at + 1).min(last),
                     (TableKey::Up, Some(at)) => at.saturating_sub(1),
@@ -644,25 +643,22 @@ impl TableState {
                     (TableKey::PageUp, Some(at)) => at.saturating_sub(page),
                     _ => 0,
                 };
-                let id = ids[to].clone();
+                let id = view.id(data, to).to_string();
                 let left = self.cursor.replace(id.clone());
                 if shift && self.selectable == Selectable::Multi {
                     if self.anchor.is_none() {
                         self.anchor = left.or_else(|| Some(id.clone()));
                     }
-                    self.select(&id, SelectMode::Range, ids);
+                    self.select(&id, SelectMode::Range, view, data);
                 }
-                self.follow(view, &id);
+                self.follow(view.row_entries[to]);
             }
         }
     }
 
     /// A cursor that left the mounted window moves the window with it, so the
-    /// row exists to focus.
-    fn follow(&mut self, view: &View, id: &str) {
-        let Some(&at) = view.positions.get(id) else {
-            return;
-        };
+    /// row exists to focus. `at` is the cursor's entry index.
+    fn follow(&mut self, at: usize) {
         let TableWindow { start, count, .. } = self.window;
         let edge = OVERSCAN.min(count / 4);
         if at < start + edge || at >= (start + count).saturating_sub(edge) {
@@ -989,9 +985,15 @@ pub enum TableEvent {
 }
 
 impl TableEvent {
-    /// Apply to `state`; `view` is the current view (visible ids, entry
-    /// positions) that selection and keys work over.
-    pub fn apply(&self, state: &mut TableState, columns: &[DataColumnSpec], view: &View) {
+    /// Apply to `state`; `view` and `data` are what selection and keys work
+    /// over.
+    pub fn apply(
+        &self,
+        state: &mut TableState,
+        columns: &[DataColumnSpec],
+        view: &View,
+        data: &TableData,
+    ) {
         match self {
             TableEvent::Sort { column, append } => state.click_header(column, *append),
             TableEvent::MoveColumn(column, target) => state.move_column(column, target),
@@ -1005,10 +1007,10 @@ impl TableEvent {
             TableEvent::ToggleGroup(group) => state.toggle_group(group),
             TableEvent::ToggleDensity => state.density = state.density.toggled(),
             TableEvent::View(mode) => state.view = *mode,
-            TableEvent::Select { id, mode } => state.select(id, *mode, &view.ids),
-            TableEvent::SelectAll => state.select_all(&view.ids),
+            TableEvent::Select { id, mode } => state.select(id, *mode, view, data),
+            TableEvent::SelectAll => state.select_all(view, data),
             TableEvent::Cursor(id) => state.cursor = Some(id.clone()),
-            TableEvent::Key { key, shift, page } => state.key(*key, *shift, view, *page),
+            TableEvent::Key { key, shift, page } => state.key(*key, *shift, view, data, *page),
             TableEvent::Window {
                 start,
                 count,
@@ -1077,6 +1079,122 @@ impl TableState {
             quick: self.quick.trim().to_string(),
         }
     }
+
+    /// What the row order depends on: the query, the visible columns the quick
+    /// filter reads, and grouping. Equal keys over the same data order rows
+    /// the same way; folding is not part of it.
+    pub fn order_key(&self) -> OrderKey {
+        OrderKey {
+            sort: self.sort.clone(),
+            filters: self.filters.clone(),
+            quick: self.quick.clone(),
+            hidden: self.hidden.clone(),
+            group_by: self.group_by.clone(),
+            tag_filter: self.tag_filter.clone(),
+            tag_mode: self.tag_mode,
+        }
+    }
+}
+
+/// What narrows a filter's rows, for a chip that names it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FilterKind {
+    /// The quick filter.
+    Quick,
+    /// One column's filter.
+    Column,
+    /// One tag of the tag filter.
+    Tag,
+}
+
+/// One thing narrowing the rows, as a removable chip shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActiveFilter {
+    /// What kind of filter it is.
+    pub kind: FilterKind,
+    /// What it filters: `"filter"`, a column's title, or `"tag"`.
+    pub label: String,
+    /// What it asks for, as text.
+    pub value: String,
+    /// The event that removes it.
+    pub remove: TableEvent,
+}
+
+impl TableState {
+    /// Every active filter: the quick filter, then column filters in column
+    /// order, then tags alphabetically.
+    pub fn active_filters(&self, columns: &[DataColumnSpec]) -> Vec<ActiveFilter> {
+        let quick = self.quick.trim();
+        let quick = (!quick.is_empty()).then(|| ActiveFilter {
+            kind: FilterKind::Quick,
+            label: "filter".to_string(),
+            value: quick.to_string(),
+            remove: TableEvent::Quick(String::new()),
+        });
+        let columns = columns.iter().filter_map(|column| {
+            let filter = self.filters.get(&column.id)?;
+            Some(ActiveFilter {
+                kind: FilterKind::Column,
+                label: column.title.clone(),
+                value: filter.summary(),
+                remove: TableEvent::Filter(column.id.clone(), None),
+            })
+        });
+        let tags = self.tag_filter.iter().map(|tag| ActiveFilter {
+            kind: FilterKind::Tag,
+            label: "tag".to_string(),
+            value: tag.clone(),
+            remove: TableEvent::Tag {
+                tag: tag.clone(),
+                all: false,
+            },
+        });
+        quick.into_iter().chain(columns).chain(tags).collect()
+    }
+}
+
+impl ColumnFilter {
+    /// What the filter asks for, as a chip reads it: the text, the values,
+    /// or the bounds.
+    pub fn summary(&self) -> String {
+        let number = |n: f64| {
+            let mut out = String::new();
+            super::data::write_number(&mut out, n);
+            out
+        };
+        match self {
+            ColumnFilter::Text(text) => format!("\u{201c}{text}\u{201d}"),
+            ColumnFilter::Values(values) => values.join(", "),
+            ColumnFilter::Range {
+                min: Some(min),
+                max: Some(max),
+            } => format!("{}\u{2013}{}", number(*min), number(*max)),
+            ColumnFilter::Range {
+                min: Some(min),
+                max: None,
+            } => format!("\u{2265} {}", number(*min)),
+            ColumnFilter::Range {
+                min: None,
+                max: Some(max),
+            } => format!("\u{2264} {}", number(*max)),
+            ColumnFilter::Range {
+                min: None,
+                max: None,
+            } => String::new(),
+        }
+    }
+}
+
+/// What a view's row order depends on; see [`TableState::order_key`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct OrderKey {
+    sort: Vec<SortSpec>,
+    filters: BTreeMap<String, ColumnFilter>,
+    quick: String,
+    hidden: BTreeSet<String>,
+    group_by: Option<String>,
+    tag_filter: BTreeSet<String>,
+    tag_mode: TagMode,
 }
 
 fn clamp_width(width: f64) -> u32 {

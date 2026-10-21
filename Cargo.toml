@@ -82,5 +82,10 @@ inherits = "dev"
 [profile.android-dev]
 inherits = "dev"
 
+# Optimised wasm for timing the demos; dx's bundled wasm-opt rejects current
+# rustc output, so this goes through dx's non-release path.
+[profile.wasm-perf]
+inherits = "release"
+
 [patch.crates-io]
 beamterm-renderer = { path = "crates/beamterm-renderer" }

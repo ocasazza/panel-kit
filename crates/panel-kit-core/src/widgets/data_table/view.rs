@@ -3,37 +3,15 @@
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
-use std::collections::HashMap;
+use std::collections::BTreeSet;
 
-use super::column::{natural_cmp, ColumnKind, DataColumnSpec, SortDir, SortKey, SortSpec};
+use super::column::{natural_cmp, ColumnKind, DataColumnSpec, SortDir, SortSpec};
+use super::data::{Order, TableData};
 use super::state::{ColumnFilter, TableState};
-use super::tags::{row_labels, TagMode};
+use super::tags::TagMode;
 
 /// Most values an enum filter offers when the column names none.
 pub const OPTION_LIMIT: usize = 200;
-
-/// One row's query data: its id, its tags, and per declared column (in
-/// declaration order) a sort key and the cell's plain text.
-#[derive(Clone, Copy, Debug)]
-pub struct RowKeys<'a> {
-    /// Stable row identity.
-    pub id: &'a str,
-    /// The row's tags; `None` when the table has no ribbon, which a tag
-    /// filter then leaves alone.
-    pub tags: Option<&'a [String]>,
-    /// Sort keys, parallel to the declared columns.
-    pub keys: &'a [SortKey],
-    /// Cell text, parallel to the declared columns: what filters match,
-    /// groups are named by, and exports write.
-    pub text: &'a [String],
-}
-
-impl RowKeys<'_> {
-    /// The text of the column declared at `index`; empty when absent.
-    pub fn cell(&self, index: usize) -> &str {
-        self.text.get(index).map(String::as_str).unwrap_or("")
-    }
-}
 
 /// Who applies the query.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -43,6 +21,25 @@ pub enum QueryMode {
     Client,
     /// The host already did; the table keeps its order and only groups.
     Server,
+}
+
+/// How a view is built besides the state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BuildOptions {
+    /// Who applies the query.
+    pub mode: QueryMode,
+    /// Whether the table draws a ribbon; without one, a tag filter does not
+    /// narrow.
+    pub tags: bool,
+}
+
+impl Default for BuildOptions {
+    fn default() -> Self {
+        BuildOptions {
+            mode: QueryMode::Client,
+            tags: true,
+        }
+    }
 }
 
 /// One rendered line.
@@ -57,7 +54,7 @@ pub enum Entry {
         /// Whether its rows are hidden.
         folded: bool,
     },
-    /// A row, by index into the rows the table was given.
+    /// A row, by index into the table's data.
     Row(usize),
 }
 
@@ -66,66 +63,103 @@ pub enum Entry {
 pub struct View {
     /// Group headers and rows, in render order.
     pub entries: Vec<Entry>,
-    /// Ids of the rows rendered (folded groups' rows excluded), in order.
-    pub ids: Vec<String>,
+    /// The rendered rows (folded groups' rows excluded), in order.
+    pub rows: Vec<usize>,
     /// Each rendered row's index into `entries`.
-    pub positions: HashMap<String, usize>,
+    pub row_entries: Vec<usize>,
     /// Rows that passed the query, folded ones included.
     pub total: usize,
-    /// Rows the table was given.
+    /// Rows the table holds.
     pub given: usize,
     /// The values each filterable enum column offers.
     pub options: BTreeMap<String, Vec<String>>,
 }
 
-impl View {
-    /// Build the view of `rows` under `state`.
+/// The rows that pass the query, in order: the expensive half of a view,
+/// reused while only folding changes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Ordered {
+    /// Passing rows, sorted (the group column first when grouping).
+    pub rows: Vec<usize>,
+    /// Rows the table holds.
+    pub given: usize,
+}
+
+impl Ordered {
+    /// Filter and sort `data` under `state`.
     pub fn build(
         columns: &[DataColumnSpec],
-        rows: &[RowKeys<'_>],
+        data: &TableData,
         state: &TableState,
-        mode: QueryMode,
-    ) -> View {
+        options: BuildOptions,
+    ) -> Ordered {
         let index = |id: &str| columns.iter().position(|c| c.id == id);
-        let kept: Vec<usize> = match mode {
-            QueryMode::Server => (0..rows.len()).collect(),
+        let mut rows: Vec<usize> = match options.mode {
+            QueryMode::Server => (0..data.len()).collect(),
             QueryMode::Client => {
-                let visible: Vec<usize> = state
-                    .visible(columns)
-                    .iter()
-                    .filter_map(|c| index(&c.id))
-                    .collect();
-                let mut kept: Vec<usize> = (0..rows.len())
-                    .filter(|&at| {
-                        let row = &rows[at];
-                        quick(row, &state.quick, &visible)
-                            && filters(row, state, &index)
-                            && tags(row, state)
-                    })
-                    .collect();
-                sort(&mut kept, rows, state, &index);
-                kept
+                let filter = Filter::new(columns, data, state, options.tags, &index);
+                (0..data.len())
+                    .filter(|&row| filter.passes(data, row))
+                    .collect()
             }
         };
+        if options.mode == QueryMode::Client {
+            sort(&mut rows, data, state, &index);
+        }
+        Ordered {
+            rows,
+            given: data.len(),
+        }
+    }
+}
 
+impl View {
+    /// Build the view of `data` under `state`.
+    pub fn build(
+        columns: &[DataColumnSpec],
+        data: &TableData,
+        state: &TableState,
+        options: BuildOptions,
+    ) -> View {
+        View::group(
+            &Ordered::build(columns, data, state, options),
+            columns,
+            data,
+            state,
+        )
+    }
+
+    /// Group ordered rows into entries, leaving folded groups' rows out.
+    pub fn group(
+        ordered: &Ordered,
+        columns: &[DataColumnSpec],
+        data: &TableData,
+        state: &TableState,
+    ) -> View {
+        let kept = &ordered.rows;
         let mut view = View {
             total: kept.len(),
-            given: rows.len(),
-            options: options(columns, rows),
+            given: ordered.given,
+            options: enum_options(columns, data),
             ..View::default()
         };
-        let group = state.group_by.as_deref().and_then(index);
-        let push_row = |view: &mut View, at: usize| {
-            view.positions
-                .insert(rows[at].id.to_string(), view.entries.len());
-            view.ids.push(rows[at].id.to_string());
-            view.entries.push(Entry::Row(at));
-        };
+        let group = state
+            .group_by
+            .as_deref()
+            .and_then(|id| columns.iter().position(|c| c.id == id));
         match group {
-            None => kept.iter().for_each(|&at| push_row(&mut view, at)),
+            None => {
+                view.row_entries = (0..kept.len()).collect();
+                view.entries = kept.iter().map(|&row| Entry::Row(row)).collect();
+                view.rows = kept.clone();
+            }
             Some(column) => {
-                for run in kept.chunk_by(|&a, &b| rows[a].cell(column) == rows[b].cell(column)) {
-                    let value = rows[run[0]].cell(column).to_string();
+                let same = |a: usize, b: usize| match data.code(a, column) {
+                    Some(code) => data.code(b, column) == Some(code),
+                    None => data.text(a, column) == data.text(b, column),
+                };
+                for run in kept.chunk_by(|&a, &b| same(a, b)) {
+                    let value = data.text(run[0], column).into_owned();
                     let folded = state.collapsed.contains(&value);
                     view.entries.push(Entry::Group {
                         value,
@@ -133,7 +167,11 @@ impl View {
                         folded,
                     });
                     if !folded {
-                        run.iter().for_each(|&at| push_row(&mut view, at));
+                        for &row in run {
+                            view.row_entries.push(view.entries.len());
+                            view.rows.push(row);
+                            view.entries.push(Entry::Row(row));
+                        }
                     }
                 }
             }
@@ -141,67 +179,209 @@ impl View {
         view
     }
 
-    /// Row indices of every rendered row, in view order.
-    pub fn row_indices(&self) -> impl Iterator<Item = usize> + '_ {
-        self.entries.iter().filter_map(|entry| match entry {
-            Entry::Row(at) => Some(*at),
-            Entry::Group { .. } => None,
+    /// The id of the rendered row at `at`.
+    pub fn id<'a>(&self, data: &'a TableData, at: usize) -> &'a str {
+        data.id(self.rows[at])
+    }
+
+    /// Where the row `id` renders, among the rendered rows.
+    pub fn position(&self, data: &TableData, id: &str) -> Option<usize> {
+        self.rows.iter().position(|&row| data.id(row) == id)
+    }
+
+    /// The rendered rows' ids, in order.
+    pub fn ids<'a>(&'a self, data: &'a TableData) -> impl Iterator<Item = &'a str> + 'a {
+        self.rows.iter().map(move |&row| data.id(row))
+    }
+}
+
+/// A query resolved against the data once, so each row is checked without
+/// allocating.
+struct Filter<'a> {
+    words: Vec<String>,
+    /// Per visible column, how each word is looked for in it.
+    visible: Vec<Quick>,
+    /// Column filters.
+    columns: Vec<(usize, Check<'a>)>,
+    tags: Option<(Vec<Option<u32>>, TagMode)>,
+}
+
+/// How the quick filter reads one visible column.
+enum Quick {
+    /// Search the text.
+    Text(usize),
+    /// An enum: per word, whether each code's value contains it.
+    Codes(usize, Vec<Vec<bool>>),
+    /// A number: per word, whether it could appear in a number's text at all.
+    Number(usize, Vec<bool>),
+}
+
+enum Check<'a> {
+    Text(String),
+    Codes(Vec<u32>),
+    Values(&'a [String]),
+    Range(Option<f64>, Option<f64>),
+}
+
+impl<'a> Filter<'a> {
+    fn new(
+        columns: &[DataColumnSpec],
+        data: &TableData,
+        state: &'a TableState,
+        tags: bool,
+        index: &dyn Fn(&str) -> Option<usize>,
+    ) -> Self {
+        let words: Vec<String> = state
+            .quick
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        let visible = state
+            .visible(columns)
+            .iter()
+            .filter_map(|c| {
+                let at = index(&c.id)?;
+                Some(match (c.kind, data.dictionary(at)) {
+                    (_, Some(dict)) => Quick::Codes(
+                        at,
+                        words
+                            .iter()
+                            .map(|word| {
+                                dict.iter()
+                                    .map(|value| contains_folded(value, word))
+                                    .collect()
+                            })
+                            .collect(),
+                    ),
+                    (ColumnKind::Number, None) => Quick::Number(
+                        at,
+                        words
+                            .iter()
+                            .map(|word| {
+                                word.chars().all(|c| {
+                                    c.is_ascii_digit()
+                                        || matches!(c, '.' | '-' | 'e' | '+' | 'i' | 'n' | 'f')
+                                })
+                            })
+                            .collect(),
+                    ),
+                    _ => Quick::Text(at),
+                })
+            })
+            .collect();
+        let checks = state
+            .filters
+            .iter()
+            .filter_map(|(id, filter)| {
+                let at = index(id)?;
+                let check = match filter {
+                    ColumnFilter::Text(text) => Check::Text(text.to_lowercase()),
+                    ColumnFilter::Values(values) => match data.dictionary(at) {
+                        Some(dict) => Check::Codes(
+                            (0..dict.len() as u32)
+                                .filter(|&code| values.iter().any(|v| **v == *dict[code as usize]))
+                                .collect(),
+                        ),
+                        None => Check::Values(values),
+                    },
+                    ColumnFilter::Range { min, max } => Check::Range(*min, *max),
+                };
+                Some((at, check))
+            })
+            .collect();
+        let tags = (tags && !state.tag_filter.is_empty()).then(|| {
+            (
+                state.tag_filter.iter().map(|t| data.tag_id(t)).collect(),
+                state.tag_mode,
+            )
+        });
+        Filter {
+            words,
+            visible,
+            columns: checks,
+            tags,
+        }
+    }
+
+    fn passes(&self, data: &TableData, row: usize) -> bool {
+        self.quick(data, row) && self.checks(data, row) && self.tags(data, row)
+    }
+
+    /// Every word appears in some visible column.
+    fn quick(&self, data: &TableData, row: usize) -> bool {
+        self.words.iter().enumerate().all(|(w, word)| {
+            self.visible.iter().any(|quick| match quick {
+                Quick::Text(column) => contains_folded(&data.text(row, *column), word),
+                Quick::Codes(column, matches) => data
+                    .code(row, *column)
+                    .is_some_and(|code| matches[w][code as usize]),
+                Quick::Number(column, possible) => {
+                    possible[w] && data.with_text(row, *column, |text| contains_folded(text, word))
+                }
+            })
         })
     }
-}
 
-/// Every word of the quick filter appears in some visible column's text.
-fn quick(row: &RowKeys<'_>, quick: &str, visible: &[usize]) -> bool {
-    let words: Vec<String> = quick.split_whitespace().map(str::to_lowercase).collect();
-    if words.is_empty() {
-        return true;
-    }
-    let text = visible
-        .iter()
-        .map(|&at| row.cell(at).to_lowercase())
-        .collect::<Vec<_>>()
-        .join(" ");
-    words.iter().all(|word| text.contains(word.as_str()))
-}
-
-/// Every column filter passes; a hidden column's filter still applies.
-fn filters(row: &RowKeys<'_>, state: &TableState, index: &dyn Fn(&str) -> Option<usize>) -> bool {
-    state.filters.iter().all(|(id, filter)| {
-        let Some(at) = index(id) else { return true };
-        let text = row.cell(at);
-        match filter {
-            ColumnFilter::Text(want) => text.to_lowercase().contains(&want.to_lowercase()),
-            ColumnFilter::Values(values) => values.iter().any(|value| value == text),
-            ColumnFilter::Range { min, max } => {
-                let number = match row.keys.get(at) {
-                    Some(SortKey::Num(n)) => Some(*n),
-                    _ => text.trim().parse::<f64>().ok(),
-                };
-                number.is_some_and(|n| min.is_none_or(|m| n >= m) && max.is_none_or(|m| n <= m))
+    fn checks(&self, data: &TableData, row: usize) -> bool {
+        self.columns.iter().all(|(column, check)| match check {
+            Check::Text(want) => data.with_text(row, *column, |text| contains_folded(text, want)),
+            Check::Codes(codes) => data.code(row, *column).is_some_and(|c| codes.contains(&c)),
+            Check::Values(values) => {
+                let text = data.text(row, *column);
+                values.iter().any(|v| **v == *text)
             }
+            Check::Range(min, max) => data
+                .number(row, *column)
+                .is_some_and(|n| min.is_none_or(|m| n >= m) && max.is_none_or(|m| n <= m)),
+        })
+    }
+
+    fn tags(&self, data: &TableData, row: usize) -> bool {
+        let Some((want, mode)) = &self.tags else {
+            return true;
+        };
+        let have = data.tag_ids(row);
+        let holds = |tag: &Option<u32>| tag.is_some_and(|id| have.binary_search(&id).is_ok());
+        match mode {
+            TagMode::Any => want.iter().any(holds),
+            TagMode::All => want.iter().all(holds),
         }
-    })
+    }
 }
 
-/// The tag filter, over the row's canonical labels. A table with no ribbon is
-/// not narrowed by it.
-fn tags(row: &RowKeys<'_>, state: &TableState) -> bool {
-    let Some(tags) = row.tags.filter(|_| !state.tag_filter.is_empty()) else {
+/// Whether `hay` contains `needle` (already lowercase), ignoring case.
+fn contains_folded(hay: &str, needle: &str) -> bool {
+    if needle.is_empty() {
         return true;
-    };
-    let have = row_labels(tags);
-    match state.tag_mode {
-        TagMode::Any => state.tag_filter.iter().any(|tag| have.contains(tag)),
-        TagMode::All => state.tag_filter.iter().all(|tag| have.contains(tag)),
     }
+    if hay.is_ascii() && needle.is_ascii() {
+        let (h, n) = (hay.as_bytes(), needle.as_bytes());
+        let Some(last) = h.len().checked_sub(n.len()) else {
+            return false;
+        };
+        let (lower, upper) = (n[0], n[0].to_ascii_uppercase());
+        let mut from = 0;
+        while let Some(skip) = h[from..=last]
+            .iter()
+            .position(|&b| b == lower || b == upper)
+        {
+            let at = from + skip;
+            if h[at + 1..at + n.len()].eq_ignore_ascii_case(&n[1..]) {
+                return true;
+            }
+            from = at + 1;
+        }
+        return false;
+    }
+    hay.to_lowercase().contains(needle)
 }
 
 /// Grouping sorts by the group column first, so groups come out contiguous;
 /// the user's sort orders rows inside each. A missing value sinks whichever
-/// way its column sorts. Stable.
+/// way its column sorts; ties keep their order.
 fn sort(
     kept: &mut [usize],
-    rows: &[RowKeys<'_>],
+    data: &TableData,
     state: &TableState,
     index: &dyn Fn(&str) -> Option<usize>,
 ) {
@@ -210,52 +390,106 @@ fn sort(
         sort.retain(|spec| &spec.column != group);
         sort.insert(0, SortSpec::new(group.clone(), SortDir::Asc));
     }
-    let keys: Vec<(usize, SortDir)> = sort
+    let keys: Vec<(Order<'_>, SortDir)> = sort
         .iter()
-        .filter_map(|spec| Some((index(&spec.column)?, spec.dir)))
+        .filter_map(|spec| Some((data.order(index(&spec.column)?), spec.dir)))
         .collect();
     if keys.is_empty() {
         return;
     }
-    let missing = SortKey::Missing;
-    kept.sort_by(|&a, &b| {
-        keys.iter()
-            .map(|&(column, dir)| {
-                let left = rows[a].keys.get(column).unwrap_or(&missing);
-                let right = rows[b].keys.get(column).unwrap_or(&missing);
-                match (left, right) {
-                    (SortKey::Missing, SortKey::Missing) => Ordering::Equal,
-                    (SortKey::Missing, _) => Ordering::Greater,
-                    (_, SortKey::Missing) => Ordering::Less,
-                    _ if dir == SortDir::Desc => right.order(left),
-                    _ => left.order(right),
-                }
-            })
-            .find(|order| *order != Ordering::Equal)
-            .unwrap_or(Ordering::Equal)
-    });
+    // Each key becomes a u64 whose unsigned order is the sort order, missing
+    // last either way; one or two keys pack with the row so the sort compares
+    // plain integers.
+    let encoded: Vec<Vec<u64>> = keys
+        .iter()
+        .map(|(order, dir)| {
+            kept.iter()
+                .map(|&row| encode(order.key(row), *dir))
+                .collect()
+        })
+        .collect();
+    match encoded.as_slice() {
+        [first] => {
+            let mut packed: Vec<(u64, usize)> =
+                first.iter().copied().zip(kept.iter().copied()).collect();
+            packed.sort_unstable();
+            for (slot, (_, row)) in kept.iter_mut().zip(packed) {
+                *slot = row;
+            }
+        }
+        [first, second] => {
+            let mut packed: Vec<(u64, u64, usize)> = first
+                .iter()
+                .zip(second)
+                .zip(kept.iter())
+                .map(|((&a, &b), &row)| (a, b, row))
+                .collect();
+            packed.sort_unstable();
+            for (slot, (_, _, row)) in kept.iter_mut().zip(packed) {
+                *slot = row;
+            }
+        }
+        [first, second, third] => {
+            let mut packed: Vec<(u64, u64, u64, usize)> = (0..kept.len())
+                .map(|i| (first[i], second[i], third[i], kept[i]))
+                .collect();
+            packed.sort_unstable();
+            for (slot, (_, _, _, row)) in kept.iter_mut().zip(packed) {
+                *slot = row;
+            }
+        }
+        many => {
+            let mut at: Vec<usize> = (0..kept.len()).collect();
+            at.sort_unstable_by(|&a, &b| {
+                many.iter()
+                    .map(|keys| keys[a].cmp(&keys[b]))
+                    .find(|order| order.is_ne())
+                    .unwrap_or(Ordering::Equal)
+                    .then(kept[a].cmp(&kept[b]))
+            });
+            let rows: Vec<usize> = at.iter().map(|&i| kept[i]).collect();
+            kept.copy_from_slice(&rows);
+        }
+    }
+}
+
+/// A sort key as a u64 whose unsigned order is the wanted order: present
+/// values ascending or descending, missing after every present one.
+#[inline]
+fn encode(key: Option<f64>, dir: SortDir) -> u64 {
+    let Some(value) = key else {
+        return u64::MAX;
+    };
+    let bits = value.to_bits();
+    // Flip so unsigned order matches numeric order for every finite value.
+    let ascending = if bits >> 63 == 1 {
+        !bits
+    } else {
+        bits | (1 << 63)
+    };
+    match dir {
+        SortDir::Asc => ascending.min(u64::MAX - 1),
+        SortDir::Desc => (!ascending).min(u64::MAX - 1),
+    }
 }
 
 /// The values each filterable enum column offers: its declared options, else
-/// the distinct non-empty values present (at most [`OPTION_LIMIT`]), in
-/// natural order.
-fn options(columns: &[DataColumnSpec], rows: &[RowKeys<'_>]) -> BTreeMap<String, Vec<String>> {
+/// its distinct non-empty values (at most [`OPTION_LIMIT`]) in natural order.
+fn enum_options(columns: &[DataColumnSpec], data: &TableData) -> BTreeMap<String, Vec<String>> {
     columns
         .iter()
         .enumerate()
         .filter(|(_, c)| c.kind == ColumnKind::Enum && c.filterable)
         .map(|(at, column)| {
             let values = column.options.clone().unwrap_or_else(|| {
-                let mut values: Vec<String> = Vec::new();
-                for row in rows {
-                    let text = row.cell(at);
-                    if !text.is_empty() && !values.iter().any(|v| v == text) {
-                        values.push(text.to_string());
-                        if values.len() == OPTION_LIMIT {
-                            break;
-                        }
-                    }
-                }
+                let mut values: Vec<String> = data
+                    .dictionary(at)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter(|v| !v.is_empty())
+                    .take(OPTION_LIMIT)
+                    .map(|v| v.to_string())
+                    .collect();
                 values.sort_by(|a, b| natural_cmp(a, b));
                 values
             });
@@ -280,7 +514,7 @@ pub fn tally(view: &View, selected: usize) -> String {
 
 /// What the body says when rows exist but none pass: it names what narrowed
 /// them.
-pub fn empty_sentence(tag_filter: &std::collections::BTreeSet<String>) -> String {
+pub fn empty_sentence(tag_filter: &BTreeSet<String>) -> String {
     if tag_filter.is_empty() {
         "no rows match the table filter".to_string()
     } else {

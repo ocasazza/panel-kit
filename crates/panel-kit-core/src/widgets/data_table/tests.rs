@@ -20,36 +20,32 @@ enum V<'a> {
     Nil,
 }
 
+/// One row before it goes into a table.
 struct Row {
     id: String,
-    keys: Vec<SortKey>,
-    text: Vec<String>,
+    cells: Vec<Cell>,
     tags: Vec<String>,
+}
+
+enum Cell {
+    T(String),
+    N(f64),
+    Nil,
 }
 
 impl Row {
     fn of(id: &str, cells: &[V<'_>]) -> Row {
-        let keys = cells
+        let cells = cells
             .iter()
             .map(|cell| match cell {
-                V::T(text) => SortKey::text(text),
-                V::N(n) => SortKey::num(*n),
-                V::Nil => SortKey::Missing,
-            })
-            .collect();
-        let text = cells
-            .iter()
-            .map(|cell| match cell {
-                V::T(text) => text.to_string(),
-                V::N(n) if n.fract() == 0.0 => format!("{}", *n as i64),
-                V::N(n) => n.to_string(),
-                V::Nil => String::new(),
+                V::T(text) => Cell::T(text.to_string()),
+                V::N(n) => Cell::N(*n),
+                V::Nil => Cell::Nil,
             })
             .collect();
         Row {
             id: id.to_string(),
-            keys,
-            text,
+            cells,
             tags: Vec::new(),
         }
     }
@@ -58,6 +54,20 @@ impl Row {
         self.tags = tags.iter().map(|t| t.to_string()).collect();
         self
     }
+}
+
+/// The rows as a table holds them.
+fn data(columns: &[DataColumnSpec], rows: &[Row]) -> TableData {
+    let mut builder = TableDataBuilder::with_capacity(columns, rows.len());
+    for row in rows {
+        let values = row.cells.iter().map(|cell| match cell {
+            Cell::T(text) => super::Value::Text(text),
+            Cell::N(n) => super::Value::Number(*n),
+            Cell::Nil => super::Value::Missing,
+        });
+        builder.row(row.id.as_str(), values).tags(&row.tags);
+    }
+    builder.build()
 }
 
 const STATUSES: [&str; 6] = [
@@ -125,27 +135,47 @@ fn selectable(mode: Selectable) -> TableState {
     )
 }
 
-fn keys(rows: &[Row], tagged: bool) -> Vec<RowKeys<'_>> {
-    rows.iter()
-        .map(|row| RowKeys {
-            id: &row.id,
-            tags: tagged.then_some(row.tags.as_slice()),
-            keys: &row.keys,
-            text: &row.text,
-        })
-        .collect()
+/// A view and the data it indexes.
+struct Shown {
+    view: View,
+    data: TableData,
 }
 
-fn view_of(columns: &[DataColumnSpec], rows: &[Row], state: &TableState) -> View {
-    View::build(columns, &keys(rows, true), state, QueryMode::Client)
+impl Shown {
+    fn ids(&self) -> Vec<String> {
+        self.view.ids(&self.data).map(str::to_string).collect()
+    }
 }
 
-fn view(rows: &[Row], state: &TableState) -> View {
+impl std::ops::Deref for Shown {
+    type Target = View;
+
+    fn deref(&self) -> &View {
+        &self.view
+    }
+}
+
+fn view_with(
+    columns: &[DataColumnSpec],
+    rows: &[Row],
+    state: &TableState,
+    options: BuildOptions,
+) -> Shown {
+    let data = data(columns, rows);
+    let view = View::build(columns, &data, state, options);
+    Shown { view, data }
+}
+
+fn view_of(columns: &[DataColumnSpec], rows: &[Row], state: &TableState) -> Shown {
+    view_with(columns, rows, state, BuildOptions::default())
+}
+
+fn view(rows: &[Row], state: &TableState) -> Shown {
     view_of(&columns(), rows, state)
 }
 
 fn ids(rows: &[Row], state: &TableState) -> Vec<String> {
-    view(rows, state).ids
+    view(rows, state).ids()
 }
 
 /// `"imp-1 imp-10"` as ids.
@@ -163,8 +193,8 @@ fn imp(range: std::ops::RangeInclusive<usize>) -> Vec<String> {
 
 /// Apply one event against the view the state yields now.
 fn apply(state: &mut TableState, rows: &[Row], event: TableEvent) {
-    let view = view(rows, state);
-    event.apply(state, &columns(), &view);
+    let shown = view(rows, state);
+    event.apply(state, &columns(), &shown.view, &shown.data);
 }
 
 /// Run `steps`; after each, `check` reads the state and must equal the step's
@@ -274,7 +304,7 @@ fn shift_click_appends_a_column_and_the_view_sorts_by_both_in_order() {
     assert_eq!(state.direction("id"), Some(Desc));
 
     let order: Vec<(usize, usize)> = view(&rows, &state)
-        .ids
+        .ids()
         .iter()
         .map(|id| {
             let n: usize = id.trim_start_matches("imp-").parse().unwrap();
@@ -351,8 +381,16 @@ fn a_server_mode_view_keeps_the_hosts_order() {
         quick: "imp-1".into(),
         ..state()
     };
-    let view = View::build(&columns(), &keys(&rows, true), &state, QueryMode::Server);
-    assert_eq!(view.ids, names("imp-1 imp-2 imp-3"));
+    let view = view_with(
+        &columns(),
+        &rows,
+        &state,
+        BuildOptions {
+            mode: QueryMode::Server,
+            tags: true,
+        },
+    );
+    assert_eq!(view.ids(), names("imp-1 imp-2 imp-3"));
     assert_eq!(view.total, 3);
 }
 
@@ -526,11 +564,11 @@ fn group_by_folds_rows_under_headers_with_counts_and_a_folded_group_hides_its_ro
     .map(|status| (status.to_string(), 1, false))
     .collect();
     assert_eq!(groups(&grouped), unfolded);
-    assert_eq!(grouped.ids, names("imp-4 imp-1 imp-5 imp-2 imp-6 imp-3"));
+    assert_eq!(grouped.ids(), names("imp-4 imp-1 imp-5 imp-2 imp-6 imp-3"));
 
     apply(&mut state, &rows, TableEvent::ToggleGroup("open".into()));
     let folded = view(&rows, &state);
-    assert_eq!(folded.ids, names("imp-4 imp-1 imp-5 imp-2 imp-3"));
+    assert_eq!(folded.ids(), names("imp-4 imp-1 imp-5 imp-2 imp-3"));
     assert!(groups(&folded).contains(&("open".into(), 1, true)));
     assert_eq!(folded.total, 6);
 
@@ -739,7 +777,7 @@ fn the_clients_scroll_position_sets_the_window_and_nonsense_keeps_what_was_there
     let rows = rows(200);
     let view = view(&rows, &state);
     let mounted = state.mounted(view.entries.len(), true);
-    let shown: Vec<String> = view.ids[mounted.start..mounted.end].to_vec();
+    let shown: Vec<String> = view.ids()[mounted.start..mounted.end].to_vec();
     assert_eq!(shown, imp(121..=160));
     assert_eq!(mounted.above as f64 * state.row_height(), 2_460.0);
     assert_eq!(mounted.below as f64 * state.row_height(), 820.0);
@@ -1099,6 +1137,72 @@ proptest! {
     fn digit_runs_compare_as_numbers(x in 0u32..100_000, y in 0u32..100_000) {
         prop_assert_eq!(natural_cmp(&format!("imp-{x}"), &format!("IMP-{y}")), x.cmp(&y));
     }
+
+    /// The allocation-free comparison agrees with the plain char-by-char one,
+    /// ASCII or not.
+    #[test]
+    fn natural_order_matches_the_reference(a in "[a-cA-Cé日0-9 ]{0,8}", b in "[a-cA-Cé日0-9 ]{0,8}") {
+        prop_assert_eq!(natural_cmp(&a, &b), reference_natural_cmp(&a, &b));
+    }
+
+    /// Sorting by a text column, ascending or descending, is a natural-order
+    /// sort of its values with ties in row order, whatever the packed keys do.
+    #[test]
+    fn a_text_sort_is_a_natural_sort(
+        values in prop::collection::vec("[a-cA-C0-9 é/:_-]{0,12}", 0..60),
+        descending in any::<bool>(),
+    ) {
+        let columns = vec![DataColumnSpec::new("v", "v")];
+        let rows: Vec<Row> = values.iter().enumerate().map(|(n, v)| Row::of(&n.to_string(), &[V::T(v)])).collect();
+        let dir = if descending { Desc } else { Asc };
+        let state = TableState {
+            sort: vec![spec("v", dir)],
+            ..TableState::new(&columns, TableDefaults::default())
+        };
+        let got: Vec<usize> = view_of(&columns, &rows, &state).rows.clone();
+        let mut want: Vec<usize> = (0..values.len()).collect();
+        want.sort_by(|&a, &b| {
+            let order = natural_cmp(&values[a], &values[b]);
+            (if descending { order.reverse() } else { order }).then(a.cmp(&b))
+        });
+        prop_assert_eq!(got, want);
+    }
+}
+
+/// Natural order spelled out char by char: the oracle for [`natural_cmp`].
+fn reference_natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let digits = |chars: &mut std::iter::Peekable<std::str::Chars<'_>>| {
+        let mut run = String::new();
+        while let Some(c) = chars.peek().copied().filter(char::is_ascii_digit) {
+            run.push(c);
+            chars.next();
+        }
+        run.trim_start_matches('0').to_string()
+    };
+    let (mut left, mut right) = (a.chars().peekable(), b.chars().peekable());
+    loop {
+        match (left.peek().copied(), right.peek().copied()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
+                let (l, r) = (digits(&mut left), digits(&mut right));
+                match l.len().cmp(&r.len()).then_with(|| l.cmp(&r)) {
+                    Ordering::Equal => {}
+                    order => return order,
+                }
+            }
+            (Some(x), Some(y)) => {
+                match x.to_lowercase().cmp(y.to_lowercase()) {
+                    Ordering::Equal => {}
+                    order => return order,
+                }
+                left.next();
+                right.next();
+            }
+        }
+    }
 }
 
 /// Arbitrary JSON biased toward the payload's own field names and the
@@ -1161,7 +1265,7 @@ fn a_sorted_filtered_ten_thousand_row_view_builds_inside_the_budget_and_windows_
     let view = view(&rows, &state);
     let took = started.elapsed();
     assert_eq!((view.total, view.given), (3_333, 10_000));
-    assert_eq!(view.ids[0], "imp-9999");
+    assert_eq!(view.ids()[0], "imp-9999");
     assert_eq!(tally(&view, 0), "3333 of 10000 rows");
     let mounted = state.mounted(view.entries.len(), true);
     assert_eq!(mounted.end - mounted.start, WINDOW_COUNT);
@@ -1218,6 +1322,48 @@ fn the_tally_counts_rows_and_the_selection(
 fn the_empty_line_names_what_narrowed_the_view(#[case] tags: &[&str], #[case] want: &str) {
     let filter: BTreeSet<String> = tags.iter().map(|t| t.to_string()).collect();
     assert_eq!(empty_sentence(&filter), want);
+}
+
+#[rstest]
+#[case::text(ColumnFilter::Text("raft".into()), "\u{201c}raft\u{201d}")]
+#[case::values(ColumnFilter::Values(names("open done")), "open, done")]
+#[case::at_least(ColumnFilter::Range { min: Some(3.0), max: None }, "\u{2265} 3")]
+#[case::at_most(ColumnFilter::Range { min: None, max: Some(0.5) }, "\u{2264} 0.5")]
+#[case::between(ColumnFilter::Range { min: Some(1.0), max: Some(5.0) }, "1\u{2013}5")]
+fn a_filter_summarises_what_it_asks_for(#[case] filter: ColumnFilter, #[case] want: &str) {
+    assert_eq!(filter.summary(), want);
+}
+
+#[test]
+fn active_filters_list_quick_columns_then_tags_and_each_removes_itself() {
+    let rows = rows(12);
+    let mut state = state();
+    state.set_quick("  item ");
+    state.set_filter("priority", ColumnFilter::range(Some(1.0), None));
+    state.set_filter("status", ColumnFilter::values(["open"]));
+    state.toggle_tag("ui", false);
+    state.toggle_tag("raft", false);
+
+    let active = state.active_filters(&columns());
+    let shown: Vec<(FilterKind, &str, &str)> = active
+        .iter()
+        .map(|f| (f.kind, f.label.as_str(), f.value.as_str()))
+        .collect();
+    assert_eq!(
+        shown,
+        vec![
+            (FilterKind::Quick, "filter", "item"),
+            (FilterKind::Column, "status", "open"),
+            (FilterKind::Column, "priority", "\u{2265} 1"),
+            (FilterKind::Tag, "tag", "raft"),
+            (FilterKind::Tag, "tag", "ui"),
+        ]
+    );
+    for filter in active {
+        apply(&mut state, &rows, filter.remove);
+    }
+    assert!(state.active_filters(&columns()).is_empty());
+    assert!(!state.filtering() && state.tag_filter.is_empty());
 }
 
 #[test]
@@ -1368,7 +1514,7 @@ fn a_tag_filter_narrows_by_any_or_all(
     #[case] want: &str,
 ) {
     assert_eq!(
-        view_of(&tag_columns(), &tag_rows(), &tag_state(filter, mode)).ids,
+        view_of(&tag_columns(), &tag_rows(), &tag_state(filter, mode)).ids(),
         names(want)
     );
 }
@@ -1379,7 +1525,7 @@ fn a_tag_filter_narrows_by_any_or_all(
 fn the_predicate_canonicalises_the_rows_labels(#[case] filter: &str, #[case] mode: TagMode) {
     let shouty = vec![Row::of("x", &[V::T("x"), V::T("shouty")]).tagged(&["UI", " Infra "])];
     assert_eq!(
-        view_of(&tag_columns(), &shouty, &tag_state(filter, mode)).ids,
+        view_of(&tag_columns(), &shouty, &tag_state(filter, mode)).ids(),
         names("x")
     );
 }
@@ -1387,13 +1533,16 @@ fn the_predicate_canonicalises_the_rows_labels(#[case] filter: &str, #[case] mod
 #[test]
 fn a_table_with_no_ribbon_is_not_narrowed_by_a_tag_filter() {
     let rows = tag_rows();
-    let view = View::build(
+    let view = view_with(
         &tag_columns(),
-        &keys(&rows, false),
+        &rows,
         &tag_state("raft", TagMode::Any),
-        QueryMode::Client,
+        BuildOptions {
+            mode: QueryMode::Client,
+            tags: false,
+        },
     );
-    assert_eq!(view.ids, names("a b c d"));
+    assert_eq!(view.ids(), names("a b c d"));
 }
 
 #[test]
@@ -1406,7 +1555,7 @@ fn a_tag_toggles_shift_switches_to_all_and_clear_empties_the_filter() {
     let mut state = TableState::new(&tag_columns(), TableDefaults::default());
     let mut step = |event: TableEvent| {
         let view = view_of(&tag_columns(), &rows, &state);
-        event.apply(&mut state, &tag_columns(), &view);
+        event.apply(&mut state, &tag_columns(), &view.view, &view.data);
         (state.tag_filter.clone(), state.tag_mode)
     };
     assert_eq!(step(tag(" RAFT ", false)), (set("raft"), TagMode::Any));

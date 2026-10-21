@@ -7,22 +7,44 @@
 //! unchanged in meaning.
 
 mod dom;
-mod row;
 
+use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::rc::Rc;
 
 use dioxus::prelude::*;
+use panel_kit_core::badge::{BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec};
 use panel_kit_core::widgets::data_table::{
-    empty_sentence, ribbon_label, row_labels, segment_label, tag_letter, tag_slot, tally,
-    ColumnFilter, ColumnKind, Entry, MoveTarget, QueryMode, RibbonMode, RowKeys, SelectMode,
-    Selectable, SortDir, TableEvent, TableKey, TableQuery, TableState, View, ViewMode,
-    DEFAULT_PAGE, NARROW_WIDTH, OVERSCAN,
+    empty_sentence, ribbon_label, segment_label, tag_letter, tag_slot, tally, BuildOptions,
+    ColumnFilter, ColumnKind, Entry, FilterKind, MoveTarget, OrderKey, Ordered, QueryMode,
+    RibbonMode, SelectMode, Selectable, SortDir, TableEvent, TableKey, TableQuery, TableState,
+    TagMode, View, ViewMode, DEFAULT_PAGE, NARROW_WIDTH, OVERSCAN,
 };
 
+use crate::badge::Badge;
+
 pub use panel_kit_core::widgets::data_table::{
-    csv, tsv, Align, DataColumnSpec, Density, SortKey, SortSpec, TableDefaults,
+    csv, tsv, Align, DataColumnSpec, Density, SortSpec, TableData, TableDataBuilder, TableDefaults,
+    Value,
 };
-pub use row::DataRow;
+
+/// The last row order built, and what it was built from.
+type OrderCache = Rc<
+    RefCell<
+        Option<(
+            Vec<DataColumnSpec>,
+            TableData,
+            OrderKey,
+            BuildOptions,
+            Rc<Ordered>,
+        )>,
+    >,
+>;
+/// The last view grouped from that order, and the folded groups it hid.
+type ViewCache = Rc<RefCell<Option<(Rc<Ordered>, BTreeSet<String>, Rc<View>)>>>;
+
+/// How long the quick filter waits after a keystroke before re-querying.
+const QUICK_DEBOUNCE_MS: i32 = 150;
 
 /// A toolbar control, in the order the bar draws them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,10 +93,14 @@ impl Control {
 pub fn DataTable(
     /// DOM id; row, header and control ids derive from it.
     id: String,
-    /// Column declarations, parallel to each row's cells.
+    /// Column declarations, in the order each row holds its values.
     columns: Vec<DataColumnSpec>,
-    /// Rows in source order.
-    rows: Vec<DataRow>,
+    /// The rows, by column; see [`TableData::builder`].
+    data: TableData,
+    /// Renders a cell from `(row, column)` indices into `data` and
+    /// `columns`; the cell's text when absent. Called for mounted rows only.
+    #[props(default)]
+    cell: Option<Callback<(usize, usize), Element>>,
     /// Declared sort, density, grouping, selection mode, view.
     #[props(default)]
     defaults: TableDefaults,
@@ -153,19 +179,56 @@ pub fn DataTable(
     let mut asked = use_signal(BTreeSet::<String>::new);
     let mut folded = use_signal(BTreeSet::<String>::new);
     let mut focused = use_signal(|| false);
+    // Quick-filter text typed but not yet applied, and which keystroke may
+    // apply it.
+    let mut typed = use_signal(|| None::<String>);
+    let mut pending = use_signal(|| 0u64);
 
     let host_owned = state.is_some();
     let mut current = state.unwrap_or_else(|| owned.read().clone());
     current.sync(&columns);
-    let server = on_query.is_some();
-    let keyed: Vec<RowKeys> = rows.iter().map(|row| row.keys(ribbon)).collect();
-    let mode = if server {
-        QueryMode::Server
-    } else {
-        QueryMode::Client
+    let options = BuildOptions {
+        mode: if on_query.is_some() {
+            QueryMode::Server
+        } else {
+            QueryMode::Client
+        },
+        tags: ribbon,
     };
-    let view = View::build(&columns, &keyed, &current, mode);
-    let tagged = ribbon && rows.iter().any(|row| !row.tags.is_empty());
+    // Ordering depends on the data and the query; grouping on the order and
+    // the folded groups. Cursor moves, selection and scrolling reuse both.
+    let order_cache: OrderCache = use_hook(|| Rc::new(RefCell::new(None)));
+    let view_cache: ViewCache = use_hook(|| Rc::new(RefCell::new(None)));
+    let ordering: Rc<Ordered> = {
+        let key = current.order_key();
+        let mut slot = order_cache.borrow_mut();
+        match slot.as_ref() {
+            Some((c, d, k, o, ordered))
+                if *c == columns && *d == data && *k == key && *o == options =>
+            {
+                ordered.clone()
+            }
+            _ => {
+                let ordered = Rc::new(Ordered::build(&columns, &data, &current, options));
+                *slot = Some((columns.clone(), data.clone(), key, options, ordered.clone()));
+                ordered
+            }
+        }
+    };
+    let view: Rc<View> = {
+        let mut slot = view_cache.borrow_mut();
+        match slot.as_ref() {
+            Some((o, folded, view)) if Rc::ptr_eq(o, &ordering) && *folded == current.collapsed => {
+                view.clone()
+            }
+            _ => {
+                let view = Rc::new(View::group(&ordering, &columns, &data, &current));
+                *slot = Some((ordering.clone(), current.collapsed.clone(), view.clone()));
+                view
+            }
+        }
+    };
+    let tagged = ribbon && data.tagged();
 
     let index_of = |column: &str| columns.iter().position(|c| c.id == column);
     let ordered: Vec<DataColumnSpec> = current.ordered(&columns).into_iter().cloned().collect();
@@ -204,6 +267,7 @@ pub fn DataTable(
     let act = {
         let columns = columns.clone();
         let view = view.clone();
+        let data = data.clone();
         let storage = storage_key.clone();
         EventHandler::new(move |event: TableEvent| {
             if host_owned {
@@ -214,7 +278,7 @@ pub fn DataTable(
             }
             let mut next = owned.read().clone();
             next.sync(&columns);
-            event.apply(&mut next, &columns, &view);
+            event.apply(&mut next, &columns, &view, &data);
             if event.persists() {
                 if let Some(key) = storage.as_deref() {
                     dom::save(key, &next.persisted());
@@ -233,25 +297,23 @@ pub fn DataTable(
     // The rows an export carries: the selection when there is one, in view
     // order, else every row shown.
     let export = {
-        let rows = rows.clone();
+        let data = data.clone();
         let visible = visible.clone();
         let visible_at = visible_at.clone();
         let view = view.clone();
         let selection = selection.clone();
         move |selected_only: bool| -> (Vec<String>, Vec<Vec<String>>) {
             let heads = visible.iter().map(|c| c.title.clone()).collect();
-            let picked: Vec<usize> = view
-                .row_indices()
-                .filter(|&at| {
-                    !selected_only || selection.is_empty() || selection.contains(&rows[at].key)
-                })
-                .collect();
-            let body = picked
+            let body = view
+                .rows
                 .iter()
-                .map(|&at| {
+                .filter(|&&row| {
+                    !selected_only || selection.is_empty() || selection.contains(data.id(row))
+                })
+                .map(|&row| {
                     visible_at
                         .iter()
-                        .map(|&c| rows[at].text.get(c).cloned().unwrap_or_default())
+                        .map(|&c| data.text(row, c).into_owned())
                         .collect()
                 })
                 .collect();
@@ -294,7 +356,12 @@ pub fn DataTable(
     }));
 
     let on_key = {
-        let rows = rows.clone();
+        let data = data.clone();
+        let labels_of = move |id: &str| -> Vec<String> {
+            data.row_of(id)
+                .map(|row| data.tags(row).map(str::to_string).collect())
+                .unwrap_or_default()
+        };
         let snapshot = current.clone();
         let scroll_id = scroll_id.clone();
         let copy = copy.clone();
@@ -309,11 +376,7 @@ pub fn DataTable(
             let now = snapshot.clone();
 
             if let Some((row, tag)) = now.tag_focus.clone() {
-                let labels = rows
-                    .iter()
-                    .find(|r| r.key == row)
-                    .map(|r| row_labels(&r.tags))
-                    .unwrap_or_default();
+                let labels = labels_of(&row);
                 let at = labels.iter().position(|l| *l == tag);
                 let handled = match &key {
                     Key::Escape => Some(TableEvent::TagFocus(None)),
@@ -350,10 +413,7 @@ pub fn DataTable(
                 (&key, ctrl || modifiers.alt(), now.cursor.clone())
             {
                 if c == "t" {
-                    let first = rows
-                        .iter()
-                        .find(|r| r.key == row)
-                        .and_then(|r| row_labels(&r.tags).into_iter().next());
+                    let first = labels_of(&row).into_iter().next();
                     if let Some(first) = first {
                         event.prevent_default();
                         act.call(TableEvent::TagFocus(Some((row, first))));
@@ -458,8 +518,13 @@ pub fn DataTable(
         .unwrap_or_default();
     let cursor_attr = current.cursor.clone();
     let narrow_attr = (!narrow.is_empty()).then(|| narrow.join(" "));
-    let all_checked = !view.ids.is_empty() && view.ids.iter().all(|i| selection.contains(i));
+    let all_checked = multi
+        && !view.rows.is_empty()
+        && selection.len() >= view.rows.len()
+        && view.ids(&data).all(|i| selection.contains(i));
     let filter_count = current.filters.len();
+    let active = current.active_filters(&columns);
+    let tag_filtering = !current.tag_filter.is_empty();
 
     rsx! {
         div {
@@ -476,6 +541,7 @@ pub fn DataTable(
             "data-tags": tagged.then_some("true"),
             "data-tags-mode": tagged.then_some(tags_mode.as_str()),
             "data-narrow-cols": narrow_attr,
+            "data-tag-filter": tag_filtering.then_some("true"),
             onkeydown: on_key,
             onfocusin: move |_| focused.set(true),
             onfocusout: {
@@ -496,11 +562,23 @@ pub fn DataTable(
                                 id: "{id}-quick",
                                 r#type: "search",
                                 name: "q",
-                                value: "{current.quick}",
+                                value: "{typed.read().clone().unwrap_or_else(|| current.quick.clone())}",
                                 placeholder: "{placeholder}",
                                 aria_label: "filter rows",
                                 autocomplete: "off",
-                                oninput: move |e| act.call(TableEvent::Quick(e.value())),
+                                oninput: move |e| {
+                                    let text = e.value();
+                                    typed.set(Some(text.clone()));
+                                    let ticket = *pending.peek() + 1;
+                                    pending.set(ticket);
+                                    spawn(async move {
+                                        dom::sleep(QUICK_DEBOUNCE_MS).await;
+                                        if *pending.peek() == ticket {
+                                            typed.set(None);
+                                            act.call(TableEvent::Quick(text));
+                                        }
+                                    });
+                                },
                             }
                         }
                     }
@@ -641,6 +719,59 @@ pub fn DataTable(
                 }
             }
 
+            if !active.is_empty() {
+                div { class: "pk-dt-active", role: "group", aria_label: "active filters",
+                    for filter in active.iter() {
+                        {
+                            let kind = match filter.kind {
+                                FilterKind::Tag => BadgeKind::Tag,
+                                _ => BadgeKind::Generic,
+                            };
+                            let spec = BadgeSpec {
+                                active: true,
+                                with_x: true,
+                                small: true,
+                                click_kind: BadgeClickKind::Clicked,
+                                ..BadgeSpec::new(filter.label.clone(), filter.value.clone(), kind)
+                            };
+                            let remove = filter.remove.clone();
+                            rsx! {
+                                span { class: "pk-dt-active-chip", key: "{filter.label}={filter.value}",
+                                    if filter.kind != FilterKind::Tag {
+                                        span { class: "pk-dt-active-label", "{filter.label}" }
+                                    }
+                                    Badge {
+                                        spec,
+                                        on_action: move |action| {
+                                            if matches!(action, BadgeAction::Toggle { .. }) {
+                                                act.call(remove.clone());
+                                            }
+                                        },
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if current.tag_filter.len() > 1 {
+                        button {
+                            r#type: "button",
+                            class: "pk-dt-btn",
+                            title: "rows need any of these tags, or all of them",
+                            aria_pressed: "{current.tag_mode == TagMode::All}",
+                            onclick: move |_| act.call(TableEvent::TagMode(match current.tag_mode {
+                                TagMode::Any => TagMode::All,
+                                TagMode::All => TagMode::Any,
+                            })),
+                            match current.tag_mode {
+                                TagMode::Any => "any tag",
+                                TagMode::All => "all tags",
+                            }
+                        }
+                    }
+                    button { r#type: "button", class: "pk-dt-btn", onclick: move |_| act.call(TableEvent::Clear), "clear all" }
+                }
+            }
+
             div { id: "{scroll_id}", class: "pk-dt-scroll", "data-dt-scroll": "true", tabindex: "-1", onscroll: on_scroll,
                 table {
                     id: "{id}-grid",
@@ -721,7 +852,8 @@ pub fn DataTable(
                                             id: "{resize_th}",
                                             role: "columnheader",
                                             scope: "col",
-                                            class: "{class}",
+                                            class: if current.filters.contains_key(&column.id) { "{class} pk-dt-filtered" } else { "{class}" },
+                                            title: current.filters.get(&column.id).map(|f| format!("filtered: {}", f.summary())),
                                             aria_sort: aria_sort,
                                             "data-col": "{column.id}",
                                             draggable: "true",
@@ -770,6 +902,9 @@ pub fn DataTable(
                                                         act.call(TableEvent::Sort { column: sort_key.clone(), append: e.modifiers().shift() });
                                                     },
                                                     span { class: "pk-dt-label", "{column.title}" }
+                                                    if current.filters.contains_key(&column.id) {
+                                                        span { class: "pk-dt-filtered-mark", aria_hidden: "true", "\u{25cf}" }
+                                                    }
                                                     span { class: "pk-dt-mark", aria_hidden: "true", "{mark}" }
                                                     if let Some(rank) = rank {
                                                         span { class: "pk-dt-rank", aria_hidden: "true", "{rank}" }
@@ -777,6 +912,9 @@ pub fn DataTable(
                                                 }
                                             } else {
                                                 span { class: "pk-dt-label", "{column.title}" }
+                                                if current.filters.contains_key(&column.id) {
+                                                    span { class: "pk-dt-filtered-mark", aria_hidden: "true", "\u{25cf}" }
+                                                }
                                             }
                                             span {
                                                 class: "pk-dt-resize",
@@ -859,20 +997,29 @@ pub fn DataTable(
                                     }
                                 }
                                 Entry::Row(at) => {
-                                    let row = &rows[*at];
-                                    let row_id = row.key.clone();
+                                    let row = *at;
+                                    let row_id = data.id(row).to_string();
                                     let cursor = current.cursor.as_deref() == Some(row_id.as_str());
                                     let is_selected = selection.contains(&row_id);
                                     let tabindex = if cursor || (current.cursor.is_none() && first_row == Some(index)) { "0" } else { "-1" };
                                     let (click_id, enter_id, check_id) = (row_id.clone(), row_id.clone(), row_id.clone());
-                                    let labels = if tagged { row_labels(&row.tags) } else { Vec::new() };
-                                    let cells: Vec<Element> = visible_at.iter().map(|&c| row.cells.get(c).cloned().unwrap_or_else(|| rsx! {})).collect();
-                                    let tips: Vec<Option<String>> = visible_at.iter().map(|&c| row.text.get(c).filter(|t| !t.is_empty()).cloned()).collect();
+                                    let labels: Vec<String> = if tagged { data.tags(row).map(str::to_string).collect() } else { Vec::new() };
+                                    let cells: Vec<Element> = visible_at
+                                        .iter()
+                                        .map(|&c| match cell {
+                                            Some(render) => render.call((row, c)),
+                                            None => rsx! { {data.text(row, c).into_owned()} },
+                                        })
+                                        .collect();
+                                    let tips: Vec<Option<String>> = visible_at
+                                        .iter()
+                                        .map(|&c| Some(data.text(row, c).into_owned()).filter(|t| !t.is_empty()))
+                                        .collect();
                                     rsx! {
                                         tr {
                                             key: "{row_id}",
                                             id: "{id}-{row_id}",
-                                            class: row.class.clone(),
+                                            class: data.class(row).map(str::to_string),
                                             role: "row",
                                             "data-id": "{row_id}",
                                             "data-index": "{index}",

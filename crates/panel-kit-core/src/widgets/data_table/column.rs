@@ -5,90 +5,74 @@ use std::cmp::Ordering;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// Typed per-cell sort key. Rows sort by key, never by rendered markup.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
-pub enum SortKey {
-    /// Text, ordered naturally and case-insensitively (see [`natural_cmp`]).
-    Text(String),
-    /// Numeric value (counts, scores, epoch milliseconds).
-    Num(f64),
-    /// No value: sorts after present values, in either direction.
-    Missing,
-}
-
-impl SortKey {
-    /// Text key. Only an absent value sinks; use [`SortKey::Missing`] for it.
-    pub fn text(value: impl AsRef<str>) -> Self {
-        SortKey::Text(value.as_ref().to_string())
-    }
-
-    /// Numeric key; non-finite values become [`SortKey::Missing`].
-    pub fn num(value: f64) -> Self {
-        if value.is_finite() {
-            SortKey::Num(value)
-        } else {
-            SortKey::Missing
-        }
-    }
-
-    /// Optional numeric key.
-    pub fn opt_num(value: Option<f64>) -> Self {
-        value.map(SortKey::num).unwrap_or(SortKey::Missing)
-    }
-
-    /// Ascending order among present values; numbers before text.
-    pub(crate) fn order(&self, other: &SortKey) -> Ordering {
-        match (self, other) {
-            (SortKey::Num(a), SortKey::Num(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
-            (SortKey::Text(a), SortKey::Text(b)) => natural_cmp(a, b),
-            (SortKey::Num(_), SortKey::Text(_)) => Ordering::Less,
-            (SortKey::Text(_), SortKey::Num(_)) => Ordering::Greater,
-            (SortKey::Missing, SortKey::Missing) => Ordering::Equal,
-            (SortKey::Missing, _) => Ordering::Greater,
-            (_, SortKey::Missing) => Ordering::Less,
-        }
-    }
-}
-
 /// Natural order: case-insensitive text, with each run of digits compared as
 /// the number it spells, so `gn9` sorts before `gn10` and `GN1` before both.
+/// Allocation-free; ASCII is compared byte by byte, anything else by char.
 pub fn natural_cmp(a: &str, b: &str) -> Ordering {
-    let mut left = a.chars().peekable();
-    let mut right = b.chars().peekable();
+    let (x, y) = (a.as_bytes(), b.as_bytes());
+    let (mut i, mut j) = (0, 0);
     loop {
-        match (left.peek().copied(), right.peek().copied()) {
+        match (x.get(i).copied(), y.get(j).copied()) {
             (None, None) => return Ordering::Equal,
             (None, Some(_)) => return Ordering::Less,
             (Some(_), None) => return Ordering::Greater,
-            (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
-                let l = digit_run(&mut left);
-                let r = digit_run(&mut right);
-                let (l, r) = (l.trim_start_matches('0'), r.trim_start_matches('0'));
-                match l.len().cmp(&r.len()).then_with(|| l.cmp(r)) {
+            (Some(l), Some(r)) if l.is_ascii_digit() && r.is_ascii_digit() => {
+                let (start_i, start_j) = (i, j);
+                while x.get(i).is_some_and(u8::is_ascii_digit) {
+                    i += 1;
+                }
+                while y.get(j).is_some_and(u8::is_ascii_digit) {
+                    j += 1;
+                }
+                match digits_cmp(&a[start_i..i], &b[start_j..j]) {
                     Ordering::Equal => {}
                     order => return order,
                 }
             }
-            (Some(x), Some(y)) => {
-                match x.to_lowercase().cmp(y.to_lowercase()) {
+            (Some(l), Some(r)) if l.is_ascii() && r.is_ascii() => {
+                match l.to_ascii_lowercase().cmp(&r.to_ascii_lowercase()) {
                     Ordering::Equal => {}
                     order => return order,
                 }
-                left.next();
-                right.next();
+                i += 1;
+                j += 1;
             }
+            _ => return unicode_cmp(&a[i..], &b[j..]),
         }
     }
 }
 
-fn digit_run(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
-    let mut run = String::new();
-    while let Some(c) = chars.peek().copied().filter(char::is_ascii_digit) {
-        run.push(c);
-        chars.next();
+/// Two digit runs as the numbers they spell, of any length.
+fn digits_cmp(l: &str, r: &str) -> Ordering {
+    let (l, r) = (l.trim_start_matches('0'), r.trim_start_matches('0'));
+    l.len().cmp(&r.len()).then_with(|| l.cmp(r))
+}
+
+/// The char-by-char tail, once either side leaves ASCII.
+fn unicode_cmp(a: &str, b: &str) -> Ordering {
+    let (mut a, mut b) = (a, b);
+    loop {
+        let (Some(l), Some(r)) = (a.chars().next(), b.chars().next()) else {
+            return a.is_empty().cmp(&b.is_empty()).reverse();
+        };
+        if l.is_ascii_digit() && r.is_ascii_digit() {
+            let end_l = a.find(|c: char| !c.is_ascii_digit()).unwrap_or(a.len());
+            let end_r = b.find(|c: char| !c.is_ascii_digit()).unwrap_or(b.len());
+            match digits_cmp(&a[..end_l], &b[..end_r]) {
+                Ordering::Equal => {}
+                order => return order,
+            }
+            a = &a[end_l..];
+            b = &b[end_r..];
+            continue;
+        }
+        match l.to_lowercase().cmp(r.to_lowercase()) {
+            Ordering::Equal => {}
+            order => return order,
+        }
+        a = &a[l.len_utf8()..];
+        b = &b[r.len_utf8()..];
     }
-    run
 }
 
 /// Sort direction.
