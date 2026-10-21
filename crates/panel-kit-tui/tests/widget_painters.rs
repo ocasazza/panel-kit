@@ -157,7 +157,7 @@ fn widget_painters_render_core_models_to_test_backend() {
             align: TextAlign::Left,
         },
     ];
-    let rows = vec![TableRow {
+    let rows = [TableRow {
         id: "r1".into(),
         tags: Vec::new(),
         cells: vec![

@@ -1065,6 +1065,18 @@ fn each_row_offers_only_the_edits_for_its_objects_sort() {
 }
 
 #[test]
+fn each_rows_id_names_the_row_edits_behind_it() {
+    let topos = table_topos(EDIT_TABLE, STATUS_EDIT);
+    let sections = topos.global_sections(&demo_site(), &physics_a()).unwrap();
+    let Some(Section::Table(table)) = sections.get("load") else {
+        panic!("load resolves to a table");
+    };
+    let row_ids: Vec<&str> = table.rows.iter().map(|row| row.id.as_str()).collect();
+    let edit_ids: Vec<String> = sections.row_edits("load").unwrap().iter().map(crate::RowEdits::row_id).collect();
+    assert_eq!(row_ids, edit_ids);
+}
+
+#[test]
 fn validate_rejects_malformed_or_misplaced_edits() {
     let bad_sort = r##"{"triage":{"label":"T","sorts":["head"],"set":{"status":{"type":"text","max":5}},"grammar":"g"}}"##;
     assert!(matches!(table_topos(EDIT_TABLE, bad_sort).validate(), Err(ToposError::InvalidEdit { .. })));

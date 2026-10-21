@@ -9,7 +9,6 @@ use panel_kit_core::widgets::charts::{
     five_num, BoxItemView, FlameSpanModel, GaugeModel, SeriesView,
 };
 #[cfg(feature = "spec-plan")]
-use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
 };

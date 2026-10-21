@@ -140,3 +140,15 @@ pub struct RowEdits {
     /// Edit ids applicable to the object's sort, in the sheaf's order.
     pub edits: Vec<String>,
 }
+
+impl RowEdits {
+    /// Id of the table row this object paints as.
+    pub fn row_id(&self) -> String {
+        object_row_id(&self.object)
+    }
+}
+
+/// Id of the table row object `object` paints as in an object-scoped table.
+pub(crate) fn object_row_id(object: &str) -> String {
+    format!("object:{object}")
+}

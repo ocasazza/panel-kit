@@ -197,7 +197,7 @@ fn work_at(row: usize) -> Work {
     Work {
         id: 100 + n as u32,
         priority: (n % 4) as u8,
-        title: if row % 7 == 0 {
+        title: if row.is_multiple_of(7) {
             TOPICS_I18N[(row / 7) % TOPICS_I18N.len()]
         } else {
             TOPICS[n % TOPICS.len()]
@@ -208,7 +208,7 @@ fn work_at(row: usize) -> Work {
             AGENTS[n % AGENTS.len()]
         },
         state,
-        stale: state == "claimed" && n % 3 == 0,
+        stale: state == "claimed" && n.is_multiple_of(3),
         age_secs: 3_600 * (1 + (n as u64 * 7_919) % 2_000),
         tags: TAG_SETS[n % TAG_SETS.len()],
     }

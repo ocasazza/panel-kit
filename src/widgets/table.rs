@@ -92,8 +92,9 @@ fn paint(cell: &TableCell) -> Element {
 }
 
 /// Paint a static table model with the table component. The DOM id derives
-/// from the column keys, since a model carries none of its own.
-pub fn table(view: TableView<'_>) -> Element {
+/// from the column keys, since a model carries none of its own. `on_row`
+/// receives a clicked row's id.
+pub fn table(view: TableView<'_>, on_row: Option<EventHandler<String>>) -> Element {
     let keys: Vec<&str> = view.columns.iter().map(|c| c.key.as_str()).collect();
     let columns = spec(view.columns);
     let rows = data(&columns, view.rows);
@@ -108,6 +109,7 @@ pub fn table(view: TableView<'_>) -> Element {
                 cells[row].get(column).map(paint).unwrap_or_else(|| rsx! {})
             },
             defaults: TableDefaults::default(),
+            on_row,
         }
     }
 }

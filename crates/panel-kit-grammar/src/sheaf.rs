@@ -25,7 +25,7 @@ use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableM
 use panel_kit_core::widgets::TextModel;
 
 use crate::error::SheafError;
-use crate::edit::RowEdits;
+use crate::edit::{object_row_id, RowEdits};
 use crate::site::{Morphism, Object, Site};
 use crate::topos::{Resolver, Stages};
 
@@ -495,7 +495,7 @@ impl TableSheaf {
                         .map(|column| object_cell(&column.cell, object, site, resolver))
                         .collect::<Result<Vec<_>, _>>()?;
                     rows.push(TableRow {
-                        id: format!("object:{}", object.id),
+                        id: object_row_id(&object.id),
                         tags: object.tags.clone(),
                         cells,
                     });

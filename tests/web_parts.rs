@@ -202,10 +202,10 @@ fn InteractiveTableProbe() -> Element {
     rsx! {
         {{
             let shown: Vec<&TableRow> = rows.iter().collect();
-            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &shown })
+            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &shown }, None)
         }}
         {{
-            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &[] })
+            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &[] }, None)
         }}
     }
 }
