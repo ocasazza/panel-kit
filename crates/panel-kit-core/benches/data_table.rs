@@ -3,8 +3,8 @@
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use panel_kit_core::widgets::data_table::{
-    BuildOptions, ColumnFilter, DataColumnSpec, SortDir, SortSpec, TableData, TableDataBuilder,
-    Selectable, TableDefaults, TableKey, TableState, Value, View,
+    BuildOptions, ColumnFilter, DataColumnSpec, Ordered, Selectable, SortDir, SortSpec, TableData,
+    TableDataBuilder, TableDefaults, TableKey, TableState, Value, View,
 };
 
 const STATES: [&str; 6] = [
@@ -198,5 +198,96 @@ fn state_ops(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, load, view_build, state_ops);
+/// A title of mostly-ASCII text with accented letters, so a query that names
+/// them cannot take the ASCII path.
+fn data_unicode(count: usize) -> TableData {
+    let columns = columns();
+    let mut builder = TableDataBuilder::with_capacity(&columns, count);
+    let mut id = String::new();
+    let mut title = String::new();
+    for n in 0..count {
+        use std::fmt::Write;
+        id.clear();
+        title.clear();
+        let _ = write!(id, "imp-{n}");
+        let _ = write!(title, "Tracé the ingést path {} ünd to end", n % 977);
+        builder.row(id.as_str(), [Value::Text(&id), Value::Text(&title)]);
+    }
+    builder.build()
+}
+
+fn quick(text: &str) -> TableState {
+    let mut state = TableState::new(&columns(), TableDefaults::default());
+    state.set_quick(text);
+    state
+}
+
+/// Typing one more letter into the quick filter: build again, or refine.
+fn refine(c: &mut Criterion) {
+    let columns = columns();
+    let data = data(1_000_000);
+    let (first, second) = (quick("s"), quick("se"));
+    let options = BuildOptions::default();
+    let earlier = Ordered::build(&columns, &data, &first, options);
+    let mut group = c.benchmark_group("refine/1000000");
+    group.sample_size(10);
+    group.bench_function("s_to_se/build", |b| {
+        b.iter(|| Ordered::build(&columns, &data, &second, options))
+    });
+    group.bench_function("s_to_se/refine", |b| {
+        b.iter(|| earlier.refine(&columns, &data, &second, options))
+    });
+    // A query that already cut the rows down: the refine reads few of them.
+    let (first, second) = (quick("ingest 97"), quick("ingest 977"));
+    let earlier = Ordered::build(&columns, &data, &first, options);
+    group.bench_function("ingest_97_to_977/build", |b| {
+        b.iter(|| Ordered::build(&columns, &data, &second, options))
+    });
+    group.bench_function("ingest_97_to_977/refine", |b| {
+        b.iter(|| earlier.refine(&columns, &data, &second, options))
+    });
+    group.finish();
+}
+
+fn unicode_quick(c: &mut Criterion) {
+    let columns = columns();
+    let data = data_unicode(1_000_000);
+    let state = quick("ingést 97");
+    let mut group = c.benchmark_group("unicode_quick/1000000");
+    group.sample_size(10);
+    group.bench_function("build", |b| {
+        b.iter(|| Ordered::build(&columns, &data, &state, BuildOptions::default()))
+    });
+    group.finish();
+}
+
+/// Grouping where nearly every row is its own group: the cost is the run
+/// detection and the labels, not the filter or the sort.
+fn group_unique(c: &mut Criterion) {
+    let columns = columns();
+    let data = data(1_000_000);
+    let mut group = c.benchmark_group("group_unique/1000000");
+    group.sample_size(10);
+    for column in ["item", "since"] {
+        let state = TableState {
+            group_by: Some(column.into()),
+            ..TableState::new(&columns, TableDefaults::default())
+        };
+        let ordered = Ordered::build(&columns, &data, &state, BuildOptions::default());
+        group.bench_function(column, |b| {
+            b.iter(|| View::group(&ordered, &columns, &data, &state))
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    load,
+    view_build,
+    state_ops,
+    refine,
+    unicode_quick,
+    group_unique
+);
 criterion_main!(benches);

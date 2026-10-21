@@ -1266,6 +1266,30 @@ pub struct OrderKey {
     tag_mode: TagMode,
 }
 
+impl OrderKey {
+    /// Whether rows under `self` are some of the rows under `earlier`, in the
+    /// same order: everything but the quick text is equal, and each earlier
+    /// word is part of some word here, so a row matching here matches there.
+    pub fn narrows(&self, earlier: &OrderKey) -> bool {
+        let words = |key: &OrderKey| -> Vec<String> {
+            key.quick
+                .split_whitespace()
+                .map(super::view::fold)
+                .collect()
+        };
+        let now = words(self);
+        self.sort == earlier.sort
+            && self.filters == earlier.filters
+            && self.hidden == earlier.hidden
+            && self.group_by == earlier.group_by
+            && self.tag_filter == earlier.tag_filter
+            && self.tag_mode == earlier.tag_mode
+            && words(earlier)
+                .iter()
+                .all(|word| now.iter().any(|new| new.contains(word.as_str())))
+    }
+}
+
 fn clamp_width(width: f64) -> u32 {
     width
         .round()

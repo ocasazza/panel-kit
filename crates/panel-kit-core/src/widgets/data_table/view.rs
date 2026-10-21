@@ -104,13 +104,97 @@ impl Ordered {
             }
         };
         if options.mode == QueryMode::Client {
-            sort(&mut rows, data, state, &index);
+            sort(&mut rows, &sort_keys(data, state, &index));
         }
         Ordered {
             rows,
             given: data.len(),
         }
     }
+
+    /// The rows of `self` that pass `state`, in order. `self` is the build of
+    /// the same `data` under a state whose rows `state` can only narrow (see
+    /// [`OrderKey::narrows`](super::OrderKey::narrows)); then the result is
+    /// what [`Ordered::build`] gives, without looking at the other rows.
+    pub fn refine(
+        &self,
+        columns: &[DataColumnSpec],
+        data: &TableData,
+        state: &TableState,
+        options: BuildOptions,
+    ) -> Ordered {
+        let rows = match options.mode {
+            QueryMode::Server => self.rows.clone(),
+            QueryMode::Client => {
+                let index = |id: &str| columns.iter().position(|c| c.id == id);
+                let filter = Filter::new(columns, data, state, options.tags, &index);
+                let passes = |&row: &usize| filter.passes(data, row);
+                self.rows.iter().copied().filter(passes).collect()
+            }
+        };
+        Ordered {
+            rows,
+            given: data.len(),
+        }
+    }
+
+    /// The order of `data` when `self` is the build of its first `from_row`
+    /// rows under the same `state`: only the rows from `from_row` on are
+    /// filtered and sorted, then merged in behind equal old ones, as
+    /// [`Ordered::build`] ties break by row.
+    pub fn extend(
+        &self,
+        columns: &[DataColumnSpec],
+        data: &TableData,
+        state: &TableState,
+        options: BuildOptions,
+        from_row: usize,
+    ) -> Ordered {
+        let index = |id: &str| columns.iter().position(|c| c.id == id);
+        let mut added: Vec<usize> = match options.mode {
+            QueryMode::Server => (from_row..data.len()).collect(),
+            QueryMode::Client => {
+                let filter = Filter::new(columns, data, state, options.tags, &index);
+                (from_row..data.len())
+                    .filter(|&row| filter.passes(data, row))
+                    .collect()
+            }
+        };
+        let mut rows = Vec::with_capacity(self.rows.len() + added.len());
+        let keys = sort_keys(data, state, &index);
+        if options.mode == QueryMode::Server || keys.is_empty() {
+            rows.extend_from_slice(&self.rows);
+            rows.extend_from_slice(&added);
+        } else {
+            sort(&mut added, &keys);
+            // Old rows keep their order under the grown ranks, and each sorts
+            // before an equal new row; the new rows are ascending, so each
+            // insertion point lies at or after the last.
+            let mut rest = &self.rows[..];
+            for &new in &added {
+                let ahead = prefix_len(rest, |&old| keys.cmp(old, new).is_le());
+                rows.extend_from_slice(&rest[..ahead]);
+                rows.push(new);
+                rest = &rest[ahead..];
+            }
+            rows.extend_from_slice(rest);
+        }
+        Ordered {
+            rows,
+            given: data.len(),
+        }
+    }
+}
+
+/// How many leading items of `slice` satisfy `holds`, which holds for a prefix
+/// only; found by doubling, so a short answer costs few calls.
+fn prefix_len<T>(slice: &[T], holds: impl Fn(&T) -> bool) -> usize {
+    let mut bound = 1;
+    while bound <= slice.len() && holds(&slice[bound - 1]) {
+        bound *= 2;
+    }
+    let (from, to) = (bound / 2, bound.min(slice.len()));
+    from + slice[from..to].partition_point(holds)
 }
 
 impl View {
@@ -154,13 +238,31 @@ impl View {
                 view.rows = kept.clone();
             }
             Some(column) => {
-                let same = |a: usize, b: usize| match data.code(a, column) {
-                    Some(code) => data.code(b, column) == Some(code),
-                    None => data.text(a, column) == data.text(b, column),
+                // Equal numbers print equal and missing ones print empty, so
+                // comparing values groups as the text would, without printing.
+                let numbers = match columns[column].kind {
+                    ColumnKind::Number => match data.order(column) {
+                        Order::Number(values) => Some(values),
+                        _ => None,
+                    },
+                    _ => None,
                 };
+                let same = |a: usize, b: usize| match numbers {
+                    Some(values) => {
+                        let (x, y) = (values[a], values[b]);
+                        x == y || (x.is_nan() && y.is_nan())
+                    }
+                    None => match data.code(a, column) {
+                        Some(code) => data.code(b, column) == Some(code),
+                        None => data.text(a, column) == data.text(b, column),
+                    },
+                };
+                view.entries.reserve(kept.len());
+                view.rows.reserve(kept.len());
+                view.row_entries.reserve(kept.len());
                 for run in kept.chunk_by(|&a, &b| same(a, b)) {
                     let value = data.text(run[0], column).into_owned();
-                    let folded = state.collapsed.contains(&value);
+                    let folded = state.collapsed.contains(value.as_str());
                     view.entries.push(Entry::Group {
                         value,
                         count: run.len(),
@@ -231,11 +333,7 @@ impl<'a> Filter<'a> {
         tags: bool,
         index: &dyn Fn(&str) -> Option<usize>,
     ) -> Self {
-        let words: Vec<String> = state
-            .quick
-            .split_whitespace()
-            .map(str::to_lowercase)
-            .collect();
+        let words: Vec<String> = state.quick.split_whitespace().map(fold).collect();
         let visible = state
             .visible(columns)
             .iter()
@@ -275,7 +373,7 @@ impl<'a> Filter<'a> {
             .filter_map(|(id, filter)| {
                 let at = index(id)?;
                 let check = match filter {
-                    ColumnFilter::Text(text) => Check::Text(text.to_lowercase()),
+                    ColumnFilter::Text(text) => Check::Text(fold(text)),
                     ColumnFilter::Values(values) => match data.dictionary(at) {
                         Some(dict) => Check::Codes(
                             (0..dict.len() as u32)
@@ -349,12 +447,21 @@ impl<'a> Filter<'a> {
     }
 }
 
-/// Whether `hay` contains `needle` (already lowercase), ignoring case.
+/// `text` with every char lowercased on its own. Unlike `str::to_lowercase`
+/// this ignores word position, so `Σ` always folds to `σ` and never to `ς`.
+pub(super) fn fold(text: &str) -> String {
+    text.chars().flat_map(char::to_lowercase).collect()
+}
+
+/// Whether `hay`, folded as by [`fold`], contains `needle` (already folded).
 fn contains_folded(hay: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
     }
-    if hay.is_ascii() && needle.is_ascii() {
+    if hay.is_ascii() {
+        if !needle.is_ascii() {
+            return false;
+        }
         let (h, n) = (hay.as_bytes(), needle.as_bytes());
         let Some(last) = h.len().checked_sub(n.len()) else {
             return false;
@@ -373,27 +480,96 @@ fn contains_folded(hay: &str, needle: &str) -> bool {
         }
         return false;
     }
-    hay.to_lowercase().contains(needle)
+    // Lowercasing grows a char's UTF-8 length by at most half, so a cell this
+    // short folds into the stack buffer.
+    let mut buf = [0u8; 256];
+    if hay.len() <= 170 {
+        let (bytes, mut len) = (hay.as_bytes(), 0);
+        let mut at = 0;
+        while at < bytes.len() {
+            if bytes[at].is_ascii() {
+                buf[len] = bytes[at].to_ascii_lowercase();
+                len += 1;
+                at += 1;
+            } else if let Some(c) = hay[at..].chars().next() {
+                for lower in c.to_lowercase() {
+                    len += lower.encode_utf8(&mut buf[len..]).len();
+                }
+                at += c.len_utf8();
+            }
+        }
+        return contains_bytes(&buf[..len], needle.as_bytes());
+    }
+    // A folded char may expand to several, and a match may start inside one.
+    let mut start = hay.chars().flat_map(char::to_lowercase);
+    loop {
+        let mut at = start.clone();
+        if needle.chars().all(|want| at.next() == Some(want)) {
+            return true;
+        }
+        if start.next().is_none() {
+            return false;
+        }
+    }
 }
 
-/// Grouping sorts by the group column first, so groups come out contiguous;
-/// the user's sort orders rows inside each. A missing value sinks whichever
-/// way its column sorts; ties keep their order.
-fn sort(
-    kept: &mut [usize],
-    data: &TableData,
+/// Whether `hay` holds `needle`, which is not empty, as a run of bytes.
+fn contains_bytes(hay: &[u8], needle: &[u8]) -> bool {
+    let Some(last) = hay.len().checked_sub(needle.len()) else {
+        return false;
+    };
+    let mut from = 0;
+    while let Some(skip) = hay[from..=last].iter().position(|&b| b == needle[0]) {
+        let at = from + skip;
+        if hay[at + 1..at + needle.len()] == needle[1..] {
+            return true;
+        }
+        from = at + 1;
+    }
+    false
+}
+
+/// The columns rows sort by, each with its direction. Grouping sorts by the
+/// group column first, so groups come out contiguous; the user's sort orders
+/// rows inside each.
+struct SortKeys<'d>(Vec<(Order<'d>, SortDir)>);
+
+fn sort_keys<'d>(
+    data: &'d TableData,
     state: &TableState,
     index: &dyn Fn(&str) -> Option<usize>,
-) {
+) -> SortKeys<'d> {
     let mut sort: Vec<SortSpec> = state.sort.clone();
     if let Some(group) = &state.group_by {
         sort.retain(|spec| &spec.column != group);
         sort.insert(0, SortSpec::new(group.clone(), SortDir::Asc));
     }
-    let keys: Vec<(Order<'_>, SortDir)> = sort
-        .iter()
-        .filter_map(|spec| Some((data.order(index(&spec.column)?), spec.dir)))
-        .collect();
+    SortKeys(
+        sort.iter()
+            .filter_map(|spec| Some((data.order(index(&spec.column)?), spec.dir)))
+            .collect(),
+    )
+}
+
+impl SortKeys<'_> {
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// The order [`sort`] gives rows `a` and `b`: by key, then by row.
+    fn cmp(&self, a: usize, b: usize) -> Ordering {
+        self.0
+            .iter()
+            .map(|(order, dir)| encode(order.key(a), *dir).cmp(&encode(order.key(b), *dir)))
+            .find(|order| order.is_ne())
+            .unwrap_or_else(|| a.cmp(&b))
+    }
+}
+
+/// Sort `kept` by `keys`. A missing value sinks whichever way its column
+/// sorts; ties keep their order.
+fn sort(kept: &mut [usize], keys: &SortKeys<'_>) {
+    let keys = &keys.0;
     if keys.is_empty() {
         return;
     }
@@ -520,5 +696,386 @@ pub fn empty_sentence(tag_filter: &BTreeSet<String>) -> String {
     } else {
         let tags: Vec<&str> = tag_filter.iter().map(String::as_str).collect();
         format!("no rows match tags {}", tags.join(", "))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::data::{TableDataBuilder, Value};
+    use super::super::state::TableDefaults;
+    use super::*;
+    use proptest::prelude::*;
+    use rstest::rstest;
+
+    const COLUMN_IDS: [&str; 4] = ["item", "title", "kind", "n"];
+
+    fn columns() -> Vec<DataColumnSpec> {
+        vec![
+            DataColumnSpec::new("item", "item"),
+            DataColumnSpec::new("title", "title"),
+            DataColumnSpec::new("kind", "kind").enumerated(),
+            DataColumnSpec::new("n", "n").number(),
+        ]
+    }
+
+    #[derive(Clone, Debug)]
+    struct Row {
+        title: Option<String>,
+        kind: Option<&'static str>,
+        n: Option<f64>,
+        tags: Vec<&'static str>,
+    }
+
+    fn data_of(rows: &[Row]) -> TableData {
+        let mut builder = TableDataBuilder::with_capacity(&columns(), rows.len());
+        for (at, row) in rows.iter().enumerate() {
+            let id = format!("r{at}");
+            builder
+                .row(
+                    &id,
+                    [
+                        Value::Text(&id),
+                        row.title.as_deref().map_or(Value::Missing, Value::Text),
+                        row.kind.map_or(Value::Missing, Value::Text),
+                        row.n.map_or(Value::Missing, Value::Number),
+                    ],
+                )
+                .tags(row.tags.as_slice());
+        }
+        builder.build()
+    }
+
+    /// Words that fold to something else, expand, or share a natural order.
+    const WORDS: [&str; 14] = [
+        "ab",
+        "AB",
+        "école",
+        "ÉCOLE",
+        "straße",
+        "STRASSE",
+        "İstanbul",
+        "istanbul",
+        "東京",
+        "a1",
+        "a10",
+        "a2",
+        "x",
+        "Σίσυφος",
+    ];
+
+    fn row() -> impl Strategy<Value = Row> {
+        (
+            prop::option::of(prop::collection::vec(
+                prop::sample::select(&WORDS[..]),
+                0..4,
+            )),
+            prop::option::of(prop::sample::select(
+                &["open", "Open", "clôsed", "done"][..],
+            )),
+            prop_oneof![
+                Just(None),
+                Just(Some(-0.0)),
+                (-3i32..4).prop_map(|n| Some(f64::from(n) / 2.0)),
+            ],
+            prop::sample::subsequence(vec!["a", "b", "c"], 0..=3),
+        )
+            .prop_map(|(title, kind, n, tags)| Row {
+                title: title.map(|words| words.join(" ")),
+                kind,
+                n,
+                tags,
+            })
+    }
+
+    /// Everything about a query except its quick text.
+    #[derive(Clone, Debug)]
+    struct Query {
+        sort: Vec<(usize, bool)>,
+        group: Option<usize>,
+        kind: Option<&'static str>,
+        title: Option<&'static str>,
+        tag: Option<&'static str>,
+    }
+
+    fn query() -> impl Strategy<Value = Query> {
+        (
+            prop::collection::vec((0..4usize, any::<bool>()), 0..4),
+            prop::option::of(0..4usize),
+            prop::option::of(prop::sample::select(&["open", "done"][..])),
+            prop::option::of(prop::sample::select(&["A", "é"][..])),
+            prop::option::of(prop::sample::select(&["a", "b"][..])),
+        )
+            .prop_map(|(sort, group, kind, title, tag)| Query {
+                sort,
+                group,
+                kind,
+                title,
+                tag,
+            })
+    }
+
+    fn state_of(query: &Query, quick: &str) -> TableState {
+        let columns = columns();
+        let mut state = TableState::new(&columns, TableDefaults::default());
+        state.sort = query
+            .sort
+            .iter()
+            .map(|&(column, asc)| {
+                let dir = if asc { SortDir::Asc } else { SortDir::Desc };
+                SortSpec::new(COLUMN_IDS[column], dir)
+            })
+            .collect();
+        state.group_by = query.group.map(|column| COLUMN_IDS[column].to_string());
+        state.set_filter(
+            "kind",
+            query.kind.and_then(|kind| ColumnFilter::values([kind])),
+        );
+        state.set_filter("title", query.title.and_then(ColumnFilter::text));
+        if let Some(tag) = query.tag {
+            state.toggle_tag(tag, false);
+        }
+        state.set_quick(quick);
+        state
+    }
+
+    fn quick_word() -> impl Strategy<Value = String> {
+        prop::collection::vec(
+            prop::sample::select(
+                &[
+                    "a", "A", "b", "é", "É", "ss", "ß", "i", "İ", "東", "1", "0", "-", "o", "σ",
+                    "Σ",
+                ][..],
+            ),
+            1..4,
+        )
+        .prop_map(|parts| parts.concat())
+    }
+
+    /// A quick text with every word of `earlier` grown by a prefix, a suffix
+    /// or a recasing, and maybe one more word.
+    fn grown(earlier: Vec<String>) -> impl Strategy<Value = String> {
+        let len = earlier.len();
+        (
+            prop::collection::vec((quick_word(), quick_word(), 0..3u8), len),
+            prop::option::of(quick_word()),
+        )
+            .prop_map(move |(grow, extra)| {
+                let mut words: Vec<String> = earlier
+                    .iter()
+                    .zip(grow)
+                    .map(|(word, (before, after, how))| match how {
+                        0 => format!("{before}{word}"),
+                        1 => format!("{word}{after}"),
+                        _ => format!("{}{after}", word.to_ascii_uppercase()),
+                    })
+                    .collect();
+                words.extend(extra);
+                words.join(" ")
+            })
+    }
+
+    fn both_modes() -> impl Strategy<Value = BuildOptions> {
+        (any::<bool>(), any::<bool>()).prop_map(|(server, tags)| BuildOptions {
+            mode: if server {
+                QueryMode::Server
+            } else {
+                QueryMode::Client
+            },
+            tags,
+        })
+    }
+
+    /// A quick text, one grown from it, and an unrelated one.
+    fn quick_texts() -> impl Strategy<Value = (String, String, String)> {
+        prop::collection::vec(quick_word(), 0..3).prop_flat_map(|before| {
+            (
+                Just(before.join(" ")),
+                grown(before),
+                prop::collection::vec(quick_word(), 0..3).prop_map(|words| words.join(" ")),
+            )
+        })
+    }
+
+    proptest! {
+        /// Typing more into the quick filter only removes rows: refining the
+        /// previous order is the order a fresh build gives.
+        #[test]
+        fn refine_is_build_when_the_key_narrows(
+            rows in prop::collection::vec(row(), 0..40),
+            query in query(),
+            (before, grown, unrelated) in quick_texts(),
+            options in both_modes(),
+        ) {
+            let data = data_of(&rows);
+            let columns = columns();
+            let earlier = state_of(&query, &before);
+            let old = Ordered::build(&columns, &data, &earlier, options);
+            prop_assert!(state_of(&query, &grown).order_key().narrows(&earlier.order_key()));
+            for quick in [&grown, &unrelated] {
+                let now = state_of(&query, quick);
+                if now.order_key().narrows(&earlier.order_key()) {
+                    prop_assert_eq!(
+                        old.refine(&columns, &data, &now, options),
+                        Ordered::build(&columns, &data, &now, options),
+                        "{:?} -> {:?}", before, quick
+                    );
+                }
+            }
+        }
+
+        /// Rows appended later are merged into the old order exactly where a
+        /// full build would put them.
+        #[test]
+        fn extend_is_build_of_all_rows(
+            rows in prop::collection::vec(row(), 0..60),
+            cut in 0.0..=1.0f64,
+            query in query(),
+            quick in prop::collection::vec(quick_word(), 0..2),
+            options in both_modes(),
+        ) {
+            let from = (rows.len() as f64 * cut) as usize;
+            let columns = columns();
+            let state = state_of(&query, &quick.join(" "));
+            let (first, all) = (data_of(&rows[..from]), data_of(&rows));
+            let old = Ordered::build(&columns, &first, &state, options);
+            prop_assert_eq!(
+                old.extend(&columns, &all, &state, options, from),
+                Ordered::build(&columns, &all, &state, options)
+            );
+        }
+
+        #[test]
+        fn contains_folded_is_lowercased_contains(
+            hay in prop::collection::vec(prop::sample::select(&FOLDING[..]), 0..160),
+            needle in prop::collection::vec(prop::sample::select(&FOLDING[..]), 0..4),
+        ) {
+            let (hay, needle) = (hay.concat(), needle.concat());
+            prop_assert_eq!(
+                contains_folded(&hay, &needle.to_lowercase()),
+                hay.to_lowercase().contains(&needle.to_lowercase()),
+                "{:?} in {:?}", needle, hay
+            );
+        }
+
+        /// Groups are the runs of equal printed numbers, whatever the order.
+        #[test]
+        fn number_groups_are_runs_of_equal_text(
+            rows in prop::collection::vec(row(), 1..30),
+            picks in prop::collection::vec(any::<prop::sample::Index>(), 0..50),
+            folded in prop::collection::vec(0..6i32, 0..2),
+        ) {
+            let data = data_of(&rows);
+            let columns = columns();
+            let kept: Vec<usize> = picks.iter().map(|p| p.index(rows.len())).collect();
+            let mut state = TableState::new(&columns, TableDefaults::default());
+            state.group_by = Some("n".into());
+            state.collapsed = folded.iter().map(|n| (f64::from(*n - 3) / 2.0).to_string()).collect();
+            let ordered = Ordered { rows: kept.clone(), given: rows.len() };
+            let mut expected = Vec::new();
+            for run in kept.chunk_by(|&a, &b| data.text(a, 3) == data.text(b, 3)) {
+                let value = data.text(run[0], 3).into_owned();
+                let hidden = state.collapsed.contains(&value);
+                expected.push(Entry::Group { value, count: run.len(), folded: hidden });
+                if !hidden {
+                    expected.extend(run.iter().map(|&row| Entry::Row(row)));
+                }
+            }
+            prop_assert_eq!(View::group(&ordered, &columns, &data, &state).entries, expected);
+        }
+    }
+
+    /// ASCII, accented Latin, a char that lowercases to two (İ), one that
+    /// does not change (ß), a combining dot, the Kelvin sign and CJK.
+    const FOLDING: [&str; 12] = [
+        "a", "B", "é", "É", "ß", "İ", "i", "\u{307}", "\u{212A}", "k", "東", "京",
+    ];
+
+    #[rstest]
+    #[case("İSTANBUL", "i\u{307}stan", true)]
+    #[case("İSTANBUL", "\u{307}s", true)]
+    #[case("STRASSE", "straße", false)]
+    #[case("\u{212A}elvin", "kelvin", true)]
+    #[case("ÉCOLE", "école", true)]
+    #[case("école", "ecole", false)]
+    fn contains_folded_cases(#[case] hay: &str, #[case] needle: &str, #[case] found: bool) {
+        assert_eq!(contains_folded(hay, &fold(needle)), found);
+    }
+
+    /// The stack buffer in `contains_folded` holds 1.5 bytes per source byte.
+    #[test]
+    fn folding_grows_a_char_by_at_most_half() {
+        for c in (0..=char::MAX as u32).filter_map(char::from_u32) {
+            let folded: usize = c.to_lowercase().map(char::len_utf8).sum();
+            assert!(2 * folded <= 3 * c.len_utf8(), "{c:?}");
+        }
+    }
+
+    /// Folding is per char: a capital sigma ending a word still matches the
+    /// query typed in the same case, which `str::to_lowercase` would split
+    /// into `σ` against `ς`.
+    #[test]
+    fn final_sigma_matches_itself() {
+        assert_eq!(fold("ΟΔΟΣ"), "οδοσ");
+        assert_eq!("ΟΔΟΣ".to_lowercase(), "οδος");
+        assert!(contains_folded("ΟΔΟΣ", &fold("ΟΔΟΣ")));
+        assert!(!contains_folded("οδος", &fold("οδοσ")));
+    }
+
+    #[rstest]
+    #[case("", "", true)]
+    #[case("", "ab", true)]
+    #[case("ab", "", false)]
+    #[case("ab", "abc", true)]
+    #[case("a b", "ab c", true)]
+    #[case("ab", "a", false)]
+    #[case("a b", "b", false)]
+    #[case("AB", "ab", true)]
+    #[case("É", "é1", true)]
+    #[case("a a", "a", true)]
+    fn narrows_by_quick_words(#[case] earlier: &str, #[case] now: &str, #[case] narrows: bool) {
+        let columns = columns();
+        let key = |quick: &str| {
+            let mut state = TableState::new(&columns, TableDefaults::default());
+            state.set_quick(quick);
+            state.order_key()
+        };
+        assert_eq!(
+            key(now).narrows(&key(earlier)),
+            narrows,
+            "{earlier:?} -> {now:?}"
+        );
+    }
+
+    #[test]
+    fn only_the_quick_text_may_differ_to_narrow() {
+        let columns = columns();
+        let base = TableState::new(&columns, TableDefaults::default());
+        let mut other = base.clone();
+        other.set_quick("a");
+        assert!(other.order_key().narrows(&base.order_key()));
+        for change in [
+            |s: &mut TableState| s.sort = vec![SortSpec::new("n", SortDir::Asc)],
+            |s: &mut TableState| s.group_by = Some("kind".into()),
+            |s: &mut TableState| s.set_filter("n", ColumnFilter::range(Some(1.0), None)),
+            |s: &mut TableState| s.toggle_tag("a", false),
+            |s: &mut TableState| {
+                s.hidden.insert("title".into());
+            },
+        ] {
+            let mut changed = other.clone();
+            change(&mut changed);
+            assert!(!changed.order_key().narrows(&base.order_key()));
+        }
+    }
+
+    #[rstest]
+    #[case(&[], 3, 0)]
+    #[case(&[1], 3, 1)]
+    #[case(&[1, 2, 3, 4, 5, 6, 7], 3, 3)]
+    #[case(&[1, 2, 3, 4, 5, 6, 7], 0, 0)]
+    #[case(&[1, 2, 3, 4, 5, 6, 7], 9, 7)]
+    #[case(&[1, 2, 3, 4, 5, 6, 7, 8], 5, 5)]
+    fn prefix_len_finds_the_boundary(#[case] items: &[i32], #[case] below: i32, #[case] at: usize) {
+        assert_eq!(prefix_len(items, |&item| item <= below), at);
     }
 }
