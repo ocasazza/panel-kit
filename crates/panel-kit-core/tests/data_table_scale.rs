@@ -8,9 +8,12 @@ use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use panel_kit_core::widgets::data_table::{
-    BuildOptions, ColumnFilter, DataColumnSpec, SortDir, SortSpec, TableData, TableDataBuilder,
-    TableDefaults, TableState, Value, View,
+    BuildOptions, ColumnFilter, DataColumnSpec, Ordered, SortDir, SortSpec, TableData,
+    TableDataBuilder, TableDefaults, TableState, Value, View,
 };
+
+#[path = "support/demo_table.rs"]
+mod demo;
 
 const ROWS: usize = 1_000_000;
 const STATES: [&str; 6] = [
@@ -197,4 +200,56 @@ fn a_million_unique_titles_sharing_a_long_prefix_rank_inside_their_budget() {
             "the title at place {place} is shard {place}"
         );
     }
+}
+
+/// The demo's table: seven columns, three of them text, one with a unique
+/// 55-byte note per row. Typing in the quick filter refines the whole table in
+/// sort order, so rows are not read in the order they are stored. Budgets are
+/// about four times the release timing on an M-series laptop (the first
+/// filter also folds the non-ASCII titles).
+#[test]
+#[cfg_attr(debug_assertions, ignore = "timed: run with --release")]
+fn a_quick_filter_over_the_demos_million_rows_stays_inside_its_budgets() {
+    let ms = Duration::from_millis;
+    let columns = demo::columns();
+    let data = demo::data(ROWS);
+    data.warm(0);
+    data.warm(1);
+    let options = BuildOptions::default();
+    let plain = TableState::new(&columns, TableDefaults::default());
+    let sorted = TableState {
+        sort: vec![
+            SortSpec::new("since", SortDir::Asc),
+            SortSpec::new("item", SortDir::Asc),
+        ],
+        ..plain.clone()
+    };
+    let whole = Ordered::build(&columns, &data, &sorted, options);
+    let holds = |row: usize, word: &str| {
+        (0..columns.len()).any(|at| data.text(row, at).to_lowercase().contains(word))
+    };
+
+    for (text, budget) in [("seat", ms(120)), ("équipe", ms(25)), ("zzqx", ms(60))] {
+        let mut state = sorted.clone();
+        state.set_quick(text);
+        let refined = timed(
+            budget,
+            &format!("refining 1M sorted rows by {text:?}"),
+            || whole.refine(&columns, &data, &state, options),
+        );
+        let expected: Vec<usize> = whole
+            .rows
+            .iter()
+            .copied()
+            .filter(|&row| holds(row, text))
+            .collect();
+        assert_eq!(refined.rows, expected, "{text:?}");
+    }
+
+    let mut seat = plain.clone();
+    seat.set_quick("seat");
+    let built = timed(ms(60), "building 1M rows filtered by \"seat\"", || {
+        Ordered::build(&columns, &data, &seat, options)
+    });
+    assert_eq!(built.rows.len(), 71_429, "the demo's rows holding \"seat\"");
 }
