@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::column::{DataColumnSpec, SortDir, SortSpec};
-use super::data::TableData;
+use super::data::{TableData, WeakData};
 use super::scan::RowSet;
 use super::scroll::{clean, ScrollMap};
 use super::stored::{Field, StoredFilter, StoredTable};
@@ -312,7 +312,7 @@ pub struct Covered(Option<Cover>);
 #[derive(Clone)]
 struct Cover {
     selection: Weak<BTreeSet<String>>,
-    data: TableData,
+    data: WeakData,
     rows: Rc<RowSet>,
 }
 
@@ -325,7 +325,7 @@ impl Covered {
         }
         Covered(Some(Cover {
             selection: Rc::downgrade(selection),
-            data: data.clone(),
+            data: data.downgrade(),
             rows: Rc::new(rows),
         }))
     }
@@ -340,7 +340,7 @@ impl Covered {
             .selection
             .upgrade()
             .is_some_and(|held| Rc::ptr_eq(&held, selection))
-            && cover.data == *data
+            && cover.data.is(data)
             && view
                 .rows
                 .iter()
@@ -768,9 +768,10 @@ impl TableState {
     }
 
     /// Drop what names a row `data` does not hold: selected ids, the anchor,
-    /// the cursor and the tag focus. A selection that loses nothing stays
-    /// shared. One pass over `data`, however the state shrinks.
-    pub fn retain_rows(&mut self, data: &TableData) {
+    /// the cursor and the tag focus; whether any was dropped. A selection
+    /// that loses nothing stays shared. One pass over `data`, however the
+    /// state shrinks.
+    pub fn retain_rows(&mut self, data: &TableData) -> bool {
         self.covered = Covered::default();
         let (wanted, found) = {
             let wanted: HashSet<&str> = self
@@ -782,7 +783,7 @@ impl TableState {
                 .chain(self.tag_focus.as_ref().map(|(row, _)| row.as_str()))
                 .collect();
             if wanted.is_empty() {
-                return;
+                return false;
             }
             let mut found: HashSet<&str> = HashSet::with_capacity(wanted.len());
             for row in 0..data.len() {
@@ -794,7 +795,7 @@ impl TableState {
             (wanted.len(), found)
         };
         if found.len() == wanted {
-            return;
+            return false;
         }
         let keep = |id: &str| found.contains(id);
         if self.selection.iter().any(|id| !keep(id)) {
@@ -803,6 +804,7 @@ impl TableState {
         self.anchor = self.anchor.take().filter(|id| keep(id));
         self.cursor = self.cursor.take().filter(|id| keep(id));
         self.tag_focus = self.tag_focus.take().filter(|(row, _)| keep(row));
+        true
     }
 
     /// A key over the view. Navigation moves the cursor through the rendered
@@ -1283,7 +1285,9 @@ impl TableEvent {
             TableEvent::TagsExpand(on) => state.tags_expand = *on,
             TableEvent::Restore(payload) => state.restore(payload),
             TableEvent::Reset => state.reset(),
-            TableEvent::RowsReplaced => state.retain_rows(data),
+            TableEvent::RowsReplaced => {
+                state.retain_rows(data);
+            }
         }
     }
 
@@ -1657,7 +1661,7 @@ mod tests {
         state.anchor = Some("r8".into());
         state.cursor = Some("lost".into());
         state.tag_focus = Some(("lost".into(), "a".into()));
-        state.retain_rows(&rows);
+        assert!(state.retain_rows(&rows), "something was dropped");
         assert_eq!(
             *state.selection,
             BTreeSet::from(["r1".to_string(), "r8".to_string()])
@@ -1666,9 +1670,9 @@ mod tests {
         assert_eq!((state.cursor.as_deref(), &state.tag_focus), (None, &None));
         // Nothing lost: the selection stays the one allocation.
         let before = state.selection.clone();
-        state.retain_rows(&rows);
+        assert!(!state.retain_rows(&rows), "nothing left to drop");
         assert!(Rc::ptr_eq(&state.selection, &before));
-        state.retain_rows(&data(0));
+        assert!(state.retain_rows(&data(0)));
         assert!(state.selection.is_empty() && state.anchor.is_none());
     }
 
@@ -2188,7 +2192,7 @@ mod tests {
                         let earlier = data.clone();
                         data = law_data(&distinct(ids));
                         prop_assert!(!data.extends(&earlier));
-                        state.retain_rows(&data);
+                        let dropped = state.retain_rows(&data);
                         let present: BTreeSet<String> =
                             (0..data.len()).map(|row| data.id(row).to_string()).collect();
                         let mut want = before.clone();
@@ -2197,6 +2201,7 @@ mod tests {
                         want.cursor = before.cursor.clone().filter(|id| present.contains(id));
                         want.tag_focus = before.tag_focus.clone().filter(|(row, _)| present.contains(row));
                         prop_assert_eq!(&state, &want, "replacing the rows");
+                        prop_assert_eq!(dropped, want != before, "the report of what was dropped");
                     }
                     Step::Swap(ids) => data = law_data(&distinct(ids)),
                 }

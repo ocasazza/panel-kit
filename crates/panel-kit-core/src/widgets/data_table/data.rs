@@ -15,7 +15,7 @@ use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::ops::Range;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use super::column::{natural_cmp, ColumnKind, DataColumnSpec};
 use super::scan::{mark_rows, next_non_ascii, row_of, Needle, RowSet};
@@ -507,6 +507,19 @@ impl std::fmt::Debug for TableData {
     }
 }
 
+/// A table named without being held: a record of which table it was does
+/// not keep the rows alive. See [`TableData::downgrade`].
+#[derive(Clone)]
+pub(super) struct WeakData(Weak<Store>);
+
+impl WeakData {
+    /// Whether this names `data`. The allocation outlives its rows while it
+    /// is named, so an address is never taken by another table.
+    pub(super) fn is(&self, data: &TableData) -> bool {
+        std::ptr::eq(self.0.as_ptr(), Rc::as_ptr(&data.0))
+    }
+}
+
 impl TableData {
     /// Start a table of `columns`; each column's kind decides its storage.
     pub fn builder(columns: &[DataColumnSpec]) -> TableDataBuilder {
@@ -546,6 +559,11 @@ impl TableData {
                 None => return false,
             }
         }
+    }
+
+    /// This table without its rows: what a record keeps to tell it again.
+    pub(super) fn downgrade(&self) -> WeakData {
+        WeakData(Rc::downgrade(&self.0))
     }
 
     /// Derive a column's sort order now rather than on its first sort. A
