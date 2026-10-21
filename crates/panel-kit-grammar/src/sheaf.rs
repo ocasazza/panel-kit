@@ -783,8 +783,90 @@ pub struct FlamegraphSheaf {
     pub restrict: Option<BTreeSet<String>>,
 }
 
+/// What a flamegraph walk looks up: the first object of each id and, per
+/// domain, the codomains of the followed morphisms in morphism order.
+struct FlameIndex<'a> {
+    objects: HashMap<&'a str, &'a Object>,
+    children: HashMap<&'a str, Vec<&'a str>>,
+}
+
 impl FlamegraphSheaf {
     fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
+        let followed = |morphism: &Morphism| morphism.kind.as_deref() == Some(self.morphism_kind.as_str());
+        let mut index = FlameIndex { objects: HashMap::with_capacity(site.objects.len()), children: HashMap::new() };
+        for object in &site.objects {
+            index.objects.entry(object.id.as_str()).or_insert(object);
+        }
+        for morphism in site.morphisms.iter().filter(|morphism| followed(morphism)) {
+            index.children.entry(morphism.domain.as_str()).or_default().push(morphism.codomain.as_str());
+        }
+
+        let roots: Vec<&str> = match &self.root {
+            Some(id) => {
+                if !index.objects.contains_key(id.as_str()) {
+                    return Err(SheafError::MissingRoot(id.clone()));
+                }
+                vec![id.as_str()]
+            }
+            None => {
+                let called: HashSet<&str> = index.children.values().flatten().copied().collect();
+                site.objects
+                    .iter()
+                    .map(|object| object.id.as_str())
+                    .filter(|id| !called.contains(id))
+                    .collect()
+            }
+        };
+
+        let mut spans = Vec::new();
+        let mut on_path = HashSet::new();
+        for root in roots {
+            on_path.insert(root);
+            self.walk(root, 0, &mut spans, &mut on_path, &index, site, resolver)?;
+            on_path.remove(root);
+        }
+        Ok(Section::Flamegraph(spans))
+    }
+
+    /// Pushes the subtree rooted at `id` in preorder and returns its inclusive value.
+    /// `on_path` holds the ids from the root to `id`; a morphism back into it is skipped.
+    #[allow(clippy::too_many_arguments)]
+    fn walk<'a>(
+        &self,
+        id: &'a str,
+        depth: u16,
+        spans: &mut Vec<FlameSpanModel>,
+        on_path: &mut HashSet<&'a str>,
+        index: &FlameIndex<'a>,
+        site: &Site,
+        resolver: &Resolver,
+    ) -> Result<f64, SheafError> {
+        let object = index.objects.get(id).ok_or_else(|| SheafError::MissingRoot(id.to_owned()))?;
+        let own = object_value(&self.value, object, site, resolver)?.into_number(&self.value)?;
+        let slot = spans.len();
+        spans.push(FlameSpanModel {
+            label: object.title.clone(),
+            depth,
+            value: own,
+            color: None,
+        });
+        let mut total = own;
+        for &child in index.children.get(id).into_iter().flatten() {
+            if !on_path.insert(child) {
+                continue;
+            }
+            total += self.walk(child, depth + 1, spans, on_path, index, site, resolver)?;
+            on_path.remove(child);
+        }
+        // Summation noise (7240.000000000005) would leak into painted labels.
+        total = (total * 1000.0).round() / 1000.0;
+        spans[slot].value = total;
+        Ok(total)
+    }
+
+    /// The pre-index algorithm, quadratic in the site: the oracle `evaluate` must equal.
+    #[cfg(test)]
+    pub(crate) fn evaluate_reference(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
         let roots = match &self.root {
             Some(id) => {
                 if !site.has_object(id) {
@@ -808,13 +890,13 @@ impl FlamegraphSheaf {
         let mut spans = Vec::new();
         for root in roots {
             let mut path = vec![root.clone()];
-            self.walk(&root, 0, &mut spans, &mut path, site, resolver)?;
+            self.walk_reference(&root, 0, &mut spans, &mut path, site, resolver)?;
         }
         Ok(Section::Flamegraph(spans))
     }
 
-    /// Pushes the subtree rooted at `id` in preorder and returns its inclusive value.
-    fn walk(
+    #[cfg(test)]
+    fn walk_reference(
         &self,
         id: &str,
         depth: u16,
@@ -846,7 +928,7 @@ impl FlamegraphSheaf {
                 continue;
             }
             path.push(morphism.codomain.clone());
-            total += self.walk(&morphism.codomain, depth + 1, spans, path, site, resolver)?;
+            total += self.walk_reference(&morphism.codomain, depth + 1, spans, path, site, resolver)?;
             path.pop();
         }
         // Summation noise (7240.000000000005) would leak into painted labels.
@@ -1556,6 +1638,108 @@ mod tests {
         let frames: Vec<(&str, u16, f64)> =
             spans.iter().map(|span| (span.label.as_str(), span.depth, span.value)).collect();
         assert_eq!(frames, [("root", 0, 15.0), ("a", 1, 10.0), ("leaf", 2, 8.0), ("b", 1, 4.0)]);
+    }
+
+    /// Evaluate `sheaf` over `site` with the indexed algorithm and with the
+    /// pre-index reference, through an empty resolver.
+    fn flame_both(sheaf: &FlamegraphSheaf, site: &Site) -> (Result<Section, SheafError>, Result<Section, SheafError>) {
+        let object_sorting = BTreeMap::new();
+        let morphism_sorting = BTreeMap::new();
+        let stalks = Stalks { objects: BTreeMap::new(), morphisms: BTreeMap::new(), stages: Stages::default() };
+        let physics = Physics::empty();
+        let resolver = Resolver {
+            object_sorting: &object_sorting,
+            morphism_sorting: &morphism_sorting,
+            stalks: &stalks,
+            physics: &physics,
+        };
+        (sheaf.evaluate(&resolver, site), sheaf.evaluate_reference(&resolver, site))
+    }
+
+    fn flame(value: &str, root: Option<&str>) -> FlamegraphSheaf {
+        FlamegraphSheaf {
+            morphism_kind: "continues".to_owned(),
+            value: value.to_owned(),
+            root: root.map(str::to_owned),
+            restrict: None,
+        }
+    }
+
+    /// Sites over a pool of ids with every shape a call tree meets: repeated
+    /// object ids, objects lacking the cost, calls to an id that is no object,
+    /// self-loops, cycles, parallel and untyped morphisms, several roots.
+    fn arb_flame_site() -> impl proptest::strategy::Strategy<Value = (Site, Option<String>)> {
+        use proptest::prelude::*;
+        const COSTS: [&str; 6] = ["1", "2.5", "0.1", "0.2", "7240.000000000005", "3"];
+        const KINDS: [Option<&str>; 4] = [Some("continues"), Some("continues"), Some("shares"), None];
+        (1usize..7).prop_flat_map(|pool| {
+            let id = move |at: usize| if at == pool { "ghost".to_owned() } else { format!("n{at}") };
+            let objects = prop::collection::vec((0..pool, prop::option::weighted(0.9, 0..COSTS.len())), 0..10);
+            let morphisms = prop::collection::vec((0..=pool, 0..=pool, 0..KINDS.len()), 0..16);
+            (objects, morphisms, prop::option::of(0..=pool)).prop_map(move |(objects, morphisms, root)| {
+                let objects = objects
+                    .into_iter()
+                    .enumerate()
+                    .map(|(at, (object, cost))| Object {
+                        id: id(object),
+                        title: format!("t{at}"),
+                        kind: "planner".to_owned(),
+                        tags: Vec::new(),
+                        fields: cost.map(|cost| ("cost".to_owned(), COSTS[cost].to_owned())).into_iter().collect(),
+                    })
+                    .collect();
+                let morphisms = morphisms
+                    .into_iter()
+                    .map(|(from, to, kind)| Morphism {
+                        domain: id(from),
+                        codomain: id(to),
+                        kind: KINDS[kind].map(str::to_owned),
+                    })
+                    .collect();
+                (Site { objects, morphisms }, root.map(id))
+            })
+        })
+    }
+
+    #[test]
+    fn the_indexed_flamegraph_equals_the_reference_on_every_call_shape() {
+        proptest::proptest!(proptest::prelude::ProptestConfig::with_cases(2000), |((site, root) in arb_flame_site())| {
+            for value in ["field:cost", "in_degree"] {
+                for root in [None, root.as_deref()] {
+                    let (indexed, reference) = flame_both(&flame(value, root), &site);
+                    proptest::prop_assert_eq!(indexed, reference, "{} root {:?}", value, root);
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn the_indexed_flamegraph_equals_the_reference_on_the_arbitrary_sites() {
+        proptest::proptest!(|(site in crate::tests::arb_site())| {
+            let (indexed, reference) = flame_both(&flame("field:energy", None), &site);
+            proptest::prop_assert!(reference.is_ok());
+            proptest::prop_assert_eq!(indexed, reference);
+        });
+    }
+
+    #[test]
+    fn a_flamegraph_with_a_cycle_a_self_loop_and_a_repeated_id_keeps_its_shape() {
+        let mut duplicate = object("a", "100");
+        duplicate.title = "second a".to_owned();
+        let site = Site {
+            objects: vec![object("root", "1"), object("a", "2"), object("b", "4"), duplicate],
+            morphisms: vec![call("root", "a"), call("a", "b"), call("b", "a"), call("b", "b"), call("b", "root")],
+        };
+        let (indexed, reference) = flame_both(&flame("field:cost", None), &site);
+        // Every id is called by another object, so none is a root.
+        assert_eq!(indexed, reference);
+        assert_eq!(indexed, Ok(Section::Flamegraph(Vec::new())));
+        let (indexed, reference) = flame_both(&flame("field:cost", Some("root")), &site);
+        assert_eq!(indexed, reference);
+        let Ok(Section::Flamegraph(spans)) = indexed else { panic!("evaluates") };
+        let frames: Vec<(&str, u16, f64)> =
+            spans.iter().map(|span| (span.label.as_str(), span.depth, span.value)).collect();
+        assert_eq!(frames, [("root", 0, 7.0), ("a", 1, 6.0), ("b", 2, 4.0)]);
     }
 
     #[test]

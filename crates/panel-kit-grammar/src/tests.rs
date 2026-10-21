@@ -1256,7 +1256,7 @@ fn status_table_row_ids_stay_unique_when_labels_repeat_or_look_like_suffixes() {
 /// Sites with unique object ids and morphisms inside up to three groups of
 /// objects, so a site often has several components: parallel, repeated,
 /// untyped and self-loop morphisms included.
-fn arb_site() -> impl Strategy<Value = Site> {
+pub(crate) fn arb_site() -> impl Strategy<Value = Site> {
     (2usize..8, 1usize..4).prop_flat_map(|(objects, groups)| {
         let kinds = prop::collection::vec(0..E_OBJ.len(), objects);
         let edge = (0..objects, 0..objects, prop::option::of(0..EDGE_KINDS.len()));
