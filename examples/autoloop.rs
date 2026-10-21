@@ -173,7 +173,7 @@ fn host_content(host: Host, mut draft: Signal<Option<EditDraft>>, id: &str, cont
             }
         })
     });
-    section_view::paint(section, content, rows, None)
+    section_view::paint(id, section, content, rows, None)
 }
 
 /// The open draft's form; writing POSTs the emitted bytes and reloads.

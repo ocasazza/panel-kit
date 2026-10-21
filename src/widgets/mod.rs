@@ -41,7 +41,11 @@ pub fn content_view(
             div { class: "pk-content pk-content-editor", role: "group", aria_label: "editor content {binding}", "data-binding": "{binding}" }
         },
         ContentView::Badges(specs) => badge::strip(specs, on_badge_action),
-        ContentView::Table(view) => table::table(view, None),
+        ContentView::Table(view) => {
+            // A borrowed view names no panel: its column keys are the fallback.
+            let keys: Vec<&str> = view.columns.iter().map(|column| column.key.as_str()).collect();
+            table::table(&keys.join("-"), view, None)
+        }
         ContentView::TimeSeries { series, unit } => charts::time_series(series, unit),
         ContentView::Gauges(items) => charts::gauges(items),
         ContentView::Flamegraph(spans) => charts::flamegraph(spans),

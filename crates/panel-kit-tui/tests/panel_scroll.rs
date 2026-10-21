@@ -5,7 +5,7 @@ use panel_kit_core::frame::ProjectionBuffer;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
 use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::table::{
-    ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
+    ColumnKind, ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
 };
 use panel_kit_core::Mode;
 use panel_kit_tui::input::{route_wheel, route_wheel_to, WheelDelta};
@@ -93,12 +93,14 @@ fn node_columns() -> Vec<TableColumn> {
             title: "node".into(),
             width: ColumnWidth::Fixed { value: 8 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
         TableColumn {
             key: "load".into(),
             title: "load".into(),
             width: ColumnWidth::Fixed { value: 6 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
     ]
 }

@@ -12,7 +12,7 @@ use panel_kit_core::widgets::meter::{self as core_meter, MeterModel};
 use panel_kit_core::widgets::status::{StatusModel, StatusState};
 use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::table::{
-    ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
+    ColumnKind, ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
 };
 use panel_kit_tui::scroll::PanelScroll;
 use panel_kit_tui::{badge, charts, meter, status, table, ResolvedTuiTheme};
@@ -123,6 +123,35 @@ fn canary_node_table_is_buffer_identical_after_core_model_switch() {
 }
 
 #[test]
+fn a_number_column_paints_flush_right_even_when_declared_left() {
+    let theme = ResolvedTuiTheme::default();
+    let column = |key: &str, kind| TableColumn {
+        key: key.into(),
+        title: key.into(),
+        width: ColumnWidth::Fixed { value: 8 },
+        align: TextAlign::Left,
+        kind,
+    };
+    let columns = vec![column("name", ColumnKind::Text), column("count", ColumnKind::Number)];
+    let rows = [TableRow {
+        id: "r1".into(),
+        tags: Vec::new(),
+        cells: vec![TableCell::Text("ab".into()), TableCell::Text("42".into())],
+    }];
+    let view = TableView { columns: &columns, rows: &rows.iter().collect::<Vec<_>>() };
+    let area = Rect::new(0, 0, 17, 2);
+
+    let mut panels = test_registry();
+    let buffer = render_to_buffer_size(17, 2, |frame| {
+        table::table(frame, area, &theme, &TestKey::One, &mut panels, view, &TableState::default());
+    });
+    let line = |y| (0..17).map(|x| buffer[(x, y)].symbol().to_owned()).collect::<String>();
+
+    assert_eq!(line(0), "name        count");
+    assert_eq!(line(1), "ab             42");
+}
+
+#[test]
 fn canary_provider_widgets_are_buffer_identical_after_core_model_switch() {
     let core_model_buffer = render_core_canary_provider_buffer();
     let legacy_buffer = render_legacy_canary_provider_buffer();
@@ -143,18 +172,21 @@ fn widget_painters_render_core_models_to_test_backend() {
             title: "node".into(),
             width: ColumnWidth::Fixed { value: 12 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
         TableColumn {
             key: "load".into(),
             title: "load".into(),
             width: ColumnWidth::Fixed { value: 10 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
         TableColumn {
             key: "detail".into(),
             title: "detail".into(),
             width: ColumnWidth::Flex { weight: 1 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
     ];
     let rows = [TableRow {

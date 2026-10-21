@@ -7,7 +7,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use panel_kit_core::widgets::table::TableCell;
+use panel_kit_core::widgets::data_table::{
+    natural_cmp, BuildOptions, SortDir, SortSpec, TableDefaults, TableState, View,
+};
+use panel_kit_core::widgets::table::{ColumnKind, TableCell, TableModel};
 use proptest::prelude::{prop, prop_assert, prop_assert_eq, proptest, Strategy};
 
 use crate::error::SheafError;
@@ -1317,5 +1320,168 @@ fn every_table_section_lists_unique_row_ids_that_name_their_rows() {
             let before = row_ids(&sections, binding);
             prop_assert_eq!(&row_ids(&after, binding)[..before.len()], &before[..], "{} renamed a row", binding);
         }
+    });
+}
+
+// --- Typed table columns ------------------------------------------------------
+
+fn column_json(key: &str, kind: Option<&str>, cell: &str) -> String {
+    let kind = kind.map_or(String::new(), |kind| format!(r##""kind":"{kind}","##));
+    format!(r##"{{"key":"{key}","title":"{key}","width":{{"flex":{{"weight":1}}}},"align":"left",{kind}"cell":{cell}}}"##)
+}
+
+fn text_cell(expr: &str) -> String {
+    format!(r##"{{"cell":"text","expr":"{expr}"}}"##)
+}
+
+fn meter_cell(value: &str, scale: f64) -> String {
+    format!(r##"{{"cell":"meter","value":"{value}","scale":{scale:?},"text":"{value}"}}"##)
+}
+
+fn table_sheaf(scope: &str, columns: &[String]) -> String {
+    format!(r##"{{"kind":"table","scope":"{scope}","columns":[{}]}}"##, columns.join(","))
+}
+
+fn model_of<'a>(sections: &'a crate::GlobalSections, binding: &str) -> &'a TableModel {
+    match sections.get(binding) {
+        Some(Section::Table(model)) => model,
+        other => panic!("{binding} is not a table: {other:?}"),
+    }
+}
+
+#[test]
+fn table_columns_take_their_kind_from_the_spec_or_else_from_their_cell() {
+    use ColumnKind::{Enum, Number, Text};
+    let objects = [
+        ("id", None, text_cell("id"), Text),
+        ("title", None, text_cell("title"), Text),
+        ("kind", None, text_cell("kind"), Enum),
+        ("degree", None, text_cell("degree"), Number),
+        ("in", None, text_cell("in_degree"), Number),
+        ("out", None, text_cell("out_degree"), Number),
+        ("repulsion", None, text_cell("repulsion"), Number),
+        ("mass", None, text_cell("mass"), Number),
+        ("weighted", None, text_cell("weighted:energy"), Number),
+        ("load", None, meter_cell("field:energy", 100.0), Number),
+        ("status", None, r##"{"cell":"status","from":"kind"}"##.to_owned(), Enum),
+        ("field", None, text_cell("field:energy"), Text),
+        ("tag", None, text_cell("tag:0"), Text),
+        ("energy", Some("number"), text_cell("field:energy"), Number),
+        ("tag_enum", Some("enum"), text_cell("tag:0"), Enum),
+        ("degree_text", Some("text"), text_cell("degree"), Text),
+        ("kind_number", Some("number"), text_cell("kind"), Number),
+    ];
+    let edges = [
+        ("source", None, text_cell("source"), Text),
+        ("target", None, text_cell("target"), Text),
+        ("edge", None, text_cell("edge_kind"), Enum),
+        ("weight", None, text_cell("weight"), Number),
+        ("rest", None, text_cell("rest_length"), Number),
+    ];
+    let json = |rows: &[(&str, Option<&str>, String, ColumnKind)]| -> Vec<String> {
+        rows.iter().map(|(key, kind, cell, _)| column_json(key, *kind, cell)).collect()
+    };
+    let sheaves = format!(
+        r##"{{"objs":{},"edges":{}}}"##,
+        table_sheaf("objects", &json(&objects)),
+        table_sheaf("morphisms", &json(&edges)),
+    );
+    let sections = agentic_topos(&sheaves).global_sections(&demo_site(), &physics_a()).unwrap();
+
+    for (binding, expected) in [("objs", &objects[..].iter().map(|c| (c.0, c.3)).collect::<Vec<_>>()), ("edges", &edges[..].iter().map(|c| (c.0, c.3)).collect())] {
+        let kinds: Vec<(&str, ColumnKind)> =
+            model_of(&sections, binding).columns.iter().map(|column| (column.key.as_str(), column.kind)).collect();
+        assert_eq!(&kinds, expected, "{binding}");
+    }
+}
+
+#[test]
+fn a_column_without_a_kind_encodes_without_one_and_a_named_kind_round_trips() {
+    let bare: crate::ColumnSpec = serde_json::from_str(&column_json("k", None, &text_cell("degree"))).unwrap();
+    assert_eq!(bare.kind, None);
+    assert!(!serde_json::to_string(&bare).unwrap().contains("kind\":"));
+    let named: crate::ColumnSpec = serde_json::from_str(&column_json("k", Some("number"), &text_cell("id"))).unwrap();
+    assert_eq!(named.kind, Some(ColumnKind::Number));
+    assert_eq!(serde_json::from_str::<crate::ColumnSpec>(&serde_json::to_string(&named).unwrap()).unwrap(), named);
+}
+
+/// Row ids in the order the interactive table shows `model` sorted on `column`.
+fn sorted_on(model: &TableModel, column: &str, dir: SortDir) -> Vec<String> {
+    let columns = model.data_columns();
+    let data = model.data();
+    let defaults = TableDefaults { sort: vec![SortSpec::new(column, dir)], ..TableDefaults::default() };
+    let state = TableState::new(&columns, defaults);
+    View::build(&columns, &data, &state, BuildOptions::default()).ids(&data).map(str::to_owned).collect()
+}
+
+/// Sites whose objects carry a decimal `energy`, negatives and repeats included,
+/// and a few morphisms so degrees differ.
+fn arb_energy_site() -> impl Strategy<Value = Site> {
+    (prop::collection::vec((0..E_OBJ.len(), -5000i32..5000), 1..12), prop::collection::vec((0usize..64, 0usize..64), 0..16))
+        .prop_map(|(objects, edges)| {
+            let count = objects.len();
+            Site {
+                objects: objects
+                    .iter()
+                    .enumerate()
+                    .map(|(at, (kind, hundredths))| {
+                        object(&format!("o{at}"), E_OBJ[*kind], &format!("{}", f64::from(*hundredths) / 100.0))
+                    })
+                    .collect(),
+                morphisms: edges
+                    .into_iter()
+                    .map(|(from, to)| typed(&format!("o{}", from % count), &format!("o{}", to % count), "continues"))
+                    .collect(),
+            }
+        })
+}
+
+#[test]
+fn a_grammar_tables_number_columns_sort_by_value_and_its_enum_columns_offer_their_values() {
+    let columns = [
+        column_json("id", None, &text_cell("id")),
+        column_json("energy", Some("number"), &text_cell("field:energy")),
+        column_json("load", None, &meter_cell("field:energy", 10.0)),
+        column_json("degree", None, &text_cell("degree")),
+        column_json("sort", None, &text_cell("kind")),
+    ];
+    let topos = agentic_topos(&format!(r##"{{"objs":{}}}"##, table_sheaf("objects", &columns)));
+    let physics = physics_a();
+    proptest!(|(site in arb_energy_site())| {
+        let sections = topos.global_sections(&site, &physics).unwrap();
+        let model = model_of(&sections, "objs");
+        let energy = |object: &Object| object.number("energy").unwrap();
+        let number = |object: &Object, column: &str| match column {
+            "energy" => energy(object),
+            "load" => energy(object) / 10.0,
+            _ => site.degree(&object.id) as f64,
+        };
+        for column in ["energy", "load", "degree"] {
+            for dir in [SortDir::Asc, SortDir::Desc] {
+                let shown: Vec<f64> = sorted_on(model, column, dir)
+                    .iter()
+                    .map(|id| number(site.objects.iter().find(|object| crate::edit::object_row_id(&object.id) == *id).unwrap(), column))
+                    .collect();
+                let mut expected: Vec<f64> = site.objects.iter().map(|object| number(object, column)).collect();
+                expected.sort_by(f64::total_cmp);
+                if dir == SortDir::Desc {
+                    expected.reverse();
+                }
+                prop_assert_eq!(shown, expected, "{} {:?}", column, dir);
+            }
+        }
+
+        // The enum column offers each regime label present once, in natural order.
+        let mut labels: Vec<String> = site
+            .objects
+            .iter()
+            .map(|object| topos.stalks.objects[&topos.object_sorting[&object.kind]].label.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        labels.sort_by(|a, b| natural_cmp(a, b));
+        let columns = model.data_columns();
+        let view = View::build(&columns, &model.data(), &TableState::new(&columns, TableDefaults::default()), BuildOptions::default());
+        prop_assert_eq!(view.options.get("sort").cloned().unwrap_or_default(), labels);
     });
 }

@@ -10,6 +10,11 @@
 //! - morphism: `source`, `target`, `edge_kind` (regime sort label), `weight`,
 //!   `rest_length`.
 //!
+//! A table column holds text, an enum or a number: its `kind` when the spec
+//! names one, else derived from its cell (meters and the
+//! numeric expressions are numbers; status cells, `kind` and `edge_kind` are
+//! enums). The interactive table sorts and filters by that kind.
+//!
 //! "Group by kind" sheaves group by **regime sort**, so a non-injective sorting
 //! merges site kinds (e.g. planner + reviewer → head).
 
@@ -21,7 +26,7 @@ use panel_kit_core::badge::{BadgeKind, BadgeSpec, Rgb};
 use panel_kit_core::widgets::charts::{BoxItemModel, FlameSpanModel, GaugeModel, SeriesModel};
 use panel_kit_core::widgets::meter::MeterModel;
 use panel_kit_core::widgets::status::{StatusModel, StatusState};
-use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign};
+use panel_kit_core::widgets::table::{ColumnKind, ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign};
 use panel_kit_core::widgets::TextModel;
 
 use crate::error::SheafError;
@@ -191,6 +196,7 @@ impl Sheaf {
                     title: "Invariant".to_owned(),
                     width: ColumnWidth::Flex { weight: 1 },
                     align: TextAlign::Left,
+                    kind: ColumnKind::Text,
                 }],
                 rows: Vec::new(),
             })),
@@ -240,12 +246,14 @@ pub fn status_table(checks_title: &str, holds_title: &str, rows: &[(String, bool
             title: checks_title.to_owned(),
             width: ColumnWidth::Flex { weight: 4 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
         TableColumn {
             key: "holds".to_owned(),
             title: holds_title.to_owned(),
             width: ColumnWidth::Flex { weight: 1 },
             align: TextAlign::Center,
+            kind: ColumnKind::Enum,
         },
     ];
     let ids = unique_row_ids(rows.iter().map(|(label, _)| format!("gate:{label}")));
@@ -430,6 +438,9 @@ pub struct ColumnSpec {
     pub width: ColWidth,
     /// Text alignment.
     pub align: CellAlign,
+    /// What the column holds; absent derives it from the cell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ColumnKind>,
     /// How each cell is produced.
     pub cell: CellSpec,
 }
@@ -507,6 +518,22 @@ pub enum CellSpec {
     },
 }
 
+/// The kind a column holds when its spec names none, from what its cell
+/// yields: meters and numeric expressions are numbers, status words and a
+/// row's kind label are enumerations, any other expression is text.
+pub(crate) fn derived_kind(cell: &CellSpec) -> ColumnKind {
+    match cell {
+        CellSpec::Meter { .. } => ColumnKind::Number,
+        CellSpec::Status { .. } => ColumnKind::Enum,
+        CellSpec::Text { expr } => match expr.as_str() {
+            "degree" | "in_degree" | "out_degree" | "repulsion" | "mass" | "weight" | "rest_length" => ColumnKind::Number,
+            "kind" | "edge_kind" => ColumnKind::Enum,
+            _ if expr.starts_with("weighted:") => ColumnKind::Number,
+            _ => ColumnKind::Text,
+        },
+    }
+}
+
 impl TableSheaf {
     fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
         let columns = self
@@ -517,6 +544,7 @@ impl TableSheaf {
                 title: column.title.clone(),
                 width: column.width.to_core(),
                 align: column.align.to_core(),
+                kind: column.kind.unwrap_or_else(|| derived_kind(&column.cell)),
             })
             .collect();
 
@@ -1027,10 +1055,10 @@ impl PhysicsSheaf {
         let (columns, rows) = match self.scope {
             PhysicsScope::Objects => {
                 let columns = vec![
-                    physics_column("object", "Object", TextAlign::Left),
-                    physics_column("type", "Type", TextAlign::Left),
-                    physics_column("repulsion", "Repulsion", TextAlign::Right),
-                    physics_column("mass", "Mass", TextAlign::Right),
+                    physics_column("object", "Object", TextAlign::Left, ColumnKind::Text),
+                    physics_column("type", "Type", TextAlign::Left, ColumnKind::Enum),
+                    physics_column("repulsion", "Repulsion", TextAlign::Right, ColumnKind::Number),
+                    physics_column("mass", "Mass", TextAlign::Right, ColumnKind::Number),
                 ];
                 let rows = section
                     .objects
@@ -1050,11 +1078,11 @@ impl PhysicsSheaf {
             }
             PhysicsScope::Morphisms => {
                 let columns = vec![
-                    physics_column("from", "From", TextAlign::Left),
-                    physics_column("to", "To", TextAlign::Left),
-                    physics_column("type", "Type", TextAlign::Left),
-                    physics_column("k", "k", TextAlign::Right),
-                    physics_column("rest", "Rest", TextAlign::Right),
+                    physics_column("from", "From", TextAlign::Left, ColumnKind::Text),
+                    physics_column("to", "To", TextAlign::Left, ColumnKind::Text),
+                    physics_column("type", "Type", TextAlign::Left, ColumnKind::Enum),
+                    physics_column("k", "k", TextAlign::Right, ColumnKind::Number),
+                    physics_column("rest", "Rest", TextAlign::Right, ColumnKind::Number),
                 ];
                 let ids = unique_row_ids(site.morphisms.iter().map(|morphism| morphism_row_id("bond", morphism)));
                 let rows = section
@@ -1303,27 +1331,28 @@ fn stage_label(stages: &Stages, stage: Stage) -> &str {
 
 fn assembly_columns() -> Vec<TableColumn> {
     [
-        ("component", "Component", TextAlign::Left),
-        ("v", "V", TextAlign::Right),
-        ("e", "E", TextAlign::Right),
-        ("f", "F", TextAlign::Right),
-        ("b0", "β0", TextAlign::Right),
-        ("b1", "β1", TextAlign::Right),
-        ("chi", "χ", TextAlign::Right),
-        ("boundary", "Boundary", TextAlign::Right),
-        ("stage", "Stage", TextAlign::Left),
+        ("component", "Component", TextAlign::Left, ColumnKind::Text),
+        ("v", "V", TextAlign::Right, ColumnKind::Number),
+        ("e", "E", TextAlign::Right, ColumnKind::Number),
+        ("f", "F", TextAlign::Right, ColumnKind::Number),
+        ("b0", "β0", TextAlign::Right, ColumnKind::Number),
+        ("b1", "β1", TextAlign::Right, ColumnKind::Number),
+        ("chi", "χ", TextAlign::Right, ColumnKind::Number),
+        ("boundary", "Boundary", TextAlign::Right, ColumnKind::Number),
+        ("stage", "Stage", TextAlign::Left, ColumnKind::Enum),
     ]
     .into_iter()
-    .map(|(key, title, align)| physics_column(key, title, align))
+    .map(|(key, title, align, kind)| physics_column(key, title, align, kind))
     .collect()
 }
 
-fn physics_column(key: &str, title: &str, align: TextAlign) -> TableColumn {
+fn physics_column(key: &str, title: &str, align: TextAlign, kind: ColumnKind) -> TableColumn {
     TableColumn {
         key: key.to_owned(),
         title: title.to_owned(),
         width: ColumnWidth::Flex { weight: 1 },
         align,
+        kind,
     }
 }
 
@@ -1512,5 +1541,25 @@ mod tests {
         let frames: Vec<(&str, u16, f64)> =
             spans.iter().map(|span| (span.label.as_str(), span.depth, span.value)).collect();
         assert_eq!(frames, [("root", 0, 15.0), ("a", 1, 10.0), ("leaf", 2, 8.0), ("b", 1, 4.0)]);
+    }
+
+    #[test]
+    fn a_columns_kind_derives_from_its_cell() {
+        let text = |expr: &str| CellSpec::Text { expr: expr.to_owned() };
+        let numeric = ["degree", "in_degree", "out_degree", "repulsion", "mass", "weighted:cost", "weight", "rest_length"];
+        let categorical = ["kind", "edge_kind"];
+        let plain = ["id", "title", "source", "target", "tag:0", "field:cost", "field?:cost", "unknown"];
+        for expr in numeric {
+            assert_eq!(derived_kind(&text(expr)), ColumnKind::Number, "{expr}");
+        }
+        for expr in categorical {
+            assert_eq!(derived_kind(&text(expr)), ColumnKind::Enum, "{expr}");
+        }
+        for expr in plain {
+            assert_eq!(derived_kind(&text(expr)), ColumnKind::Text, "{expr}");
+        }
+        let meter = CellSpec::Meter { value: "field:cost".to_owned(), scale: 1.0, text: "field:cost".to_owned() };
+        assert_eq!(derived_kind(&meter), ColumnKind::Number);
+        assert_eq!(derived_kind(&CellSpec::Status { from: "kind".to_owned() }), ColumnKind::Enum);
     }
 }

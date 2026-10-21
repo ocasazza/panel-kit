@@ -8,7 +8,7 @@ use panel_kit_core::frame::{DockProjection, Placement, TileGridProjection};
 use panel_kit_core::panel::PanelCatalog;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
 use panel_kit_core::widgets::table::{
-    ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
+    ColumnKind, ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
 };
 use panel_kit_core::{
     FocusContext, Key, KeyChord, PointerButton, PointerEvent, PointerEventKind, Region,
@@ -190,6 +190,7 @@ fn InteractiveTableProbe() -> Element {
         title: "Policy".into(),
         width: ColumnWidth::Flex { weight: 1 },
         align: TextAlign::Left,
+        kind: ColumnKind::Text,
     }];
     let rows = [TableRow {
         id: "r1".into(),
@@ -202,10 +203,10 @@ fn InteractiveTableProbe() -> Element {
     rsx! {
         {{
             let shown: Vec<&TableRow> = rows.iter().collect();
-            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &shown }, None)
+            panel_kit::widgets::table::table("filled", TableView { columns: &columns, rows: &shown }, None)
         }}
         {{
-            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &[] }, None)
+            panel_kit::widgets::table::table("empty", TableView { columns: &columns, rows: &[] }, None)
         }}
     }
 }
@@ -227,6 +228,39 @@ fn table_paints_through_the_one_component_with_its_toolbar_and_empty_state() {
     // The empty state names the caller's message when the model has no rows.
     assert!(html.contains("class=\"pk-dt-empty\""), "{html}");
     assert!(html.contains("no rows"), "{html}");
+}
+
+/// Two panels over the same columns are two tables: their ids must differ, or
+/// the browser finds one grid for both and a row id repeats on the page.
+#[test]
+fn tables_over_the_same_columns_get_the_ids_they_are_named_by() {
+    let html = dioxus_ssr::render_element(rsx! { InteractiveTableProbe {} });
+    for name in ["filled", "empty"] {
+        assert_eq!(html.matches(&format!("id=\"pk-table-{name}\"")).count(), 1, "{name}: {html}");
+    }
+    assert!(html.contains("id=\"pk-table-filled-r1\""), "{html}");
+}
+
+/// A number column paints flush right however the spec aligned it; a text
+/// column keeps the alignment the spec gave.
+#[test]
+fn a_number_column_paints_flush_right_even_when_declared_left() {
+    let paint = |kind| {
+        let columns = [TableColumn {
+            key: "count".into(),
+            title: "Count".into(),
+            width: ColumnWidth::Flex { weight: 1 },
+            align: TextAlign::Left,
+            kind,
+        }];
+        let rows = [TableRow { id: "r1".into(), tags: Vec::new(), cells: vec![TableCell::Text("1.5".into())] }];
+        let shown: Vec<&TableRow> = rows.iter().collect();
+        dioxus_ssr::render_element(rsx! {
+            {panel_kit::widgets::table::table("kinds", TableView { columns: &columns, rows: &shown }, None)}
+        })
+    };
+    assert!(paint(ColumnKind::Number).contains("pk-dt-align-right"));
+    assert!(!paint(ColumnKind::Text).contains("pk-dt-align-right"));
 }
 
 #[test]

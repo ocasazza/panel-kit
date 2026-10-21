@@ -185,7 +185,7 @@ pub mod web_canary {
     use panel_kit_core::widgets::meter::MeterModel;
     use panel_kit_core::widgets::status::{StatusModel, StatusState};
     use panel_kit_core::widgets::table::{
-        ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
+        ColumnKind, ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
     };
     use panel_kit_core::widgets::{ContentSpec, ContentView, DataSource, ScrollPolicy};
     use panel_kit_core::SpecPanelId;
@@ -599,18 +599,21 @@ pub mod web_canary {
                     title: "Node".into(),
                     width: ColumnWidth::Flex { weight: 2 },
                     align: TextAlign::Left,
+                    kind: ColumnKind::Text,
                 },
                 TableColumn {
                     key: "health".into(),
                     title: "Health".into(),
                     width: ColumnWidth::Fixed { value: 8 },
                     align: TextAlign::Center,
+                    kind: ColumnKind::Enum,
                 },
                 TableColumn {
                     key: "load".into(),
                     title: "Load".into(),
                     width: ColumnWidth::Fixed { value: 10 },
                     align: TextAlign::Right,
+                    kind: ColumnKind::Number,
                 },
             ],
             rows: vec![
