@@ -174,7 +174,7 @@
   // Detail cards at the end of the data: the last row must be mounted and
   // inside the scroller's box.
   const cards = async () => {
-    const view = () => $(".pk-dt-btn[title^='rows, compact']");
+    const view = () => $(".pk-btn[title^='rows, compact']");
     const lastVisible = () => {
       const scroller = $(".pk-dt-scroll");
       const total = Number($("#work").dataset.total);

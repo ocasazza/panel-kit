@@ -13,7 +13,9 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use dioxus::prelude::*;
-use panel_kit_core::badge::{BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec};
+use panel_kit_core::badge::{
+    BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec, BadgeTone, BadgeVariant,
+};
 use panel_kit_core::widgets::data_table::{
     empty_sentence, ribbon_label, segment_label, tag_letter, tag_slot, tally, BuildOptions,
     ColumnFilter, ColumnKind, Entry, FilterKind, MoveTarget, OrderKey, Ordered, QueryMode,
@@ -22,6 +24,7 @@ use panel_kit_core::widgets::data_table::{
 };
 
 use crate::badge::Badge;
+use crate::widgets::button::Button;
 
 pub use panel_kit_core::widgets::data_table::{
     csv, tsv, write_csv, write_tsv, Align, DataColumnSpec, Density, SortSpec, TableData, TableDataBuilder, TableDefaults,
@@ -684,12 +687,10 @@ pub fn DataTable(
                         }
                     }
                     if shows(Control::Filters) && filterable {
-                        button {
-                            r#type: "button",
-                            class: if current.filters_open { "pk-dt-btn on" } else { "pk-dt-btn" },
-                            aria_pressed: "{current.filters_open}",
+                        Button {
+                            pressed: current.filters_open,
                             aria_controls: "{id}-filters",
-                            onclick: move |_| act.call(TableEvent::ToggleFilters),
+                            on_press: move |_| act.call(TableEvent::ToggleFilters),
                             "filters"
                             if filter_count > 0 {
                                 span { class: "pk-dt-n", "{filter_count}" }
@@ -697,11 +698,11 @@ pub fn DataTable(
                         }
                     }
                     if shows(Control::Filters) && current.filtering() {
-                        button { r#type: "button", class: "pk-dt-btn", onclick: move |_| act.call(TableEvent::Clear), "clear" }
+                        Button { on_press: move |_| act.call(TableEvent::Clear), "clear" }
                     }
                     if shows(Control::Columns) {
                         details { class: "pk-dt-menu", "data-dt-menu": "columns",
-                            summary { class: "pk-dt-btn", "columns" }
+                            summary { class: "pk-btn", "columns" }
                             div { class: "pk-dt-menu-body", role: "group", aria_label: "columns",
                                 for (index, column) in ordered.iter().enumerate() {
                                     {
@@ -723,27 +724,25 @@ pub fn DataTable(
                                                     }
                                                     " {column.title}"
                                                 }
-                                                button {
-                                                    r#type: "button",
-                                                    class: "pk-dt-mini",
+                                                Button {
+                                                    compact: true,
                                                     disabled: index == 0,
                                                     aria_label: "move {column.title} left",
-                                                    onclick: move |_| act.call(TableEvent::MoveColumn(left.clone(), MoveTarget::Left)),
+                                                    on_press: move |_| act.call(TableEvent::MoveColumn(left.clone(), MoveTarget::Left)),
                                                     "\u{25c2}"
                                                 }
-                                                button {
-                                                    r#type: "button",
-                                                    class: "pk-dt-mini",
+                                                Button {
+                                                    compact: true,
                                                     disabled: index == last,
                                                     aria_label: "move {column.title} right",
-                                                    onclick: move |_| act.call(TableEvent::MoveColumn(right.clone(), MoveTarget::Right)),
+                                                    on_press: move |_| act.call(TableEvent::MoveColumn(right.clone(), MoveTarget::Right)),
                                                     "\u{25b8}"
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                button { r#type: "button", class: "pk-dt-btn", onclick: move |_| act.call(TableEvent::Reset), "reset layout" }
+                                Button { on_press: move |_| act.call(TableEvent::Reset), "reset layout" }
                             }
                         }
                     }
@@ -772,30 +771,24 @@ pub fn DataTable(
                         }
                     }
                     if shows(Control::Density) {
-                        button {
-                            r#type: "button",
-                            class: "pk-dt-btn",
-                            aria_pressed: "{current.density == Density::Compact}",
+                        Button {
+                            pressed: current.density == Density::Compact,
                             title: "toggle row density",
-                            onclick: move |_| act.call(TableEvent::ToggleDensity),
+                            on_press: move |_| act.call(TableEvent::ToggleDensity),
                             "{current.density.as_str()}"
                         }
                     }
                     if shows(Control::View) {
-                        button {
-                            r#type: "button",
-                            class: "pk-dt-btn",
+                        Button {
                             title: "rows, compact cards, or detail cards",
-                            onclick: move |_| act.call(TableEvent::View(current.view.next())),
+                            on_press: move |_| act.call(TableEvent::View(current.view.next())),
                             "{current.view.label()}"
                         }
                     }
                     if shows(Control::Copy) {
-                        button {
-                            r#type: "button",
-                            class: "pk-dt-btn",
+                        Button {
                             title: "copy the selected rows as TSV (every row when nothing is selected)",
-                            onclick: {
+                            on_press: {
                                 let copy = copy.clone();
                                 move |_| copy()
                             },
@@ -803,11 +796,9 @@ pub fn DataTable(
                         }
                     }
                     if shows(Control::Export) {
-                        button {
-                            r#type: "button",
-                            class: "pk-dt-btn",
+                        Button {
                             title: "download the rows shown as CSV",
-                            onclick: {
+                            on_press: {
                                 let download = download.clone();
                                 move |_| download()
                             },
@@ -824,17 +815,19 @@ pub fn DataTable(
                 div { class: "pk-dt-active", role: "group", aria_label: "active filters",
                     for filter in active.iter() {
                         {
-                            let kind = match filter.kind {
-                                FilterKind::Tag => BadgeKind::Tag,
-                                _ => BadgeKind::Generic,
+                            // The table's square chip, not the free-standing pill:
+                            // an applied filter is query state, not live state.
+                            let (kind, tone) = match filter.kind {
+                                FilterKind::Tag => (BadgeKind::Tag, BadgeTone::Info),
+                                _ => (BadgeKind::Generic, BadgeTone::Neutral),
                             };
                             let spec = BadgeSpec {
-                                active: true,
                                 with_x: true,
                                 small: true,
                                 click_kind: BadgeClickKind::Clicked,
                                 ..BadgeSpec::new(filter.label.clone(), filter.value.clone(), kind)
-                            };
+                            }
+                            .with_tone(tone, BadgeVariant::Outline);
                             let remove = filter.remove.clone();
                             rsx! {
                                 span { class: "pk-dt-active-chip", key: "{filter.label}={filter.value}",
@@ -854,12 +847,10 @@ pub fn DataTable(
                         }
                     }
                     if current.tag_filter.len() > 1 {
-                        button {
-                            r#type: "button",
-                            class: "pk-dt-btn",
+                        Button {
+                            pressed: current.tag_mode == TagMode::All,
                             title: "rows need any of these tags, or all of them",
-                            aria_pressed: "{current.tag_mode == TagMode::All}",
-                            onclick: move |_| act.call(TableEvent::TagMode(match current.tag_mode {
+                            on_press: move |_| act.call(TableEvent::TagMode(match current.tag_mode {
                                 TagMode::Any => TagMode::All,
                                 TagMode::All => TagMode::Any,
                             })),
@@ -869,7 +860,7 @@ pub fn DataTable(
                             }
                         }
                     }
-                    button { r#type: "button", class: "pk-dt-btn", onclick: move |_| act.call(TableEvent::Clear), "clear all" }
+                    Button { on_press: move |_| act.call(TableEvent::Clear), "clear all" }
                 }
             }
 
@@ -1213,7 +1204,7 @@ pub fn DataTable(
                 } else if view.total == 0 {
                     p { class: "pk-dt-empty",
                         {empty_sentence(&current.tag_filter)}
-                        button { r#type: "button", class: "pk-dt-btn", onclick: move |_| act.call(TableEvent::Clear), "clear" }
+                        Button { on_press: move |_| act.call(TableEvent::Clear), "clear" }
                     }
                 }
             }
@@ -1270,7 +1261,7 @@ fn filter_control(
             };
             rsx! {
                 details { class: "pk-dt-menu pk-dt-enum", "data-dt-menu": "filter-{column.id}",
-                    summary { class: "pk-dt-btn", aria_label: "filter {column.title}", "{summary}" }
+                    summary { class: "pk-btn", aria_label: "filter {column.title}", "{summary}" }
                     div { class: "pk-dt-menu-body",
                         for option in offered.iter() {
                             {

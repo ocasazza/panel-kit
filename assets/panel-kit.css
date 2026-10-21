@@ -784,11 +784,13 @@ button { font-family:var(--mono); }
   -webkit-appearance: none;
 }
 
-.pk-dt-btn,
-.pk-dt-mini {
+/* === button component (src/widgets/button.rs) === */
+/* Square, 1px object edge, caps with tracking; inverts on hover; a latched
+   toggle (aria-pressed) takes the accent edge, which is selection state. */
+.pk-btn {
   margin: 0;
   padding: 1px 6px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line2);
   border-radius: 0;
   background: var(--bg);
   color: var(--dim);
@@ -801,29 +803,26 @@ button { font-family:var(--mono); }
   transition: none;
 }
 
-.pk-dt-btn:hover,
-.pk-dt-mini:hover {
+.pk-btn.compact {
+  padding: 1px 4px;
+}
+
+.pk-btn:hover {
   background: var(--fg);
   border-color: var(--fg);
   color: var(--inv-fg);
 }
 
-.pk-dt-btn.on,
-.pk-dt-btn[aria-pressed="true"] {
+.pk-btn[aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.pk-dt-btn:disabled,
-.pk-dt-mini:disabled {
+.pk-btn:disabled {
   color: var(--dim);
   border-color: var(--line);
   background: var(--bg);
   cursor: default;
-}
-
-.pk-dt-mini {
-  padding: 1px 4px;
 }
 
 .pk-dt-n {
@@ -1264,7 +1263,7 @@ button { font-family:var(--mono); }
   color: var(--dim);
 }
 
-.pk-dt-empty .pk-dt-btn {
+.pk-dt-empty .pk-btn {
   margin-left: 8px;
 }
 

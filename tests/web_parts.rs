@@ -421,3 +421,37 @@ fn tiling_drag_to_swap_reorders_panels_via_surface_pointer_motion() {
     assert_eq!(snapshot.tile_drag, None);
 }
 
+#[component]
+fn ButtonProbe() -> Element {
+    use panel_kit::widgets::Button;
+    rsx! {
+        Button { on_press: |_| {}, "plain" }
+        Button { pressed: true, title: "latched", "data-probe": "on", on_press: |_| {}, "on" }
+        Button { pressed: false, compact: true, disabled: true, on_press: |_| {}, "off" }
+    }
+}
+
+#[test]
+fn a_button_states_its_toggle_and_passes_its_attributes_through() {
+    let html = dioxus_ssr::render_element(rsx! { ButtonProbe {} });
+    let buttons: Vec<&str> = html.split("<button").skip(1).collect();
+    assert_eq!(buttons.len(), 3, "{html}");
+    assert!(
+        buttons.iter().all(|b| b.contains("type=\"button\"")),
+        "{html}"
+    );
+    assert!(
+        !buttons[0].contains("aria-pressed"),
+        "a plain action is not a toggle: {html}"
+    );
+    assert!(buttons[1].contains("aria-pressed=\"true\""), "{html}");
+    assert!(
+        buttons[1].contains("title=\"latched\"") && buttons[1].contains("data-probe=\"on\""),
+        "{html}"
+    );
+    assert!(
+        buttons[2].contains("aria-pressed=\"false\"") && buttons[2].contains("disabled"),
+        "{html}"
+    );
+    assert!(buttons[2].contains("class=\"pk-btn compact\""), "{html}");
+}

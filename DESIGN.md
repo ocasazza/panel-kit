@@ -104,6 +104,21 @@ components:
     textColor: "{colors.fg}"
     rounded: "{rounded.chip}"
     padding: "3.2px 8px"
+  button:
+    backgroundColor: "{colors.bg}"
+    textColor: "{colors.dim}"
+    rounded: "{rounded.panel}"
+    padding: "1px 6px"
+  button-hover:
+    backgroundColor: "{colors.fg}"
+    textColor: "{colors.inv-fg}"
+    rounded: "{rounded.panel}"
+    padding: "1px 6px"
+  button-pressed:
+    backgroundColor: "{colors.bg}"
+    textColor: "{colors.accent}"
+    rounded: "{rounded.panel}"
+    padding: "1px 6px"
   badge:
     backgroundColor: "{colors.bg}"
     textColor: "{colors.fg}"
@@ -449,6 +464,14 @@ grey, folded.
 - **Hover:** border goes to `--fg`. The fill never changes.
 - **Empty state:** `.dock-empty` in `--dim` (4.53:1). It was `--line2` — a border token used as 9.1px text at 1.71:1 — until 1.0.0. The Seam/Edge Rule forbids structural tokens as text.
 
+### Buttons
+
+- **Character:** a content-area control — a toolbar action or toggle. Panel-header actions inset into the border row are `PanelHeaderButton` instead.
+- **Component:** `panel_kit::widgets::Button` (`.pk-btn`); `compact` for controls inside a row or menu. A `<summary>` that opens a menu takes the same class.
+- **Shape:** square, `1px` `--line2` border, `--bg` fill, `--dim` caps label at `11px` with `.06em` tracking.
+- **Hover:** inverts — `--fg` fill, `--inv-fg` label.
+- **Pressed** (`aria-pressed="true"`): accent border and label; a latched toggle is selection state. Disabled drops the border to `--line`.
+
 ### Badges
 
 - **Character:** a metadata chip that is also a filter control.
@@ -457,6 +480,7 @@ grey, folded.
 - **Hover** (inactive only): fill drifts 18% toward the border color, plus a 2px 20% halo of the same.
 - **Active:** 2px 40% accent halo and an accent-tinted fill, unless a community tint owns the fill.
 - **Affordances:** trailing `+` / `×` buttons at 70% of the label color, going to full `--fg` on hover.
+- **Inside the data table** the badge takes its square chip style (`BadgeSpec::with_tone`, outline): cell values like a row's state, and applied filters with their `×`. The grid is square-edged, and an applied filter is query state, not live state, so neither earns the pill or the accent halo. Tags tone `info`, other filters `neutral`.
 
 ### Spinner
 

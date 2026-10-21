@@ -802,6 +802,37 @@ fn one_segment_per_label_with_letter_title_and_pressed_state() {
 }
 
 #[test]
+fn applied_filters_show_as_square_removable_chips_without_the_live_accent() {
+    let html = ribbon_grid(
+        |state| {
+            state.toggle_tag("raft", false);
+            state.set_filter("title", Some(ColumnFilter::Text("o".into())));
+        },
+        true,
+    );
+    assert_eq!(
+        html.count("badge badge-tag badge-chip badge-tone-info badge-variant-outline small"),
+        1,
+        "{}",
+        html.0
+    );
+    assert_eq!(
+        html.count("badge badge-generic badge-chip badge-tone-neutral badge-variant-outline small"),
+        1
+    );
+    assert_eq!(
+        html.count("badge-btn badge-x"),
+        2,
+        "each chip removes its filter"
+    );
+    assert!(
+        !html.has(" active\""),
+        "an applied filter is not live state: {}",
+        html.0
+    );
+}
+
+#[test]
 fn an_active_tags_segment_is_marked_pressed() {
     let html = ribbon_grid(|s| s.toggle_tag("raft", false), true);
     let raft = html.tag("button", "data-dt-tag=\"raft\"");

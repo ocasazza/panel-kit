@@ -21,7 +21,7 @@ use dioxus::prelude::*;
 use js_sys::{Array, ArrayBuffer, Function, Promise, Reflect};
 use panel_kit::badge::Badge;
 use panel_kit::loading::ProgressBar;
-use panel_kit::widgets::{DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
+use panel_kit::widgets::{Button, DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
 use panel_kit::CSS;
 use panel_kit_core::badge::{BadgeKind, BadgeSpec, BadgeTone, BadgeVariant};
 use panel_kit_core::widgets::data_table::{Selectable, TableDefaults};
@@ -312,7 +312,7 @@ fn cell(row: usize, column: usize) -> Element {
         2 => rsx! { {w.agent.unwrap_or("\u{2014}")} },
         3 => rsx! {
             span { class: "badges",
-                {badge(w.state, state_tone(w.state), BadgeVariant::Solid)}
+                {badge(w.state, state_tone(w.state), BadgeVariant::Outline)}
                 if w.stale {
                     {badge("stale\u{2026}", BadgeTone::Warn, BadgeVariant::Outline)}
                 }
@@ -509,19 +509,18 @@ fn App() -> Element {
             h1 { "work" }
             div { class: "sizes",
                 for n in SIZES {
-                    button {
-                        class: if size() == n { "pk-dt-btn on" } else { "pk-dt-btn" },
+                    Button {
+                        pressed: size() == n,
                         "data-rows": "{n}",
-                        onclick: move |_| size.set(n),
+                        on_press: move |_| size.set(n),
                         "{n} rows"
                     }
                 }
-                button {
+                Button {
                     id: "live",
-                    class: if live() { "pk-dt-btn on" } else { "pk-dt-btn" },
-                    aria_pressed: "{live()}",
+                    pressed: live(),
                     title: "append {LIVE_ROWS} rows every {LIVE_MS} ms",
-                    onclick: move |_| live.set(!live()),
+                    on_press: move |_| live.set(!live()),
                     "live"
                 }
                 if let Some(ms) = last_append() {
