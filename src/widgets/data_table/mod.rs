@@ -17,8 +17,8 @@ use panel_kit_core::badge::{BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec};
 use panel_kit_core::widgets::data_table::{
     empty_sentence, ribbon_label, segment_label, tag_letter, tag_slot, tally, BuildOptions,
     ColumnFilter, ColumnKind, Entry, FilterKind, MoveTarget, OrderKey, Ordered, QueryMode,
-    RibbonMode, SelectMode, Selectable, SortDir, TableEvent, TableKey, TableQuery, TableState,
-    TagMode, View, ViewMode, DEFAULT_PAGE, NARROW_WIDTH, OVERSCAN,
+    RibbonMode, ScrollMap, SelectMode, Selectable, SortDir, TableEvent, TableKey, TableQuery,
+    TableState, TagMode, View, ViewMode, DEFAULT_PAGE, NARROW_WIDTH, OVERSCAN,
 };
 
 use crate::badge::Badge;
@@ -260,6 +260,8 @@ pub fn DataTable(
     let colspan = visible.len() + usize::from(multi) + usize::from(tagged);
     let mounted = current.mounted(view.entries.len(), windowed);
     let row_height = current.view.row_height(current.density);
+    let total = view.entries.len();
+    let scaled = windowed && ScrollMap::new(total, row_height, 0.0).scaled();
     let first_row = view.entries[mounted.start..mounted.end]
         .iter()
         .position(|e| matches!(e, Entry::Row(_)))
@@ -352,15 +354,34 @@ pub fn DataTable(
     };
 
     // The cursor row is the one tab stop; when it moves while the grid has
-    // focus, focus follows it.
+    // focus, focus follows it. A scaled table scrolls by its own map, not by
+    // the browser's scroll into view.
     let cursor_dom = current.cursor.as_ref().map(|c| format!("{id}-{c}"));
     use_effect(use_reactive!(|(cursor_dom,)| {
         if let Some(dom_id) = cursor_dom {
             if *focused.peek() {
-                dom::focus(&dom_id);
+                dom::focus(&dom_id, !scaled);
             }
         }
     }));
+
+    // A scaled table windows by the scroller's offset and height: report both
+    // when either moved, or when the table moved the offset itself.
+    let sync_scroll = {
+        let scroll_id = scroll_id.clone();
+        let seen = current.viewport;
+        move || {
+            let Some(scroll) = dom::scroll(&scroll_id) else {
+                return;
+            };
+            if seen.seek || scroll.top != seen.top || scroll.visible != seen.visible {
+                act.call(TableEvent::Scroll {
+                    top: scroll.top,
+                    visible: scroll.visible,
+                });
+            }
+        }
+    };
 
     let on_key = {
         let data = data.clone();
@@ -370,6 +391,7 @@ pub fn DataTable(
                 .unwrap_or_default()
         };
         let snapshot = current.clone();
+        let sync_scroll = sync_scroll.clone();
         let scroll_id = scroll_id.clone();
         let copy = copy.clone();
         move |event: KeyboardEvent| {
@@ -450,6 +472,9 @@ pub fn DataTable(
                 _ => return,
             };
             event.prevent_default();
+            if scaled {
+                sync_scroll();
+            }
             let page = dom::scroll(&scroll_id)
                 .map(|s| {
                     ((s.visible / row_height).floor() as usize)
@@ -468,10 +493,14 @@ pub fn DataTable(
     // Mount the rows the scroll offset needs, when the window lacks them.
     let sync_window = {
         let scroll_id = scroll_id.clone();
-        let total = view.entries.len();
+        let sync_scroll = sync_scroll.clone();
         let now = current.mounted(total, true);
         move || {
             if !windowed || total == 0 {
+                return;
+            }
+            if scaled {
+                sync_scroll();
                 return;
             }
             let Some(scroll) = dom::scroll(&scroll_id) else {
@@ -501,8 +530,21 @@ pub fn DataTable(
     use_effect(use_reactive!(|(row_height,)| {
         let before = last_height.replace(row_height);
         if windowed && before != row_height {
-            dom::rescale(&rescale_id, before, row_height);
+            if let Some(scroll) = dom::scroll(&rescale_id) {
+                let from = ScrollMap::new(total, before, scroll.visible);
+                let to = ScrollMap::new(total, row_height, scroll.visible);
+                dom::scroll_to(&rescale_id, from.rescaled(scroll.top, &to));
+            }
             sync_window();
+        }
+    }));
+
+    // A scaled table that moved its own offset (a key) has the scroller follow.
+    let seek = (windowed && current.viewport.seek).then_some(current.viewport.top);
+    let seek_id = scroll_id.clone();
+    use_effect(use_reactive!(|(seek,)| {
+        if let Some(top) = seek {
+            dom::scroll_to(&seek_id, top);
         }
     }));
 
@@ -986,9 +1028,9 @@ pub fn DataTable(
                         }
                     }
                     tbody { id: "{id}-rows",
-                        if mounted.above > 0 {
+                        if mounted.above_px > 0.0 {
                             tr { class: "pk-dt-spacer", aria_hidden: "true",
-                                td { colspan: "{colspan}", style: "height: {mounted.above as f64 * row_height}px" }
+                                td { colspan: "{colspan}", style: "height: {mounted.above_px}px" }
                             }
                         }
                         for index in mounted.start..mounted.end {
@@ -1110,9 +1152,9 @@ pub fn DataTable(
                                 }
                             }
                         }
-                        if mounted.below > 0 {
+                        if mounted.below_px > 0.0 {
                             tr { class: "pk-dt-spacer", aria_hidden: "true",
-                                td { colspan: "{colspan}", style: "height: {mounted.below as f64 * row_height}px" }
+                                td { colspan: "{colspan}", style: "height: {mounted.below_px}px" }
                             }
                         }
                     }

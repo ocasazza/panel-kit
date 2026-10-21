@@ -106,19 +106,22 @@ pub fn selecting_text() -> bool {
     false
 }
 
-/// Focus an element without scrolling, then bring it into view if it is not.
-pub fn focus(id: &str) {
+/// Focus an element without scrolling, then bring it into view if `scroll`
+/// says the browser should.
+pub fn focus(id: &str, scroll: bool) {
     #[cfg(target_arch = "wasm32")]
     if let Some(el) = element(id).and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok()) {
         let options = web_sys::FocusOptions::new();
         options.set_prevent_scroll(true);
         let _ = el.focus_with_options(&options);
-        let view = web_sys::ScrollIntoViewOptions::new();
-        view.set_block(web_sys::ScrollLogicalPosition::Nearest);
-        el.scroll_into_view_with_scroll_into_view_options(&view);
+        if scroll {
+            let view = web_sys::ScrollIntoViewOptions::new();
+            view.set_block(web_sys::ScrollLogicalPosition::Nearest);
+            el.scroll_into_view_with_scroll_into_view_options(&view);
+        }
     }
     #[cfg(not(target_arch = "wasm32"))]
-    let _ = id;
+    let _ = (id, scroll);
 }
 
 /// Whether a focus-out moved focus to an element outside `root`. A row that
@@ -204,18 +207,16 @@ pub fn scroll(id: &str) -> Option<Scroll> {
     }
 }
 
-/// Keep the same first row in view when rows change height from `before` to
-/// `after` pixels.
-pub fn rescale(id: &str, before: f64, after: f64) {
+/// Scroll the scroller `id` to `top` pixels.
+pub fn scroll_to(id: &str, top: f64) {
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(el) = element(id) {
-            let top = f64::from(el.scroll_top()) / before * after;
             el.set_scroll_top(top.round() as i32);
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = (id, before, after);
+        let _ = (id, top);
     }
 }
