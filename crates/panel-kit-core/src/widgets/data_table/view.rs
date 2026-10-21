@@ -1393,4 +1393,148 @@ mod tests {
             assert_eq!(rows, alone, "{quick:?} after appending");
         }
     }
+
+    /// Whether `row` passes `state` by the rules the table documents, asked
+    /// of the cells' text alone.
+    fn passes_by_text(data: &TableData, state: &TableState, tags: bool, row: usize) -> bool {
+        let columns = columns();
+        let text = |at: usize| fold(&data.text(row, at));
+        let shown: Vec<usize> = state
+            .visible(&columns)
+            .iter()
+            .filter_map(|c| columns.iter().position(|d| d.id == c.id))
+            .collect();
+        let quick = state
+            .quick
+            .split_whitespace()
+            .map(fold)
+            .all(|word| shown.iter().any(|&at| text(at).contains(&word)));
+        let by_column = state.filters.iter().all(|(id, filter)| {
+            let Some(at) = columns.iter().position(|c| c.id == *id) else {
+                return true;
+            };
+            match filter {
+                ColumnFilter::Text(want) => text(at).contains(&fold(want)),
+                ColumnFilter::Values(values) => {
+                    let cell = data.text(row, at);
+                    values.iter().any(|v| **v == *cell)
+                }
+                ColumnFilter::Range { min, max } => data
+                    .number(row, at)
+                    .is_some_and(|n| min.is_none_or(|m| n >= m) && max.is_none_or(|m| n <= m)),
+            }
+        });
+        let by_tag = !tags || state.tag_filter.is_empty() || {
+            let held: Vec<&str> = data.tags(row).collect();
+            let has = |tag: &String| held.contains(&tag.as_str());
+            match state.tag_mode {
+                TagMode::Any => state.tag_filter.iter().any(has),
+                TagMode::All => state.tag_filter.iter().all(has),
+            }
+        };
+        quick && by_column && by_tag
+    }
+
+    fn either_rows() -> impl Strategy<Value = Vec<Row>> {
+        prop_oneof![
+            prop::collection::vec(row(), 0..60),
+            prop::collection::vec(folding_row(), 0..60),
+        ]
+    }
+
+    fn either_quick() -> impl Strategy<Value = String> {
+        prop_oneof![
+            folding_quick(),
+            quick_texts().prop_map(|(_, grown, _)| grown)
+        ]
+    }
+
+    proptest! {
+        /// Typing more and receiving rows compose: from the order of the first
+        /// rows under the old key, extending then refining, or refining then
+        /// extending, gives the order a build of every row gives.
+        #[test]
+        fn refine_and_extend_in_either_order_are_a_build(
+            rows in prop::collection::vec(row(), 0..60),
+            cut in 0.0..=1.0f64,
+            query in query(),
+            (before, grown, _) in quick_texts(),
+            options in both_modes(),
+        ) {
+            let from = (rows.len() as f64 * cut) as usize;
+            let columns = columns();
+            let (first, all) = (data_of(&rows[..from]), data_of(&rows));
+            let (earlier, now) = (state_of(&query, &before), state_of(&query, &grown));
+            prop_assert!(now.order_key().narrows(&earlier.order_key()));
+            let want = Ordered::build(&columns, &all, &now, options);
+            let old = Ordered::build(&columns, &first, &earlier, options);
+            let extended = old.extend(&columns, &all, &earlier, options, from);
+            prop_assert_eq!(
+                extended.refine(&columns, &all, &now, options),
+                want.clone(),
+                "extend, then refine"
+            );
+            let refined = old.refine(&columns, &first, &now, options);
+            prop_assert_eq!(
+                refined.extend(&columns, &all, &now, options, from),
+                want,
+                "refine, then extend"
+            );
+        }
+
+        /// In server mode the host did the querying: every row passes, in the
+        /// host's order, whatever sort, filters and grouping the state holds;
+        /// refining changes nothing and extending appends after the old rows.
+        #[test]
+        fn a_server_table_keeps_every_row_in_the_hosts_order(
+            rows in prop::collection::vec(row(), 0..60),
+            cut in 0.0..=1.0f64,
+            query in query(),
+            (before, grown, _) in quick_texts(),
+            tags in any::<bool>(),
+        ) {
+            let options = BuildOptions { mode: QueryMode::Server, tags };
+            let from = (rows.len() as f64 * cut) as usize;
+            let columns = columns();
+            let (first, all) = (data_of(&rows[..from]), data_of(&rows));
+            let (earlier, now) = (state_of(&query, &before), state_of(&query, &grown));
+            let host: Vec<usize> = (0..rows.len()).collect();
+            let built = Ordered::build(&columns, &all, &now, options);
+            prop_assert_eq!(&built.rows, &host);
+            prop_assert_eq!(built.given, rows.len());
+            let old = Ordered::build(&columns, &first, &earlier, options);
+            prop_assert_eq!(&old.rows, &(0..from).collect::<Vec<_>>());
+            prop_assert_eq!(old.refine(&columns, &first, &now, options), old.clone());
+            prop_assert_eq!(old.extend(&columns, &all, &now, options, from), built);
+            // Grouping keeps the order: the view's rows are the host's.
+            let view = View::build(&columns, &all, &now, options);
+            prop_assert_eq!(&view.rows, &host);
+            prop_assert_eq!((view.total, view.given), (rows.len(), rows.len()));
+        }
+
+        /// The order holds each row that passes the query once, and no other.
+        #[test]
+        fn the_order_is_a_permutation_of_the_rows_that_pass(
+            rows in either_rows(),
+            query in query(),
+            quick in either_quick(),
+            tags in any::<bool>(),
+        ) {
+            let columns = columns();
+            let data = data_of(&rows);
+            let state = state_of(&query, &quick);
+            let options = BuildOptions { mode: QueryMode::Client, tags };
+            let ordered = Ordered::build(&columns, &data, &state, options);
+            let passing: Vec<usize> = (0..rows.len())
+                .filter(|&row| passes_by_text(&data, &state, tags, row))
+                .collect();
+            let mut held = ordered.rows.clone();
+            held.sort_unstable();
+            prop_assert_eq!(&held, &passing);
+            prop_assert_eq!(ordered.given, rows.len());
+            let view = View::group(&ordered, &columns, &data, &state);
+            prop_assert_eq!(&view.rows, &ordered.rows);
+            prop_assert_eq!(view.total, passing.len());
+        }
+    }
 }
