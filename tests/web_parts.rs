@@ -192,43 +192,39 @@ fn InteractiveTableProbe() -> Element {
         align: TextAlign::Left,
     }];
     let rows = [TableRow {
+        id: "r1".into(),
+        tags: Vec::new(),
         cells: vec![TableCell::Text(
             "a long policy value preserved in the tooltip".into(),
         )],
     }];
 
     rsx! {
-        {panel_kit::widgets::table::table(
-            TableView { columns: &columns, rows: &rows },
-            Some(0),
-            Some(EventHandler::new(|_: usize| {})),
-            true,
-        )}
-        {panel_kit::widgets::table::table(
-            TableView { columns: &columns, rows: &[] },
-            None,
-            None,
-            false,
-        )}
+        {{
+            let shown: Vec<&TableRow> = rows.iter().collect();
+            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &shown })
+        }}
+        {{
+            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &[] })
+        }}
     }
 }
 
 #[test]
-fn table_exposes_host_selection_density_tooltips_and_empty_state() {
+fn table_paints_through_the_one_component_with_its_toolbar_and_empty_state() {
     let html = dioxus_ssr::render_element(rsx! { InteractiveTableProbe {} });
 
-    assert!(
-        html.contains("class=\"pk-widget pk-table pk-table-dense\""),
-        "{html}"
-    );
-    assert!(
-        html.contains("class=\"pk-table-row selected clickable\""),
-        "{html}"
-    );
+    // A model table is painted by the data-table component: same toolbar, same
+    // grid, so a spec-authored table cannot drift from a host-built one.
+    assert!(html.contains("class=\"pk-widget pk-dt\""), "{html}");
+    assert!(html.contains("pk-dt-bar"), "{html}");
+    assert!(html.contains("aria-label=\"filter rows\""), "{html}");
+    assert!(html.contains("role=\"grid\""), "{html}");
     assert!(
         html.contains("title=\"a long policy value preserved in the tooltip\""),
         "{html}"
     );
+    // The empty state names the caller's message when the model has no rows.
     assert!(html.contains("class=\"pk-table-empty\""), "{html}");
     assert!(html.contains("no rows"), "{html}");
 }
@@ -428,7 +424,7 @@ fn tiling_drag_to_swap_reorders_panels_via_surface_pointer_motion() {
 #[component]
 fn DataTableProbe() -> Element {
     use panel_kit::widgets::{DataColumnSpec, DataRow, DataTable};
-    use panel_kit_core::widgets::data_table::{SortDir, TableQuery};
+    use panel_kit_core::widgets::data_table::{SortDir, TableState};
     let columns = vec![
         DataColumnSpec::new("name", "Name").pinned(),
         DataColumnSpec::new("score", "Score"),
@@ -449,7 +445,17 @@ fn DataTableProbe() -> Element {
             .num(None, "cost-c"),
     ];
     rsx! {
-        DataTable { columns, rows, initial: TableQuery::sorted("score", SortDir::Desc) }
+        DataTable {
+            columns,
+            rows,
+            defaults: panel_kit_core::widgets::data_table::TableDefaults {
+                sort: vec![panel_kit_core::widgets::data_table::SortSpec {
+                    column: "score".into(),
+                    dir: panel_kit_core::widgets::data_table::SortDir::Desc,
+                }],
+                ..Default::default()
+            },
+        }
     }
 }
 
@@ -473,5 +479,5 @@ fn data_table_sorts_hides_default_hidden_columns_and_counts_rows() {
         "hidden column header painted: {html}"
     );
     assert!(html.contains("aria-sort=\"descending\""), "{html}");
-    assert!(html.contains("class=\"pk-dt-count\">3<"), "{html}");
+    assert!(html.contains("class=\"pk-dt-count\">3 ROWS<"), "{html}");
 }

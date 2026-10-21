@@ -9,17 +9,9 @@ use std::collections::BTreeMap;
 use dioxus::prelude::*;
 use panel_kit_core::badge::BadgeAction;
 use panel_kit_core::widgets::charts::{five_num, BoxItemView, SeriesView};
-use panel_kit_core::widgets::table::TableView;
+
 use panel_kit_core::widgets::{ContentSpec, ContentView, ScrollPolicy};
 use panel_kit_grammar::{FieldType, Object, Section, SectionEdit};
-
-/// Row interaction for a table whose rows offer edits.
-pub struct RowSelect {
-    /// Row painted as selected.
-    pub selected: Option<usize>,
-    /// Called with the clicked row's index.
-    pub on_row: EventHandler<usize>,
-}
 
 fn noop_badge_action() -> EventHandler<BadgeAction> {
     EventHandler::new(|_: BadgeAction| {})
@@ -31,17 +23,18 @@ fn noop_badge_action() -> EventHandler<BadgeAction> {
 pub fn paint(
     section: &Section,
     content: &ContentSpec,
-    rows: Option<RowSelect>,
+    rows: Option<EventHandler<String>>,
     on_badge: Option<EventHandler<BadgeAction>>,
 ) -> Element {
     let badge = on_badge.unwrap_or_else(noop_badge_action);
     match section {
         Section::Table(table) => {
-            let view = TableView { columns: &table.columns, rows: &table.rows };
-            match rows {
-                Some(rows) => panel_kit::widgets::table::table(view, rows.selected, Some(rows.on_row), false),
-                None => panel_kit::widgets::content_view(ContentView::Table(view), 0, badge),
-            }
+            let shown: Vec<&panel_kit_core::widgets::table::TableRow> =
+                table.rows.iter().collect();
+            panel_kit::widgets::table::table(panel_kit_core::widgets::table::TableView {
+                columns: &table.columns,
+                rows: &shown,
+            })
         }
         Section::Text(text) => {
             let scroll = match content {

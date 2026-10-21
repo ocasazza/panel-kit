@@ -12,6 +12,7 @@
 //! the gesture.
 
 use panel_kit_core::widgets::meter as core_meter;
+use panel_kit_core::widgets::data_table::{SortDir, TableState};
 use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableView, TextAlign};
 use panel_kit_core::PanelKey;
 use ratatui::layout::{Constraint, Rect};
@@ -42,6 +43,7 @@ pub fn table<K: PanelKey>(
     key: &K,
     panels: &mut PanelScroll<K>,
     view: TableView<'_>,
+    state: &TableState,
 ) -> (u16, u16) {
     let area = area.intersection(f.area());
     if area.width == 0 || area.height == 0 {
@@ -70,13 +72,24 @@ pub fn table<K: PanelKey>(
     let columns: &[TableColumn] = &view.columns[offset.0.min(view.columns.len() as u16) as usize..];
 
     let widths = columns.iter().map(|column| width_constraint(column.width));
-    let header = Row::new(
-        columns
-            .iter()
-            .map(|column| Cell::from(align_line(Line::from(column.title.as_str()), column.align))),
-    )
+    // A sorted column carries its direction in the header, as the web painter
+    // does, so a reader knows why the rows are in this order.
+    let header = Row::new(columns.iter().map(|column| {
+        let marker = match state.direction(&column.key) {
+            Some(SortDir::Asc) => "\u{25b4}",
+            Some(SortDir::Desc) => "\u{25be}",
+            None => "",
+        };
+        let title = format!("{}{marker}", column.title);
+        Cell::from(align_line(Line::from(title), column.align))
+    }))
     .style(Style::default().fg(t.dim));
     let rows = view.rows.iter().skip(offset.1 as usize).map(|row| {
+        let style = match (state.is_cursor(&row.id), state.is_selected(&row.id)) {
+            (true, _) => Style::default().bg(t.accent).fg(t.bg),
+            (false, true) => Style::default().fg(t.accent),
+            (false, false) => Style::default(),
+        };
         Row::new(
             row.cells
                 .iter()
@@ -84,6 +97,7 @@ pub fn table<K: PanelKey>(
                 .zip(columns)
                 .map(|(cell, column)| Cell::from(align_line(semantic_line(cell, t), column.align))),
         )
+        .style(style)
     });
 
     f.render_widget(Table::new(rows, widths).header(header), body);

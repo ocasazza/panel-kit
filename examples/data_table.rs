@@ -5,7 +5,7 @@
 use dioxus::prelude::*;
 use panel_kit::widgets::{DataColumnSpec, DataRow, DataTable};
 use panel_kit::CSS;
-use panel_kit_core::widgets::data_table::{SortDir, TableQuery};
+use panel_kit_core::widgets::data_table::{Selectable, SortDir, SortSpec, TableDefaults};
 
 const DEMO_CSS: &str = "
 body { overflow:auto !important; }
@@ -42,6 +42,7 @@ fn App() -> Element {
             )
             .num(Some(steps), format!("{steps:.0}"))
             .text_class(notes, "muted")
+            .tags(&["ppo"])
     })
     .collect();
 
@@ -52,7 +53,11 @@ fn App() -> Element {
             DataTable {
                 columns,
                 rows,
-                initial: TableQuery::sorted("reward", SortDir::Desc),
+                defaults: TableDefaults {
+                    sort: vec![SortSpec { column: "reward".into(), dir: SortDir::Desc }],
+                    selectable: Selectable::Multi,
+                    ..TableDefaults::default()
+                },
                 storage_key: Some("panel_kit_example_data_table".to_string()),
                 placeholder: "filter policies…",
             }

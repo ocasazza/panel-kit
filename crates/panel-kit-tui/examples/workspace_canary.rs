@@ -9,6 +9,7 @@ use panel_kit_core::widgets::charts::{
     five_num, BoxItemView, FlameSpanModel, GaugeModel, SeriesView,
 };
 #[cfg(feature = "spec-plan")]
+use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
 };
@@ -105,6 +106,8 @@ pub fn node_rows() -> TableModel {
 fn node_row(name: &str, healthy: bool, load: f64, detail: &str) -> TableRow {
     let color = if healthy { GREEN.rgb } else { RED.rgb };
     TableRow {
+    id: name.to_string(),
+    tags: Vec::new(),
         cells: vec![
             TableCell::Status {
                 label: name.into(),
@@ -652,8 +655,9 @@ pub mod content {
             &mut demo.panels,
             TableView {
                 columns: &model.columns,
-                rows: &model.rows,
+                rows: &model.rows.iter().collect::<Vec<_>>(),
             },
+            &panel_kit_core::widgets::data_table::TableState::default(),
         );
     }
 

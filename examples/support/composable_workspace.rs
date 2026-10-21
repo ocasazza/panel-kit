@@ -508,7 +508,7 @@ pub mod web_canary {
         panel_kit::widgets::content_view(
             ContentView::Table(TableView {
                 columns: &table.columns,
-                rows: &table.rows,
+                rows: &table.rows.iter().collect::<Vec<_>>(),
             }),
             0,
             noop_badge_action(),
@@ -615,6 +615,8 @@ pub mod web_canary {
             ],
             rows: vec![
                 TableRow {
+                    id: "api".into(),
+                    tags: Vec::new(),
                     cells: vec![
                         TableCell::Text("api".into()),
                         TableCell::Status {
@@ -629,6 +631,8 @@ pub mod web_canary {
                     ],
                 },
                 TableRow {
+                    id: "worker".into(),
+                    tags: Vec::new(),
                     cells: vec![
                         TableCell::Text("worker".into()),
                         TableCell::Status {

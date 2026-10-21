@@ -19,7 +19,7 @@ pub mod status;
 pub mod table;
 
 pub use cascade::{CascadeAction, CascadeItem, CascadeState, CascadingDropdown};
-pub use data_table::{DataColumnSpec, DataRow, DataTable, SortKey};
+pub use data_table::{csv, tsv, DataColumnSpec, DataRow, DataTable};
 pub use dropdown::{Dropdown, DropdownAction, DropdownItem, DropdownState};
 
 use dioxus::prelude::*;
@@ -41,7 +41,7 @@ pub fn content_view(
             div { class: "pk-content pk-content-editor", role: "group", aria_label: "editor content {binding}", "data-binding": "{binding}" }
         },
         ContentView::Badges(specs) => badge::strip(specs, on_badge_action),
-        ContentView::Table(view) => table::table(view, None, None, false),
+        ContentView::Table(view) => table::table(view),
         ContentView::TimeSeries { series, unit } => charts::time_series(series, unit),
         ContentView::Gauges(items) => charts::gauges(items),
         ContentView::Flamegraph(spans) => charts::flamegraph(spans),

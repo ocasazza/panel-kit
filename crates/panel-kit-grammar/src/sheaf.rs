@@ -254,6 +254,8 @@ pub fn status_table(checks_title: &str, holds_title: &str, rows: &[(String, bool
             let word = if *ok { "ok" } else { "error" };
             let (_, color) = status_of(word);
             TableRow {
+                id: format!("gate:{label}"),
+                tags: Vec::new(),
                 cells: vec![
                     TableCell::Text(label.clone()),
                     TableCell::Status { label: word.to_owned(), color },
@@ -492,7 +494,11 @@ impl TableSheaf {
                         .iter()
                         .map(|column| object_cell(&column.cell, object, site, resolver))
                         .collect::<Result<Vec<_>, _>>()?;
-                    rows.push(TableRow { cells });
+                    rows.push(TableRow {
+                        id: format!("object:{}", object.id),
+                        tags: object.tags.clone(),
+                        cells,
+                    });
                 }
             }
             RowScope::Morphisms => {
@@ -502,7 +508,11 @@ impl TableSheaf {
                         .iter()
                         .map(|column| morphism_cell(&column.cell, morphism, resolver))
                         .collect::<Result<Vec<_>, _>>()?;
-                    rows.push(TableRow { cells });
+                    rows.push(TableRow {
+                        id: format!("morphism:{}->{}", morphism.domain, morphism.codomain),
+                        tags: Vec::new(),
+                        cells,
+                    });
                 }
             }
         }
@@ -933,7 +943,11 @@ impl AssemblySheaf {
                 TableCell::Text(component.boundary.to_string()),
                 TableCell::Text(stage_label(&resolver.stalks.stages, component.stage).to_owned()),
             ];
-            rows.push(TableRow { cells });
+            rows.push(TableRow {
+                id: format!("component:{}", component.b0),
+                tags: Vec::new(),
+                cells,
+            });
         }
         Ok(Section::Table(TableModel { columns, rows }))
     }
@@ -986,6 +1000,8 @@ impl PhysicsSheaf {
                     .objects
                     .iter()
                     .map(|(id, engine_type, repulsion, mass)| TableRow {
+                        id: format!("physics:{id}"),
+                        tags: Vec::new(),
                         cells: vec![
                             TableCell::Text(id.clone()),
                             TableCell::Text(engine_type.clone()),
@@ -1008,6 +1024,8 @@ impl PhysicsSheaf {
                     .morphisms
                     .iter()
                     .map(|(from, to, engine_type, weight, rest_length)| TableRow {
+                        id: format!("bond:{from}->{to}"),
+                        tags: Vec::new(),
                         cells: vec![
                             TableCell::Text(from.clone()),
                             TableCell::Text(to.clone()),

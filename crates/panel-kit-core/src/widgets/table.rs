@@ -83,8 +83,14 @@ pub enum TableCell {
 #[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TableRow {
+    /// Stable identity: selection, focus and re-sorts survive a reload by id,
+    /// never by position.
+    pub id: String,
     /// Cells in column order.
     pub cells: Vec<TableCell>,
+    /// Tags a tag filter matches; empty on a table nobody filters by tag.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// Owned semantic table data.
@@ -98,13 +104,14 @@ pub struct TableModel {
     pub rows: Vec<TableRow>,
 }
 
-/// Borrowed semantic table data for runtime providers.
+/// Borrowed semantic table data for runtime providers: the ordered, filtered
+/// window the painter draws, plus the counts an empty state needs.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TableView<'a> {
-    /// Borrowed column definitions.
+    /// Borrowed column definitions, in the user's order and visibility.
     pub columns: &'a [TableColumn],
-    /// Borrowed rows.
-    pub rows: &'a [TableRow],
+    /// The rows to paint, in order.
+    pub rows: &'a [&'a TableRow],
 }
 
 #[cfg(test)]
@@ -121,6 +128,8 @@ mod tests {
                 align: TextAlign::Left,
             }],
             rows: vec![TableRow {
+                id: "api".into(),
+                tags: Vec::new(),
                 cells: vec![TableCell::Text("api".into())],
             }],
         };

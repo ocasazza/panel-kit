@@ -10,6 +10,7 @@ use panel_kit_core::widgets::charts::{
 };
 use panel_kit_core::widgets::meter::{self as core_meter, MeterModel};
 use panel_kit_core::widgets::status::{StatusModel, StatusState};
+use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
 };
@@ -91,12 +92,12 @@ fn canary_node_table_is_buffer_identical_after_core_model_switch() {
     let area = Rect::new(0, 0, 38, 4);
     let view = TableView {
         columns: &model.columns,
-        rows: &model.rows,
+        rows: &model.rows.iter().collect::<Vec<_>>(),
     };
 
     let mut panels = test_registry();
     let core_buffer = render_to_buffer(|frame| {
-        table::table(frame, area, &theme, &TestKey::One, &mut panels, view);
+        table::table(frame, area, &theme, &TestKey::One, &mut panels, view, &TableState::default());
     });
     let native_rows = native_rows_from_core_table(&model);
     let native_widths = [
@@ -157,6 +158,8 @@ fn widget_painters_render_core_models_to_test_backend() {
         },
     ];
     let rows = vec![TableRow {
+        id: "r1".into(),
+        tags: Vec::new(),
         cells: vec![
             TableCell::Status {
                 label: "pdx-01".into(),
@@ -172,7 +175,7 @@ fn widget_painters_render_core_models_to_test_backend() {
     }];
     let view = TableView {
         columns: &columns,
-        rows: &rows,
+        rows: &rows.iter().collect::<Vec<_>>(),
     };
     let status_model = StatusModel {
         label: "ready".into(),
@@ -222,6 +225,7 @@ fn widget_painters_render_core_models_to_test_backend() {
                 &TestKey::One,
                 &mut panels,
                 view,
+                &TableState::default(),
             );
             let status_line = status::line(&status_model);
             frame.render_widget(
@@ -338,7 +342,7 @@ fn render_core_canary_provider_buffer() -> ratatui::buffer::Buffer {
     let boxes = metrics.boxes();
     let table_view = TableView {
         columns: &table_model.columns,
-        rows: &table_model.rows,
+        rows: &table_model.rows.iter().collect::<Vec<_>>(),
     };
 
     render_to_buffer_size(96, 24, |frame| {
@@ -360,6 +364,7 @@ fn render_core_canary_provider_buffer() -> ratatui::buffer::Buffer {
             &TestKey::One,
             &mut panels,
             table_view,
+            &TableState::default(),
         );
         charts::boxplot(frame, Rect::new(40, 13, 50, 7), &theme, &boxes);
     })
