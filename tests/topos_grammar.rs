@@ -245,6 +245,30 @@ fn toggling_the_subobject_restricts_every_panel() {
     assert_eq!(table_rows(&demo, "agentic.status"), 0);
 }
 
+/// Sum of the per-sort badge counts ("Label 7") of the active topos's badge control.
+fn badge_total(demo: &ToposDemo) -> usize {
+    let binding = demo.active_binding().expect("the active topos binds a per-sort badge control");
+    let Some(Section::Badges(badges)) = demo.resolve(binding) else {
+        panic!("{binding} resolves to badges");
+    };
+    badges.iter().map(|badge| badge.value.rsplit(' ').next().unwrap().parse::<usize>().unwrap()).sum()
+}
+
+#[test]
+fn the_sort_badges_count_the_whole_site_after_appends_under_any_subobject() {
+    for topos in [TOPOS_AGENTIC, TOPOS_MEMBRANE] {
+        let mut demo = ToposDemo::new();
+        assert!(demo.set_topos(topos));
+        let sort = demo.active_set().iter().next().cloned().expect("a topos starts with active sorts");
+        demo.set_active([sort]);
+        assert_eq!(badge_total(&demo), demo.record_count(), "{topos} before");
+        for _ in 0..5 {
+            demo.append_valid_line();
+        }
+        assert_eq!(badge_total(&demo), demo.record_count(), "{topos} after appends");
+    }
+}
+
 #[test]
 fn transport_moves_the_subobject_and_the_membrane_panels() {
     let mut demo = ToposDemo::new();

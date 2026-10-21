@@ -512,12 +512,12 @@ impl ToposDemo {
             self.badge_base = None;
             return;
         };
-        let sections = {
+        let section = {
             let entry = &self.topoi[self.topos];
-            entry.spec.global_sections(&self.site, &entry.physics)
+            entry.spec.section(&self.site, &entry.physics, &binding)
         };
-        match sections {
-            Ok(full) => self.badge_base = full.get(&binding).cloned(),
+        match section {
+            Ok(section) => self.badge_base = section,
             Err(error) => self.diagnostics.push(error.to_string()),
         }
     }

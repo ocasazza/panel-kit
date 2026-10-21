@@ -1323,6 +1323,70 @@ fn every_table_section_lists_unique_row_ids_that_name_their_rows() {
     });
 }
 
+// --- Single-binding sections --------------------------------------------------
+
+/// Every sheaf kind that restricts, edits or reads morphisms, beside the
+/// unrestricted ones of `row_id_topos`.
+fn restricted_topos() -> Topos {
+    let column = |expr: &str| format!(r##"{{"key":"c","title":"C","width":{{"flex":{{"weight":1}}}},"align":"left","cell":{{"cell":"text","expr":"{expr}"}}}}"##);
+    let sheaves = format!(
+        r##"{{"legend":{{"kind":"text","heading":"Legend"}},"roles":{{"kind":"badges","group":"kinds","restrict":["coder","reviewer"]}},"flame":{{"kind":"flamegraph","morphism_kind":"continues","value":"field:energy","restrict":["planner","coder","reviewer"]}},"load":{{"kind":"table","scope":"objects","restrict":["coder","reviewer"],"edits":["triage"],"columns":[{objects}]}},"shared":{{"kind":"table","scope":"morphisms","restrict":["shares"],"columns":[{morphisms}]}}}}"##,
+        objects = column("id"),
+        morphisms = column("source"),
+    );
+    let mut topos = agentic_topos(&sheaves);
+    topos.edits = serde_json::from_str(STATUS_EDIT).unwrap();
+    topos
+}
+
+#[test]
+fn one_binding_resolves_to_what_global_sections_holds_for_it() {
+    let physics = physics_a();
+    let topoi = [row_id_topos(), restricted_topos()];
+    proptest!(|(site in arb_site())| {
+        for topos in &topoi {
+            let all = topos.global_sections(&site, &physics).unwrap();
+            for (binding, expected) in all.iter() {
+                let one = topos.section(&site, &physics, binding).unwrap();
+                prop_assert_eq!(one.as_ref(), Some(expected), "{}", binding);
+            }
+            prop_assert_eq!(topos.section(&site, &physics, "unbound").unwrap(), None);
+        }
+    });
+}
+
+#[test]
+fn one_binding_matches_global_sections_on_the_fixture_site() {
+    let physics = physics_a();
+    for site in [demo_site(), site_from_lines()] {
+        let topos = restricted_topos();
+        let all = topos.global_sections(&site, &physics).unwrap();
+        assert_eq!(all.len(), 5);
+        for (binding, expected) in all.iter() {
+            assert_eq!(topos.section(&site, &physics, binding).unwrap().as_ref(), Some(expected), "{binding}");
+        }
+    }
+}
+
+#[test]
+fn one_binding_is_not_evaluated_with_the_rest() {
+    let sheaves = r##"{"roles":{"kind":"badges","group":"kinds"},"flame":{"kind":"flamegraph","root":"absent","morphism_kind":"continues","value":"field:energy"}}"##;
+    let topos = agentic_topos(sheaves);
+    let (site, physics) = (demo_site(), physics_a());
+    assert!(topos.global_sections(&site, &physics).is_err(), "the flamegraph root is not in the site");
+    assert!(matches!(topos.section(&site, &physics, "roles"), Ok(Some(Section::Badges(_)))));
+    assert!(topos.section(&site, &physics, "flame").is_err());
+}
+
+#[test]
+fn one_binding_refuses_a_site_with_an_unsorted_kind_like_global_sections() {
+    let topos = restricted_topos();
+    let mut site = demo_site();
+    site.objects.push(object("x1", "alien", "1"));
+    assert!(matches!(topos.section(&site, &physics_a(), "legend"), Err(SheafError::UnsortedObjectKind(_))));
+    assert!(matches!(topos.global_sections(&site, &physics_a()), Err(SheafError::UnsortedObjectKind(_))));
+}
+
 // --- Typed table columns ------------------------------------------------------
 
 fn column_json(key: &str, kind: Option<&str>, cell: &str) -> String {

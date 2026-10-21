@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 42b188c90a934fb2e753858c16e393ad024a10a376687f6567f1949aa9771460 # shrinks to site = Site { objects: [Object { id: "o0", title: "O0", kind: "planner", tags: [], fields: {"energy": "5"} }, Object { id: "o1", title: "O1", kind: "planner", tags: [], fields: {"energy": "5"} }], morphisms: [Morphism { domain: "o0", codomain: "o0", kind: None }] }
