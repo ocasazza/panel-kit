@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 use panel_kit::widgets::{Control, DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
 use panel_kit_core::widgets::data_table::{
-    Align, ColumnFilter, Selectable, SortDir, SortSpec, TableDefaults, TableState, TableWindow,
+    Align, ColumnFilter, Density, Selectable, SortDir, SortSpec, TableDefaults, TableState, TableWindow,
     ViewMode, WINDOW_COUNT,
 };
 use rstest::rstest;
@@ -478,36 +478,77 @@ fn the_cursor_row_is_the_tab_stop_and_names_itself() {
     assert!(html.row("imp-1").contains("tabindex=\"-1\""));
 }
 
+/// Pixels per entry, written out here rather than read from core: the CSS
+/// fixes each mode's cards to these.
 #[rstest]
-#[case::the_first_window(1_000, TableWindow { start: 0, count: 60, row_height: Some(26.0) }, imp(1..=60), None, Some("24440px"))]
-#[case::a_scrolled_window(200, TableWindow { start: 120, count: 40, row_height: Some(20.5) }, imp(121..=160), Some("2460px"), Some("820px"))]
-fn a_virtual_window_mounts_its_slice_between_spacers(
-    #[case] count: usize,
-    #[case] window: TableWindow,
-    #[case] mounted: Vec<String>,
-    #[case] above: Option<&str>,
-    #[case] below: Option<&str>,
+#[case::rows(ViewMode::Rows, Density::Normal, 26)]
+#[case::compact_rows(ViewMode::Rows, Density::Compact, 20)]
+#[case::cards(ViewMode::CompactCards, Density::Normal, 32)]
+#[case::compact_cards(ViewMode::CompactCards, Density::Compact, 26)]
+#[case::detail(ViewMode::DetailCards, Density::Normal, 64)]
+#[case::compact_detail(ViewMode::DetailCards, Density::Compact, 52)]
+fn a_virtual_window_mounts_its_slice_between_spacers_in_every_mode(
+    #[case] view: ViewMode,
+    #[case] density: Density,
+    #[case] height: usize,
+    #[values((0, 60), (120, 40), (170, 60))] window: (usize, usize),
 ) {
-    let mut grid = grid(rows(count));
+    const TOTAL: usize = 200;
+    let (start, count) = window;
+    // A window past the end slides back to fill the last page.
+    let start = start.min(TOTAL - count);
+    let end = start + count;
+    let mut grid = grid(rows(TOTAL));
     grid.windowed = true;
-    let html = grid.state(TableState { window, ..state() }).render();
+    let html = grid
+        .state(TableState {
+            view,
+            density,
+            window: TableWindow {
+                start,
+                count,
+                row_height: None,
+            },
+            ..state()
+        })
+        .render();
     let root = html.tag("div", "id=\"t\"");
     assert!(
-        root.contains("data-virtual=\"true\"") && root.contains(&format!("data-total=\"{count}\"")),
+        root.contains("data-virtual=\"true\"")
+            && root.contains(&format!("data-total=\"{TOTAL}\""))
+            && root.contains(&format!("data-row-height=\"{height}\""))
+            && root.contains(&format!("--dt-row:{height}px")),
         "{root}"
     );
-    assert_eq!(html.order(), mounted);
+    assert_eq!(html.order(), imp(start + 1..=end));
     let spacers: Vec<String> = html
         .values("style")
         .into_iter()
         .filter(|s| s.starts_with("height:"))
         .collect();
-    let want: Vec<String> = [above, below]
+    let want: Vec<String> = [(start, start > 0), (TOTAL - end, end < TOTAL)]
         .into_iter()
-        .flatten()
-        .map(|h| format!("height: {h}"))
+        .filter(|&(_, shown)| shown)
+        .map(|(entries, _)| format!("height: {}px", entries * height))
         .collect();
     assert_eq!(spacers, want);
+}
+
+#[test]
+fn a_measured_height_from_a_host_state_does_not_move_the_spacers() {
+    let mut grid = grid(rows(200));
+    grid.windowed = true;
+    let html = grid
+        .state(TableState {
+            window: TableWindow {
+                start: 120,
+                count: 40,
+                row_height: Some(20.5),
+            },
+            ..state()
+        })
+        .render();
+    assert!(html.has("height: 3120px") && html.has("height: 1040px"));
 }
 
 #[test]

@@ -172,15 +172,13 @@ pub fn width(id: &str) -> Option<f64> {
     }
 }
 
-/// What the scroller shows: its scroll offset, the height rows get below the
-/// header, and the measured height of one row.
+/// What the scroller shows: its scroll offset and the height rows get below
+/// the header.
 pub struct Scroll {
     /// Pixels scrolled.
     pub top: f64,
     /// Visible height under the sticky header.
     pub visible: f64,
-    /// One row's height, when a row is mounted.
-    pub row: Option<f64>,
 }
 
 /// Measure the scroller `id`.
@@ -194,21 +192,30 @@ pub fn scroll(id: &str) -> Option<Scroll> {
             .flatten()
             .map(|h| h.get_bounding_client_rect().height())
             .unwrap_or(0.0);
-        let row = el
-            .query_selector("tbody tr[data-id]")
-            .ok()
-            .flatten()
-            .map(|r| r.get_bounding_client_rect().height())
-            .filter(|h| *h > 0.0);
         Some(Scroll {
             top: f64::from(el.scroll_top()),
             visible: (f64::from(el.client_height()) - head).max(0.0),
-            row,
         })
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = id;
         None
+    }
+}
+
+/// Keep the same first row in view when rows change height from `before` to
+/// `after` pixels.
+pub fn rescale(id: &str, before: f64, after: f64) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(el) = element(id) {
+            let top = f64::from(el.scroll_top()) / before * after;
+            el.set_scroll_top(top.round() as i32);
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (id, before, after);
     }
 }
