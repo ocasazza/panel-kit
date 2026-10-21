@@ -9,8 +9,9 @@ use panel_kit_core::widgets::charts::{
     five_num, BoxItemView, FlameSpanModel, GaugeModel, SeriesView,
 };
 #[cfg(feature = "spec-plan")]
+use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::table::{
-    ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableState, TextAlign,
+    ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
 };
 #[cfg(feature = "spec-plan")]
 use panel_kit_tui::badge::hue_color;
@@ -655,9 +656,8 @@ pub mod content {
             TableView {
                 columns: &model.columns,
                 rows: &model.rows.iter().collect::<Vec<_>>(),
-                state: &panel_kit_core::widgets::table::TableState::default(),
-                total: model.rows.len(),
             },
+            &panel_kit_core::widgets::data_table::TableState::default(),
         );
     }
 

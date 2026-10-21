@@ -8,8 +8,7 @@ use panel_kit_core::frame::{DockProjection, Placement, TileGridProjection};
 use panel_kit_core::panel::PanelCatalog;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
 use panel_kit_core::widgets::table::{
-    ColumnWidth, Density, TableCell, TableColumn, TableCommand, TableRow, TableState, TableView,
-    TextAlign,
+    ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
 };
 use panel_kit_core::{
     FocusContext, Key, KeyChord, PointerButton, PointerEvent, PointerEventKind, Region,
@@ -202,52 +201,32 @@ fn InteractiveTableProbe() -> Element {
 
     rsx! {
         {{
-            let state = TableState {
-                focus: Some("r1".into()),
-                selected: vec!["r1".into()],
-                density: Density::Dense,
-                ..TableState::default()
-            };
             let shown: Vec<&TableRow> = rows.iter().collect();
-            panel_kit::widgets::table::table(
-                TableView { columns: &columns, rows: &shown, state: &state, total: rows.len() },
-                Some(EventHandler::new(|_: TableCommand| {})),
-            )
+            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &shown })
         }}
         {{
-            let state = TableState::default();
-            panel_kit::widgets::table::table(
-                TableView { columns: &columns, rows: &[], state: &state, total: 3 },
-                None,
-            )
+            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &[] })
         }}
     }
 }
 
 #[test]
-fn table_exposes_host_selection_density_tooltips_and_empty_state() {
+fn table_paints_through_the_one_component_with_its_toolbar_and_empty_state() {
     let html = dioxus_ssr::render_element(rsx! { InteractiveTableProbe {} });
 
-    assert!(
-        html.contains("class=\"pk-widget pk-table pk-table-dense\""),
-        "{html}"
-    );
-    // Focus and selection come from the host state, keyed by row id.
-    assert!(
-        html.contains("class=\"pk-table-row focused selected clickable\""),
-        "{html}"
-    );
-    assert!(html.contains("aria-current=\"true\""), "{html}");
-    assert!(html.contains("aria-selected=true"), "{html}");
-    // A sortable header says its own state before anyone sorts it.
-    assert!(html.contains("aria-sort=\"none\""), "{html}");
+    // A model table is painted by the data-table component: same toolbar, same
+    // grid, so a spec-authored table cannot drift from a host-built one.
+    assert!(html.contains("class=\"pk-widget pk-dt\""), "{html}");
+    assert!(html.contains("pk-dt-bar"), "{html}");
+    assert!(html.contains("aria-label=\"filter rows\""), "{html}");
+    assert!(html.contains("role=\"grid\""), "{html}");
     assert!(
         html.contains("title=\"a long policy value preserved in the tooltip\""),
         "{html}"
     );
-    // The empty state of a filtered table names what it hid.
+    // The empty state names the caller's message when the model has no rows.
     assert!(html.contains("class=\"pk-table-empty\""), "{html}");
-    assert!(html.contains("3 rows, none matching the filter"), "{html}");
+    assert!(html.contains("no rows"), "{html}");
 }
 
 #[test]
@@ -445,7 +424,7 @@ fn tiling_drag_to_swap_reorders_panels_via_surface_pointer_motion() {
 #[component]
 fn DataTableProbe() -> Element {
     use panel_kit::widgets::{DataColumnSpec, DataRow, DataTable};
-    use panel_kit_core::widgets::data_table::{SortDir, TableQuery};
+    use panel_kit_core::widgets::data_table::{SortDir, TableState};
     let columns = vec![
         DataColumnSpec::new("name", "Name").pinned(),
         DataColumnSpec::new("score", "Score"),
@@ -466,7 +445,17 @@ fn DataTableProbe() -> Element {
             .num(None, "cost-c"),
     ];
     rsx! {
-        DataTable { columns, rows, initial: TableQuery::sorted("score", SortDir::Desc) }
+        DataTable {
+            columns,
+            rows,
+            defaults: panel_kit_core::widgets::data_table::TableDefaults {
+                sort: vec![panel_kit_core::widgets::data_table::SortSpec {
+                    column: "score".into(),
+                    dir: panel_kit_core::widgets::data_table::SortDir::Desc,
+                }],
+                ..Default::default()
+            },
+        }
     }
 }
 
@@ -490,5 +479,5 @@ fn data_table_sorts_hides_default_hidden_columns_and_counts_rows() {
         "hidden column header painted: {html}"
     );
     assert!(html.contains("aria-sort=\"descending\""), "{html}");
-    assert!(html.contains("class=\"pk-dt-count\">3<"), "{html}");
+    assert!(html.contains("class=\"pk-dt-count\">3 ROWS<"), "{html}");
 }

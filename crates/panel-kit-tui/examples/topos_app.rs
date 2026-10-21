@@ -782,9 +782,8 @@ fn paint_body(
                 TableView {
                     columns: &model.columns,
                     rows: &model.rows.iter().collect::<Vec<_>>(),
-                    state: &panel_kit_core::widgets::table::TableState::default(),
-                    total: model.rows.len(),
                 },
+                &panel_kit_core::widgets::data_table::TableState::default(),
             );
         }
         Section::TimeSeries(models) => {

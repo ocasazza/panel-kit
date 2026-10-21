@@ -12,6 +12,7 @@
 //! the gesture.
 
 use panel_kit_core::widgets::meter as core_meter;
+use panel_kit_core::widgets::data_table::{SortDir, TableState};
 use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableView, TextAlign};
 use panel_kit_core::PanelKey;
 use ratatui::layout::{Constraint, Rect};
@@ -42,6 +43,7 @@ pub fn table<K: PanelKey>(
     key: &K,
     panels: &mut PanelScroll<K>,
     view: TableView<'_>,
+    state: &TableState,
 ) -> (u16, u16) {
     let area = area.intersection(f.area());
     if area.width == 0 || area.height == 0 {
@@ -73,9 +75,9 @@ pub fn table<K: PanelKey>(
     // A sorted column carries its direction in the header, as the web painter
     // does, so a reader knows why the rows are in this order.
     let header = Row::new(columns.iter().map(|column| {
-        let marker = match view.state.sort_direction(&column.key) {
-            Some(true) => "\u{25bc}",
-            Some(false) => "\u{25b2}",
+        let marker = match state.direction(&column.key) {
+            Some(SortDir::Asc) => "\u{25b4}",
+            Some(SortDir::Desc) => "\u{25be}",
             None => "",
         };
         let title = format!("{}{marker}", column.title);
@@ -83,7 +85,7 @@ pub fn table<K: PanelKey>(
     }))
     .style(Style::default().fg(t.dim));
     let rows = view.rows.iter().skip(offset.1 as usize).map(|row| {
-        let style = match (view.state.is_focused(&row.id), view.state.is_selected(&row.id)) {
+        let style = match (state.is_cursor(&row.id), state.is_selected(&row.id)) {
             (true, _) => Style::default().bg(t.accent).fg(t.bg),
             (false, true) => Style::default().fg(t.accent),
             (false, false) => Style::default(),

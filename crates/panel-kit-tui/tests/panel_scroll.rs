@@ -3,8 +3,8 @@ mod support;
 
 use panel_kit_core::frame::ProjectionBuffer;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
+use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::table::{
-    TableState,
     ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
 };
 use panel_kit_core::Mode;
@@ -357,9 +357,8 @@ fn table_bodies_scroll_rows_under_a_sticky_header() {
             TableView {
                 columns: &columns,
                 rows: &rows.iter().collect::<Vec<_>>(),
-                state: &TableState::default(),
-                total: rows.len(),
             },
+            &TableState::default(),
         );
     });
     assert!(support::buffer_contains(&buffer, "node"));
@@ -378,9 +377,8 @@ fn table_bodies_scroll_rows_under_a_sticky_header() {
             TableView {
                 columns: &columns,
                 rows: &rows.iter().collect::<Vec<_>>(),
-                state: &TableState::default(),
-                total: rows.len(),
             },
+            &TableState::default(),
         );
     });
 
@@ -406,9 +404,8 @@ fn table_wheels_scroll_columns_horizontally_when_fixed_widths_overflow() {
             TableView {
                 columns: &columns,
                 rows: &rows.iter().collect::<Vec<_>>(),
-                state: &TableState::default(),
-                total: rows.len(),
             },
+            &TableState::default(),
         );
     });
     // 8 + 6 cells of fixed columns plus one spacing column do not fit 10 cells.
@@ -430,9 +427,8 @@ fn table_wheels_scroll_columns_horizontally_when_fixed_widths_overflow() {
             TableView {
                 columns: &columns,
                 rows: &rows.iter().collect::<Vec<_>>(),
-                state: &TableState::default(),
-                total: rows.len(),
             },
+            &TableState::default(),
         );
     });
     assert!(support::buffer_contains(&scrolled, "load"));

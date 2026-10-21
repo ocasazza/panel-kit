@@ -185,8 +185,7 @@ pub mod web_canary {
     use panel_kit_core::widgets::meter::MeterModel;
     use panel_kit_core::widgets::status::{StatusModel, StatusState};
     use panel_kit_core::widgets::table::{
-        ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableState, TableView,
-        TextAlign,
+        ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
     };
     use panel_kit_core::widgets::{ContentSpec, ContentView, DataSource, ScrollPolicy};
     use panel_kit_core::SpecPanelId;
@@ -510,8 +509,6 @@ pub mod web_canary {
             ContentView::Table(TableView {
                 columns: &table.columns,
                 rows: &table.rows.iter().collect::<Vec<_>>(),
-                state: &TableState::default(),
-                total: table.rows.len(),
             }),
             0,
             noop_badge_action(),

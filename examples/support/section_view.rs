@@ -9,19 +9,9 @@ use std::collections::BTreeMap;
 use dioxus::prelude::*;
 use panel_kit_core::badge::BadgeAction;
 use panel_kit_core::widgets::charts::{five_num, BoxItemView, SeriesView};
-use panel_kit_core::widgets::table::{visible, TableCommand, TableRow, TableState, TableView};
+
 use panel_kit_core::widgets::{ContentSpec, ContentView, ScrollPolicy};
 use panel_kit_grammar::{FieldType, Object, Section, SectionEdit};
-
-/// Row interaction for a table whose rows offer edits. The table's focus is
-/// the selection: a host that opens an edit on click derives `state.focus`
-/// from whatever it opens.
-pub struct RowSelect {
-    /// The table's sort, filter, focus and selection, owned by the host.
-    pub state: TableState,
-    /// Receives the row and header intents the painter raises.
-    pub on_command: EventHandler<TableCommand>,
-}
 
 fn noop_badge_action() -> EventHandler<BadgeAction> {
     EventHandler::new(|_: BadgeAction| {})
@@ -33,27 +23,18 @@ fn noop_badge_action() -> EventHandler<BadgeAction> {
 pub fn paint(
     section: &Section,
     content: &ContentSpec,
-    rows: Option<RowSelect>,
+    rows: Option<EventHandler<String>>,
     on_badge: Option<EventHandler<BadgeAction>>,
 ) -> Element {
     let badge = on_badge.unwrap_or_else(noop_badge_action);
-    let command = rows.as_ref().map(|rows| rows.on_command);
     match section {
         Section::Table(table) => {
-            let empty = TableState::default();
-            let state = rows.as_ref().map(|rows| &rows.state).unwrap_or(&empty);
-            let mut ordered = Vec::new();
-            visible(table, state, &mut ordered);
-            let shown: Vec<&TableRow> = ordered.iter().map(|index| &table.rows[*index]).collect();
-            panel_kit::widgets::table::table(
-                TableView {
-                    columns: &table.columns,
-                    rows: &shown,
-                    state,
-                    total: table.rows.len(),
-                },
-                command,
-            )
+            let shown: Vec<&panel_kit_core::widgets::table::TableRow> =
+                table.rows.iter().collect();
+            panel_kit::widgets::table::table(panel_kit_core::widgets::table::TableView {
+                columns: &table.columns,
+                rows: &shown,
+            })
         }
         Section::Text(text) => {
             let scroll = match content {

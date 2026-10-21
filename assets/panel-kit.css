@@ -619,6 +619,27 @@ button { font-family:var(--mono); }
    also selected keeps both facts legible. */
 .pk-table-row.focused { outline:1px solid var(--accent); outline-offset:-1px; }
 
+/* === table cards: the table as records === */
+.pk-dt-card { display:flex; flex-direction:column; gap:.25rem; padding:.45rem .6rem;
+  border:1px solid var(--line); border-radius:4px; background:var(--panel); }
+.pk-dt-card.compact { flex-direction:row; align-items:center; gap:.6rem; padding:.25rem .5rem; }
+.pk-dt-card.detail { gap:.35rem; }
+.pk-dt-card-title { display:flex; align-items:baseline; gap:.5rem; min-width:0; }
+.pk-dt-card-id { color:var(--dim); font-size:.7rem; }
+.pk-dt-card-head { font-size:.78rem; color:var(--fg); overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; }
+.pk-dt-card-meta { display:flex; flex-wrap:wrap; gap:.2rem 1rem; }
+.pk-dt-field { display:inline-flex; gap:.3rem; font-size:.7rem; }
+.pk-dt-field-label { color:var(--line2); }
+.pk-dt-field-value { color:var(--fg); }
+.pk-dt-card-tags { display:flex; flex-wrap:wrap; gap:.25rem; }
+.pk-chip { border:1px solid var(--line2); border-radius:999px; padding:0 .45rem;
+  font-size:.66rem; color:var(--dim); }
+.pk-dt-group-row td { background:color-mix(in srgb, var(--fg) 5%, var(--bg)); }
+.pk-dt-tag { border:1px solid var(--line2); border-radius:999px; padding:.05rem .5rem;
+  background:var(--bg); color:var(--dim); font-size:.68rem; cursor:pointer; }
+.pk-dt-tag.on { color:var(--bg); background:var(--accent); border-color:var(--accent); }
+
 /* === data table: filter, sort, column visibility === */
 .pk-dt { display:flex; flex-direction:column; gap:.3rem; min-height:0; }
 .pk-dt-bar { display:flex; align-items:center; gap:.5rem; }

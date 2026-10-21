@@ -19,12 +19,11 @@ pub mod status;
 pub mod table;
 
 pub use cascade::{CascadeAction, CascadeItem, CascadeState, CascadingDropdown};
-pub use data_table::{DataColumnSpec, DataRow, DataTable, SortKey};
+pub use data_table::{csv, tsv, DataColumnSpec, DataRow, DataTable};
 pub use dropdown::{Dropdown, DropdownAction, DropdownItem, DropdownState};
 
 use dioxus::prelude::*;
 use panel_kit_core::badge::BadgeAction;
-use panel_kit_core::widgets::table::{TableState, TableView};
 use panel_kit_core::widgets::ContentView;
 
 /// Paint one borrowed core content view as semantic Dioxus DOM.
@@ -42,18 +41,7 @@ pub fn content_view(
             div { class: "pk-content pk-content-editor", role: "group", aria_label: "editor content {binding}", "data-binding": "{binding}" }
         },
         ContentView::Badges(specs) => badge::strip(specs, on_badge_action),
-        ContentView::Table(view) => {
-            let state = TableState::default();
-            table::table(
-                TableView {
-                    columns: view.columns,
-                    rows: view.rows,
-                    state: &state,
-                    total: view.rows.len(),
-                },
-                None,
-            )
-        }
+        ContentView::Table(view) => table::table(view),
         ContentView::TimeSeries { series, unit } => charts::time_series(series, unit),
         ContentView::Gauges(items) => charts::gauges(items),
         ContentView::Flamegraph(spans) => charts::flamegraph(spans),

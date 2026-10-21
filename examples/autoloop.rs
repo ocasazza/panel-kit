@@ -19,7 +19,7 @@ use dioxus::events::{Key, KeyboardEvent, PointerEvent as DioxusPointerEvent};
 use dioxus::prelude::*;
 use panel_kit::CSS;
 use panel_kit_core::reducer::{Viewport, WorkspaceEvent};
-use panel_kit_core::widgets::table::{TableCommand, TableState};
+use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::ContentSpec;
 use panel_kit_core::Units;
 use panel_kit_grammar::Topos;
@@ -39,7 +39,7 @@ mod autoloop_host;
 mod section_view;
 
 use autoloop_host::{AutoloopHost, Specs, CONTROL, TRACE};
-use section_view::{EditDraft, RowSelect};
+use section_view::EditDraft;
 
 const BASE: &str = include_str!(env!("PANEL_KIT_TOPOS_PHYSICS"));
 const TRACE_TOPOS: &str = include_str!(env!("PANEL_KIT_AUTOLOOP_TOPOS_TRACE"));
@@ -161,38 +161,21 @@ fn host_content(host: Host, mut draft: Signal<Option<EditDraft>>, id: &str, cont
             div { class: "pk-content pk-content-unbound", role: "group", aria_label: "{what} binding {id}", "{what}: {id}" }
         };
     };
-    let rows = state.row_edits(id).map(|rows| {
-        let offered: Vec<(String, Option<String>)> =
-            rows.iter().map(|row| (row.object.clone(), row.edits.first().cloned())).collect();
-        let selected = draft
-            .read()
-            .as_ref()
-            .filter(|d| d.binding == id)
-            .and_then(|d| offered.iter().position(|(object, _)| *object == d.object));
-        // The draft is the source of truth; this render derives the table's
-        // focus from it and turns a focused row back into an open draft.
+    let rows = state.row_edits(id).map(|offered_rows| {
+        let offered: Vec<(String, Option<String>)> = offered_rows
+            .iter()
+            .map(|row| (row.object.clone(), row.edits.first().cloned()))
+            .collect();
         let binding = id.to_owned();
-        let shown: Vec<String> = offered.iter().map(|(object, _)| object.clone()).collect();
-        let focus = selected.and_then(|index| shown.get(index).cloned());
-        let state = TableState {
-            focus,
-            ..TableState::default()
-        };
-        let chosen = shown.clone();
-        RowSelect {
-            state,
-            on_command: EventHandler::new(move |command: TableCommand| {
-                let TableCommand::Focus(id) = command else {
-                    return;
-                };
-                let Some(index) = chosen.iter().position(|object| object == &id) else {
-                    return;
-                };
-                if let Some((object, Some(edit))) = offered.get(index) {
-                    draft.set(open_draft(host, &binding, object, edit));
-                }
-            }),
-        }
+        let chosen: Vec<String> = offered.iter().map(|(object, _)| object.clone()).collect();
+        EventHandler::new(move |key: String| {
+            let Some(index) = chosen.iter().position(|object| object == &key) else {
+                return;
+            };
+            if let Some((object, Some(edit))) = offered.get(index) {
+                draft.set(open_draft(host, &binding, object, edit));
+            }
+        })
     });
     section_view::paint(section, content, rows, None)
 }
