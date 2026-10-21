@@ -6,8 +6,10 @@
 //! What it demonstrates:
 //! - app-owned [`SavedViews`] registry state over the core key scheme,
 //! - one [`LocalStorageLayoutStore`] per view (`{base}:view:{name}`),
-//! - explicit [`SavePolicy`] writes after reducer events, and
-//! - web composition parts (`root`, `panel`, `dock`) instead of a controller.
+//! - explicit [`SavePolicy`] writes after reducer events,
+//! - web composition parts (`root`, `panel`, `dock`) instead of a controller, and
+//! - the event-graph component in three panels of the `Events` view: a session-tree
+//!   rail, an item timeline and the swimlane graph with its query, TREE toggle and legend.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -18,6 +20,7 @@ use gloo_storage::{LocalStorage, Storage};
 use panel_kit::input::{clear_selection, keyboard_event, pointer_event, wheel_event};
 use panel_kit::store::LocalStorageLayoutStore;
 use panel_kit::surface::{observe_viewport, surface_profile, viewport_size};
+use panel_kit::widgets::event_graph::{EventGraph, EventRail};
 use panel_kit::widgets::{dock, panel, root};
 use panel_kit::{LayoutBuilder, PanelKind, PanelWin, SavedLayout, StoredLayout, CSS};
 use panel_kit_core::frame::{
@@ -31,6 +34,9 @@ use panel_kit_core::reducer::{
     reduce, HitTarget, ResizePolicy, Snapshot, Viewport, WorkspaceEvent,
 };
 use panel_kit_core::views::{view_layout_key, views_registry_key, SavedViews};
+use panel_kit_core::widgets::event_graph::query::GraphState;
+use panel_kit_core::widgets::event_graph::rails::{vertical, RailOptions};
+use panel_kit_core::widgets::event_graph::sample;
 use panel_kit_core::{
     ChromeMetrics, Clamp, CommandStep, FocusContext, Mode, PanelCatalog, PointerButton,
     PointerEventKind, TileMetrics, Units,
@@ -62,6 +68,9 @@ enum Panel {
     Notes,
     Preview,
     Status,
+    SessionTree,
+    Timeline,
+    EventGraph,
 }
 
 impl PanelKind for Panel {
@@ -70,9 +79,15 @@ impl PanelKind for Panel {
             Self::Notes => "Notes",
             Self::Preview => "Preview",
             Self::Status => "Status",
+            Self::SessionTree => "Session tree",
+            Self::Timeline => "Timeline",
+            Self::EventGraph => "Event graph",
         }
     }
 }
+
+/// The view whose first activation opens the event-graph panels.
+const EVENTS_VIEW: &str = "Events";
 
 /// Default layout for a view's first activation and for panels added later.
 fn default_layout() -> Vec<PanelWin<Panel>> {
@@ -84,9 +99,35 @@ fn default_layout() -> Vec<PanelWin<Panel>> {
     ]
 }
 
+/// The `Events` view: the swimlane graph above the session tree and the timeline.
+fn events_layout() -> Vec<PanelWin<Panel>> {
+    let mut builder = LayoutBuilder::new();
+    vec![
+        builder.at(Panel::EventGraph, 16.0, 16.0, 856.0, 380.0),
+        builder.at(Panel::SessionTree, 16.0, 412.0, 420.0, 300.0),
+        builder.at(Panel::Timeline, 452.0, 412.0, 420.0, 300.0),
+    ]
+}
+
+/// Every panel kind, so the catalog resolves all of them.
+fn all_panels() -> Vec<PanelWin<Panel>> {
+    let mut panels = default_layout();
+    panels.extend(events_layout());
+    panels
+}
+
+/// Defaults of one named view.
+fn layout_for(view: &str) -> Vec<PanelWin<Panel>> {
+    if view == EVENTS_VIEW {
+        events_layout()
+    } else {
+        default_layout()
+    }
+}
+
 /// Catalog used by persistence and dock/chrome parts.
 fn panel_catalog() -> PanelCatalog<Panel> {
-    PanelCatalog::from_panel_kind_layout(&default_layout()).expect("view panels have stable ids")
+    PanelCatalog::from_panel_kind_layout(&all_panels()).expect("view panels have stable ids")
 }
 
 /// Current browser viewport expressed in core reducer units.
@@ -103,7 +144,7 @@ fn current_viewport() -> Viewport {
 fn load_registry() -> SavedViews {
     LocalStorage::get::<SavedViews>(views_registry_key(BASE_KEY))
         .map(SavedViews::sanitize)
-        .unwrap_or_else(|_| SavedViews::new(&["Main", "Focus"]))
+        .unwrap_or_else(|_| SavedViews::new(&["Main", "Focus", EVENTS_VIEW]))
 }
 
 /// Persist the registry under the core-owned `{base}:views` key.
@@ -145,7 +186,7 @@ fn restore_view_snapshot(
     catalog: &PanelCatalog<Panel>,
     viewport: Viewport,
 ) -> Snapshot<Panel> {
-    let defaults = Snapshot::from_defaults(default_layout(), Mode::Floating, viewport);
+    let defaults = Snapshot::from_defaults(layout_for(name), Mode::Floating, viewport);
     let key = view_layout_key(BASE_KEY, name);
     let store = LocalStorageLayoutStore::new(key.as_str());
     restore_snapshot(&store, defaults.clone(), catalog, restore_context(viewport)).unwrap_or_else(
@@ -311,7 +352,7 @@ fn App() -> Element {
     });
     let scratch = use_hook(|| {
         Rc::new(RefCell::new(
-            ProjectionBuffer::<Panel>::with_panel_capacity(3),
+            ProjectionBuffer::<Panel>::with_panel_capacity(all_panels().len()),
         ))
     });
     let mut draft = use_signal(String::new);
@@ -485,6 +526,72 @@ fn panel_body(
             p { "Each switch persists the outgoing snapshot before restoring the incoming view's store." }
         },
         Panel::Status => status_body(registry, migration_observation),
+        Panel::SessionTree => rsx! { SessionTreeDemo {} },
+        Panel::Timeline => rsx! { TimelineDemo {} },
+        Panel::EventGraph => rsx! { EventGraphDemo {} },
+    }
+}
+
+/// One rail over the sample item; the sample is built once per panel instance.
+fn rail_demo(
+    sample: &sample::Rail,
+    options: RailOptions,
+    mut selected: Signal<Option<String>>,
+) -> Element {
+    let view = vertical(&sample.events, &sample.item, &sample.tree).view(&RailOptions {
+        selected: selected.read().clone(),
+        on_select: true,
+        ..options
+    });
+    rsx! { EventRail { view, on_select: move |id: String| selected.set(Some(id)) } }
+}
+
+#[component]
+fn SessionTreeDemo() -> Element {
+    let data = use_hook(sample::session_tree);
+    let selected = use_signal(|| None::<String>);
+    rail_demo(&data, RailOptions::default(), selected)
+}
+
+#[component]
+fn TimelineDemo() -> Element {
+    let data = use_hook(sample::item_timeline);
+    let selected = use_signal(|| None::<String>);
+    let options = RailOptions {
+        title: "timeline".to_owned(),
+        dom_id: "item-timeline".to_owned(),
+        separators: true,
+        ..RailOptions::default()
+    };
+    rail_demo(&data, options, selected)
+}
+
+#[component]
+fn EventGraphDemo() -> Element {
+    let data = use_hook(|| {
+        let activity = sample::activity();
+        (
+            Rc::new(activity.events),
+            Rc::new(activity.tree),
+            activity.now,
+        )
+    });
+    let mut state = use_signal(|| GraphState {
+        window: "30d".to_owned(),
+        tree: true,
+        ..GraphState::default()
+    });
+    rsx! {
+        EventGraph {
+            id: "events-graph",
+            state: state.read().clone(),
+            events: data.0.clone(),
+            tree: data.1.clone(),
+            now: data.2,
+            on_action: move |action| {
+                let _ = state.write().reduce(action);
+            },
+        }
     }
 }
 
@@ -630,8 +737,8 @@ fn reset_active_view(
     catalog: Rc<PanelCatalog<Panel>>,
 ) {
     let viewport = snapshot.read().viewport;
-    let next = Snapshot::from_defaults(default_layout(), Mode::Floating, viewport);
     let active = registry.read().active.clone();
+    let next = Snapshot::from_defaults(layout_for(&active), Mode::Floating, viewport);
     let key = view_layout_key(BASE_KEY, &active);
     let store = LocalStorageLayoutStore::new(key.as_str());
     let decision = SavePolicy::OnSettle.reset_decision();
@@ -735,6 +842,28 @@ mod tests {
 
         assert_eq!(snapshot.viewport, viewport);
         assert_eq!(snapshot.panels.len(), 3);
+    }
+
+    #[test]
+    fn each_view_opens_with_its_own_panels() {
+        let kinds = |view: &str| -> Vec<&'static str> {
+            layout_for(view).iter().map(|p| p.kind.title()).collect()
+        };
+
+        assert_eq!(kinds("Main"), ["Notes", "Preview", "Status"]);
+        assert_eq!(
+            kinds(EVENTS_VIEW),
+            ["Event graph", "Session tree", "Timeline"]
+        );
+    }
+
+    #[test]
+    fn the_catalog_resolves_every_panel_of_every_view() {
+        let catalog = panel_catalog();
+
+        for panel in all_panels() {
+            assert!(catalog.get(panel.kind).is_some(), "{}", panel.kind.title());
+        }
     }
 
     #[test]

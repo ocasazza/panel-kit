@@ -167,9 +167,17 @@ fn dot<'a>(html: &'a Html, tone: &str) -> Vec<&'a str> {
 #[test]
 fn heading_shows_title_and_event_and_lane_counts_without_markers() {
     let html = render(graph().view(&opts()));
-    assert!(html.has("<span class=\"pk-rail-title\">session tree</span>"), "{}", html.0);
+    assert!(
+        html.has("<span class=\"pk-rail-title\">session tree</span>"),
+        "{}",
+        html.0
+    );
     // 7 events; 3 lanes; the feat/x marker row is not an event.
-    assert!(html.has("<span class=\"pk-rail-meta\">7 events · 3 lanes</span>"), "{}", html.0);
+    assert!(
+        html.has("<span class=\"pk-rail-meta\">7 events · 3 lanes</span>"),
+        "{}",
+        html.0
+    );
     assert_eq!(html.count("<li "), 8, "7 events + 1 lane marker");
 }
 
@@ -195,10 +203,21 @@ fn rows_render_in_time_order_with_stamp_and_label() {
         .iter()
         .map(|id| html.0.find(&format!("id=\"rail-row-{id}\"")).unwrap())
         .collect();
-    assert!(ids.windows(2).all(|w| w[0] < w[1]), "document order is time order");
+    assert!(
+        ids.windows(2).all(|w| w[0] < w[1]),
+        "document order is time order"
+    );
     let first = html.row("e1");
-    assert!(first.contains("<time class=\"pk-rail-time\" datetime=\"2026-10-01T00:00:00Z\">00:00</time>"), "{first}");
-    assert!(first.contains("<span class=\"pk-rail-label\">e1 said</span>"), "{first}");
+    assert!(
+        first.contains(
+            "<time class=\"pk-rail-time\" datetime=\"2026-10-01T00:00:00Z\">00:00</time>"
+        ),
+        "{first}"
+    );
+    assert!(
+        first.contains("<span class=\"pk-rail-label\">e1 said</span>"),
+        "{first}"
+    );
     assert!(first.contains("data-kind=\"note\""));
 }
 
@@ -231,7 +250,11 @@ fn svg_gutter_has_trunk_lanes_edges_and_one_dot_per_row() {
     assert!(svg.contains("aria-hidden=\"true\""));
     assert!(html.has(&format!("--pk-rail-gutter: {}px;", g.gutter)));
     assert_eq!(html.with_class("line", "pk-rail-trunk").len(), 1);
-    assert_eq!(html.with_class("line", "pk-rail-lane").len(), 3, "one line per lane");
+    assert_eq!(
+        html.with_class("line", "pk-rail-lane").len(),
+        3,
+        "one line per lane"
+    );
     // omp and bob merge back, feat/x stays open.
     assert_eq!(html.with_class("path", "fork").len(), 3);
     assert_eq!(html.with_class("path", "merge").len(), 2);
@@ -253,7 +276,11 @@ fn dots_carry_their_tone_class_and_data_tone() {
     assert_eq!(dot(&html, "hollow").len(), 3, "two notes and the marker");
     assert!(dot(&html, "red")[0].contains("data-tone=\"err\""));
     assert!(dot(&html, "hollow")[0].contains("data-tone=\"neutral\""));
-    assert!(html.has("<title>e1 said") || html.has("<title>Oct 1 00:00"), "{}", html.0);
+    assert!(
+        html.has("<title>e1 said") || html.has("<title>Oct 1 00:00"),
+        "{}",
+        html.0
+    );
 }
 
 #[test]
@@ -271,8 +298,12 @@ fn trunk_tone_follows_the_item_and_done_fades_it() {
 fn chip_sits_on_each_lanes_first_row_only() {
     let html = render(graph().view(&opts()));
     assert_eq!(html.count("class=\"pk-rail-chip\""), 2, "{}", html.0);
-    assert!(html.row("e3").contains("<span class=\"pk-rail-chip\">[OMP]</span>"));
-    assert!(html.row("e4").contains("<span class=\"pk-rail-chip\">[BOB]</span>"));
+    assert!(html
+        .row("e3")
+        .contains("<span class=\"pk-rail-chip\">[OMP]</span>"));
+    assert!(html
+        .row("e4")
+        .contains("<span class=\"pk-rail-chip\">[BOB]</span>"));
     assert!(!html.row("e5").contains("pk-rail-chip"), "later omp row");
     assert!(!html.row("e1").contains("pk-rail-chip"), "trunk");
 }
@@ -320,9 +351,19 @@ fn with_on_select_event_rows_are_buttons_and_markers_stay_static() {
         ..opts()
     }));
     assert_eq!(html.tags("button").len(), 7);
-    assert_eq!(html.with_class("span", "pk-rail-hit").len(), 1, "the marker");
-    assert!(html.tags("button").iter().all(|b| b.contains("type=\"button\"")));
-    assert!(html.tags("button").iter().all(|b| b.contains("aria-pressed=\"false\"")));
+    assert_eq!(
+        html.with_class("span", "pk-rail-hit").len(),
+        1,
+        "the marker"
+    );
+    assert!(html
+        .tags("button")
+        .iter()
+        .all(|b| b.contains("type=\"button\"")));
+    assert!(html
+        .tags("button")
+        .iter()
+        .all(|b| b.contains("aria-pressed=\"false\"")));
     assert_eq!(html.with_class("li", "on").len(), 0);
 }
 
@@ -341,7 +382,10 @@ fn the_selected_row_row_hit_and_dot_all_read_as_on() {
     assert_eq!(pressed.len(), 1, "exactly one selected button");
     assert!(class_of(pressed[0]).split(' ').any(|c| c == "on"));
     let row = html.row("e2");
-    assert!(row.starts_with("<li") && class_of(row).split(' ').any(|c| c == "on"), "{row}");
+    assert!(
+        row.starts_with("<li") && class_of(row).split(' ').any(|c| c == "on"),
+        "{row}"
+    );
     assert_eq!(html.with_class("li", "on").len(), 1);
     let on_dots = html.with_class("circle", "on");
     assert_eq!(on_dots.len(), 1);
@@ -361,10 +405,14 @@ fn selection_is_ignored_on_a_rail_without_on_select() {
 #[test]
 fn selected_state_has_its_own_rules_beyond_hue() {
     for selector in [".pk-rail-hit.on", ".pk-rail-dot.on"] {
-        let at = CSS.find(selector).unwrap_or_else(|| panic!("no {selector}"));
+        let at = CSS
+            .find(selector)
+            .unwrap_or_else(|| panic!("no {selector}"));
         let rule = &CSS[at..at + CSS[at..].find('}').unwrap()];
         assert!(
-            rule.contains("outline") || rule.contains("stroke-width") || rule.contains("box-shadow"),
+            rule.contains("outline")
+                || rule.contains("stroke-width")
+                || rule.contains("box-shadow"),
             "{selector} must change shape: {rule}"
         );
     }
@@ -376,11 +424,21 @@ fn selected_state_has_its_own_rules_beyond_hue() {
 fn dead_lanes_dim_their_rows_lines_elbows_and_dots() {
     let html = render(graph().view(&opts()));
     assert!(class_of(html.row("e4")).split(' ').any(|c| c == "dead"));
-    assert!(class_of(html.row("lane:l/feat")).split(' ').any(|c| c == "dead"));
+    assert!(class_of(html.row("lane:l/feat"))
+        .split(' ')
+        .any(|c| c == "dead"));
     assert!(!class_of(html.row("e3")).split(' ').any(|c| c == "dead"));
     assert_eq!(html.with_class("li", "dead").len(), 2);
-    assert_eq!(html.with_class("line", "dead").len(), 2, "bob and feat/x lines");
-    assert_eq!(html.with_class("path", "dead").len(), 3, "bob fork+merge, feat/x fork");
+    assert_eq!(
+        html.with_class("line", "dead").len(),
+        2,
+        "bob and feat/x lines"
+    );
+    assert_eq!(
+        html.with_class("path", "dead").len(),
+        3,
+        "bob fork+merge, feat/x fork"
+    );
     assert_eq!(html.with_class("circle", "dead").len(), 2);
 }
 
@@ -400,7 +458,11 @@ fn a_rail_without_rows_says_so_and_draws_no_gutter() {
         },
     );
     let html = render(g.view(&opts()));
-    assert!(html.has("<p class=\"pk-rail-empty\" id=\"rail-empty\">nothing recorded yet</p>"), "{}", html.0);
+    assert!(
+        html.has("<p class=\"pk-rail-empty\" id=\"rail-empty\">nothing recorded yet</p>"),
+        "{}",
+        html.0
+    );
     assert!(html.has("<span class=\"pk-rail-title\">session tree</span>"));
     assert!(!html.has("pk-rail-meta"));
     assert!(!html.has("<svg"));
@@ -423,9 +485,16 @@ fn hostile_text_is_escaped_and_no_script_is_emitted() {
         &SessionTree::default(),
     );
     let html = render(g.view(&opts()));
-    assert!(html.has(">&lt;script&gt;alert(1)&lt;/script&gt;</span>"), "{}", html.0);
+    assert!(
+        html.has(">&lt;script&gt;alert(1)&lt;/script&gt;</span>"),
+        "{}",
+        html.0
+    );
     // The tooltip attribute is the one place SSR leaves raw.
-    let sans_title = html.0.replace(" title=\"Oct 1 00:01 · note · clara · <script>alert(1)</script>\"", "");
+    let sans_title = html.0.replace(
+        " title=\"Oct 1 00:01 · note · clara · <script>alert(1)</script>\"",
+        "",
+    );
     assert!(!sans_title.contains("<script"), "{sans_title}");
     assert!(!render(graph().view(&opts())).has("<script"));
 }
@@ -446,17 +515,38 @@ fn stylesheet_covers_every_class_the_painter_emits_and_only_known_variables() {
     let mut tokens: Vec<String> = Vec::new();
     for (at, _) in html.0.match_indices("class=\"") {
         let rest = &html.0[at + 7..];
-        tokens.extend(rest[..rest.find('"').unwrap()].split(' ').map(str::to_owned));
+        tokens.extend(
+            rest[..rest.find('"').unwrap()]
+                .split(' ')
+                .map(str::to_owned),
+        );
     }
     tokens.sort();
     tokens.dedup();
-    for token in tokens.iter().filter(|t| !matches!(t.as_str(), "pk-widget" | "fork" | "merge")) {
+    for token in tokens
+        .iter()
+        .filter(|t| !matches!(t.as_str(), "pk-widget" | "fork" | "merge"))
+    {
         assert!(css.contains(&format!(".{token}")), "no rule for .{token}");
     }
     let allowed = [
-        "--blue", "--green", "--yellow", "--red", "--fg", "--dim", "--line", "--line2", "--bg",
-        "--panel", "--mono", "--body-size", "--body-line-height", "--label-size",
-        "--label-tracking", "--pk-rail-row", "--pk-rail-gutter",
+        "--blue",
+        "--green",
+        "--yellow",
+        "--red",
+        "--fg",
+        "--dim",
+        "--line",
+        "--line2",
+        "--bg",
+        "--panel",
+        "--mono",
+        "--body-size",
+        "--body-line-height",
+        "--label-size",
+        "--label-tracking",
+        "--pk-rail-row",
+        "--pk-rail-gutter",
     ];
     for (at, _) in css.match_indices("var(") {
         let name = css[at + 4..].split(')').next().unwrap();
