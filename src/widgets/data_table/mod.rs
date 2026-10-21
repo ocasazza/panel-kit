@@ -524,17 +524,22 @@ pub fn DataTable(
     };
 
     // A view mode or density changes every row's height: keep the first row
-    // in view and mount what the new height needs.
+    // in view and mount what the new height needs. Crossing into or out of
+    // scaled scrolling changes what an offset means, so the window re-reads it.
     let last_height = use_hook(|| Rc::new(Cell::new(row_height)));
+    let was_scaled = use_hook(|| Rc::new(Cell::new(scaled)));
     let rescale_id = scroll_id.clone();
-    use_effect(use_reactive!(|(row_height,)| {
+    use_effect(use_reactive!(|(row_height, scaled)| {
         let before = last_height.replace(row_height);
+        let crossed = was_scaled.replace(scaled) != scaled;
         if windowed && before != row_height {
             if let Some(scroll) = dom::scroll(&rescale_id) {
                 let from = ScrollMap::new(total, before, scroll.visible);
                 let to = ScrollMap::new(total, row_height, scroll.visible);
                 dom::scroll_to(&rescale_id, from.rescaled(scroll.top, &to));
             }
+        }
+        if windowed && (before != row_height || crossed) {
             sync_window();
         }
     }));

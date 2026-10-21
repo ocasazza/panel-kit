@@ -4,8 +4,8 @@
 use dioxus::prelude::*;
 use panel_kit::widgets::{Control, DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
 use panel_kit_core::widgets::data_table::{
-    Align, ColumnFilter, Density, Selectable, SortDir, SortSpec, TableDefaults, TableState, TableWindow,
-    ViewMode, WINDOW_COUNT,
+    Align, ColumnFilter, Density, ScrollMap, Selectable, SortDir, SortSpec, TableDefaults,
+    TableState, TableWindow, ViewMode, Viewport, MAX_SCROLL, WINDOW_COUNT,
 };
 use rstest::rstest;
 
@@ -549,6 +549,58 @@ fn a_measured_height_from_a_host_state_does_not_move_the_spacers() {
         })
         .render();
     assert!(html.has("height: 3120px") && html.has("height: 1040px"));
+}
+
+/// A million detail cards stand 64M pixels, which no browser lays out in one
+/// element: the spacers and the mounted cards fill the capped height and show
+/// the cards the scroll offset maps to, the last offset ending on the last card.
+#[rstest]
+#[case::the_middle(0.5)]
+#[case::the_end(1.0)]
+fn a_million_detail_cards_lay_out_inside_the_scroll_cap_at_the_offsets_cards(
+    #[case] at: f64,
+) {
+    const TOTAL: usize = 1_000_000;
+    const VISIBLE: f64 = 600.0;
+    let map = ScrollMap::new(TOTAL, 64.0, VISIBLE);
+    let top = (at * (MAX_SCROLL - VISIBLE)).round();
+    let mut grid = grid(rows(TOTAL));
+    grid.windowed = true;
+    let html = grid
+        .state(TableState {
+            view: ViewMode::DetailCards,
+            viewport: Viewport {
+                top,
+                visible: VISIBLE,
+                seek: false,
+            },
+            ..state()
+        })
+        .render();
+
+    let (start, end) = map.window(top);
+    let (above, below) = map.spacers(top, start, end);
+    assert_eq!(html.order(), imp(start + 1..=end));
+    let heights: Vec<f64> = html
+        .values("style")
+        .iter()
+        .filter_map(|s| s.strip_prefix("height: ")?.strip_suffix("px")?.parse().ok())
+        .collect();
+    let mounted = (end - start) as f64 * 64.0;
+    let want: Vec<f64> = [above, below].into_iter().filter(|h| *h > 0.0).collect();
+    assert_eq!(heights, want);
+    assert_eq!(heights.iter().sum::<f64>() + mounted, MAX_SCROLL);
+
+    let first = start + 1;
+    let middle = TOTAL as f64 * at;
+    assert!(
+        (first as f64 - middle).abs() <= 0.001 * TOTAL as f64 + 25.0,
+        "offset {top} mounts from card {first}, not near {middle}"
+    );
+    if at == 1.0 {
+        assert_eq!(html.order().last().unwrap(), "imp-1000000");
+        assert_eq!(heights.len(), 1, "no spacer below the last card");
+    }
 }
 
 #[test]
