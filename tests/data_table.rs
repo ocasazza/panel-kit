@@ -551,6 +551,51 @@ fn a_measured_height_from_a_host_state_does_not_move_the_spacers() {
     assert!(html.has("height: 3120px") && html.has("height: 1040px"));
 }
 
+/// Where a table's window starts, and the handle the test moves it by.
+type Start = (usize, std::rc::Rc<std::cell::Cell<Option<Signal<usize>>>>);
+
+/// A table whose window the test moves between renders.
+#[component]
+fn Shifting() -> Element {
+    let (from, handle) = use_context::<Start>();
+    let start = use_signal(|| from);
+    handle.set(Some(start));
+    let state = TableState {
+        window: TableWindow {
+            start: start(),
+            count: 60,
+            row_height: None,
+        },
+        ..state()
+    };
+    let columns = columns();
+    let data = table(&columns, &rows(300));
+    rsx! { DataTable { id: "t", columns, data, state, windowed: true } }
+}
+
+/// Dioxus keys rows only at a loop's root: keyed inside a `match`, every row
+/// element is replaced when the window moves, and a focused one loses focus.
+#[rstest]
+#[case::down(20, 30)]
+#[case::up(40, 30)]
+fn a_window_shift_keeps_the_rows_both_windows_mount(#[case] from: usize, #[case] to: usize) {
+    use dioxus::dioxus_core::Mutation;
+
+    let handle: std::rc::Rc<std::cell::Cell<Option<Signal<usize>>>> = std::rc::Rc::default();
+    let mut dom = VirtualDom::new(Shifting);
+    dom.provide_root_context((from, std::rc::Rc::clone(&handle)));
+    dom.rebuild_to_vec();
+    let mut start = handle.get().expect("the table rendered");
+    dom.in_runtime(|| start.set(to));
+    let edits = dom.render_immediate_to_vec().edits;
+
+    let count = |wanted: fn(&Mutation) -> bool| edits.iter().filter(|e| wanted(e)).count();
+    let replaced = count(|e| matches!(e, Mutation::ReplaceWith { .. }));
+    let removed = count(|e| matches!(e, Mutation::Remove { .. }));
+    assert_eq!(replaced, 0, "{edits:?}");
+    assert_eq!(removed, 10, "the ten rows the window left");
+}
+
 /// A million detail cards stand 64M pixels, which no browser lays out in one
 /// element: the spacers and the mounted cards fill the capped height and show
 /// the cards the scroll offset maps to, the last offset ending on the last card.
