@@ -5,8 +5,10 @@
 //! dictionary, number columns as an `f64` (NaN for none), and tags as interned
 //! ids. Building a million rows allocates per chunk, not per row. Sort order is
 //! derived lazily, once per column, so re-sorting compares integers rather than
-//! strings. Clones share storage, and so does [`TableData::append`]: the new
-//! table shares every full chunk with the old one and copies only the last.
+//! strings, and a text chunk keeps a folded copy of its non-ASCII rows once the
+//! quick filter has searched it. Clones share storage, and so does
+//! [`TableData::append`]: the new table shares every full chunk with the old one
+//! and copies only the last.
 
 use std::borrow::Cow;
 use std::cell::{Cell, OnceCell, RefCell};
@@ -16,6 +18,7 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use super::column::{natural_cmp, ColumnKind, DataColumnSpec};
+use super::scan::{mark_rows, next_non_ascii, row_of, Needle, RowSet};
 use super::tags::canonical_tag;
 
 /// One cell's value as a host hands it over.
@@ -59,7 +62,7 @@ const NONE: u32 = u32::MAX;
 /// Rows per chunk: a row lives in chunk `row >> CHUNK_BITS`. Every chunk but a
 /// column's last is full, so appending copies at most one chunk.
 const CHUNK_BITS: u32 = 16;
-const CHUNK_ROWS: usize = 1 << CHUNK_BITS;
+pub(super) const CHUNK_ROWS: usize = 1 << CHUNK_BITS;
 const CHUNK_MASK: usize = CHUNK_ROWS - 1;
 
 /// A chunk's offset into its own buffer.
@@ -84,6 +87,18 @@ struct Strings {
     bytes: String,
     ends: Vec<u32>,
     present: Vec<bool>,
+    /// The rows holding non-ASCII, folded; made by the first search.
+    folded: OnceCell<Rc<Folded>>,
+}
+
+/// The rows of a chunk that hold a byte above ASCII, each folded as the
+/// quick filter folds text, back to back.
+#[derive(Default)]
+struct Folded {
+    rows: Vec<u16>,
+    bytes: Vec<u8>,
+    /// `ends[i]` closes the run of `rows[i]` within `bytes`.
+    ends: Vec<u32>,
 }
 
 impl Chunk for Strings {
@@ -92,6 +107,7 @@ impl Chunk for Strings {
             bytes: String::new(),
             ends: Vec::with_capacity(rows),
             present: Vec::with_capacity(rows),
+            folded: OnceCell::new(),
         }
     }
 
@@ -104,12 +120,21 @@ impl Chunk for Strings {
     }
 
     fn heap(&self) -> usize {
-        self.bytes.capacity() + self.ends.capacity() * size_of::<u32>() + self.present.capacity()
+        let folded = self.folded.get().map_or(0, |f| {
+            f.rows.capacity() * size_of::<u16>()
+                + f.bytes.capacity()
+                + f.ends.capacity() * size_of::<u32>()
+        });
+        self.bytes.capacity()
+            + self.ends.capacity() * size_of::<u32>()
+            + self.present.capacity()
+            + folded
     }
 }
 
 impl Strings {
     fn push(&mut self, text: Option<&str>) {
+        self.folded.take();
         if let Some(text) = text {
             self.bytes.push_str(text);
         }
@@ -119,6 +144,7 @@ impl Strings {
 
     /// Replace the last string, which must be the most recently pushed.
     fn set_last(&mut self, text: &str) {
+        self.folded.take();
         let start = self.start(self.ends.len() - 1);
         self.bytes.truncate(start);
         self.bytes.push_str(text);
@@ -136,6 +162,46 @@ impl Strings {
 
     fn get(&self, at: usize) -> Option<&str> {
         self.present[at].then(|| &self.bytes[self.start(at)..self.ends[at] as usize])
+    }
+
+    fn folded(&self) -> &Folded {
+        self.folded.get_or_init(|| {
+            let mut folded = Folded::default();
+            let (mut at, mut row) = (0, 0);
+            while let Some(found) = next_non_ascii(self.bytes.as_bytes(), at) {
+                row = row_of(&self.ends, row, found);
+                at = self.ends[row] as usize;
+                folded.rows.push(row as u16);
+                fold_into(&mut folded.bytes, &self.bytes[self.start(row)..at]);
+                folded.ends.push(offset(folded.bytes.len()));
+            }
+            Rc::new(folded)
+        })
+    }
+
+    /// Marks in `out` (bit `row`) the rows whose text, folded, holds `needle`:
+    /// the raw text answers for ASCII, the folded copy for every other row, as
+    /// a char there may fold to ASCII (`İ`, the Kelvin sign).
+    fn find(&self, needle: &Needle, out: &mut [u64]) {
+        if needle.is_ascii() {
+            mark_rows(
+                self.bytes.as_bytes(),
+                &self.ends,
+                None,
+                needle.bytes(),
+                true,
+                out,
+            );
+        }
+        let folded = self.folded();
+        mark_rows(
+            &folded.bytes,
+            &folded.ends,
+            Some(&folded.rows),
+            needle.bytes(),
+            false,
+            out,
+        );
     }
 }
 
@@ -637,6 +703,50 @@ impl TableData {
         }
     }
 
+    /// Marks in `found` the rows of `rows` whose text in `column`, folded,
+    /// holds `needle`, and says whether it could: only a text column is
+    /// searched at once. Other rows of the chunks `rows` touches may be marked
+    /// too.
+    pub(super) fn find_text(
+        &self,
+        column: usize,
+        needle: &Needle,
+        found: &mut RowSet,
+        rows: Range<usize>,
+    ) -> bool {
+        let Column::Text { text, .. } = &self.0.columns[column] else {
+            return false;
+        };
+        for chunk in chunks(&rows) {
+            let out = found.words_from(chunk << CHUNK_BITS);
+            text.0[chunk].find(needle, out);
+        }
+        true
+    }
+
+    /// Marks in `found` the rows of `rows` whose code in the enum column
+    /// `column` is one `hit` marks. Other rows of the chunks `rows` touches
+    /// may be marked too.
+    pub(super) fn find_codes(
+        &self,
+        column: usize,
+        hit: &[bool],
+        found: &mut RowSet,
+        rows: Range<usize>,
+    ) {
+        let Column::Enum { codes, .. } = &self.0.columns[column] else {
+            return;
+        };
+        for chunk in chunks(&rows) {
+            let out = found.words_from(chunk << CHUNK_BITS);
+            for (word, block) in out.iter_mut().zip(codes.0[chunk].chunks(64)) {
+                for (bit, &code) in block.iter().enumerate() {
+                    *word |= u64::from(hit.get(code as usize).copied().unwrap_or(false)) << bit;
+                }
+            }
+        }
+    }
+
     /// What a sort compares for a column: `u32` ranks for text and enums
     /// (natural order, computed on first use), the value for numbers.
     pub(crate) fn order(&self, column: usize) -> Order<'_> {
@@ -649,6 +759,28 @@ impl TableData {
             Column::Number { values } => Order::Number(values),
         }
     }
+}
+
+/// Appends `text` lowercased char by char, as the quick filter folds text.
+fn fold_into(out: &mut Vec<u8>, text: &str) {
+    let mut utf8 = [0u8; 4];
+    for c in text.chars() {
+        if c.is_ascii() {
+            out.push(c.to_ascii_lowercase() as u8);
+        } else {
+            for lower in c.to_lowercase() {
+                out.extend_from_slice(lower.encode_utf8(&mut utf8).as_bytes());
+            }
+        }
+    }
+}
+
+/// The chunks that hold rows `rows`.
+fn chunks(rows: &Range<usize>) -> Range<usize> {
+    if rows.is_empty() {
+        return 0..0;
+    }
+    rows.start >> CHUNK_BITS..((rows.end - 1) >> CHUNK_BITS) + 1
 }
 
 /// How one column orders rows.

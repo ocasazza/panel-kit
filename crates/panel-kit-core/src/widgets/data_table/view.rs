@@ -4,9 +4,11 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::ops::Range;
 
 use super::column::{natural_cmp, ColumnKind, DataColumnSpec, SortDir, SortSpec};
 use super::data::{Order, TableData};
+use super::scan::{Needle, RowSet};
 use super::state::{ColumnFilter, TableState};
 use super::tags::TagMode;
 
@@ -98,9 +100,7 @@ impl Ordered {
             QueryMode::Server => (0..data.len()).collect(),
             QueryMode::Client => {
                 let filter = Filter::new(columns, data, state, options.tags, &index);
-                (0..data.len())
-                    .filter(|&row| filter.passes(data, row))
-                    .collect()
+                filter.passing(data, 0..data.len())
             }
         };
         if options.mode == QueryMode::Client {
@@ -128,8 +128,7 @@ impl Ordered {
             QueryMode::Client => {
                 let index = |id: &str| columns.iter().position(|c| c.id == id);
                 let filter = Filter::new(columns, data, state, options.tags, &index);
-                let passes = |&row: &usize| filter.passes(data, row);
-                self.rows.iter().copied().filter(passes).collect()
+                filter.keeping(data, &self.rows)
             }
         };
         Ordered {
@@ -155,9 +154,7 @@ impl Ordered {
             QueryMode::Server => (from_row..data.len()).collect(),
             QueryMode::Client => {
                 let filter = Filter::new(columns, data, state, options.tags, &index);
-                (from_row..data.len())
-                    .filter(|&row| filter.passes(data, row))
-                    .collect()
+                filter.passing(data, from_row..data.len())
             }
         };
         let mut rows = Vec::with_capacity(self.rows.len() + added.len());
@@ -301,12 +298,18 @@ impl View {
 /// allocating.
 struct Filter<'a> {
     words: Vec<String>,
+    /// The words again, for searching a column's text at once.
+    needles: Vec<Needle>,
     /// Per visible column, how each word is looked for in it.
     visible: Vec<Quick>,
     /// Column filters.
     columns: Vec<(usize, Check<'a>)>,
     tags: Option<(Vec<Option<u32>>, TagMode)>,
 }
+
+/// Rows to filter, out of the table's, at which a column-wise scan beats
+/// asking row by row: one in this many.
+const SCAN_SHARE: usize = 8;
 
 /// How the quick filter reads one visible column.
 enum Quick {
@@ -393,8 +396,10 @@ impl<'a> Filter<'a> {
                 state.tag_mode,
             )
         });
+        let needles = words.iter().map(|word| Needle::new(word)).collect();
         Filter {
             words,
+            needles,
             visible,
             columns: checks,
             tags,
@@ -407,17 +412,115 @@ impl<'a> Filter<'a> {
 
     /// Every word appears in some visible column.
     fn quick(&self, data: &TableData, row: usize) -> bool {
-        self.words.iter().enumerate().all(|(w, word)| {
-            self.visible.iter().any(|quick| match quick {
-                Quick::Text(column) => contains_folded(&data.text(row, *column), word),
-                Quick::Codes(column, matches) => data
-                    .code(row, *column)
-                    .is_some_and(|code| matches[w][code as usize]),
-                Quick::Number(column, possible) => {
-                    possible[w] && data.with_text(row, *column, |text| contains_folded(text, word))
-                }
-            })
+        (0..self.words.len()).all(|w| self.has_word(data, row, w))
+    }
+
+    /// Word `w` appears in some visible column.
+    fn has_word(&self, data: &TableData, row: usize, w: usize) -> bool {
+        let word = &self.words[w];
+        self.visible.iter().any(|quick| match quick {
+            Quick::Text(column) => contains_folded(&data.text(row, *column), word),
+            Quick::Codes(column, matches) => data
+                .code(row, *column)
+                .is_some_and(|code| matches[w][code as usize]),
+            Quick::Number(column, possible) => {
+                possible[w] && data.with_text(row, *column, |text| contains_folded(text, word))
+            }
         })
+    }
+
+    /// Whether `rows` rows are enough of `data` to look for the quick words
+    /// a column at a time rather than row by row.
+    fn scans(&self, data: &TableData, rows: usize) -> bool {
+        !self.words.is_empty() && rows * SCAN_SHARE >= data.len()
+    }
+
+    /// The rows of `alive`, which lie within `rows`, that hold every quick
+    /// word, each looked for in every visible column in one pass over its
+    /// text.
+    fn scan(&self, data: &TableData, mut alive: RowSet, rows: Range<usize>) -> RowSet {
+        for (w, needle) in self.needles.iter().enumerate() {
+            let live = alive.count();
+            if live == 0 {
+                break;
+            }
+            if live * SCAN_SHARE < data.len() {
+                let live: Vec<usize> = alive.rows().collect();
+                for row in live.into_iter().filter(|&row| !self.has_word(data, row, w)) {
+                    alive.remove(row);
+                }
+                continue;
+            }
+            let mut found = RowSet::empty(data.len());
+            for quick in &self.visible {
+                match quick {
+                    Quick::Text(column) => {
+                        if !data.find_text(*column, needle, &mut found, rows.clone()) {
+                            for row in alive.rows() {
+                                if contains_folded(&data.text(row, *column), needle.text()) {
+                                    found.insert(row);
+                                }
+                            }
+                        }
+                    }
+                    Quick::Codes(column, matches) if matches[w].contains(&true) => {
+                        data.find_codes(*column, &matches[w], &mut found, rows.clone());
+                    }
+                    _ => {}
+                }
+            }
+            // Numbers are printed to be searched: only for rows not yet found.
+            for quick in &self.visible {
+                let Quick::Number(column, possible) = quick else {
+                    continue;
+                };
+                if !possible[w] {
+                    continue;
+                }
+                let unfound: Vec<usize> =
+                    alive.rows().filter(|&row| !found.contains(row)).collect();
+                for row in unfound {
+                    if data.with_text(row, *column, |text| contains_folded(text, needle.text())) {
+                        found.insert(row);
+                    }
+                }
+            }
+            alive.intersect(&found);
+        }
+        alive
+    }
+
+    /// The rows of `range` that pass, ascending.
+    fn passing(&self, data: &TableData, range: Range<usize>) -> Vec<usize> {
+        if !self.scans(data, range.len()) {
+            return range.filter(|&row| self.passes(data, row)).collect();
+        }
+        let quick = self.scan(data, RowSet::of(data.len(), range.clone()), range);
+        quick
+            .rows()
+            .filter(|&row| self.checks(data, row) && self.tags(data, row))
+            .collect()
+    }
+
+    /// The rows of `earlier`, in order, that pass.
+    fn keeping(&self, data: &TableData, earlier: &[usize]) -> Vec<usize> {
+        if !self.scans(data, earlier.len()) {
+            return earlier
+                .iter()
+                .copied()
+                .filter(|&row| self.passes(data, row))
+                .collect();
+        }
+        let mut alive = RowSet::empty(data.len());
+        for &row in earlier {
+            alive.insert(row);
+        }
+        let quick = self.scan(data, alive, 0..data.len());
+        earlier
+            .iter()
+            .copied()
+            .filter(|&row| quick.contains(row) && self.checks(data, row) && self.tags(data, row))
+            .collect()
     }
 
     fn checks(&self, data: &TableData, row: usize) -> bool {
@@ -701,7 +804,7 @@ pub fn empty_sentence(tag_filter: &BTreeSet<String>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::data::{TableDataBuilder, Value};
+    use super::super::data::{TableDataBuilder, Value, CHUNK_ROWS};
     use super::super::state::TableDefaults;
     use super::*;
     use proptest::prelude::*;
@@ -726,10 +829,10 @@ mod tests {
         tags: Vec<&'static str>,
     }
 
-    fn data_of(rows: &[Row]) -> TableData {
-        let mut builder = TableDataBuilder::with_capacity(&columns(), rows.len());
+    /// Pushes `rows`, the first of which is row `first` of the table.
+    fn push_rows(builder: &mut TableDataBuilder, rows: &[Row], first: usize) {
         for (at, row) in rows.iter().enumerate() {
-            let id = format!("r{at}");
+            let id = format!("r{}", first + at);
             builder
                 .row(
                     &id,
@@ -742,6 +845,11 @@ mod tests {
                 )
                 .tags(row.tags.as_slice());
         }
+    }
+
+    fn data_of(rows: &[Row]) -> TableData {
+        let mut builder = TableDataBuilder::with_capacity(&columns(), rows.len());
+        push_rows(&mut builder, rows, 0);
         builder.build()
     }
 
@@ -1077,5 +1185,212 @@ mod tests {
     #[case(&[1, 2, 3, 4, 5, 6, 7, 8], 5, 5)]
     fn prefix_len_finds_the_boundary(#[case] items: &[i32], #[case] below: i32, #[case] at: usize) {
         assert_eq!(prefix_len(items, |&item| item <= below), at);
+    }
+
+    /// Chars and words the folding changes, plus digits and a part of an
+    /// enum value.
+    const QUICK_PARTS: [&str; 15] = [
+        "a", "B", "é", "É", "ß", "İ", "i", "\u{307}", "\u{212A}", "k", "東", "京", "1", "o", "pe",
+    ];
+
+    fn folding_text(max: usize) -> impl Strategy<Value = String> {
+        prop::collection::vec(prop::sample::select(&FOLDING[..]), 0..max).prop_map(|p| p.concat())
+    }
+
+    fn folding_row() -> impl Strategy<Value = Row> {
+        (
+            prop::option::of(folding_text(10)),
+            prop::option::of(prop::sample::select(&["open", "Open", "İ", "k"][..])),
+            prop::option::of((0..30i32).prop_map(f64::from)),
+            prop::sample::subsequence(vec!["a", "b", "c"], 0..=3),
+        )
+            .prop_map(|(title, kind, n, tags)| Row {
+                title,
+                kind,
+                n,
+                tags,
+            })
+    }
+
+    fn folding_quick() -> impl Strategy<Value = String> {
+        let word = prop::collection::vec(prop::sample::select(&QUICK_PARTS[..]), 1..4)
+            .prop_map(|parts| parts.concat());
+        prop::collection::vec(word, 0..3).prop_map(|words| words.join(" "))
+    }
+
+    /// The rows of `rows` that pass `state`, each asked alone.
+    fn asked_alone(
+        data: &TableData,
+        state: &TableState,
+        rows: impl Iterator<Item = usize>,
+    ) -> Vec<usize> {
+        let columns = columns();
+        let index = |id: &str| columns.iter().position(|c| c.id == id);
+        let filter = Filter::new(&columns, data, state, true, &index);
+        rows.filter(|&row| filter.passes(data, row)).collect()
+    }
+
+    proptest! {
+        /// Looking for the quick words a column at a time keeps the rows that
+        /// asking each row keeps, over a range of the rows and over a list of
+        /// them in any order, for text that folds to other chars.
+        #[test]
+        fn scanning_is_asking_each_row(
+            rows in prop::collection::vec(folding_row(), 0..80),
+            query in query(),
+            quick in folding_quick(),
+            cut in 0.0..=1.0f64,
+            picks in prop::collection::vec(any::<prop::sample::Index>(), 0..100),
+        ) {
+            let data = data_of(&rows);
+            let state = state_of(&query, &quick);
+            let columns = columns();
+            let index = |id: &str| columns.iter().position(|c| c.id == id);
+            let filter = Filter::new(&columns, &data, &state, true, &index);
+            let from = (rows.len() as f64 * cut) as usize;
+            prop_assert_eq!(
+                filter.passing(&data, from..rows.len()),
+                asked_alone(&data, &state, from..rows.len())
+            );
+            let mut seen = BTreeSet::new();
+            let list: Vec<usize> = picks
+                .iter()
+                .map(|pick| pick.index(rows.len().max(1)))
+                .filter(|&row| row < rows.len() && seen.insert(row))
+                .collect();
+            prop_assert_eq!(
+                filter.keeping(&data, &list),
+                asked_alone(&data, &state, list.iter().copied())
+            );
+        }
+    }
+
+    /// Rows over three chunks from a small alphabet, so words straddle rows,
+    /// with the ends of the chunks planted to straddle on purpose.
+    fn chunked_rows() -> Vec<Row> {
+        let parts = [
+            "s", "e", "a", "t", "S", "É", "é", "İ", "\u{212A}", "k", " ", "ß", "東",
+        ];
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move |n: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed >> 33) as usize % n
+        };
+        let edge = CHUNK_ROWS;
+        let mut rows: Vec<Row> = (0..2 * edge + 77)
+            .map(|_| Row {
+                title: (next(9) != 0)
+                    .then(|| (0..next(7)).map(|_| parts[next(parts.len())]).collect()),
+                kind: None,
+                n: None,
+                tags: vec![],
+            })
+            .collect();
+        for (row, text) in [
+            (edge - 2, "seat"),
+            (edge - 1, "xse"),
+            (edge, "atx"),
+            (edge + 1, "SEAT"),
+            (2 * edge - 1, "se"),
+            (2 * edge, "at"),
+        ] {
+            rows[row].title = Some(text.into());
+        }
+        rows
+    }
+
+    #[test]
+    fn scanning_across_chunks_is_asking_each_row() {
+        let rows = chunked_rows();
+        let data = data_of(&rows);
+        let columns = columns();
+        let index = |id: &str| columns.iter().position(|c| c.id == id);
+        let edge = CHUNK_ROWS;
+        for quick in [
+            "seat", "se", "at", "k", "ÉÉ", "i\u{307}", "ssa", "é a", "東", "ß", "tse", "xse at",
+        ] {
+            let mut state = TableState::new(&columns, TableDefaults::default());
+            state.set_quick(quick);
+            let filter = Filter::new(&columns, &data, &state, true, &index);
+            for range in [
+                0..rows.len(),
+                edge - 1..rows.len(),
+                5..edge + 3,
+                edge..2 * edge,
+            ] {
+                assert_eq!(
+                    filter.passing(&data, range.clone()),
+                    asked_alone(&data, &state, range.clone()),
+                    "{quick:?} in {range:?}"
+                );
+            }
+        }
+    }
+
+    /// A column the spec calls text may hold numbers; it is asked row by row.
+    #[test]
+    fn a_text_column_over_number_storage_is_still_searched() {
+        let specs = vec![
+            DataColumnSpec::new("item", "item"),
+            DataColumnSpec::new("title", "title").number(),
+            DataColumnSpec::new("kind", "kind").enumerated(),
+            DataColumnSpec::new("n", "n").number(),
+        ];
+        let mut builder = TableDataBuilder::with_capacity(&specs, 20);
+        for at in 0..20 {
+            let id = format!("r{at}");
+            let number = Value::Number(f64::from(at * 7));
+            builder.row(
+                &id,
+                [Value::Text(&id), number, Value::Missing, Value::Missing],
+            );
+        }
+        let data = builder.build();
+        let columns = columns();
+        for quick in ["14", "r1", "9"] {
+            let mut state = TableState::new(&columns, TableDefaults::default());
+            state.set_quick(quick);
+            let built = Ordered::build(&columns, &data, &state, BuildOptions::default());
+            assert_eq!(built.rows, asked_alone(&data, &state, 0..20), "{quick:?}");
+        }
+    }
+
+    /// A chunk's folded rows are made once and kept, so rows appended to the
+    /// chunk must drop them.
+    #[test]
+    fn rows_appended_after_a_search_are_searched() {
+        let titled = |titles: &[&str]| -> Vec<Row> {
+            let row = |title: &&str| Row {
+                title: Some((*title).into()),
+                kind: None,
+                n: None,
+                tags: vec![],
+            };
+            titles.iter().map(row).collect()
+        };
+        let (first, more) = (
+            titled(&["Élan", "plain", "İSTANBUL"]),
+            titled(&["ÉLAN vital", "plain again", "\u{212A}elvin"]),
+        );
+        let columns = columns();
+        let search = |data: &TableData, quick: &str| {
+            let mut state = TableState::new(&columns, TableDefaults::default());
+            state.set_quick(quick);
+            let rows = Ordered::build(&columns, data, &state, BuildOptions::default()).rows;
+            (rows, asked_alone(data, &state, 0..data.len()))
+        };
+        let words = ["élan", "kelvin", "i\u{307}st", "plain"];
+        let old = data_of(&first);
+        for quick in words {
+            let (rows, alone) = search(&old, quick);
+            assert_eq!(rows, alone, "{quick:?}");
+        }
+        let new = old.append(|builder| push_rows(builder, &more, first.len()));
+        for quick in words {
+            let (rows, alone) = search(&new, quick);
+            assert_eq!(rows, alone, "{quick:?} after appending");
+        }
     }
 }
