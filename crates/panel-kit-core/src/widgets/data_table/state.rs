@@ -1713,15 +1713,23 @@ mod tests {
     fn law_rows(builder: &mut TableDataBuilder, ids: &[usize]) {
         for &n in ids {
             let id = format!("r{n}");
-            builder.row(
-                id.as_str(),
-                [
-                    Value::Text(&id),
-                    Value::Text(["open", "done", "hold"][n % 3]),
-                    Value::Number((n % 7) as f64),
-                    Value::Text(if n % 2 == 0 { "even" } else { "odd" }),
-                ],
-            );
+            let tags: &[&str] = match n % 4 {
+                0 => &[],
+                1 => &["a"],
+                2 => &["b"],
+                _ => &["a", "b"],
+            };
+            builder
+                .row(
+                    id.as_str(),
+                    [
+                        Value::Text(&id),
+                        Value::Text(["open", "done", "hold"][n % 3]),
+                        Value::Number((n % 7) as f64),
+                        Value::Text(if n % 2 == 0 { "even" } else { "odd" }),
+                    ],
+                )
+                .tags(tags);
         }
     }
 
@@ -1754,8 +1762,10 @@ mod tests {
     }
 
     fn word() -> impl Strategy<Value = String> {
-        prop::sample::select(vec!["", " ", "1", "a", " r1 ", "R2", "open", "even", "zz"])
-            .prop_map(String::from)
+        prop::sample::select(vec![
+            "", " ", "1", "a", "b", " r1 ", "R2", "open", "even", "zz",
+        ])
+        .prop_map(String::from)
     }
 
     fn column_filter() -> impl Strategy<Value = Option<ColumnFilter>> {
