@@ -3,7 +3,8 @@
 // second painted frame after the DOM changes. Each step has a budget; the
 // result lands in #stress as JSON with data-pass, for any browser or driver to
 // read. Budgets are about three times the timings measured in Chromium on an
-// M-series laptop.
+// M-series laptop (100 ms at least), and below the slower path a step guards
+// against where three times would not be: quick filter, live appends, copy.
 (async () => {
   if (!new URLSearchParams(location.search).has("stress")) return;
   const out = document.getElementById("stress");
@@ -109,15 +110,15 @@
     requestAnimationFrame(tick);
     const ms = await time("tally", click('button[data-rows="1000000"]'));
     running = false;
-    report("load 1,000,000 rows", ms, 4000);
+    report("load 1,000,000 rows", ms, 1700);
     report("load longest frame gap", Math.round(worst), 200);
     await wait(50);
     const mem = $("#mem");
     if (!mem) return report("memory", null, 0, { note: "#mem missing" });
     const heap = Number(mem.dataset.heap);
     const wasm = Number(mem.dataset.wasm);
-    report("memory: table data (MB)", Math.round(heap / MB), 400, { unit: "MB", ok: heap > 0 });
-    report("memory: wasm linear (MB)", Math.round(wasm / MB), 1500, { unit: "MB", ok: wasm > 0 });
+    report("memory: table data (MB)", Math.round(heap / MB), 375, { unit: "MB", ok: heap > 0 });
+    report("memory: wasm linear (MB)", Math.round(wasm / MB), 450, { unit: "MB", ok: wasm > 0 });
   };
 
   // Type "s", "se", "sea", "seat" 30 ms apart; time from the last keystroke
@@ -141,7 +142,7 @@
         break;
       }
     }
-    report("quick typing s-e-a-t (from last key)", ms, 700);
+    report("quick typing s-e-a-t (from last key)", ms, 350);
   };
 
   // Append rows for two seconds; the demo records each append-to-paint.
@@ -157,7 +158,7 @@
     const ok = samples.length >= 10;
     const note = `${samples.length} appends of 200 rows`;
     report("live append-to-paint median", mid === null ? null : Math.round(mid), 100, { ok, note });
-    report("live append-to-paint max", max === null ? null : Math.round(max), 400, { ok, note });
+    report("live append-to-paint max", max === null ? null : Math.round(max), 150, { ok, note });
   };
 
   // Export through the demo's own handlers; it records bytes and time.
@@ -185,10 +186,10 @@
       return a.height > 0 && a.bottom <= b.bottom + 1 && a.bottom > b.top;
     };
     const ms = await time("#work", () => view().click());
-    report("view: compact cards", ms, 600);
+    report("view: compact cards", ms, 100);
     await wait(50);
     const detail = await time("#work", () => view().click());
-    report("view: detail cards", detail, 600, { ok: view().textContent === "detail" });
+    report("view: detail cards", detail, 100, { ok: view().textContent === "detail" });
     await wait(50);
     const scroller = $(".pk-dt-scroll");
     const t0 = performance.now();
@@ -202,7 +203,7 @@
         break;
       }
     }
-    report("detail cards: scroll to the last row", Math.round(performance.now() - t0), 3000, {
+    report("detail cards: scroll to the last row", Math.round(performance.now() - t0), 100, {
       ok,
       note: ok ? "last row mounted and visible" : "last row not mounted and visible",
     });
@@ -216,45 +217,45 @@
   // reports its own steps.
   const steps = [
     load,
-    ["sort title (ranked at load)", 400, "#work", click('[data-dt-sort="title"]')],
-    ["sort title descending", 300, "#work", click('[data-dt-sort="title"]')],
-    ["sort since", 300, "#work", click('[data-dt-sort="since"]')],
-    ["shift-add item (ranked at load)", 500, "#work", click('[data-dt-sort="item"]', true)],
-    ["quick filter (150 ms debounce)", 600, "tally", type("#work-quick", "seat"), () => (seat = tally())],
-    ["quick filter cleared", 600, "tally", type("#work-quick", "")],
+    ["sort title (ranked at load)", 250, "#work", click('[data-dt-sort="title"]')],
+    ["sort title descending", 200, "#work", click('[data-dt-sort="title"]')],
+    ["sort since", 250, "#work", click('[data-dt-sort="since"]')],
+    ["shift-add item (ranked at load)", 250, "#work", click('[data-dt-sort="item"]', true)],
+    ["quick filter (150 ms debounce)", 350, "tally", type("#work-quick", "seat"), () => (seat = tally())],
+    ["quick filter cleared", 750, "tally", type("#work-quick", "")],
     typing,
-    ["quick filter cleared (after typing)", 600, "tally", type("#work-quick", "")],
-    ["quick filter, accented (équipe)", 600, "tally", type("#work-quick", "équipe")],
-    ["quick filter cleared (after accented)", 600, "tally", type("#work-quick", "")],
-    ["tag segment on", 200, "tally", click("button[data-dt-tag]")],
-    ["tag segment off", 300, "tally", click("button[data-dt-tag].on")],
-    ["fold a group", 200, "#work-rows", click("tr[data-group] .pk-dt-fold")],
-    ["unfold it", 200, "#work-rows", click("tr[data-group] .pk-dt-fold")],
-    ["select a row", 150, "#work", click("tbody tr[data-id]")],
-    ["key ArrowDown", 150, "#work", key("ArrowDown")],
-    ["key End", 150, "#work", key("End")],
-    ["key Home", 150, "#work", key("Home")],
-    ["ungroup", 300, "#work-rows", select("")],
-    ["group by state", 300, "#work-rows", select("state")],
-    ["sort note (first: ranks)", 3000, "#work", click('[data-dt-sort="note"]')],
-    ["sort note descending", 1500, "#work", click('[data-dt-sort="note"]')],
-    ["sort since (restore)", 300, "#work", click('[data-dt-sort="since"]')],
-    ["group by since", 3000, "#work-rows", select("since")],
-    ["group by note", 3000, "#work-rows", select("note")],
-    ["group by state (restore)", 300, "#work-rows", select("state")],
-    () => exported("csv 1,000,000 rows", "csv", "button[title^='download']", 6000),
+    ["quick filter cleared (after typing)", 700, "tally", type("#work-quick", "")],
+    ["quick filter, accented (équipe)", 300, "tally", type("#work-quick", "équipe")],
+    ["quick filter cleared (after accented)", 750, "tally", type("#work-quick", "")],
+    ["tag segment on", 100, "tally", click("button[data-dt-tag]")],
+    ["tag segment off", 250, "tally", click("button[data-dt-tag].on")],
+    ["fold a group", 150, "#work-rows", click("tr[data-group] .pk-dt-fold")],
+    ["unfold it", 100, "#work-rows", click("tr[data-group] .pk-dt-fold")],
+    ["select a row", 100, "#work", click("tbody tr[data-id]")],
+    ["key ArrowDown", 100, "#work", key("ArrowDown")],
+    ["key End", 100, "#work", key("End")],
+    ["key Home", 100, "#work", key("Home")],
+    ["ungroup", 200, "#work-rows", select("")],
+    ["group by state", 200, "#work-rows", select("state")],
+    ["sort note (first: ranks)", 300, "#work", click('[data-dt-sort="note"]')],
+    ["sort note descending", 200, "#work", click('[data-dt-sort="note"]')],
+    ["sort since (restore)", 250, "#work", click('[data-dt-sort="since"]')],
+    ["group by since", 150, "#work-rows", select("since")],
+    ["group by note", 150, "#work-rows", select("note")],
+    ["group by state (restore)", 200, "#work-rows", select("state")],
+    () => exported("csv 1,000,000 rows", "csv", "button[title^='download']", 2100),
     cards,
     live,
     // The tally must count every row selected: a duplicate id would not be.
     async function selectAll() {
       const ms = await time("tally", click("[data-dt-check-all]"));
       const [rows, selected] = (tally().match(/\d+/g) ?? []).map(Number);
-      report("select all rows", ms, 3000, { ok: rows > 0 && rows === selected, note: tally() });
+      report("select all rows", ms, 2150, { ok: rows > 0 && rows === selected, note: tally() });
     },
-    ["scroll with every row selected", 300, "#work-rows", scroll(4000)],
-    ["key ArrowDown with every row selected", 300, "#work", key("ArrowDown")],
+    ["scroll with every row selected", 100, "#work-rows", scroll(4000)],
+    ["key ArrowDown with every row selected", 100, "#work", key("ArrowDown")],
     // Copy takes the selected rows, so it runs once every row is selected.
-    () => exported("copy 1,000,000 rows (TSV)", "copy", "button[title^='copy']", 6000),
+    () => exported("copy 1,000,000 rows (TSV)", "copy", "button[title^='copy']", 1000),
   ];
 
   localStorage.clear();

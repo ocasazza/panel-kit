@@ -107,7 +107,9 @@ fn a_million_row_csv_streams_in_one_buffer() {
         return;
     }
     let data = data();
-    let headers: Vec<String> = ["item", "title", "state", "since"].map(String::from).to_vec();
+    let headers: Vec<String> = ["item", "title", "state", "since"]
+        .map(String::from)
+        .to_vec();
     let columns = [0, 1, 2, 3];
     let rows: Vec<usize> = (0..data.len()).collect();
 
