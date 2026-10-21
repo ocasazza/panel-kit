@@ -11,6 +11,7 @@
 mod column;
 mod data;
 mod export;
+mod scan;
 mod state;
 mod stored;
 mod tags;

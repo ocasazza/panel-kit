@@ -7,6 +7,9 @@ use panel_kit_core::widgets::data_table::{
     TableDataBuilder, TableDefaults, TableKey, TableState, Value, View,
 };
 
+#[path = "../tests/support/demo_table.rs"]
+mod demo;
+
 const STATES: [&str; 6] = [
     "open",
     "claimed",
@@ -343,6 +346,47 @@ fn cold_rank(c: &mut Criterion) {
     group.finish();
 }
 
+/// The table demo's 1M rows (`tests/support/demo_table.rs`) under the quick
+/// filter: built from nothing, and refined from the whole table in sort order,
+/// which is what the demo's first keystrokes do.
+fn demo_quick(c: &mut Criterion) {
+    let columns = demo::columns();
+    let data = demo::data(1_000_000);
+    data.warm(0);
+    data.warm(1);
+    let options = BuildOptions::default();
+    let plain = TableState::new(&columns, TableDefaults::default());
+    let sorted = TableState {
+        sort: vec![
+            SortSpec::new("since", SortDir::Asc),
+            SortSpec::new("item", SortDir::Asc),
+        ],
+        ..plain.clone()
+    };
+    let whole = Ordered::build(&columns, &data, &sorted, options);
+    let mut group = c.benchmark_group("demo_quick/1000000");
+    group.sample_size(10);
+    for (name, text) in [
+        ("seat", "seat"),
+        ("equipe", "équipe"),
+        ("no_match", "zzqx"),
+        ("s", "s"),
+        ("shard_97", "shard 97"),
+    ] {
+        let mut by_row = plain.clone();
+        by_row.set_quick(text);
+        let mut by_sort = sorted.clone();
+        by_sort.set_quick(text);
+        group.bench_function(BenchmarkId::new("build", name), |b| {
+            b.iter(|| Ordered::build(&columns, &data, &by_row, options))
+        });
+        group.bench_function(BenchmarkId::new("refine_sorted", name), |b| {
+            b.iter(|| whole.refine(&columns, &data, &by_sort, options))
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     load,
@@ -350,6 +394,7 @@ criterion_group!(
     state_ops,
     refine,
     unicode_quick,
+    demo_quick,
     group_unique,
     append,
     cold_rank
