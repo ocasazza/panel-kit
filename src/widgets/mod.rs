@@ -10,6 +10,7 @@ pub mod charts;
 pub mod data_table;
 pub mod dock;
 pub mod dropdown;
+pub mod event_graph;
 pub mod meter;
 pub mod panel;
 pub mod panel_layout;
