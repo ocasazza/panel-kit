@@ -970,22 +970,30 @@ fn replaced_rows_drop_a_host_owned_selection_of_rows_they_lack_and_tell_the_host
 
 #[test]
 fn appended_rows_leave_a_selection_alone_so_an_id_chosen_ahead_of_its_row_waits() {
-    let (mut dom, rig) = hosted(3, chosen(&["imp-1", "imp-8"]));
+    let (mut dom, rig) = hosted(3, chosen(&["imp-1", "imp-20"]));
     assert!(painted(&dom).has(">3 rows, 2 selected<"));
 
     let mut data = rig.data.get().expect("the table rendered");
-    dom.in_runtime(|| {
-        let grown = data
-            .peek()
-            .append(|builder| push_rows(builder, &rows(8)[3..]));
-        data.set(grown);
-    });
-    dom.render_immediate_to_vec();
-    dom.process_events();
-    assert!(rig.heard.borrow().is_empty(), "{:?}", rig.heard.borrow());
-    let html = painted(&dom);
+    let mut append_to = |dom: &mut VirtualDom, count: usize| {
+        dom.in_runtime(|| {
+            let have = data.peek().len();
+            let grown = data
+                .peek()
+                .append(|builder| push_rows(builder, &rows(count)[have..]));
+            data.set(grown);
+        });
+        dom.render_immediate_to_vec();
+        dom.process_events();
+        painted(dom)
+    };
+    // Rows arrive, but not the one chosen ahead of its row: still chosen.
+    let html = append_to(&mut dom, 8);
     assert!(html.has(">8 rows, 2 selected<"), "{}", html.0);
-    assert!(html.row("imp-8").contains("aria-selected=\"true\""));
+    // Then its row arrives, selected.
+    let html = append_to(&mut dom, 20);
+    assert!(html.has(">20 rows, 2 selected<"), "{}", html.0);
+    assert!(html.row("imp-20").contains("aria-selected=\"true\""));
+    assert!(rig.heard.borrow().is_empty(), "{:?}", rig.heard.borrow());
 }
 
 /// The ids a host selected, and the handle that re-renders the table around them.
