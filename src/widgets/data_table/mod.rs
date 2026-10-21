@@ -17,8 +17,8 @@ use panel_kit_core::badge::{BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec};
 use panel_kit_core::widgets::data_table::{
     empty_sentence, ribbon_label, segment_label, tag_letter, tag_slot, tally, BuildOptions,
     ColumnFilter, ColumnKind, Entry, FilterKind, MoveTarget, OrderKey, Ordered, QueryMode,
-    RibbonMode, SelectMode, Selectable, SortDir, TableEvent, TableKey, TableQuery, TableState,
-    TagMode, View, ViewMode, DEFAULT_PAGE, NARROW_WIDTH, OVERSCAN,
+    RibbonMode, ScrollMap, SelectMode, Selectable, SortDir, TableEvent, TableKey, TableQuery,
+    TableState, TagMode, View, ViewMode, DEFAULT_PAGE, NARROW_WIDTH, OVERSCAN,
 };
 
 use crate::badge::Badge;
@@ -276,10 +276,17 @@ pub fn DataTable(
     let colspan = visible.len() + usize::from(multi) + usize::from(tagged);
     let mounted = current.mounted(view.entries.len(), windowed);
     let row_height = current.view.row_height(current.density);
+    let total = view.entries.len();
+    let scaled = windowed && ScrollMap::new(total, row_height, 0.0).scaled();
     let first_row = view.entries[mounted.start..mounted.end]
         .iter()
         .position(|e| matches!(e, Entry::Row(_)))
         .map(|at| at + mounted.start);
+    // Each entry's key, so a window shift keeps the rows both windows mount.
+    let entry_key = |index: usize| match &view.entries[index] {
+        Entry::Group { value, .. } => format!("group-{value}"),
+        Entry::Row(at) => data.id(*at).to_string(),
+    };
     let controls = toolbar.clone().unwrap_or_else(|| Control::ALL.to_vec());
     let shows = |control: Control| controls.contains(&control);
     let narrow: Vec<String> = columns
@@ -368,15 +375,42 @@ pub fn DataTable(
     };
 
     // The cursor row is the one tab stop; when it moves while the grid has
-    // focus, focus follows it.
+    // focus, focus follows it. A scaled table scrolls the row into view by its
+    // own map: the browser's scroll into view moves it by offset.
     let cursor_dom = current.cursor.as_ref().map(|c| format!("{id}-{c}"));
+    let focus_scroll = scroll_id.clone();
     use_effect(use_reactive!(|(cursor_dom,)| {
         if let Some(dom_id) = cursor_dom {
             if *focused.peek() {
-                dom::focus(&dom_id);
+                dom::focus(&dom_id, !scaled);
+                let row = dom::entry(&dom_id).zip(dom::scroll(&focus_scroll));
+                if let (true, Some((entry, scroll))) = (scaled, row) {
+                    let map = ScrollMap::new(total, row_height, scroll.visible);
+                    if let Some(top) = map.reveal(scroll.top, entry) {
+                        dom::scroll_to(&focus_scroll, top);
+                    }
+                }
             }
         }
     }));
+
+    // A scaled table windows by the scroller's offset and height: report both
+    // when either moved, or when the table moved the offset itself.
+    let sync_scroll = {
+        let scroll_id = scroll_id.clone();
+        let seen = current.viewport;
+        move || {
+            let Some(scroll) = dom::scroll(&scroll_id) else {
+                return;
+            };
+            if seen.seek || scroll.top != seen.top || scroll.visible != seen.visible {
+                act.call(TableEvent::Scroll {
+                    top: scroll.top,
+                    visible: scroll.visible,
+                });
+            }
+        }
+    };
 
     let on_key = {
         let data = data.clone();
@@ -386,6 +420,7 @@ pub fn DataTable(
                 .unwrap_or_default()
         };
         let snapshot = current.clone();
+        let sync_scroll = sync_scroll.clone();
         let scroll_id = scroll_id.clone();
         let copy = copy.clone();
         move |event: KeyboardEvent| {
@@ -466,6 +501,9 @@ pub fn DataTable(
                 _ => return,
             };
             event.prevent_default();
+            if scaled {
+                sync_scroll();
+            }
             let page = dom::scroll(&scroll_id)
                 .map(|s| {
                     ((s.visible / row_height).floor() as usize)
@@ -484,10 +522,14 @@ pub fn DataTable(
     // Mount the rows the scroll offset needs, when the window lacks them.
     let sync_window = {
         let scroll_id = scroll_id.clone();
-        let total = view.entries.len();
+        let sync_scroll = sync_scroll.clone();
         let now = current.mounted(total, true);
         move || {
             if !windowed || total == 0 {
+                return;
+            }
+            if scaled {
+                sync_scroll();
                 return;
             }
             let Some(scroll) = dom::scroll(&scroll_id) else {
@@ -511,24 +553,47 @@ pub fn DataTable(
     };
 
     // A view mode or density changes every row's height: keep the first row
-    // in view and mount what the new height needs.
+    // in view and mount what the new height needs. Crossing into or out of
+    // scaled scrolling changes what an offset means, so the window re-reads it.
     let last_height = use_hook(|| Rc::new(Cell::new(row_height)));
+    let was_scaled = use_hook(|| Rc::new(Cell::new(scaled)));
     let rescale_id = scroll_id.clone();
-    use_effect(use_reactive!(|(row_height,)| {
+    use_effect(use_reactive!(|(row_height, scaled)| {
         let before = last_height.replace(row_height);
+        let crossed = was_scaled.replace(scaled) != scaled;
         if windowed && before != row_height {
-            dom::rescale(&rescale_id, before, row_height);
+            if let Some(scroll) = dom::scroll(&rescale_id) {
+                let from = ScrollMap::new(total, before, scroll.visible);
+                let to = ScrollMap::new(total, row_height, scroll.visible);
+                dom::scroll_to(&rescale_id, from.rescaled(scroll.top, &to));
+            }
+        }
+        if windowed && (before != row_height || crossed) {
             sync_window();
         }
     }));
 
+    // A scaled table that moved its own offset (a key) has the scroller follow.
+    let seek = (windowed && current.viewport.seek).then_some(current.viewport.top);
+    let seek_id = scroll_id.clone();
+    use_effect(use_reactive!(|(seek,)| {
+        if let Some(top) = seek {
+            dom::scroll_to(&seek_id, top);
+        }
+    }));
+
     // A table narrower than NARROW_WIDTH folds its `narrow` columns, except
-    // the ones the user asked for by name; widening shows them again.
+    // the ones the user asked for by name; widening shows them again. A scaled
+    // table also re-reads the scroller's height, which its offsets map by.
     let on_resize = {
         let narrow = narrow.clone();
         let columns = columns.clone();
         let now = current.clone();
+        let sync_scroll = sync_scroll.clone();
         move |event: Event<ResizeData>| {
+            if scaled {
+                sync_scroll();
+            }
             let Ok(size) = event.get_border_box_size() else {
                 return;
             };
@@ -998,12 +1063,13 @@ pub fn DataTable(
                         }
                     }
                     tbody { id: "{id}-rows",
-                        if mounted.above > 0 {
+                        if mounted.above_px > 0.0 {
                             tr { class: "pk-dt-spacer", aria_hidden: "true",
-                                td { colspan: "{colspan}", style: "height: {mounted.above as f64 * row_height}px" }
+                                td { colspan: "{colspan}", style: "height: {mounted.above_px}px" }
                             }
                         }
                         for index in mounted.start..mounted.end {
+                            Fragment { key: "{entry_key(index)}",
                             match &view.entries[index] {
                                 Entry::Group { value, count, folded } => {
                                     let name = value.clone();
@@ -1121,10 +1187,11 @@ pub fn DataTable(
                                     }
                                 }
                             }
+                            }
                         }
-                        if mounted.below > 0 {
+                        if mounted.below_px > 0.0 {
                             tr { class: "pk-dt-spacer", aria_hidden: "true",
-                                td { colspan: "{colspan}", style: "height: {mounted.below as f64 * row_height}px" }
+                                td { colspan: "{colspan}", style: "height: {mounted.below_px}px" }
                             }
                         }
                     }

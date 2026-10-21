@@ -801,6 +801,133 @@ fn the_window_clamps_into_the_entries(
     assert_eq!((all.start, all.end, all.above, all.below), (0, total, 0, 0));
 }
 
+/// Fewest rows of 64-pixel detail cards that stand taller than a scroller lays out.
+const SCALED_ROWS: usize = 240_000;
+
+#[test]
+fn a_table_taller_than_the_scroll_cap_mounts_what_the_viewport_shows() {
+    let rows = rows(SCALED_ROWS);
+    let mut state = TableState {
+        view: ViewMode::DetailCards,
+        ..state()
+    };
+    let shown = view(&rows, &state);
+    let total = shown.entries.len();
+    let map = ScrollMap::new(total, 64.0, 600.0);
+    assert!(map.scaled());
+
+    // A window the client reported before does not matter: the viewport decides.
+    state.set_window(100_000, 80, None);
+    let reach = map.height() - 600.0;
+    for top in [0.0, 1_234_567.0, reach / 2.0, reach - 1.0, reach] {
+        let scroll = TableEvent::Scroll {
+            top,
+            visible: 600.0,
+        };
+        scroll.apply(&mut state, &columns(), &shown.view, &shown.data);
+        let m = state.mounted(total, true);
+        assert_eq!((m.start, m.end), map.window(top), "at {top}");
+        let rows_px = (m.end - m.start) as f64 * 64.0;
+        assert_eq!(m.above_px + rows_px + m.below_px, MAX_SCROLL, "at {top}");
+        assert_eq!((m.above, m.below), (m.start, total - m.end));
+    }
+    assert_eq!(state.mounted(total, true).end, total);
+    assert_eq!(state.mounted(total, true).below_px, 0.0);
+}
+
+#[test]
+fn a_table_that_fits_keeps_spacers_of_whole_rows_whatever_the_viewport() {
+    let mut state = state();
+    state.set_window(120, 40, None);
+    for top in [0.0, 2_000.0, 5_000.0] {
+        state.set_viewport(top, 600.0);
+        let m = state.mounted(200, true);
+        assert_eq!((m.above_px, m.below_px), (3_120.0, 1_040.0));
+    }
+}
+
+#[test]
+fn the_clients_viewport_keeps_what_is_a_length_and_zeroes_the_rest() {
+    let mut state = state();
+    state.set_viewport(1_500.0, 640.0);
+    assert_eq!(
+        state.viewport,
+        Viewport {
+            top: 1_500.0,
+            visible: 640.0,
+            seek: false
+        }
+    );
+    state.set_viewport(f64::NAN, -3.0);
+    assert_eq!(state.viewport, Viewport::default());
+}
+
+#[test]
+fn keys_in_a_scaled_table_scroll_the_viewport_to_the_cursor_row() {
+    let rows = rows(SCALED_ROWS);
+    let mut state = TableState {
+        view: ViewMode::DetailCards,
+        ..state()
+    };
+    let shown = view(&rows, &state);
+    let total = shown.entries.len();
+    let reach = MAX_SCROLL - 600.0;
+    let go = |state: &mut TableState, event: TableEvent| {
+        event.apply(state, &columns(), &shown.view, &shown.data)
+    };
+    go(
+        &mut state,
+        TableEvent::Scroll {
+            top: 0.0,
+            visible: 600.0,
+        },
+    );
+
+    go(&mut state, key(TableKey::Down));
+    assert_eq!(state.cursor.as_deref(), Some("imp-1"));
+    assert!(!state.viewport.seek, "the first row is already in view");
+
+    go(&mut state, key(TableKey::End));
+    assert_eq!(state.cursor.as_deref(), Some("imp-240000"));
+    assert_eq!((state.viewport.top, state.viewport.seek), (reach, true));
+    let m = state.mounted(total, true);
+    assert_eq!((m.end, m.below_px), (total, 0.0), "the last row is mounted");
+
+    // The client scrolls there and reports it: the request is settled.
+    go(
+        &mut state,
+        TableEvent::Scroll {
+            top: reach,
+            visible: 600.0,
+        },
+    );
+    assert!(!state.viewport.seek);
+
+    go(&mut state, key(TableKey::Up));
+    assert_eq!(state.cursor.as_deref(), Some("imp-239999"));
+    assert!(!state.viewport.seek, "the row above is in view too");
+
+    go(&mut state, key(TableKey::Home));
+    assert_eq!(state.cursor.as_deref(), Some("imp-1"));
+    assert_eq!((state.viewport.top, state.viewport.seek), (0.0, true));
+    assert_eq!(state.mounted(total, true).start, 0);
+
+    // A page down lands the row at the viewport's bottom edge.
+    go(
+        &mut state,
+        TableEvent::Scroll {
+            top: 0.0,
+            visible: 600.0,
+        },
+    );
+    go(&mut state, page(TableKey::PageDown, 40));
+    assert_eq!(state.cursor.as_deref(), Some("imp-41"));
+    let map = ScrollMap::new(total, 64.0, 600.0);
+    let shown_at = map.offset(state.viewport.top);
+    let bottom = 41.0 * 64.0;
+    assert!(state.viewport.seek && shown_at + 600.0 >= bottom && shown_at + 600.0 < bottom + 8.0);
+}
+
 // -- column layout ------------------------------------------------------------
 
 #[test]
@@ -984,6 +1111,10 @@ fn the_persisted_payload_is_the_column_layout_and_the_query_as_json() {
             count: 10,
             row_height: None,
         },
+        TableEvent::Scroll {
+            top: 40.0,
+            visible: 600.0,
+        },
     ] {
         apply(&mut state, &rows, event);
     }
@@ -1011,6 +1142,7 @@ fn the_persisted_payload_is_the_column_layout_and_the_query_as_json() {
     assert_eq!(restored.persisted(), state.persisted());
     assert!(restored.selection.is_empty());
     assert_eq!(restored.window.start, 0);
+    assert_eq!(restored.viewport, Viewport::default());
 }
 
 #[test]
@@ -1604,6 +1736,7 @@ fn the_persisted_payload_carries_no_tag_state_so_a_shared_link_wins() {
 #[case::cursor(TableEvent::Cursor("a".into()), false)]
 #[case::key(key(TableKey::Down), false)]
 #[case::window(TableEvent::Window { start: 0, count: 10, row_height: None }, false)]
+#[case::scroll(TableEvent::Scroll { top: 10.0, visible: 600.0 }, false)]
 #[case::tag(TableEvent::Tag { tag: "raft".into(), all: false }, false)]
 #[case::fold(TableEvent::ToggleGroup("open".into()), false)]
 #[case::sort(sort("id", false), true)]

@@ -14,6 +14,7 @@ use serde::Serialize;
 
 use super::column::{DataColumnSpec, SortDir, SortSpec};
 use super::data::TableData;
+use super::scroll::{clean, ScrollMap};
 use super::stored::{Field, StoredFilter, StoredTable};
 use super::tags::{canonical_tag, TagMode};
 use super::view::View;
@@ -153,6 +154,17 @@ impl Default for TableWindow {
             row_height: None,
         }
     }
+}
+
+/// What the client's scroller shows, which a scaled table windows by.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Viewport {
+    /// Pixels scrolled.
+    pub top: f64,
+    /// Height of the rows' area under the header.
+    pub visible: f64,
+    /// `top` was set by the table, not reported by the client: the client scrolls to it.
+    pub seek: bool,
 }
 
 /// One column's filter; the column's kind decides which.
@@ -323,6 +335,8 @@ pub struct TableState {
     pub cursor: Option<String>,
     /// Where the cursor and anchor last rendered. Never trusted unchecked.
     pub pos: PositionHint,
+    /// What the client's scroller shows.
+    pub viewport: Viewport,
     /// The mounted window.
     pub window: TableWindow,
     /// The tag filter.
@@ -387,6 +401,7 @@ impl TableState {
             anchor: None,
             cursor: None,
             pos: PositionHint::default(),
+            viewport: Viewport::default(),
             window: TableWindow::default(),
             tag_filter: BTreeSet::new(),
             tag_mode: TagMode::Any,
@@ -720,14 +735,23 @@ impl TableState {
                     }
                     self.select(&id, SelectMode::Range, view, data);
                 }
-                self.follow(view.row_entries[to]);
+                self.follow(view.row_entries[to], view.entries.len());
             }
         }
     }
 
     /// A cursor that left the mounted window moves the window with it, so the
-    /// row exists to focus. `at` is the cursor's entry index.
-    fn follow(&mut self, at: usize) {
+    /// row exists to focus; a scaled table scrolls the least that shows it.
+    /// `at` is the cursor's entry index among `total`.
+    fn follow(&mut self, at: usize, total: usize) {
+        let map = self.scroll_map(total);
+        if map.scaled() {
+            if let Some(top) = map.reveal(self.viewport.top, at) {
+                self.viewport.top = top;
+                self.viewport.seek = true;
+            }
+            return;
+        }
         let TableWindow { start, count, .. } = self.window;
         let edge = OVERSCAN.min(count / 4);
         if at < start + edge || at >= (start + count).saturating_sub(edge) {
@@ -747,9 +771,28 @@ impl TableState {
         };
     }
 
+    /// The client's scroller: pixels scrolled and the height of the rows'
+    /// area. A value that is not a length counts as 0.
+    pub fn set_viewport(&mut self, top: f64, visible: f64) {
+        self.viewport = Viewport {
+            top: clean(top),
+            visible: clean(visible),
+            seek: false,
+        };
+    }
+
+    /// The scroll map of `total` entries at the row height and viewport now.
+    fn scroll_map(&self, total: usize) -> ScrollMap {
+        ScrollMap::new(
+            total,
+            self.view.row_height(self.density),
+            self.viewport.visible,
+        )
+    }
+
     /// Which of `total` entries the body mounts. Unwindowed, all of them;
-    /// windowed, the window's slice clamped into range, with the entries above
-    /// and below it left to spacers.
+    /// windowed, the window's slice clamped into range (a scaled table's is
+    /// the viewport's), with the entries above and below it left to spacers.
     pub fn mounted(&self, total: usize, windowed: bool) -> Mounted {
         if !windowed {
             return Mounted {
@@ -757,16 +800,26 @@ impl TableState {
                 end: total,
                 above: 0,
                 below: 0,
+                above_px: 0.0,
+                below_px: 0.0,
             };
         }
-        let count = self.window.count;
-        let start = self.window.start.min(total.saturating_sub(count));
-        let end = (start + count).min(total);
+        let map = self.scroll_map(total);
+        let (start, end) = if map.scaled() {
+            map.window(self.viewport.top)
+        } else {
+            let count = self.window.count;
+            let start = self.window.start.min(total.saturating_sub(count));
+            (start, (start + count).min(total))
+        };
+        let (above_px, below_px) = map.spacers(self.viewport.top, start, end);
         Mounted {
             start,
             end,
             above: start,
             below: total - end,
+            above_px,
+            below_px,
         }
     }
 
@@ -931,16 +984,20 @@ impl TableState {
 }
 
 /// The entries a body mounts and the spacer rows around them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Mounted {
     /// First mounted entry.
     pub start: usize,
     /// One past the last mounted entry.
     pub end: usize,
-    /// Entries above the window (the top spacer is this many rows tall).
+    /// Entries above the window.
     pub above: usize,
     /// Entries below the window.
     pub below: usize,
+    /// Height of the top spacer, in pixels.
+    pub above_px: f64,
+    /// Height of the bottom spacer, in pixels.
+    pub below_px: f64,
 }
 
 /// The durable state a host keeps per table, JSON-shaped: sort pairs are
@@ -1032,6 +1089,13 @@ pub enum TableEvent {
         /// Measured row height.
         row_height: Option<f64>,
     },
+    /// The client's scroller, reported on each scroll of a scaled table.
+    Scroll {
+        /// Pixels scrolled.
+        top: f64,
+        /// Height of the rows' area under the header.
+        visible: f64,
+    },
     /// A tag toggled in the filter; `all` when shift was held.
     Tag {
         /// The tag.
@@ -1085,6 +1149,7 @@ impl TableEvent {
                 count,
                 row_height,
             } => state.set_window(*start, *count, *row_height),
+            TableEvent::Scroll { top, visible } => state.set_viewport(*top, *visible),
             TableEvent::Tag { tag, all } => state.toggle_tag(tag, *all),
             TableEvent::TagMode(mode) => state.tag_mode = *mode,
             TableEvent::ClearTags => state.clear_tags(),
@@ -1104,6 +1169,7 @@ impl TableEvent {
                 | TableEvent::Cursor(_)
                 | TableEvent::Key { .. }
                 | TableEvent::Window { .. }
+                | TableEvent::Scroll { .. }
                 | TableEvent::Tag { .. }
                 | TableEvent::TagMode(_)
                 | TableEvent::ClearTags

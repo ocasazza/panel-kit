@@ -714,6 +714,8 @@ button { font-family:var(--mono); }
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  /* The window's spacers resize under the offset; anchoring would scroll for them. */
+  overflow-anchor: none;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--line) var(--bg);
