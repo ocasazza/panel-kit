@@ -1946,6 +1946,33 @@ mod tests {
                 prop_assert_eq!(&fresh, &reused, "after {:?}", event);
             }
         }
+
+        /// Only selection, select-all, keys and a replacement read the rows: any
+        /// other event does the same over any view and any data.
+        #[test]
+        fn events_that_read_no_rows_ignore_the_view_and_the_data(
+            rows in 1usize..12,
+            before in prop::collection::vec(event(), 0..12),
+            event in event(),
+        ) {
+            prop_assume!(!matches!(
+                event,
+                TableEvent::Select { .. }
+                    | TableEvent::SelectAll
+                    | TableEvent::Key { .. }
+                    | TableEvent::RowsReplaced
+            ));
+            let data = law_data(&(0..rows).collect::<Vec<_>>());
+            let mut seeing = law_state();
+            for earlier in &before {
+                run(earlier, &mut seeing, &data);
+            }
+            let mut blind = seeing.clone();
+            let view = View::build(&law_columns(), &data, &seeing, BuildOptions::default());
+            event.apply(&mut seeing, &law_columns(), &view, &data);
+            event.apply(&mut blind, &law_columns(), &View::default(), &law_data(&[]));
+            prop_assert_eq!(&seeing, &blind, "{:?}", event);
+        }
     }
 
     /// One of each event, each with a parameter that changes something.
