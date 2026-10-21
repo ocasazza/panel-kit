@@ -554,12 +554,17 @@ pub fn DataTable(
     }));
 
     // A table narrower than NARROW_WIDTH folds its `narrow` columns, except
-    // the ones the user asked for by name; widening shows them again.
+    // the ones the user asked for by name; widening shows them again. A scaled
+    // table also re-reads the scroller's height, which its offsets map by.
     let on_resize = {
         let narrow = narrow.clone();
         let columns = columns.clone();
         let now = current.clone();
+        let sync_scroll = sync_scroll.clone();
         move |event: Event<ResizeData>| {
+            if scaled {
+                sync_scroll();
+            }
             let Ok(size) = event.get_border_box_size() else {
                 return;
             };

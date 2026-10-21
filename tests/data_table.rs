@@ -557,9 +557,7 @@ fn a_measured_height_from_a_host_state_does_not_move_the_spacers() {
 #[rstest]
 #[case::the_middle(0.5)]
 #[case::the_end(1.0)]
-fn a_million_detail_cards_lay_out_inside_the_scroll_cap_at_the_offsets_cards(
-    #[case] at: f64,
-) {
+fn a_million_detail_cards_lay_out_inside_the_scroll_cap_at_the_offsets_cards(#[case] at: f64) {
     const TOTAL: usize = 1_000_000;
     const VISIBLE: f64 = 600.0;
     let map = ScrollMap::new(TOTAL, 64.0, VISIBLE);

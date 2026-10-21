@@ -44,7 +44,11 @@ pub(super) fn clean(pixels: f64) -> f64 {
 impl ScrollMap {
     /// The map for `entries` of `row` pixels in a scroller showing `visible` pixels.
     pub fn new(entries: usize, row: f64, visible: f64) -> ScrollMap {
-        let row = if row.is_finite() && row > 0.0 { row } else { 1.0 };
+        let row = if row.is_finite() && row > 0.0 {
+            row
+        } else {
+            1.0
+        };
         let content = entries as f64 * row;
         let capped = content > MAX_SCROLL;
         let visible = clean(visible).min(content.min(MAX_SCROLL) / 2.0);
@@ -268,7 +272,10 @@ mod tests {
 
         let top = reach(&map);
         let (start, end) = map.window(top);
-        assert_eq!(end, 1_003_805, "the last entry is mounted at the last offset");
+        assert_eq!(
+            end, 1_003_805,
+            "the last entry is mounted at the last offset"
+        );
         let (above, below) = map.spacers(top, start, end);
         assert_eq!(below, 0.0);
         assert_eq!(above + (end - start) as f64 * 64.0, MAX_SCROLL);
@@ -283,7 +290,10 @@ mod tests {
     fn the_middle_of_the_scroll_range_is_the_middle_of_the_entries() {
         let map = detail();
         let first = map.first(reach(&map) / 2.0);
-        assert!(first.abs_diff(1_003_805 / 2) < 100, "middle showed entry {first}");
+        assert!(
+            first.abs_diff(1_003_805 / 2) < 100,
+            "middle showed entry {first}"
+        );
     }
 
     /// Where the rows above (or below) the viewport can hold no more than the pixels
@@ -376,7 +386,10 @@ mod tests {
         let kept = rows.rescaled(top, &detail);
         let before = rows.offset(top) / 26.0;
         let after = detail.offset(kept) / 64.0;
-        assert!((before - after).abs() < 1.0, "{before} entries became {after}");
+        assert!(
+            (before - after).abs() < 1.0,
+            "{before} entries became {after}"
+        );
         let back = detail.rescaled(kept, &rows);
         assert!((back - top).abs() < 2.0 * detail.ratio());
     }

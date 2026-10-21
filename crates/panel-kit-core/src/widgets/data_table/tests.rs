@@ -820,7 +820,10 @@ fn a_table_taller_than_the_scroll_cap_mounts_what_the_viewport_shows() {
     state.set_window(100_000, 80, None);
     let reach = map.height() - 600.0;
     for top in [0.0, 1_234_567.0, reach / 2.0, reach - 1.0, reach] {
-        let scroll = TableEvent::Scroll { top, visible: 600.0 };
+        let scroll = TableEvent::Scroll {
+            top,
+            visible: 600.0,
+        };
         scroll.apply(&mut state, &columns(), &shown.view, &shown.data);
         let m = state.mounted(total, true);
         assert_eq!((m.start, m.end), map.window(top), "at {top}");
@@ -849,7 +852,11 @@ fn the_clients_viewport_keeps_what_is_a_length_and_zeroes_the_rest() {
     state.set_viewport(1_500.0, 640.0);
     assert_eq!(
         state.viewport,
-        Viewport { top: 1_500.0, visible: 640.0, seek: false }
+        Viewport {
+            top: 1_500.0,
+            visible: 640.0,
+            seek: false
+        }
     );
     state.set_viewport(f64::NAN, -3.0);
     assert_eq!(state.viewport, Viewport::default());
@@ -868,7 +875,13 @@ fn keys_in_a_scaled_table_scroll_the_viewport_to_the_cursor_row() {
     let go = |state: &mut TableState, event: TableEvent| {
         event.apply(state, &columns(), &shown.view, &shown.data)
     };
-    go(&mut state, TableEvent::Scroll { top: 0.0, visible: 600.0 });
+    go(
+        &mut state,
+        TableEvent::Scroll {
+            top: 0.0,
+            visible: 600.0,
+        },
+    );
 
     go(&mut state, key(TableKey::Down));
     assert_eq!(state.cursor.as_deref(), Some("imp-1"));
@@ -881,7 +894,13 @@ fn keys_in_a_scaled_table_scroll_the_viewport_to_the_cursor_row() {
     assert_eq!((m.end, m.below_px), (total, 0.0), "the last row is mounted");
 
     // The client scrolls there and reports it: the request is settled.
-    go(&mut state, TableEvent::Scroll { top: reach, visible: 600.0 });
+    go(
+        &mut state,
+        TableEvent::Scroll {
+            top: reach,
+            visible: 600.0,
+        },
+    );
     assert!(!state.viewport.seek);
 
     go(&mut state, key(TableKey::Up));
@@ -894,7 +913,13 @@ fn keys_in_a_scaled_table_scroll_the_viewport_to_the_cursor_row() {
     assert_eq!(state.mounted(total, true).start, 0);
 
     // A page down lands the row at the viewport's bottom edge.
-    go(&mut state, TableEvent::Scroll { top: 0.0, visible: 600.0 });
+    go(
+        &mut state,
+        TableEvent::Scroll {
+            top: 0.0,
+            visible: 600.0,
+        },
+    );
     go(&mut state, page(TableKey::PageDown, 40));
     assert_eq!(state.cursor.as_deref(), Some("imp-41"));
     let map = ScrollMap::new(total, 64.0, 600.0);
