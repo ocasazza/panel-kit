@@ -4,6 +4,7 @@
 //! [`Lane`], [`Edge`], [`SessionTree`] and [`Micros`]. [`Tone`] is the one dot
 //! colour class and lives with the legend in [`query`].
 
+pub mod facts;
 pub mod model;
 pub mod query;
 pub mod rails;
