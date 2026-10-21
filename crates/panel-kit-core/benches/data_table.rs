@@ -29,12 +29,11 @@ fn columns() -> Vec<DataColumnSpec> {
     ]
 }
 
-fn data(count: usize) -> TableData {
-    let columns = columns();
-    let mut builder = TableDataBuilder::with_capacity(&columns, count);
+/// Rows `range` of the benchmark table's shape.
+fn push_rows(builder: &mut TableDataBuilder, range: std::ops::Range<usize>) {
     let mut id = String::new();
     let mut title = String::new();
-    for n in 0..count {
+    for n in range {
         use std::fmt::Write;
         id.clear();
         title.clear();
@@ -58,6 +57,27 @@ fn data(count: usize) -> TableData {
                 ],
             )
             .tags(TAGS[n % TAGS.len()]);
+    }
+}
+
+fn data(count: usize) -> TableData {
+    let mut builder = TableDataBuilder::with_capacity(&columns(), count);
+    push_rows(&mut builder, 0..count);
+    builder.build()
+}
+
+/// Unique titles sharing a long prefix, in an order unrelated to their sort
+/// order (7_919 is prime, so `n * 7_919 % count` visits every number once).
+fn shared_prefix(count: usize) -> TableData {
+    let mut builder = TableDataBuilder::with_capacity(&columns(), count);
+    for n in 0..count {
+        let m = n * 7_919 % count;
+        let id = format!("imp-{n}");
+        let title = format!(
+            "Trace the ingest path through shard {m:07} replica {}",
+            m % 3
+        );
+        builder.row(&id, [Value::Text(&id), Value::Text(&title)]);
     }
     builder.build()
 }
@@ -281,6 +301,48 @@ fn group_unique(c: &mut Criterion) {
     group.finish();
 }
 
+/// Appending to a million rows costs the rows added (plus carrying the title
+/// ranks), not the rows held.
+fn append(c: &mut Criterion) {
+    let mut group = c.benchmark_group("append");
+    group.sample_size(10);
+    let held = 1_000_000;
+    let base = data(held);
+    base.warm(1);
+    for count in [1_000, 100_000] {
+        group.bench_function(BenchmarkId::new("rows", count), |b| {
+            b.iter(|| base.append(|builder| push_rows(builder, held..held + count)))
+        });
+        group.bench_function(BenchmarkId::new("rows_and_title_ranks", count), |b| {
+            b.iter(|| {
+                let next = base.append(|builder| push_rows(builder, held..held + count));
+                next.warm(1);
+                next
+            })
+        });
+    }
+    group.finish();
+}
+
+/// The first rank of a column whose strings share long prefixes.
+fn cold_rank(c: &mut Criterion) {
+    let mut group = c.benchmark_group("rank");
+    group.sample_size(10);
+    for count in [100_000, 1_000_000] {
+        group.bench_function(BenchmarkId::new("cold_shared_prefix", count), |b| {
+            b.iter_batched(
+                || shared_prefix(count),
+                |fresh| {
+                    fresh.warm(1);
+                    fresh
+                },
+                BatchSize::LargeInput,
+            )
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     load,
@@ -288,6 +350,8 @@ criterion_group!(
     state_ops,
     refine,
     unicode_quick,
-    group_unique
+    group_unique,
+    append,
+    cold_rank
 );
 criterion_main!(benches);

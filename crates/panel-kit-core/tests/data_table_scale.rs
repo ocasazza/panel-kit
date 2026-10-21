@@ -1,8 +1,10 @@
 //! A million rows inside fixed budgets, each about four times its release
-//! timing on an M-series laptop: tight enough that losing the packed sort keys
-//! or the rank cache fails, loose enough for a slower builder. Debug builds
-//! skip it; run with `cargo test --release -p panel-kit-core --test data_table_scale`.
+//! timing on an M-series laptop: tight enough that losing the packed sort keys,
+//! the rank cache, the prefix refinement or the append's chunk sharing fails,
+//! loose enough for a slower builder. Debug builds skip it; run with
+//! `cargo test --release -p panel-kit-core --test data_table_scale`.
 
+use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use panel_kit_core::widgets::data_table::{
@@ -30,10 +32,9 @@ fn columns() -> Vec<DataColumnSpec> {
     ]
 }
 
-fn data() -> TableData {
-    let columns = columns();
-    let mut builder = TableDataBuilder::with_capacity(&columns, ROWS);
-    for n in 0..ROWS {
+/// Rows `range` of the table's shape.
+fn push_rows(builder: &mut TableDataBuilder, range: Range<usize>) {
+    for n in range {
         let id = format!("imp-{n}");
         let title = format!("Trace the ingest path {} end to end", n % 977);
         builder
@@ -47,6 +48,31 @@ fn data() -> TableData {
                 ],
             )
             .tags(TAGS[n % TAGS.len()]);
+    }
+}
+
+fn data_of(rows: usize) -> TableData {
+    let mut builder = TableDataBuilder::with_capacity(&columns(), rows);
+    push_rows(&mut builder, 0..rows);
+    builder.build()
+}
+
+fn data() -> TableData {
+    data_of(ROWS)
+}
+
+/// Unique titles sharing a 36-byte prefix, in an order unrelated to their sort
+/// order (7_919 is prime, so `n * 7_919 % ROWS` visits every number once).
+fn shared_prefix_data() -> TableData {
+    let mut builder = TableDataBuilder::with_capacity(&columns(), ROWS);
+    for n in 0..ROWS {
+        let m = n * 7_919 % ROWS;
+        let id = format!("imp-{n}");
+        let title = format!(
+            "Trace the ingest path through shard {m:07} replica {}",
+            m % 3
+        );
+        builder.row(&id, [Value::Text(&id), Value::Text(&title)]);
     }
     builder.build()
 }
@@ -113,4 +139,62 @@ fn a_million_rows_load_sort_filter_and_group_inside_their_budgets() {
         grouped.entries.len() > grouped.rows.len(),
         "groups head the rows"
     );
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "timed: run with --release")]
+fn appending_a_thousand_rows_to_a_million_costs_the_rows_added_not_the_rows_held() {
+    let ms = Duration::from_millis;
+    let columns = columns();
+    let data = data();
+    eprintln!("memory held by 1M rows: {} bytes", data.memory_bytes());
+    data.warm(1);
+    eprintln!("memory with the title ranks: {} bytes", data.memory_bytes());
+
+    let appended = timed(Duration::from_millis(2), "appending 1k rows to 1M", || {
+        data.append(|builder| push_rows(builder, ROWS..ROWS + 1_000))
+    });
+    timed(
+        ms(5),
+        "carrying the title ranks over the 1k appended rows",
+        || appended.warm(1),
+    );
+
+    assert_eq!((data.len(), appended.len()), (ROWS, ROWS + 1_000));
+    assert!(appended.extends(&data) && !data.extends(&appended));
+    let by_title = TableState {
+        sort: vec![SortSpec::new("title", SortDir::Asc)],
+        ..TableState::new(&columns, TableDefaults::default())
+    };
+    let view = |data: &TableData| View::build(&columns, data, &by_title, BuildOptions::default());
+    let (carried, rebuilt) = (view(&appended), view(&data_of(ROWS + 1_000)));
+    assert_eq!(
+        carried.rows, rebuilt.rows,
+        "carried ranks order the rows as a table built at once does"
+    );
+    assert_eq!(view(&data).total, ROWS, "the earlier table keeps its rows");
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "timed: run with --release")]
+fn a_million_unique_titles_sharing_a_long_prefix_rank_inside_their_budget() {
+    let ms = Duration::from_millis;
+    let columns = columns();
+    let data = shared_prefix_data();
+    timed(ms(200), "the first rank of 1M shared-prefix titles", || {
+        data.warm(1)
+    });
+
+    let by_title = TableState {
+        sort: vec![SortSpec::new("title", SortDir::Asc)],
+        ..TableState::new(&columns, TableDefaults::default())
+    };
+    let view = View::build(&columns, &data, &by_title, BuildOptions::default());
+    for (place, &row) in view.rows.iter().enumerate() {
+        assert_eq!(
+            row * 7_919 % ROWS,
+            place,
+            "the title at place {place} is shard {place}"
+        );
+    }
 }
