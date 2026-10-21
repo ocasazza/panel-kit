@@ -1180,3 +1180,300 @@ fn edit_decode_rejects_unknown_keys_and_validation_rejects_max_zero() {
         assert!(matches!(table_topos(table, &edits).validate(), Err(ToposError::InvalidEdit { .. })), "{ty}");
     }
 }
+
+// --- Incremental append ----------------------------------------------------
+
+use proptest::prelude::*;
+
+use crate::Limits;
+
+/// One generated line of the trace-lines format; node ids are `n0, n1, ...` in order of appearance.
+#[derive(Clone, Debug)]
+enum Op {
+    Node { title: String, kind: usize, tags: Vec<String>, props: BTreeMap<String, String> },
+    /// An edge between two nodes written earlier.
+    Edge { from: usize, to: usize, kind: String },
+    /// A node reusing an earlier id.
+    Reuse { of: usize },
+    /// An edge into a node written up to two lines later, if any is.
+    Ahead { from: usize, by: usize, kind: String },
+    /// A line the grammar rejects, or a record it refuses.
+    Junk(usize),
+}
+
+const KINDS: [&str; 4] = ["planner", "coder", "reviewer", "memory"];
+const JUNK: [&str; 8] = ["N|broken", "E|n0", "X|y|z", "", "N|n0|T|k||k=v;k=w", "N||T|k||", "E||n0|k", "N|n1|T||"];
+
+fn op() -> impl Strategy<Value = Op> {
+    let text = "[a-zA-Z0-9 ._é-]{1,8}";
+    prop_oneof![
+        8 => (text, 0..KINDS.len(), prop::collection::vec("[a-z0-9]{1,5}", 0..3), prop::collection::btree_map("[a-z]{1,4}", "[a-zA-Z0-9 ._é-]{1,6}", 0..3))
+            .prop_map(|(title, kind, tags, props)| Op::Node { title, kind, tags, props }),
+        4 => (any::<usize>(), any::<usize>(), "[a-z]{1,8}").prop_map(|(from, to, kind)| Op::Edge { from, to, kind }),
+        1 => any::<usize>().prop_map(|of| Op::Reuse { of }),
+        1 => (any::<usize>(), 1..3usize, "[a-z]{1,8}").prop_map(|(from, by, kind)| Op::Ahead { from, by, kind }),
+        1 => (0..JUNK.len()).prop_map(Op::Junk),
+    ]
+}
+
+fn node_line(id: usize, title: &str, kind: &str, tags: &[String], props: &BTreeMap<String, String>) -> String {
+    let props: Vec<String> = props.iter().map(|(key, value)| format!("{key}={value}")).collect();
+    format!("N|n{id}|{title}|{kind}|{}|{}", tags.join(","), props.join(";"))
+}
+
+/// The line of each op. Ops before `valid_until` are made valid: one the grammar would reject, or
+/// that clashes with an earlier line, is written as a fresh node instead.
+fn lines_of(ops: &[Op], valid_until: usize) -> Vec<String> {
+    let mut nodes = 0;
+    let mut lines = Vec::new();
+    for (at, op) in ops.iter().enumerate() {
+        let strict = at < valid_until;
+        let line = match op {
+            Op::Edge { from, to, kind } if nodes > 0 => format!("E|n{}|n{}|{kind}", from % nodes, to % nodes),
+            Op::Reuse { of } if nodes > 0 && !strict => node_line(of % nodes, "R", KINDS[0], &[], &BTreeMap::new()),
+            Op::Ahead { from, by, kind } if nodes > 0 && !strict => format!("E|n{}|n{}|{kind}", from % nodes, nodes + by - 1),
+            Op::Junk(which) if !strict => JUNK[*which].to_owned(),
+            Op::Node { title, kind, tags, props } => {
+                nodes += 1;
+                node_line(nodes - 1, title, KINDS[*kind], tags, props)
+            }
+            _ => {
+                nodes += 1;
+                node_line(nodes - 1, "T", KINDS[1], &[], &BTreeMap::new())
+            }
+        };
+        lines.push(line);
+    }
+    lines
+}
+
+fn text_of(lines: &[String], newline: &str, terminated: bool) -> String {
+    let mut text = lines.join(newline);
+    if terminated && !lines.is_empty() {
+        text.push_str(newline);
+    }
+    text
+}
+
+/// `suffix` on a new line after `prefix`: the text `parse_append` stands for.
+fn appended(prefix: &str, suffix: &str) -> String {
+    if suffix.is_empty() {
+        return prefix.to_owned();
+    }
+    let separator = if prefix.is_empty() || prefix.ends_with('\n') { "" } else { "\n" };
+    format!("{prefix}{separator}{suffix}")
+}
+
+/// The records `extension` adds, behind the objects and morphisms of `site`.
+fn extended(site: &Site, added: &crate::pest_engine::Mapped) -> Site {
+    Site {
+        objects: site.objects.iter().chain(&added.nodes).cloned().collect(),
+        morphisms: site.morphisms.iter().chain(&added.edges).cloned().collect(),
+    }
+}
+
+#[test]
+fn appending_lines_is_parsing_the_whole_text() {
+    let grammar = lines_grammar();
+    proptest!(ProptestConfig::with_cases(768), |(
+        ops in prop::collection::vec(op(), 0..14),
+        cut in any::<prop::sample::Index>(),
+        prefix_terminated in any::<bool>(),
+        suffix_terminated in any::<bool>(),
+        crlf in any::<bool>(),
+    )| {
+        let split = cut.index(ops.len() + 1);
+        let lines = lines_of(&ops, split);
+        let newline = if crlf { "\r\n" } else { "\n" };
+        let prefix = text_of(&lines[..split], newline, prefix_terminated);
+        let suffix = text_of(&lines[split..], newline, suffix_terminated);
+        let before = grammar.parse(&prefix).expect("the prefix is valid by construction");
+        let whole = grammar.parse(&appended(&prefix, &suffix));
+
+        let mut site = before.clone();
+        let outcome = grammar.parse_append(&mut site, &prefix, &suffix);
+        match &whole {
+            Ok(whole) => {
+                prop_assert_eq!(outcome, Ok(()));
+                prop_assert_eq!(&site, whole);
+            }
+            Err(error) => {
+                prop_assert_eq!(outcome, Err(error.clone()));
+                prop_assert_eq!(&site, &before);
+            }
+        }
+
+        let apart = grammar.extension(&before, &suffix);
+        match &whole {
+            Ok(whole) if !suffix.is_empty() => {
+                let added = apart.ok_or_else(|| TestCaseError::fail("a valid suffix was not parsed apart"))?;
+                prop_assert_eq!(&extended(&before, &added), whole);
+            }
+            Err(_) => prop_assert!(apart.is_none(), "an invalid suffix was parsed apart"),
+            Ok(_) => {}
+        }
+    });
+}
+
+#[test]
+fn appending_lines_one_at_a_time_is_parsing_at_once() {
+    let grammar = lines_grammar();
+    proptest!(|(ops in prop::collection::vec(op(), 0..24))| {
+        let mut source = String::new();
+        let mut site = grammar.parse("").unwrap();
+        for line in lines_of(&ops, ops.len()) {
+            prop_assert!(grammar.extension(&site, &line).is_some(), "'{line}' was not parsed apart");
+            prop_assert_eq!(grammar.parse_append(&mut site, &source, &line), Ok(()));
+            if !source.is_empty() && !source.ends_with('\n') {
+                source.push('\n');
+            }
+            source.push_str(&line);
+            prop_assert_eq!(&site, &grammar.parse(&source).unwrap());
+        }
+    });
+}
+
+#[test]
+fn an_appended_edge_may_join_objects_of_the_prefix_and_of_its_own_lines() {
+    let grammar = lines_grammar();
+    let prefix = "N|a|A|coder||\nN|b|B|coder||\n";
+    let suffix = "E|a|c|shares\nN|c|C|coder||\nE|c|b|shares";
+    let mut site = grammar.parse(prefix).unwrap();
+    assert!(grammar.extension(&site, suffix).is_some(), "the edges are parsed apart from the prefix");
+    grammar.parse_append(&mut site, prefix, suffix).unwrap();
+    assert_eq!(site, grammar.parse(&format!("{prefix}{suffix}")).unwrap());
+    assert_eq!((site.objects.len(), site.morphisms.len()), (3, 2));
+}
+
+#[test]
+fn a_suffix_the_whole_text_would_refuse_is_refused_and_leaves_the_site() {
+    let grammar = lines_grammar();
+    let prefix = "N|a|A|coder||\n";
+    let refused = [
+        ("N|a|Again|coder||", GrammarError::DuplicateNodeId("a".to_owned())),
+        ("E|a|ghost|shares", GrammarError::DanglingEdge { source: "a".to_owned(), target: "ghost".to_owned(), missing: "target" }),
+        ("N|b|B|coder||\nE|b|nowhere|shares", GrammarError::DanglingEdge { source: "b".to_owned(), target: "nowhere".to_owned(), missing: "target" }),
+    ];
+    for (suffix, error) in refused {
+        let before = grammar.parse(prefix).unwrap();
+        let mut site = before.clone();
+        assert_eq!(grammar.parse(&format!("{prefix}{suffix}")), Err(error.clone()), "{suffix}");
+        assert_eq!(grammar.parse_append(&mut site, prefix, suffix), Err(error), "{suffix}");
+        assert_eq!(site, before, "{suffix}");
+        assert!(grammar.extension(&before, suffix).is_none(), "{suffix}");
+    }
+}
+
+#[test]
+fn appending_counts_the_records_already_held_against_the_limits() {
+    let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+    package.limits.nodes = 3;
+    package.limits.edges = 1;
+    let grammar = package.compile().unwrap();
+    let prefix = "N|a|A|k||\nN|b|B|k||\nE|a|b|k\n";
+    let site = grammar.parse(prefix).unwrap();
+    assert!(grammar.extension(&site, "N|c|C|k||").is_some(), "a third node is at the limit");
+    for (suffix, kind, actual, max) in [("N|c|C|k||\nN|d|D|k||", "nodes", 4, 3), ("E|b|a|k", "edges", 2, 1)] {
+        let error = GrammarError::RecordLimit { kind, actual, max };
+        let mut grown = site.clone();
+        assert_eq!(grammar.parse(&format!("{prefix}{suffix}")), Err(error.clone()), "{suffix}");
+        assert_eq!(grammar.parse_append(&mut grown, prefix, suffix), Err(error), "{suffix}");
+        assert_eq!(grown, site, "{suffix}");
+    }
+}
+
+#[test]
+fn appending_counts_the_whole_input_against_the_input_limit() {
+    // 19 bytes whole: the separator counts when the prefix has no final newline.
+    for prefix in ["N|a|A|k||\n", "N|a|A|k||"] {
+        let suffix = "N|b|B|k||";
+        let whole = appended(prefix, suffix);
+        let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+        package.limits.input_bytes = whole.len();
+        let grammar = package.compile().unwrap();
+        let site = grammar.parse(prefix).unwrap();
+        let mut grown = site.clone();
+        assert_eq!(grammar.parse_append(&mut grown, prefix, suffix), Ok(()), "{prefix:?} fits exactly");
+        assert_eq!(grown, grammar.parse(&whole).unwrap());
+
+        package.limits.input_bytes = whole.len() - 1;
+        let grammar = package.compile().unwrap();
+        let mut grown = site.clone();
+        let error = GrammarError::InputTooLarge { actual: whole.len(), max: whole.len() - 1 };
+        assert_eq!(grammar.parse(&whole), Err(error.clone()));
+        assert_eq!(grammar.parse_append(&mut grown, prefix, suffix), Err(error), "{prefix:?} is one byte over");
+        assert_eq!(grown, site);
+    }
+}
+
+#[test]
+fn a_grammar_that_does_not_declare_line_records_is_parsed_whole() {
+    let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+    let ParserSpec::Pest(spec) = &mut package.parser else { unreachable!("trace-lines is a pest package") };
+    spec.line_records = false;
+    let undeclared = package.compile().unwrap();
+    let (prefix, suffix) = ("N|a|A|coder||\n", "N|b|B|coder||");
+    let mut site = undeclared.parse(prefix).unwrap();
+    assert!(undeclared.extension(&site, suffix).is_none());
+    undeclared.parse_append(&mut site, prefix, suffix).unwrap();
+    assert_eq!(site, undeclared.parse(&format!("{prefix}{suffix}")).unwrap());
+
+    let json = json_grammar();
+    let mut document = json.parse(DATA_JSON).unwrap();
+    assert!(json.extension(&document, "{}").is_none());
+    let error = json.parse(&format!("{DATA_JSON}!")).unwrap_err();
+    assert_eq!(json.parse_append(&mut document, DATA_JSON, "!"), Err(error));
+}
+
+#[test]
+fn a_declaration_the_grammar_contradicts_fails_to_compile() {
+    let lines_with = |file: &str, emitter: bool| {
+        let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+        let ParserSpec::Pest(spec) = &mut package.parser else { unreachable!("trace-lines is a pest package") };
+        spec.grammar = spec.grammar.replacen("file = { SOI ~ (record ~ NEWLINE)* ~ record? ~ EOI }", file, 1);
+        if emitter {
+            package.emitter = Some(serde_json::from_str(LINES_EMITTER).unwrap());
+        }
+        package.compile()
+    };
+    assert!(lines_with("file = { SOI ~ (record ~ NEWLINE)* ~ record? ~ EOI }", true).is_ok());
+    let header = "file = { SOI ~ \"#trace\" ~ NEWLINE ~ (record ~ NEWLINE)* ~ record? ~ EOI }";
+    assert!(matches!(lines_with(header, false), Err(GrammarError::NotLineRecords(_))), "a header makes empty input invalid");
+    let one_record = "file = { SOI ~ record? ~ NEWLINE? ~ EOI }";
+    assert!(matches!(lines_with(one_record, true), Err(GrammarError::NotLineRecords(_))), "two emitted lines do not parse");
+}
+
+/// Timing probe, not an assertion: the parse cost per appended line as the input grows, appending
+/// with `parse_append` and, for `FULL_LINES` lines, reparsing the whole text as a host once did.
+/// `cargo test --release -p panel-kit-grammar -- --ignored --nocapture parse_cost`; `APPEND_LINES`
+/// defaults to 10 000, `FULL_LINES` to 1 000.
+#[test]
+#[ignore = "timing probe"]
+fn parse_cost_by_input_size() {
+    let count = |name: &str, default: usize| std::env::var(name).ok().and_then(|text| text.parse().ok()).unwrap_or(default);
+    let (appended_lines, reparsed_lines) = (count("APPEND_LINES", 10_000), count("FULL_LINES", 1_000));
+    let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+    package.limits = Limits { grammar_bytes: 8192, input_bytes: 64 << 20, nodes: 100_000, edges: 100_000 };
+    let grammar = package.compile().unwrap();
+    let line = |n: usize| format!("N|appended_{n}|Appended {n}|memory|demo|latency_ms={};energy={};t={};status=ok", 3 + n, 5 + n, 64 + n);
+
+    let started = std::time::Instant::now();
+    let (mut source, mut site) = (DATA_LINES.to_owned(), site_from_lines());
+    for n in 0..appended_lines {
+        let line = line(n);
+        grammar.parse_append(&mut site, &source, &line).unwrap();
+        source.push_str(&line);
+        source.push('\n');
+    }
+    println!("parse_append: {appended_lines} lines in {:.3?}, {:.3?} per line", started.elapsed(), started.elapsed() / appended_lines as u32);
+    assert_eq!(site, grammar.parse(&source).unwrap());
+
+    let started = std::time::Instant::now();
+    let mut source = DATA_LINES.to_owned();
+    for n in 0..reparsed_lines {
+        source.push_str(&line(n));
+        source.push('\n');
+        grammar.parse(&source).unwrap();
+    }
+    println!("parse of the whole text: {reparsed_lines} lines in {:.3?}, {:.3?} per line", started.elapsed(), started.elapsed() / reparsed_lines as u32);
+}

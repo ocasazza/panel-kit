@@ -120,6 +120,9 @@ pub enum GrammarError {
     EmitterLosesData(String),
     /// A support id names no object of the site being emitted.
     UnknownSupportObject(String),
+    /// A package declares `line_records` but its grammar is not a sequence of
+    /// line records, so a suffix cannot be parsed apart from its prefix.
+    NotLineRecords(String),
 }
 
 impl fmt::Display for GrammarError {
@@ -175,6 +178,7 @@ impl fmt::Display for GrammarError {
                 write!(f, "emitted output does not parse back to the emitted objects: {message}")
             }
             Self::UnknownSupportObject(id) => write!(f, "support object '{id}' is not in the site"),
+            Self::NotLineRecords(detail) => write!(f, "package declares line_records but {detail}"),
         }
     }
 }
