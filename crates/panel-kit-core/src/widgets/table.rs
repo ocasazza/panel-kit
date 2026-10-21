@@ -148,9 +148,10 @@ impl TableCell {
     pub fn value(&self, kind: ColumnKind) -> Value<'_> {
         match (kind, self) {
             (ColumnKind::Number, TableCell::Meter { ratio, .. }) => Value::Number(*ratio),
-            (ColumnKind::Number, TableCell::Text(text)) => {
-                text.trim().parse::<f64>().map_or(Value::Missing, Value::Number)
-            }
+            (ColumnKind::Number, TableCell::Text(text)) => text
+                .trim()
+                .parse::<f64>()
+                .map_or(Value::Missing, Value::Number),
             (ColumnKind::Number, TableCell::Status { .. }) => Value::Missing,
             (_, TableCell::Text(text)) => Value::Text(text),
             (_, TableCell::Status { label, .. }) => Value::Text(label),
@@ -171,7 +172,11 @@ impl TableModel {
         let columns = self.data_columns();
         let mut builder = TableDataBuilder::with_capacity(&columns, self.rows.len());
         for row in &self.rows {
-            let values = row.cells.iter().zip(&self.columns).map(|(cell, column)| cell.value(column.kind));
+            let values = row
+                .cells
+                .iter()
+                .zip(&self.columns)
+                .map(|(cell, column)| cell.value(column.kind));
             builder.row(&row.id, values).tags(&row.tags);
         }
         builder.build()
@@ -181,7 +186,9 @@ impl TableModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::widgets::data_table::{natural_cmp, BuildOptions, SortDir, SortSpec, TableDefaults, TableState, View};
+    use crate::widgets::data_table::{
+        natural_cmp, BuildOptions, SortDir, SortSpec, TableDefaults, TableState, View,
+    };
     use proptest::prelude::*;
 
     #[test]
@@ -212,12 +219,18 @@ mod tests {
         assert_eq!(column.kind, ColumnKind::Text);
 
         for kind in [ColumnKind::Text, ColumnKind::Enum, ColumnKind::Number] {
-            let typed = TableColumn { kind, ..column.clone() };
+            let typed = TableColumn {
+                kind,
+                ..column.clone()
+            };
             let json = serde_json::to_string(&typed).unwrap();
             assert_eq!(serde_json::from_str::<TableColumn>(&json).unwrap(), typed);
         }
         let number = bare.replace(r#""align":"left""#, r#""align":"left","kind":"number""#);
-        assert_eq!(serde_json::from_str::<TableColumn>(&number).unwrap().kind, ColumnKind::Number);
+        assert_eq!(
+            serde_json::from_str::<TableColumn>(&number).unwrap().kind,
+            ColumnKind::Number
+        );
     }
 
     #[test]
@@ -229,7 +242,11 @@ mod tests {
         ];
         for kind in [ColumnKind::Text, ColumnKind::Enum, ColumnKind::Number] {
             for (declared, painted) in cases {
-                let column = TableColumn { align: declared, kind, ..typed_column("k", kind) };
+                let column = TableColumn {
+                    align: declared,
+                    kind,
+                    ..typed_column("k", kind)
+                };
                 assert_eq!(column.data_column().align, painted, "{kind:?} {declared:?}");
             }
         }
@@ -249,9 +266,15 @@ mod tests {
     fn sorted_on_first(model: &TableModel, dir: SortDir) -> Vec<String> {
         let columns = model.data_columns();
         let data = model.data();
-        let defaults = TableDefaults { sort: vec![SortSpec::new(columns[0].id.clone(), dir)], ..TableDefaults::default() };
+        let defaults = TableDefaults {
+            sort: vec![SortSpec::new(columns[0].id.clone(), dir)],
+            ..TableDefaults::default()
+        };
         let state = TableState::new(&columns, defaults);
-        View::build(&columns, &data, &state, BuildOptions::default()).ids(&data).map(str::to_owned).collect()
+        View::build(&columns, &data, &state, BuildOptions::default())
+            .ids(&data)
+            .map(str::to_owned)
+            .collect()
     }
 
     /// `values` in the order a numeric sort shows them: present ones by value, then the missing.
@@ -262,7 +285,11 @@ mod tests {
             present.reverse();
         }
         let missing = values.iter().filter(|value| value.is_none()).count();
-        present.into_iter().map(Some).chain(std::iter::repeat_n(None, missing)).collect()
+        present
+            .into_iter()
+            .map(Some)
+            .chain(std::iter::repeat_n(None, missing))
+            .collect()
     }
 
     /// Values with decimals and negatives, some missing.
@@ -272,7 +299,10 @@ mod tests {
     }
 
     fn shown(values: &[Option<f64>], order: &[String]) -> Vec<Option<f64>> {
-        order.iter().map(|id| values[id[1..].parse::<usize>().unwrap()]).collect()
+        order
+            .iter()
+            .map(|id| values[id[1..].parse::<usize>().unwrap()])
+            .collect()
     }
 
     proptest! {

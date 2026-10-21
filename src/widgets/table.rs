@@ -39,7 +39,11 @@ impl Converted {
         CONVERSIONS.with(|count| count.set(count.get() + 1));
         let columns = model.data_columns();
         let data = model.data();
-        Self { model, columns, data }
+        Self {
+            model,
+            columns,
+            data,
+        }
     }
 }
 
@@ -249,7 +253,10 @@ mod tests {
     /// host, and the conversions after one more render over a model with a row more.
     fn counts_over_renders(new_handler: bool, ticks: usize) -> ((usize, usize), usize) {
         let (renders_before, conversions_before) = (RENDERS.with(Cell::get), conversions());
-        let knobs = Knobs { new_handler, ..Knobs::default() };
+        let knobs = Knobs {
+            new_handler,
+            ..Knobs::default()
+        };
         let mut dom = VirtualDom::new(Host);
         dom.provide_root_context(knobs.clone());
         dom.rebuild_to_vec();
@@ -258,11 +265,17 @@ mod tests {
             dom.in_runtime(|| tick.set(at));
             dom.render_immediate_to_vec();
         }
-        let equal = (RENDERS.with(Cell::get) - renders_before, conversions() - conversions_before);
+        let equal = (
+            RENDERS.with(Cell::get) - renders_before,
+            conversions() - conversions_before,
+        );
 
         dom.in_runtime(|| rows.set(4));
         dom.render_immediate_to_vec();
-        assert!(dioxus_ssr::render(&dom).contains("pk-table-t-r3"), "the new row is painted");
+        assert!(
+            dioxus_ssr::render(&dom).contains("pk-table-t-r3"),
+            "the new row is painted"
+        );
         (equal, conversions() - conversions_before)
     }
 
@@ -286,6 +299,10 @@ mod tests {
         });
         assert!(html.contains("id=\"pk-table-agentic.status\""), "{html}");
         assert!(html.contains("id=\"pk-table-agentic.physics\""), "{html}");
-        assert_eq!(html.matches("id=\"pk-table-agentic.status\"").count(), 1, "{html}");
+        assert_eq!(
+            html.matches("id=\"pk-table-agentic.status\"").count(),
+            1,
+            "{html}"
+        );
     }
 }
