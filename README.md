@@ -51,8 +51,9 @@ layer:
   per regime: it is the inverse image `p_R*` of a shared physics `BaseTopos`,
   carried by a `GeometricMorphism` (`Physics`). `Topos::global_sections(site,
   physics)` returns the `GlobalSections` hosts resolve `DataSource::Binding` ids
-  against, and `Topos::physics_section(site, physics)` the engine parameters a
-  layout consumes. Pure, sync, wasm32-clean.
+  against, `Topos::section(site, physics, binding)` resolves one binding without
+  evaluating the other sheaves, and `Topos::physics_section(site, physics)` the
+  engine parameters a layout consumes. Pure, sync, wasm32-clean.
 
 The core crate is the contract: renderer-neutral state, surface
 classification, geometry, pointer/keyboard semantics, and persistence live
