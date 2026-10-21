@@ -8,8 +8,9 @@ use panel_kit_core::frame::{DockProjection, Placement, TileGridProjection};
 use panel_kit_core::panel::PanelCatalog;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
 use panel_kit_core::widgets::table::{
-    ColumnKind, ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
+    ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
 };
+use panel_kit_core::widgets::data_table::ColumnKind;
 use panel_kit_core::{
     FocusContext, Key, KeyChord, PointerButton, PointerEvent, PointerEventKind, Region,
     SurfaceCapabilities, SurfaceClass,
@@ -241,16 +242,16 @@ fn tables_over_the_same_columns_get_the_ids_they_are_named_by() {
     assert!(html.contains("id=\"pk-table-filled-r1\""), "{html}");
 }
 
-/// A number column paints flush right however the spec aligned it; a text
-/// column keeps the alignment the spec gave.
+/// A column's declared alignment is painted whatever its kind: numbers are
+/// right-aligned when the spec says so, not otherwise.
 #[test]
-fn a_number_column_paints_flush_right_even_when_declared_left() {
-    let paint = |kind| {
+fn a_columns_declared_alignment_is_painted_whatever_its_kind() {
+    let paint = |kind, align| {
         let columns = [TableColumn {
             key: "count".into(),
             title: "Count".into(),
             width: ColumnWidth::Flex { weight: 1 },
-            align: TextAlign::Left,
+            align,
             kind,
         }];
         let rows = [TableRow { id: "r1".into(), tags: Vec::new(), cells: vec![TableCell::Text("1.5".into())] }];
@@ -259,8 +260,42 @@ fn a_number_column_paints_flush_right_even_when_declared_left() {
             {panel_kit::widgets::table::table("kinds", TableView { columns: &columns, rows: &shown }, None)}
         })
     };
-    assert!(paint(ColumnKind::Number).contains("pk-dt-align-right"));
-    assert!(!paint(ColumnKind::Text).contains("pk-dt-align-right"));
+    let declared_left = paint(ColumnKind::Number, TextAlign::Left);
+    assert!(declared_left.contains("pk-dt-align-left") && !declared_left.contains("pk-dt-align-right"));
+    let declared_right = paint(ColumnKind::Number, TextAlign::Right);
+    assert!(declared_right.contains("pk-dt-align-right") && !declared_right.contains("pk-dt-align-left"));
+}
+
+/// Two panels over the same columns, painted through `content_view`.
+#[component]
+fn OwnedTablesProbe() -> Element {
+    let columns = [TableColumn {
+        key: "policy".into(),
+        title: "Policy".into(),
+        width: ColumnWidth::Flex { weight: 1 },
+        align: TextAlign::Left,
+        kind: ColumnKind::Text,
+    }];
+    let rows = [TableRow { id: "r1".into(), tags: Vec::new(), cells: vec![TableCell::Text("p".into())] }];
+    let shown: Vec<&TableRow> = rows.iter().collect();
+    let noop = EventHandler::new(|_: panel_kit_core::badge::BadgeAction| {});
+    let table = |binding| panel_kit_core::widgets::ContentView::Table {
+        binding,
+        view: TableView { columns: &columns, rows: &shown },
+    };
+    rsx! {
+        {panel_kit::widgets::content_view(table("panel-a"), 0, noop)}
+        {panel_kit::widgets::content_view(table("panel-b"), 0, noop)}
+    }
+}
+
+#[test]
+fn content_view_names_each_table_by_the_panel_that_owns_it() {
+    let html = dioxus_ssr::render_element(rsx! { OwnedTablesProbe {} });
+    for owner in ["panel-a", "panel-b"] {
+        assert_eq!(html.matches(&format!("id=\"pk-table-{owner}\"")).count(), 1, "{owner}: {html}");
+        assert!(html.contains(&format!("id=\"pk-table-{owner}-r1\"")), "{owner}: {html}");
+    }
 }
 
 #[test]

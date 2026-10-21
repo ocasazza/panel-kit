@@ -94,7 +94,7 @@ fn all_content_spec_variants() -> [ContentSpec; 12] {
                         title: "Name".into(),
                         width: table::ColumnWidth::Flex { weight: 1 },
                         align: table::TextAlign::Left,
-                        kind: table::ColumnKind::Number,
+                        kind: crate::widgets::data_table::ColumnKind::Number,
                     }],
                     rows: vec![table::TableRow {
                         id: "api".into(),

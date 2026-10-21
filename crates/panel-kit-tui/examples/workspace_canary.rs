@@ -10,8 +10,10 @@ use panel_kit_core::widgets::charts::{
 };
 #[cfg(feature = "spec-plan")]
 use panel_kit_core::widgets::table::{
-    ColumnKind, ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
+    ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
 };
+#[cfg(feature = "spec-plan")]
+use panel_kit_core::widgets::data_table::ColumnKind;
 #[cfg(feature = "spec-plan")]
 use panel_kit_tui::badge::hue_color;
 

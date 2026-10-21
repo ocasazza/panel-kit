@@ -11,9 +11,10 @@
 //!   `rest_length`.
 //!
 //! A table column holds text, an enum or a number: its `kind` when the spec
-//! names one, else derived from its cell (meters and the
-//! numeric expressions are numbers; status cells, `kind` and `edge_kind` are
-//! enums). The interactive table sorts and filters by that kind.
+//! names one, else derived from its cell (meters and the numeric expressions
+//! are numbers; status cells, `kind` and `edge_kind` are enums). The
+//! interactive table sorts and filters by that kind. A column's `align` is
+//! kept as declared; when absent, numbers align right and anything else left.
 //!
 //! "Group by kind" sheaves group by **regime sort**, so a non-injective sorting
 //! merges site kinds (e.g. planner + reviewer → head).
@@ -26,7 +27,8 @@ use panel_kit_core::badge::{BadgeKind, BadgeSpec, Rgb};
 use panel_kit_core::widgets::charts::{BoxItemModel, FlameSpanModel, GaugeModel, SeriesModel};
 use panel_kit_core::widgets::meter::MeterModel;
 use panel_kit_core::widgets::status::{StatusModel, StatusState};
-use panel_kit_core::widgets::table::{ColumnKind, ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign};
+use panel_kit_core::widgets::data_table::ColumnKind;
+use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign};
 use panel_kit_core::widgets::TextModel;
 
 use crate::error::SheafError;
@@ -436,8 +438,9 @@ pub struct ColumnSpec {
     pub title: String,
     /// Width request.
     pub width: ColWidth,
-    /// Text alignment.
-    pub align: CellAlign,
+    /// Text alignment; absent follows the kind: numbers right, else left.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<CellAlign>,
     /// What the column holds; absent derives it from the cell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<ColumnKind>,
@@ -534,17 +537,29 @@ pub(crate) fn derived_kind(cell: &CellSpec) -> ColumnKind {
     }
 }
 
+/// The alignment a column gets when its spec names none: numbers read flush
+/// right so their digits line up, anything else flush left.
+pub(crate) fn derived_align(kind: ColumnKind) -> CellAlign {
+    match kind {
+        ColumnKind::Number => CellAlign::Right,
+        ColumnKind::Text | ColumnKind::Enum => CellAlign::Left,
+    }
+}
+
 impl TableSheaf {
     fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
         let columns = self
             .columns
             .iter()
-            .map(|column| TableColumn {
-                key: column.key.clone(),
-                title: column.title.clone(),
-                width: column.width.to_core(),
-                align: column.align.to_core(),
-                kind: column.kind.unwrap_or_else(|| derived_kind(&column.cell)),
+            .map(|column| {
+                let kind = column.kind.unwrap_or_else(|| derived_kind(&column.cell));
+                TableColumn {
+                    key: column.key.clone(),
+                    title: column.title.clone(),
+                    width: column.width.to_core(),
+                    align: column.align.unwrap_or_else(|| derived_align(kind)).to_core(),
+                    kind,
+                }
             })
             .collect();
 

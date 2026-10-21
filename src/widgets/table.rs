@@ -177,7 +177,8 @@ pub fn bound_table(
 mod tests {
     use std::cell::Cell;
 
-    use panel_kit_core::widgets::table::{ColumnKind, ColumnWidth, TableColumn, TableRow, TextAlign};
+    use panel_kit_core::widgets::data_table::ColumnKind;
+    use panel_kit_core::widgets::table::{ColumnWidth, TableColumn, TableRow, TextAlign};
 
     use super::*;
 

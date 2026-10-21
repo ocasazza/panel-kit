@@ -81,7 +81,7 @@ pub fn table<K: PanelKey>(
             None => "",
         };
         let title = format!("{}{marker}", column.title);
-        Cell::from(align_line(Line::from(title), column.text_align()))
+        Cell::from(align_line(Line::from(title), column.align))
     }))
     .style(Style::default().fg(t.dim));
     let rows = view.rows.iter().skip(offset.1 as usize).map(|row| {
@@ -96,7 +96,7 @@ pub fn table<K: PanelKey>(
                 .iter()
                 .skip(offset.0 as usize)
                 .zip(columns)
-                .map(|(cell, column)| Cell::from(align_line(semantic_line(cell, t), column.text_align()))),
+                .map(|(cell, column)| Cell::from(align_line(semantic_line(cell, t), column.align))),
         )
         .style(style)
     });
@@ -182,7 +182,7 @@ fn width_constraint(width: ColumnWidth) -> Constraint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use panel_kit_core::widgets::table::ColumnKind;
+    use panel_kit_core::widgets::data_table::ColumnKind;
 
     fn columns() -> Vec<TableColumn> {
         vec![

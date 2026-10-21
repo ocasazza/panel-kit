@@ -8,9 +8,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use panel_kit_core::widgets::data_table::{
-    natural_cmp, BuildOptions, SortDir, SortSpec, TableDefaults, TableState, View,
+    natural_cmp, BuildOptions, ColumnKind, SortDir, SortSpec, TableDefaults, TableState, View,
 };
-use panel_kit_core::widgets::table::{ColumnKind, TableCell, TableModel};
+use panel_kit_core::widgets::table::{TableCell, TableModel, TextAlign};
 use proptest::prelude::{prop, prop_assert, prop_assert_eq, proptest, Strategy};
 
 use crate::error::SheafError;
@@ -1326,8 +1326,13 @@ fn every_table_section_lists_unique_row_ids_that_name_their_rows() {
 // --- Typed table columns ------------------------------------------------------
 
 fn column_json(key: &str, kind: Option<&str>, cell: &str) -> String {
+    column_json_aligned(key, kind, Some("left"), cell)
+}
+
+fn column_json_aligned(key: &str, kind: Option<&str>, align: Option<&str>, cell: &str) -> String {
     let kind = kind.map_or(String::new(), |kind| format!(r##""kind":"{kind}","##));
-    format!(r##"{{"key":"{key}","title":"{key}","width":{{"flex":{{"weight":1}}}},"align":"left",{kind}"cell":{cell}}}"##)
+    let align = align.map_or(String::new(), |align| format!(r##""align":"{align}","##));
+    format!(r##"{{"key":"{key}","title":"{key}","width":{{"flex":{{"weight":1}}}},{align}{kind}"cell":{cell}}}"##)
 }
 
 fn text_cell(expr: &str) -> String {
@@ -1403,6 +1408,40 @@ fn a_column_without_a_kind_encodes_without_one_and_a_named_kind_round_trips() {
     let named: crate::ColumnSpec = serde_json::from_str(&column_json("k", Some("number"), &text_cell("id"))).unwrap();
     assert_eq!(named.kind, Some(ColumnKind::Number));
     assert_eq!(serde_json::from_str::<crate::ColumnSpec>(&serde_json::to_string(&named).unwrap()).unwrap(), named);
+}
+
+#[test]
+fn an_undeclared_alignment_follows_the_kind_and_a_declared_one_wins() {
+    use crate::CellAlign::{Center, Left, Right};
+    let cases = [
+        // (key, kind, declared alignment, cell, alignment painted)
+        ("degree", None, None, text_cell("degree"), Right),
+        ("load", None, None, meter_cell("field:energy", 10.0), Right),
+        ("energy", Some("number"), None, text_cell("field:energy"), Right),
+        ("id", None, None, text_cell("id"), Left),
+        ("kind", None, None, text_cell("kind"), Left),
+        ("degree_left", None, Some("left"), text_cell("degree"), Left),
+        ("degree_centre", None, Some("center"), text_cell("degree"), Center),
+        ("load_left", None, Some("left"), meter_cell("field:energy", 10.0), Left),
+        ("id_right", None, Some("right"), text_cell("id"), Right),
+    ];
+    let columns: Vec<String> =
+        cases.iter().map(|(key, kind, align, cell, _)| column_json_aligned(key, *kind, *align, cell)).collect();
+    let sections = agentic_topos(&format!(r##"{{"objs":{}}}"##, table_sheaf("objects", &columns)))
+        .global_sections(&demo_site(), &physics_a())
+        .unwrap();
+    let painted: Vec<(&str, TextAlign)> =
+        model_of(&sections, "objs").columns.iter().map(|column| (column.key.as_str(), column.align)).collect();
+    let expected: Vec<(&str, TextAlign)> = cases
+        .iter()
+        .map(|(key, .., painted)| (*key, match painted { Left => TextAlign::Left, Center => TextAlign::Center, Right => TextAlign::Right }))
+        .collect();
+    assert_eq!(painted, expected);
+
+    // An undeclared alignment stays undeclared when the spec is written back.
+    let bare: crate::ColumnSpec = serde_json::from_str(&column_json_aligned("k", None, None, &text_cell("degree"))).unwrap();
+    assert_eq!(bare.align, None);
+    assert!(!serde_json::to_string(&bare).unwrap().contains("align\":"));
 }
 
 /// Row ids in the order the interactive table shows `model` sorted on `column`.

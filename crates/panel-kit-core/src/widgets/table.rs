@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::badge::Rgb;
 
-use super::data_table::{Align, DataColumnSpec, TableData, TableDataBuilder, Value};
+use super::data_table::{Align, ColumnKind, DataColumnSpec, TableData, TableDataBuilder, Value};
 
 /// Horizontal text alignment for a semantic table column.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,22 +35,6 @@ pub enum ColumnWidth {
     },
 }
 
-/// What a column holds, which decides how the interactive table sorts and
-/// filters it. Mirrors the data table's column kinds.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum ColumnKind {
-    /// Free text: sorted by its text, filtered by a contains match.
-    #[default]
-    Text,
-    /// One of a few values: filtered by a checklist of the values present.
-    Enum,
-    /// A number: sorted and range-filtered by value. A meter cell holds its
-    /// ratio and a text cell its parsed text; text that is no number is missing.
-    Number,
-}
-
 /// One table column.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
@@ -67,17 +51,6 @@ pub struct TableColumn {
     /// What the column holds; absent reads as text.
     #[serde(default)]
     pub kind: ColumnKind,
-}
-
-impl TableColumn {
-    /// The alignment painters use: a number column reads flush right unless
-    /// it asks for the centre.
-    pub fn text_align(&self) -> TextAlign {
-        match (self.kind, self.align) {
-            (ColumnKind::Number, TextAlign::Left) => TextAlign::Right,
-            (_, align) => align,
-        }
-    }
 }
 
 /// Semantic cell variants supported by authored tables.
@@ -150,7 +123,7 @@ impl TableColumn {
     /// The interactive table's declaration of this column: its kind decides
     /// how rows sort and which filter control it gets.
     pub fn data_column(&self) -> DataColumnSpec {
-        let align = match self.text_align() {
+        let align = match self.align {
             TextAlign::Left => Align::Left,
             TextAlign::Center => Align::Center,
             TextAlign::Right => Align::Right,
@@ -248,24 +221,17 @@ mod tests {
     }
 
     #[test]
-    fn numbers_read_flush_right_unless_the_column_asks_for_the_centre() {
-        let column = |kind, align| TableColumn {
-            key: "k".into(),
-            title: "K".into(),
-            width: ColumnWidth::Flex { weight: 1 },
-            align,
-            kind,
-        };
+    fn a_declared_alignment_wins_whatever_the_columns_kind() {
         let cases = [
-            (ColumnKind::Number, TextAlign::Left, TextAlign::Right),
-            (ColumnKind::Number, TextAlign::Center, TextAlign::Center),
-            (ColumnKind::Number, TextAlign::Right, TextAlign::Right),
-            (ColumnKind::Text, TextAlign::Left, TextAlign::Left),
-            (ColumnKind::Enum, TextAlign::Left, TextAlign::Left),
-            (ColumnKind::Enum, TextAlign::Right, TextAlign::Right),
+            (TextAlign::Left, Align::Left),
+            (TextAlign::Center, Align::Center),
+            (TextAlign::Right, Align::Right),
         ];
-        for (kind, align, painted) in cases {
-            assert_eq!(column(kind, align).text_align(), painted, "{kind:?} {align:?}");
+        for kind in [ColumnKind::Text, ColumnKind::Enum, ColumnKind::Number] {
+            for (declared, painted) in cases {
+                let column = TableColumn { align: declared, kind, ..typed_column("k", kind) };
+                assert_eq!(column.data_column().align, painted, "{kind:?} {declared:?}");
+            }
         }
     }
 
