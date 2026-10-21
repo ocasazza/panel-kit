@@ -11,6 +11,7 @@
 mod column;
 mod data;
 mod export;
+mod scroll;
 mod state;
 mod stored;
 mod tags;
@@ -22,11 +23,12 @@ mod tests;
 pub use column::{natural_cmp, Align, ColumnKind, DataColumnSpec, SortDir, SortSpec};
 pub use data::{RowWriter, TableData, TableDataBuilder, Value};
 pub use export::{csv, tsv, write_csv, write_tsv};
+pub use scroll::{ScrollMap, MAX_SCROLL};
 pub use state::{
     ActiveFilter, ColumnFilter, Density, FilterKind, Mounted, MoveTarget, OrderKey, PersistedTable,
     SelectMode, Selectable, TableDefaults, TableEvent, TableKey, TableQuery, TableState,
-    TableWindow, ViewMode, DEFAULT_PAGE, MAX_WIDTH, MAX_WINDOW, MIN_WIDTH, NARROW_WIDTH, OVERSCAN,
-    QUICK_LIMIT, STATE_VERSION, WINDOW_COUNT,
+    TableWindow, ViewMode, Viewport, DEFAULT_PAGE, MAX_WIDTH, MAX_WINDOW, MIN_WIDTH, NARROW_WIDTH,
+    OVERSCAN, QUICK_LIMIT, STATE_VERSION, WINDOW_COUNT,
 };
 pub use stored::{Field, Numeric, StoredFilter, StoredTable};
 pub use tags::{
