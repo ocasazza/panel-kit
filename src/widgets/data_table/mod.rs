@@ -42,6 +42,8 @@ type OrderCache = Rc<
 >;
 /// The last view grouped from that order, and the folded groups it hid.
 type ViewCache = Rc<RefCell<Option<(Rc<Ordered>, BTreeSet<String>, Rc<View>)>>>;
+/// The selection and view last checked for every row selected, and the answer.
+type AllCache = Rc<RefCell<Option<(Rc<BTreeSet<String>>, Rc<View>, bool)>>>;
 
 /// How long the quick filter waits after a keystroke before re-querying.
 const QUICK_DEBOUNCE_MS: i32 = 150;
@@ -251,6 +253,20 @@ pub fn DataTable(
         Some(ids) => Rc::new(ids.iter().cloned().collect()),
         None => current.selection.clone(),
     };
+    // Whether every row in view is selected: one lookup per row, so it is
+    // recomputed only when the selection or the view changes.
+    let all_cache: AllCache = use_hook(|| Rc::new(RefCell::new(None)));
+    let all_checked = multi && !view.rows.is_empty() && selection.len() >= view.rows.len() && {
+        let mut slot = all_cache.borrow_mut();
+        match slot.as_ref() {
+            Some((s, v, all)) if Rc::ptr_eq(s, &selection) && Rc::ptr_eq(v, &view) => *all,
+            _ => {
+                let all = view.ids(&data).all(|i| selection.contains(i));
+                *slot = Some((selection.clone(), view.clone(), all));
+                all
+            }
+        }
+    };
     let filterable = columns.iter().any(|c| c.filterable);
     let header_rows = if current.filters_open && visible.iter().any(|c| c.filterable) {
         2
@@ -314,7 +330,7 @@ pub fn DataTable(
         let selection = selection.clone();
         let heads: Vec<String> = visible.iter().map(|c| c.title.clone()).collect();
         move |selected_only: bool, as_csv: bool| {
-            let only = selected_only && !selection.is_empty();
+            let only = selected_only && !selection.is_empty() && !all_checked;
             let rows = view
                 .rows
                 .iter()
@@ -541,10 +557,6 @@ pub fn DataTable(
         .unwrap_or_default();
     let cursor_attr = current.cursor.clone();
     let narrow_attr = (!narrow.is_empty()).then(|| narrow.join(" "));
-    let all_checked = multi
-        && !view.rows.is_empty()
-        && selection.len() >= view.rows.len()
-        && view.ids(&data).all(|i| selection.contains(i));
     let filter_count = current.filters.len();
     let active = current.active_filters(&columns);
     let tag_filtering = !current.tag_filter.is_empty();

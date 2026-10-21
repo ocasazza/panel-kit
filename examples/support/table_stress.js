@@ -245,7 +245,12 @@
     () => exported("csv 1,000,000 rows", "csv", "button[title^='download']", 6000),
     cards,
     live,
-    ["select all rows", 3000, "tally", click("[data-dt-check-all]")],
+    // The tally must count every row selected: a duplicate id would not be.
+    async function selectAll() {
+      const ms = await time("tally", click("[data-dt-check-all]"));
+      const [rows, selected] = (tally().match(/\d+/g) ?? []).map(Number);
+      report("select all rows", ms, 3000, { ok: rows > 0 && rows === selected, note: tally() });
+    },
     ["scroll with every row selected", 300, "#work-rows", scroll(4000)],
     ["key ArrowDown with every row selected", 300, "#work", key("ArrowDown")],
     // Copy takes the selected rows, so it runs once every row is selected.

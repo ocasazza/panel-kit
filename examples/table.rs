@@ -186,8 +186,8 @@ const STATES: [&str; 10] = [
 ];
 const AGENTS: [Option<&str>; 4] = [None, MBP, SELFDEV, Some("L96N-mini")];
 
-/// Row `row` of the ledger: the hand-written rows, then generated ones.
-/// Every seventh generated title is non-ASCII.
+/// Row `row` of the ledger: the hand-written rows, then generated ones, whose
+/// ids start above every hand-written id. Every seventh title is non-ASCII.
 fn work_at(row: usize) -> Work {
     if let Some(hand) = HAND.get(row) {
         return *hand;
@@ -195,7 +195,7 @@ fn work_at(row: usize) -> Work {
     let n = row - HAND.len();
     let state = STATES[n % STATES.len()];
     Work {
-        id: 100 + n as u32,
+        id: 10_000 + n as u32,
         priority: (n % 4) as u8,
         title: if row.is_multiple_of(7) {
             TOPICS_I18N[(row / 7) % TOPICS_I18N.len()]
