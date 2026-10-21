@@ -102,6 +102,15 @@ fn check_offscreen() -> Result<(), String> {
             diff.push(format!("{spec_id}: host rejected its own topos id"));
             continue;
         }
+        // The specs are embedded at build time per surface; a build that
+        // embedded the web specs is clamped to CSS-px minimums no terminal meets.
+        if host.units() != panel_kit_core::Units::Cells {
+            diff.push(format!(
+                "{spec_id}: spec is authored in {:?}, not cells; build with the cells specs (nix build .#topos-tui-native)",
+                host.units()
+            ));
+            continue;
+        }
         let mut terminal = Terminal::new(TestBackend::new(CHECK_WIDTH, CHECK_HEIGHT))
             .map_err(infallible)?;
         let mut draw_result = Ok(());
