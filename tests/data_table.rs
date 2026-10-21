@@ -348,7 +348,7 @@ fn a_host_owned_selection_renders_on_the_rows_and_the_tally() {
 fn multi_select_adds_the_checkbox_column_and_marks_the_grid_multiselectable() {
     let state = TableState {
         selectable: Selectable::Multi,
-        selection: ["imp-1".to_string()].into(),
+        selection: std::rc::Rc::new(["imp-1".to_string()].into()),
         ..state()
     };
     let html = grid(rows(2)).state(state).render();

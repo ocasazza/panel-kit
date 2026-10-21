@@ -236,8 +236,8 @@ pub fn DataTable(
     let visible_at: Vec<usize> = visible.iter().filter_map(|c| index_of(&c.id)).collect();
     let selectable = current.selectable;
     let multi = selectable == Selectable::Multi;
-    let selection: BTreeSet<String> = match &selected {
-        Some(ids) => ids.iter().cloned().collect(),
+    let selection: Rc<BTreeSet<String>> = match &selected {
+        Some(ids) => Rc::new(ids.iter().cloned().collect()),
         None => current.selection.clone(),
     };
     let filterable = columns.iter().any(|c| c.filterable);
