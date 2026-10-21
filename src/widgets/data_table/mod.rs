@@ -196,24 +196,35 @@ pub fn DataTable(
         tags: ribbon,
     };
     // Ordering depends on the data and the query; grouping on the order and
-    // the folded groups. Cursor moves, selection and scrolling reuse both.
+    // the folded groups. Cursor moves, selection and scrolling reuse both. A
+    // narrower quick filter refines the last order; appended rows extend it.
     let order_cache: OrderCache = use_hook(|| Rc::new(RefCell::new(None)));
     let view_cache: ViewCache = use_hook(|| Rc::new(RefCell::new(None)));
     let ordering: Rc<Ordered> = {
         let key = current.order_key();
         let mut slot = order_cache.borrow_mut();
-        match slot.as_ref() {
-            Some((c, d, k, o, ordered))
-                if *c == columns && *d == data && *k == key && *o == options =>
-            {
-                ordered.clone()
+        let (hit, reused) = match slot.as_ref() {
+            Some((c, d, k, o, ordered)) if *c == columns && *o == options => {
+                if *d == data && *k == key {
+                    (true, Some(ordered.clone()))
+                } else if *d == data && key.narrows(k) {
+                    let refined = ordered.refine(&columns, &data, &current, options);
+                    (false, Some(Rc::new(refined)))
+                } else if *k == key && data.extends(d) {
+                    let extended = ordered.extend(&columns, &data, &current, options, d.len());
+                    (false, Some(Rc::new(extended)))
+                } else {
+                    (false, None)
+                }
             }
-            _ => {
-                let ordered = Rc::new(Ordered::build(&columns, &data, &current, options));
-                *slot = Some((columns.clone(), data.clone(), key, options, ordered.clone()));
-                ordered
-            }
+            _ => (false, None),
+        };
+        let ordered =
+            reused.unwrap_or_else(|| Rc::new(Ordered::build(&columns, &data, &current, options)));
+        if !hit {
+            *slot = Some((columns.clone(), data.clone(), key, options, ordered.clone()));
         }
+        ordered
     };
     let view: Rc<View> = {
         let mut slot = view_cache.borrow_mut();
