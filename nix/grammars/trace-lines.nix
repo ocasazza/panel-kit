@@ -54,6 +54,8 @@ mkGrammarPackage {
   parser = {
     engine = "pest";
     root_rule = "file";
+    # Records are whole lines, the final newline optional: appends parse apart.
+    line_records = true;
     inherit grammar;
     captures = {
       node = "node";

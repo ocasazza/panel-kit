@@ -6,7 +6,8 @@
 #   grammar = import ./mkGrammarPackage.nix { inherit lib } {
 #     metadata = { id; name; version; description; };
 #     limits   = { grammar_bytes; input_bytes; nodes; edges; };
-#     parser   = { engine = "pest"; root_rule; grammar; captures; };
+#     parser   = { engine = "pest"; root_rule; grammar; captures; line_records; };
+#                # line_records (optional): input is whole-line records, final newline optional
 #     emitter  = { engine = "json"; };   # optional; required by section edits
 #   };
 #   # grammar.value -> the GrammarPackage attrset

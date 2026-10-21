@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 
 use panel_kit_core::spec::WorkspaceSpec;
 use panel_kit_core::widgets::table::TableCell;
-use panel_kit_grammar::{assembly, Section, Stage};
+use panel_kit_grammar::{assembly, CompiledGrammar, GrammarPackage, Limits, Section, Stage};
 use topos_demo::{ToposDemo, GRAMMAR_JSON, GRAMMAR_LINES, TOPOS_AGENTIC, TOPOS_MEMBRANE};
 
 /// Binding id and declared content kind of every sheaf-backed panel in a
@@ -300,4 +300,88 @@ fn the_invariants_panel_holds_under_both_regimes() {
             );
         }
     }
+}
+
+/// A demo grammar compiled from the same Nix-authored package the host compiles.
+fn compiled(grammar: &str) -> CompiledGrammar {
+    let package = match grammar {
+        GRAMMAR_LINES => include_str!(env!("PANEL_KIT_GRAMMAR_LINES")),
+        GRAMMAR_JSON => include_str!(env!("PANEL_KIT_GRAMMAR_JSON")),
+        other => panic!("no grammar {other}"),
+    };
+    GrammarPackage::from_json_str(package).unwrap().compile().unwrap()
+}
+
+#[test]
+fn the_site_stays_the_parse_of_the_source_through_appends_rejections_and_resets() {
+    for grammar in [GRAMMAR_LINES, GRAMMAR_JSON] {
+        let compiled = compiled(grammar);
+        let mut demo = ToposDemo::new();
+        assert!(demo.set_grammar(grammar));
+        let records = demo.record_count();
+        let check = |demo: &ToposDemo, step: &str| {
+            let parsed = compiled.parse(demo.source()).unwrap_or_else(|error| panic!("{grammar} {step}: {error}"));
+            assert_eq!(&parsed, demo.site(), "{grammar} {step}");
+        };
+        check(&demo, "fresh");
+        for step in ["valid", "valid", "malformed", "valid", "malformed", "malformed", "valid"] {
+            match step {
+                "valid" => demo.append_valid_line(),
+                _ => demo.append_malformed_line(),
+            }
+            check(&demo, step);
+        }
+        // The JSON document takes no appended line, so its valid append adds nothing.
+        let grown = if grammar == GRAMMAR_LINES { 4 } else { 0 };
+        assert_eq!(demo.record_count(), records + grown, "{grammar}");
+        assert_eq!(demo.diagnostic_count(), 3, "{grammar}");
+        demo.reset_source();
+        check(&demo, "reset");
+        assert_eq!(demo.record_count(), records, "{grammar}");
+    }
+}
+
+#[test]
+fn appended_lines_count_against_the_limits_of_the_whole_site() {
+    let limits = Limits { grammar_bytes: 8192, input_bytes: 65536, nodes: 50, edges: 5000 };
+    let mut demo = ToposDemo::with_limits(limits);
+    let room = 50 - demo.record_count();
+    for _ in 0..room + 5 {
+        demo.append_valid_line();
+    }
+    assert_eq!(demo.record_count(), 50, "the site stops at the node limit");
+    assert_eq!(demo.diagnostic_count(), 5, "each line over the limit is refused");
+    assert_eq!(compiled(GRAMMAR_LINES).parse(demo.source()).map(|site| site.objects.len()), Ok(50));
+}
+
+#[test]
+fn the_line_grammar_declares_line_records_and_the_json_document_does_not() {
+    assert!(compiled(GRAMMAR_LINES).appends_incrementally(), "appended lines are parsed apart");
+    assert!(!compiled(GRAMMAR_JSON).appends_incrementally(), "a JSON document is parsed whole");
+}
+
+/// Timing probe, not an assertion: the host's cost of each append as the input
+/// grows. `cargo test --release --test topos_grammar -- --ignored --nocapture
+/// append_cost`; `APPEND_LINES` sets the line count (default 10 000).
+#[test]
+#[ignore = "timing probe"]
+fn append_cost_by_input_size() {
+    let lines: usize = std::env::var("APPEND_LINES").ok().and_then(|text| text.parse().ok()).unwrap_or(10_000);
+    let limits = Limits { grammar_bytes: 8192, input_bytes: 64 << 20, nodes: 100_000, edges: 100_000 };
+    let mut demo = ToposDemo::with_limits(limits);
+    let step = (lines / 10).max(1);
+    let started = std::time::Instant::now();
+    let mut lap = started;
+    for line in 1..=lines {
+        demo.append_valid_line();
+        if line % step == 0 {
+            println!(
+                "{line:>6} lines: {:>9.3?} elapsed, {:>9.3?} per append over the last {step}",
+                started.elapsed(),
+                lap.elapsed() / step as u32
+            );
+            lap = std::time::Instant::now();
+        }
+    }
+    assert_eq!(demo.record_count(), 43 + lines);
 }

@@ -4,7 +4,8 @@
 //! A package is engine-tagged (`pest` or `json`). The envelope (metadata,
 //! limits) is identical across engines; the `parser` body is engine-specific.
 //! Limits are clamped to [`HARD_LIMITS`] at compile time and enforced while
-//! mapping — records are rejected, never truncated.
+//! mapping — records are rejected, never truncated. A pest package that declares
+//! `line_records` also lets [`CompiledGrammar::parse_append`] parse only an appended suffix.
 
 use serde::{Deserialize, Serialize};
 
@@ -156,6 +157,12 @@ pub struct PestSpec {
     pub grammar: String,
     /// Semantic capture-rule bindings.
     pub captures: CaptureRules,
+    /// Declares the input a sequence of line records: whole lines, the newline after the last
+    /// optional. Input ending at a line boundary can then be followed by more records and parsed
+    /// apart from them. A grammar with a header, footer, continuation lines, lookahead past a
+    /// record or the pest stack must not declare it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub line_records: bool,
 }
 
 /// Capture-rule bindings mapping pest rule names to canonical site roles.
@@ -255,6 +262,10 @@ pub struct JsonEdgeMap {
     pub kind: Option<String>,
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 impl GrammarPackage {
     /// Decode a package from JSON, rejecting unknown keys.
     pub fn from_json_str(text: &str) -> Result<Self, GrammarError> {
@@ -297,6 +308,15 @@ impl GrammarPackage {
                 })
             }
         };
+        if let CompiledEngine::Pest(parser) = &engine {
+            if parser.line_records() {
+                let template = match &emitter {
+                    Some(CompiledEmitter::Pest(template)) => Some(template),
+                    _ => None,
+                };
+                parser.check_line_records(template, &limits)?;
+            }
+        }
         Ok(CompiledGrammar {
             id: self.metadata.id.clone(),
             limits,
@@ -359,6 +379,45 @@ impl CompiledGrammar {
         match &self.engine {
             CompiledEngine::Pest(engine) => engine.parse(input, &self.limits),
             CompiledEngine::Json(engine) => engine.parse(input, &self.limits),
+        }
+    }
+
+    /// Extend `site`, the parse of `prefix`, by the lines of `suffix`: the parse of `prefix` and
+    /// `suffix` on a new line (`prefix` as is when empty or newline-terminated). An empty suffix
+    /// appends nothing. `Ok` and `Err` are exactly those of [`parse`](Self::parse) on that text;
+    /// only a `line_records` grammar parses just the suffix. On error `site` is unchanged.
+    pub fn parse_append(&self, site: &mut Site, prefix: &str, suffix: &str) -> Result<(), GrammarError> {
+        if suffix.is_empty() {
+            return Ok(());
+        }
+        let separator = if prefix.is_empty() || prefix.ends_with('\n') { "" } else { "\n" };
+        let actual = prefix.len() + separator.len() + suffix.len();
+        if actual > self.limits.input_bytes {
+            return Err(GrammarError::InputTooLarge {
+                actual,
+                max: self.limits.input_bytes,
+            });
+        }
+        if let Some(added) = self.extension(site, suffix) {
+            site.objects.extend(added.nodes);
+            site.morphisms.extend(added.edges);
+            return Ok(());
+        }
+        *site = self.parse(&[prefix, separator, suffix].concat())?;
+        Ok(())
+    }
+
+    /// Whether [`parse_append`](Self::parse_append) parses only the suffix: the package
+    /// declares `line_records`. Otherwise it parses the whole text.
+    pub fn appends_incrementally(&self) -> bool {
+        matches!(&self.engine, CompiledEngine::Pest(engine) if engine.line_records())
+    }
+
+    /// The records `suffix` adds to `site`, or `None` when they cannot be parsed apart from it.
+    pub(crate) fn extension(&self, site: &Site, suffix: &str) -> Option<pest_engine::Mapped> {
+        match &self.engine {
+            CompiledEngine::Pest(engine) => engine.extension(site, suffix, &self.limits),
+            CompiledEngine::Json(_) => None,
         }
     }
 }
