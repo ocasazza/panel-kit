@@ -204,6 +204,62 @@ mod tests {
         map.height() - map.visible
     }
 
+    /// A whole-pixel scroll offset, as a browser reports one: `kind` picks anywhere in the
+    /// range (by `fraction`) or `near` pixels from either end, where the layout is tightest.
+    fn pick(map: &ScrollMap, kind: u8, fraction: f64, near: u32) -> f64 {
+        let reach = reach(map);
+        let top = match kind % 3 {
+            0 => fraction * reach,
+            1 => f64::from(near),
+            _ => reach - f64::from(near),
+        };
+        top.clamp(0.0, reach).round()
+    }
+
+    /// The promises the layout at `top` breaks; none when it keeps them all.
+    fn faults(map: &ScrollMap, top: f64) -> Vec<String> {
+        let (start, end) = map.window(top);
+        let (above, below) = map.spacers(top, start, end);
+        let rows = (end - start) as f64 * map.row;
+        let shown = start as f64 * map.row + (top - above);
+        let at_top = start + ((top - above) / map.row) as usize;
+        let checks = [
+            (
+                start < end && end <= map.entries && end - start <= MAX_WINDOW,
+                format!("window {start}..{end} of {}", map.entries),
+            ),
+            (
+                above >= 0.0 && below >= 0.0,
+                format!("negative spacer {above} / {below}"),
+            ),
+            (
+                (above + rows + below - map.height()).abs() <= 1e-6 * map.height(),
+                format!("{above} + {rows} + {below} is not {}", map.height()),
+            ),
+            (
+                (shown - map.offset(top)).abs() <= 1.0 + 1e-6,
+                format!("the top edge shows {shown}, not {}", map.offset(top)),
+            ),
+            (
+                at_top.abs_diff(map.first(top)) <= 1,
+                format!("entry {at_top} at the top, not {}", map.first(top)),
+            ),
+            (
+                above <= top + 1e-6,
+                format!("{above} of spacer above a {top} scroll"),
+            ),
+            (
+                above + rows + 1.0 + 1e-6 >= (top + map.visible).min(map.height()),
+                format!("rows stop at {} short of the viewport", above + rows),
+            ),
+        ];
+        checks
+            .into_iter()
+            .filter(|(ok, _)| !ok)
+            .map(|(_, what)| what)
+            .collect()
+    }
+
     #[test]
     fn entries_taller_than_the_cap_lay_out_at_the_cap_and_reach_the_last_entry() {
         let map = detail();
@@ -230,15 +286,27 @@ mod tests {
         assert!(first.abs_diff(1_003_805 / 2) < 100, "middle showed entry {first}");
     }
 
+    /// Where the rows above (or below) the viewport can hold no more than the pixels
+    /// scrolled: every whole pixel of the first and last 400.
     #[test]
-    fn a_row_can_be_placed_above_the_first_scroll_pixels() {
-        // One pixel down the content moves one pixel, not `ratio` of them: the rows above
-        // the viewport cannot have more room than the pixels scrolled.
-        let map = detail();
-        for top in [1.0, 5.0, 40.0, 127.0, 128.0, 129.0, 200.0] {
-            let (start, end) = map.window(top);
-            let (above, _) = map.spacers(top, start, end);
-            assert!(above >= 0.0 && above <= top, "top {top}: above {above}");
+    fn the_first_and_last_scroll_pixels_lay_out_like_the_middle() {
+        for map in [
+            detail(),
+            ScrollMap::new(1_003_805, 26.0, 629.0),
+            ScrollMap::new(5_000_000, 64.0, 100.0),
+            ScrollMap::new(240_000, 64.0, 2_000.0),
+        ] {
+            for step in 0..=400 {
+                for top in [f64::from(step), reach(&map) - f64::from(step)] {
+                    let broken = faults(&map, top);
+                    assert!(
+                        broken.is_empty(),
+                        "{} entries of {} at {top}: {broken:?}",
+                        map.entries,
+                        map.row
+                    );
+                }
+            }
         }
     }
 
@@ -313,44 +381,24 @@ mod tests {
         assert!((back - top).abs() < 2.0 * detail.ratio());
     }
 
-    /// A scroll offset as the browser reports it: a whole pixel of `at` through the range.
-    fn at(map: &ScrollMap, fraction: f64) -> f64 {
-        (fraction * reach(map)).round()
-    }
-
     proptest! {
-        /// Whatever the entries, row, viewport and offset: the window is non-empty, the
-        /// spacers are non-negative and fill the laid-out height with the rows, and the
-        /// pixel at the viewport's top shows the content offset the map promises.
+        /// Whatever the entries, row, viewport and offset, anywhere or at either end of
+        /// the range: the window is non-empty, the spacers are non-negative and fill the
+        /// laid-out height with the rows, and the viewport's top edge shows the content
+        /// the map promises, with rows under all of the viewport.
         #[test]
-        fn the_spacers_and_rows_fill_the_height_and_show_the_offsets_row(
+        fn the_layout_keeps_its_promises_at_any_offset(
             entries in 1usize..5_000_000,
             row in 20u32..=64,
             visible in 100u32..=2_000,
+            kind in 0u8..3,
             fraction in 0.0f64..=1.0,
+            near in 0u32..=400,
         ) {
-            let row = f64::from(row);
-            let map = ScrollMap::new(entries, row, f64::from(visible));
-            let top = at(&map, fraction);
-            let (start, end) = map.window(top);
-            let (above, below) = map.spacers(top, start, end);
-            let rows = (end - start) as f64 * row;
-
-            prop_assert!(start < end && end <= entries && end - start <= MAX_WINDOW);
-            prop_assert!(above >= 0.0 && below >= 0.0, "above {above} below {below}");
-            prop_assert!(
-                (above + rows + below - map.height()).abs() <= 1e-6 * map.height(),
-                "{above} + {rows} + {below} != {}", map.height()
-            );
-
-            let shown = start as f64 * row + (top - above);
-            prop_assert!((shown - map.offset(top)).abs() <= 1.0 + 1e-6, "shows {shown}, wants {}", map.offset(top));
-            let screen_top = start + ((top - above) / row) as usize;
-            prop_assert!(screen_top.abs_diff(map.first(top)) <= 1, "entry {screen_top} at the top, wanted {}", map.first(top));
-
-            // No blank above or below the viewport inside the table.
-            prop_assert!(above <= top + 1e-6);
-            prop_assert!(above + rows + 1e-6 >= (top + map.visible).min(map.height()));
+            let map = ScrollMap::new(entries, f64::from(row), f64::from(visible));
+            let top = pick(&map, kind, fraction, near);
+            let broken = faults(&map, top);
+            prop_assert!(broken.is_empty(), "at {top}: {broken:?}");
         }
 
         /// The last offset shows the last entry at the viewport's bottom edge; the first
@@ -389,12 +437,11 @@ mod tests {
             count in 1usize..300,
         ) {
             let row = f64::from(row);
-            prop_assume!(entries as f64 * row <= MAX_SCROLL);
             let map = ScrollMap::new(entries, row, f64::from(visible));
             prop_assert!(!map.scaled());
             let start = start.min(entries);
             let end = (start + count).min(entries);
-            let top = at(&map, fraction);
+            let top = pick(&map, 0, fraction, 0);
             prop_assert_eq!(
                 map.spacers(top, start, end),
                 (start as f64 * row, (entries - end) as f64 * row)
@@ -409,14 +456,18 @@ mod tests {
             entries in 1usize..5_000_000,
             row in 20u32..=64,
             visible in 100u32..=2_000,
+            kind in 0u8..3,
             fraction in 0.0f64..=1.0,
+            near in 0u32..=400,
         ) {
-            let row = f64::from(row);
-            let map = ScrollMap::new(entries, row, f64::from(visible));
-            let top = at(&map, fraction);
+            let map = ScrollMap::new(entries, f64::from(row), f64::from(visible));
+            let top = pick(&map, kind, fraction, near);
             let step = map.offset(top + 1.0) - map.offset(top);
             prop_assert!(step >= 1.0 - 1e-6 && step <= map.ratio() + 1e-6, "step {step}");
-            prop_assert!((map.top_at(map.offset(top)) - top).abs() <= 1e-3, "{top} came back as {}", map.top_at(map.offset(top)));
+            prop_assert!(
+                (map.top_at(map.offset(top)) - top).abs() <= 1e-3,
+                "{top} came back as {}", map.top_at(map.offset(top))
+            );
         }
 
         /// After `reveal`, the entry is wholly inside the viewport; when it was already,
@@ -426,13 +477,15 @@ mod tests {
             entries in 1usize..5_000_000,
             row in 20u32..=64,
             visible in 100u32..=2_000,
+            kind in 0u8..3,
             fraction in 0.0f64..=1.0,
+            near in 0u32..=400,
             entry in 0usize..5_000_000,
         ) {
             let row = f64::from(row);
             let map = ScrollMap::new(entries, row, f64::from(visible));
             let entry = entry % entries;
-            let top = at(&map, fraction);
+            let top = pick(&map, kind, fraction, near);
             let inside = |top: f64| {
                 let from = map.offset(top);
                 entry as f64 * row >= from - 1e-6
