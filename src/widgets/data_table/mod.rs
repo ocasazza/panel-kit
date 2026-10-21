@@ -8,7 +8,7 @@
 
 mod dom;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
@@ -24,7 +24,7 @@ use panel_kit_core::widgets::data_table::{
 use crate::badge::Badge;
 
 pub use panel_kit_core::widgets::data_table::{
-    csv, tsv, Align, DataColumnSpec, Density, SortSpec, TableData, TableDataBuilder, TableDefaults,
+    csv, tsv, write_csv, write_tsv, Align, DataColumnSpec, Density, SortSpec, TableData, TableDataBuilder, TableDefaults,
     Value,
 };
 
@@ -248,7 +248,7 @@ pub fn DataTable(
     };
     let colspan = visible.len() + usize::from(multi) + usize::from(tagged);
     let mounted = current.mounted(view.entries.len(), windowed);
-    let row_height = current.row_height();
+    let row_height = current.view.row_height(current.density);
     let first_row = view.entries[mounted.start..mounted.end]
         .iter()
         .position(|e| matches!(e, Entry::Row(_)))
@@ -295,36 +295,33 @@ pub fn DataTable(
     };
 
     // The rows an export carries: the selection when there is one, in view
-    // order, else every row shown.
+    // order, else every row shown. Cells stream into one buffer.
     let export = {
         let data = data.clone();
-        let visible = visible.clone();
         let visible_at = visible_at.clone();
         let view = view.clone();
         let selection = selection.clone();
-        move |selected_only: bool| -> (Vec<String>, Vec<Vec<String>>) {
-            let heads = visible.iter().map(|c| c.title.clone()).collect();
-            let body = view
+        let heads: Vec<String> = visible.iter().map(|c| c.title.clone()).collect();
+        move |selected_only: bool, as_csv: bool| {
+            let only = selected_only && !selection.is_empty();
+            let rows = view
                 .rows
                 .iter()
-                .filter(|&&row| {
-                    !selected_only || selection.is_empty() || selection.contains(data.id(row))
-                })
-                .map(|&row| {
-                    visible_at
-                        .iter()
-                        .map(|&c| data.text(row, c).into_owned())
-                        .collect()
-                })
-                .collect();
-            (heads, body)
+                .copied()
+                .filter(|&row| !only || selection.contains(data.id(row)));
+            let mut text = String::new();
+            if as_csv {
+                write_csv(&mut text, &data, &heads, rows, &visible_at);
+            } else {
+                write_tsv(&mut text, &data, &heads, rows, &visible_at);
+            }
+            text
         }
     };
     let copy = {
         let export = export.clone();
         move || {
-            let (heads, body) = export(true);
-            let text = tsv(&heads, &body);
+            let text = export(true, false);
             match on_copy {
                 Some(handler) => handler.call(text),
                 None => dom::copy(&text),
@@ -335,8 +332,7 @@ pub fn DataTable(
         let export = export.clone();
         let name = format!("{id}.csv");
         move || {
-            let (heads, body) = export(false);
-            let text = csv(&heads, &body);
+            let text = export(false, true);
             match on_csv {
                 Some(handler) => handler.call(text),
                 None => dom::download(&name, "text/csv", &text),
@@ -445,7 +441,7 @@ pub fn DataTable(
             event.prevent_default();
             let page = dom::scroll(&scroll_id)
                 .map(|s| {
-                    ((s.visible / s.row.unwrap_or(row_height)).floor() as usize)
+                    ((s.visible / row_height).floor() as usize)
                         .saturating_sub(1)
                         .max(1)
                 })
@@ -458,30 +454,46 @@ pub fn DataTable(
         }
     };
 
-    let on_scroll = {
+    // Mount the rows the scroll offset needs, when the window lacks them.
+    let sync_window = {
         let scroll_id = scroll_id.clone();
         let total = view.entries.len();
         let now = current.mounted(total, true);
-        move |_| {
+        move || {
             if !windowed || total == 0 {
                 return;
             }
             let Some(scroll) = dom::scroll(&scroll_id) else {
                 return;
             };
-            let height = scroll.row.unwrap_or(row_height);
-            let first = (scroll.top / height).floor() as usize;
-            let shown = (scroll.visible / height).ceil() as usize + 1;
+            let first = (scroll.top / row_height).floor() as usize;
+            let shown = (scroll.visible / row_height).ceil() as usize + 1;
             let need_end = (first + shown).min(total);
             if first < now.start || need_end > now.end || now.end == now.start {
                 act.call(TableEvent::Window {
                     start: first.saturating_sub(OVERSCAN),
                     count: shown + 2 * OVERSCAN,
-                    row_height: Some(height),
+                    row_height: None,
                 });
             }
         }
     };
+    let on_scroll = {
+        let sync_window = sync_window.clone();
+        move |_| sync_window()
+    };
+
+    // A view mode or density changes every row's height: keep the first row
+    // in view and mount what the new height needs.
+    let last_height = use_hook(|| Rc::new(Cell::new(row_height)));
+    let rescale_id = scroll_id.clone();
+    use_effect(use_reactive!(|(row_height,)| {
+        let before = last_height.replace(row_height);
+        if windowed && before != row_height {
+            dom::rescale(&rescale_id, before, row_height);
+            sync_window();
+        }
+    }));
 
     // A table narrower than NARROW_WIDTH folds its `narrow` columns, except
     // the ones the user asked for by name; widening shows them again.
@@ -530,8 +542,9 @@ pub fn DataTable(
         div {
             id: "{id}",
             class: "pk-widget pk-dt",
-            style: "{style}",
+            style: "--dt-row:{row_height}px;{style}",
             "data-density": current.density.as_str(),
+            "data-view": current.view.label(),
             "data-virtual": windowed.then_some("true"),
             "data-start": "{mounted.start}",
             "data-row-height": "{row_height}",

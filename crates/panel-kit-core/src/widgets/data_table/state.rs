@@ -118,6 +118,19 @@ impl ViewMode {
             ViewMode::DetailCards => "detail",
         }
     }
+
+    /// Pixel height of every entry (row, group header or card) in this mode.
+    /// The painter's CSS fixes the box to this height, so a virtual window's
+    /// spacers are `entries × row_height` with nothing measured.
+    pub fn row_height(self, density: Density) -> f64 {
+        match (self, density) {
+            (ViewMode::Rows, density) => density.row_height(),
+            (ViewMode::CompactCards, Density::Normal) => 32.0,
+            (ViewMode::CompactCards, Density::Compact) => 26.0,
+            (ViewMode::DetailCards, Density::Normal) => 64.0,
+            (ViewMode::DetailCards, Density::Compact) => 52.0,
+        }
+    }
 }
 
 /// The virtual window: which slice of the view's entries stays mounted.
