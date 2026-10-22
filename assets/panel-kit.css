@@ -1539,22 +1539,23 @@ button { font-family:var(--mono); }
 /* === data table: filter, sort, column visibility === */
 .pk-dt { display:flex; flex-direction:column; gap:.3rem; min-height:0; }
 .pk-dt-bar { display:flex; align-items:center; gap:.5rem; }
-.pk-dt-filter { flex:1; min-width:0; background:var(--bg); color:var(--fg);
-  border:1px solid var(--line2); font-family:var(--mono); font-size:12px; padding:.15rem .35rem; }
-.pk-dt-filter:focus-visible { outline:1px solid var(--focus-ring); }
-.pk-dt-count { color:var(--dim); font-size:.7rem; white-space:nowrap; }
+.pk-dt-filter { flex:1; min-width:0; background:var(--color-background); color:var(--color-text);
+  border:1px solid var(--color-border); font-family:var(--mono); font-size:12px; padding:.15rem .35rem; }
+.pk-dt-filter:focus-visible { outline:1px solid var(--color-focus-ring); }
+.pk-dt-count { color:var(--color-text-muted); font-size:.7rem; white-space:nowrap; }
 .pk-dt-cols { position:relative; }
-.pk-dt-cols-btn { background:var(--bg); color:var(--dim); border:1px solid var(--line2);
+.pk-dt-cols-btn { background:var(--color-background); color:var(--color-text-muted); border:1px solid var(--color-border);
   font-family:var(--mono); font-size:.7rem; padding:.1rem .4rem; cursor:pointer; white-space:nowrap; }
-.pk-dt-cols-btn:hover, .pk-dt-cols-btn[aria-expanded="true"] { color:var(--fg); border-color:var(--fg); }
+.pk-dt-cols-btn:hover, .pk-dt-cols-btn[aria-expanded="true"] { color:var(--color-text); border-color:var(--color-text); }
 .pk-dt-cols-menu { position:absolute; right:0; top:calc(100% + 2px); z-index:5; min-width:12rem;
-  background:var(--panel); border:1px solid var(--line2); padding:.3rem .5rem;
-  display:flex; flex-direction:column; gap:.15rem; box-shadow:0 6px 18px #0008; }
-.pk-dt-col-opt { display:flex; align-items:center; gap:.3rem; font-size:.72rem; color:var(--fg);
+  background:var(--color-surface); border:1px solid var(--color-border); padding:.3rem .5rem;
+  display:flex; flex-direction:column; gap:.15rem;
+  box-shadow:0 6px 18px color-mix(in srgb, var(--shadow-ink) 53.33%, transparent); }
+.pk-dt-col-opt { display:flex; align-items:center; gap:.3rem; font-size:.72rem; color:var(--color-text);
   white-space:nowrap; cursor:pointer; }
 .pk-dt-wrap { max-height:none; }
 .pk-dt th.pk-dt-sortable { cursor:pointer; user-select:none; }
-.pk-dt th.pk-dt-sortable:hover { color:var(--fg); }
+.pk-dt th.pk-dt-sortable:hover { color:var(--color-text); }
 .pk-dt td.pk-dt-num { text-align:right; font-variant-numeric:tabular-nums; }
 
 /* === host-owned dock policy controls === */
@@ -1581,7 +1582,7 @@ button { font-family:var(--mono); }
   margin: 0;
   padding: 8px;
   font: var(--body-size)/var(--body-line-height) var(--mono);
-  color: var(--fg);
+  color: var(--color-text);
 }
 
 .pk-tr-rail-head {
@@ -1595,9 +1596,9 @@ button { font-family:var(--mono); }
   text-transform: uppercase;
 }
 
-.pk-tr-rail-title { font-weight: 700; color: var(--dim); }
-.pk-tr-rail-meta { color: var(--line2); }
-.pk-tr-rail-empty { margin: 0; color: var(--dim); }
+.pk-tr-rail-title { font-weight: 700; color: var(--color-text-muted); }
+.pk-tr-rail-meta { color: var(--color-border); }
+.pk-tr-rail-empty { margin: 0; color: var(--color-text-muted); }
 
 .pk-tr-rail-canvas { position: relative; }
 
@@ -1616,7 +1617,7 @@ button { font-family:var(--mono); }
 }
 
 .pk-tr-rail-row { height: var(--pk-tr-rail-row); box-sizing: border-box; }
-.pk-tr-rail-row.sep { box-shadow: inset 0 -1px 0 var(--line); }
+.pk-tr-rail-row.sep { box-shadow: inset 0 -1px 0 var(--color-divider); }
 .pk-tr-rail-row.dead { opacity: 0.35; }
 
 .pk-tr-rail-hit {
@@ -1631,49 +1632,49 @@ button { font-family:var(--mono); }
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--fg);
+  color: var(--color-text);
   font: inherit;
   text-align: left;
   white-space: nowrap;
 }
 
 button.pk-tr-rail-hit { cursor: pointer; }
-button.pk-tr-rail-hit:hover { background: var(--panel); }
+button.pk-tr-rail-hit:hover { background: var(--color-surface); }
 button.pk-tr-rail-hit:focus-visible {
-  outline: 1px dashed var(--blue);
+  outline: 1px dashed var(--color-primary);
   outline-offset: -1px;
 }
 
 /* Selected or open: filled row, solid blue frame and a 3px bar; hover and focus use neither. */
 .pk-tr-rail-hit.on,
 .pk-tr-rail-hit.open {
-  background: var(--panel);
-  outline: 1px solid var(--blue);
+  background: var(--color-surface);
+  outline: 1px solid var(--color-primary);
   outline-offset: -1px;
-  box-shadow: inset 3px 0 0 var(--blue);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 .pk-tr-rail-hit.on .pk-tr-rail-label,
 .pk-tr-rail-hit.open .pk-tr-rail-label { font-weight: 700; }
 .pk-tr-rail-hit.on .pk-tr-rail-time,
-.pk-tr-rail-hit.open .pk-tr-rail-time { color: var(--fg); }
+.pk-tr-rail-hit.open .pk-tr-rail-time { color: var(--color-text); }
 
 /* Disclosure caret: the table's fold glyphs; quiet until hover, focus or open. */
-.pk-tr-rail-caret { flex: none; width: 1ch; color: var(--dim); }
+.pk-tr-rail-caret { flex: none; width: 1ch; color: var(--color-text-muted); }
 button.pk-tr-rail-hit:hover .pk-tr-rail-caret,
 button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
-.pk-tr-rail-hit.open .pk-tr-rail-caret { color: var(--fg); }
+.pk-tr-rail-hit.open .pk-tr-rail-caret { color: var(--color-text); }
 
 .pk-tr-rail-time {
   flex: none;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .pk-tr-rail-chip {
   flex: none;
   padding: 0 4px;
-  border: 1px solid var(--line2);
-  color: var(--dim);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
   font-size: 11px;
   line-height: 1.4;
   letter-spacing: 0.06em;
@@ -1681,20 +1682,20 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-rail-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.pk-tr-rail-row.marker .pk-tr-rail-label { color: var(--dim); }
+.pk-tr-rail-row.marker .pk-tr-rail-label { color: var(--color-text-muted); }
 
 /* Rails: 2px trunk in the item tone, 1px lanes and elbows. */
-.pk-tr-rail-trunk { stroke: var(--line2); stroke-width: 2; }
-.pk-tr-rail-canvas.blue .pk-tr-rail-trunk { stroke: var(--blue); }
-.pk-tr-rail-canvas.green .pk-tr-rail-trunk { stroke: var(--green); }
-.pk-tr-rail-canvas.yellow .pk-tr-rail-trunk { stroke: var(--yellow); }
-.pk-tr-rail-canvas.red .pk-tr-rail-trunk { stroke: var(--red); }
+.pk-tr-rail-trunk { stroke: var(--color-border); stroke-width: 2; }
+.pk-tr-rail-canvas.blue .pk-tr-rail-trunk { stroke: var(--color-primary); }
+.pk-tr-rail-canvas.green .pk-tr-rail-trunk { stroke: var(--color-success); }
+.pk-tr-rail-canvas.yellow .pk-tr-rail-trunk { stroke: var(--color-warning); }
+.pk-tr-rail-canvas.red .pk-tr-rail-trunk { stroke: var(--color-error); }
 .pk-tr-rail-canvas.done .pk-tr-rail-trunk { stroke-opacity: 0.45; }
 
-.pk-tr-rail-lane { stroke: var(--line2); stroke-width: 1; }
+.pk-tr-rail-lane { stroke: var(--color-border); stroke-width: 1; }
 .pk-tr-rail-edge {
   fill: none;
-  stroke: var(--line2);
+  stroke: var(--color-border);
   stroke-width: 1;
   stroke-linejoin: miter;
   stroke-linecap: butt;
@@ -1704,13 +1705,13 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 
 /* Dots: 7px; hollow is a 1.5px ring, filled tones are solid. */
 .pk-tr-rail-dot { stroke-width: 0; }
-.pk-tr-rail-dot.hollow { fill: var(--bg); stroke: var(--dim); stroke-width: 1.5; }
-.pk-tr-rail-dot.blue { fill: var(--blue); }
-.pk-tr-rail-dot.green { fill: var(--green); }
-.pk-tr-rail-dot.yellow { fill: var(--yellow); }
-.pk-tr-rail-dot.red { fill: var(--red); }
+.pk-tr-rail-dot.hollow { fill: var(--color-background); stroke: var(--color-text-muted); stroke-width: 1.5; }
+.pk-tr-rail-dot.blue { fill: var(--color-primary); }
+.pk-tr-rail-dot.green { fill: var(--color-success); }
+.pk-tr-rail-dot.yellow { fill: var(--color-warning); }
+.pk-tr-rail-dot.red { fill: var(--color-error); }
 .pk-tr-rail-dot.dead { opacity: 0.35; }
-.pk-tr-rail-dot.on { stroke: var(--fg); stroke-width: 2; }
+.pk-tr-rail-dot.on { stroke: var(--color-text); stroke-width: 2; }
 
 /* Heading actions reuse the table's quiet text buttons. */
 .pk-tr-rail-head .pk-btn { flex: none; }
@@ -1734,7 +1735,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   flex: none;
   width: calc(var(--pk-tr-rail-labels) + 1ch);
   overflow: hidden;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font-size: 11px;
   line-height: var(--pk-tr-rail-row);
   letter-spacing: 0.06em;
@@ -1768,12 +1769,12 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.5;
-  color: var(--fg);
+  color: var(--color-text);
 }
 
 .pk-tr button:focus-visible,
 .pk-tr input:focus-visible {
-  outline: 1px solid var(--blue);
+  outline: 1px solid var(--color-primary);
   outline-offset: 1px;
 }
 
@@ -1783,7 +1784,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 .pk-tr-stack {
   flex: none;
   padding: 4px 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .pk-tr-bar {
@@ -1812,10 +1813,10 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   gap: 6px;
   margin: 0;
   padding: 3px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-divider);
   border-radius: 0;
-  background: var(--bg);
-  color: var(--dim);
+  background: var(--color-background);
+  color: var(--color-text-muted);
   font: 11px/1.4 var(--mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1824,27 +1825,27 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 
 .pk-tr-chip:hover,
 .pk-tr-tree:hover {
-  border-color: var(--fg);
-  color: var(--fg);
+  border-color: var(--color-text);
+  color: var(--color-text);
 }
 
 /* Pressed is an inverted block: the filled face reads at a glance. */
 .pk-tr-chip.on,
 .pk-tr-tree.on {
-  border-color: var(--inv-bg);
-  background: var(--inv-bg);
-  color: var(--inv-fg);
+  border-color: var(--color-inverse-background);
+  background: var(--color-inverse-background);
+  color: var(--color-inverse-text);
 }
 
 .pk-tr-chip-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--dim);
+  background: var(--color-text-muted);
 }
 
 .pk-tr-chip.on .pk-tr-chip-dot {
-  background: var(--line2);
+  background: var(--color-border);
 }
 
 .pk-tr-tree {
@@ -1865,27 +1866,27 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   min-width: 0;
   margin: 0;
   padding: 4px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-divider);
   border-radius: 0;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--color-background);
+  color: var(--color-text);
   font: 13px/1.4 var(--mono);
-  caret-color: var(--blue);
+  caret-color: var(--color-primary);
 }
 
 .pk-tr-query-input::placeholder {
-  color: var(--line2);
+  color: var(--color-border);
 }
 
 /* While the box holds a draft it carries a ring: what is typed is not yet applied. */
 .pk-tr-query-input.on {
-  border-color: var(--blue);
-  box-shadow: inset 0 0 0 1px var(--blue);
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
 }
 
 .pk-tr-errors {
   flex: none;
-  color: var(--yellow);
+  color: var(--color-warning);
   font: var(--text-label) var(--mono);
   white-space: nowrap;
 }
@@ -1900,7 +1901,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   margin: 0;
   padding: 3px 8px;
   list-style: none;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .pk-tr-token {
@@ -1909,18 +1910,18 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   gap: 4px;
   margin: 0;
   padding: 0 6px;
-  border: 1px solid var(--blue);
+  border: 1px solid var(--color-primary);
   border-radius: 0;
-  background: color-mix(in srgb, var(--blue) 14%, var(--bg));
-  box-shadow: inset 0 0 0 1px var(--blue);
-  color: var(--fg);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-background));
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+  color: var(--color-text);
   font: 11px/1.5 var(--mono);
   letter-spacing: 0.06em;
   cursor: pointer;
 }
 
 .pk-tr-token:hover .pk-tr-token-x {
-  color: var(--red);
+  color: var(--color-error);
 }
 
 .pk-tr-token-x {
@@ -1938,7 +1939,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   padding: 0;
   list-style: none;
   font: var(--text-label) var(--mono);
-  color: var(--line2);
+  color: var(--color-border);
 }
 
 .pk-tr-legend-compact {
@@ -1952,23 +1953,23 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-legend-info {
-  --tone: var(--blue);
+  --tone: var(--color-primary);
 }
 
 .pk-tr-legend-ok {
-  --tone: var(--green);
+  --tone: var(--color-success);
 }
 
 .pk-tr-legend-warn {
-  --tone: var(--yellow);
+  --tone: var(--color-warning);
 }
 
 .pk-tr-legend-err {
-  --tone: var(--red);
+  --tone: var(--color-error);
 }
 
 .pk-tr-legend-neutral {
-  --tone: var(--dim);
+  --tone: var(--color-text-muted);
 }
 
 .pk-tr-lg,
@@ -1981,7 +1982,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   border: 1px solid transparent;
   border-radius: 0;
   background: transparent;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font: inherit;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1990,21 +1991,21 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 
 .pk-tr-lg:hover,
 .pk-tr-lg-clear:hover {
-  border-color: var(--line2);
-  color: var(--fg);
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 
 .pk-tr-lg-clear:hover {
-  border-color: var(--red);
-  color: var(--red);
+  border-color: var(--color-error);
+  color: var(--color-error);
 }
 
 /* A picked tone keeps its dots lit: ringed, tinted and bright. */
 .pk-tr-lg.on {
   border-color: var(--tone);
-  background: color-mix(in srgb, var(--tone) 18%, var(--bg));
+  background: color-mix(in srgb, var(--tone) 18%, var(--color-background));
   box-shadow: inset 0 0 0 1px var(--tone);
-  color: var(--fg);
+  color: var(--color-text);
 }
 
 /* A tone the filter hides steps back. */
@@ -2017,7 +2018,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-legend-means {
-  color: var(--line2);
+  color: var(--color-border);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -2075,7 +2076,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   border: 1px solid transparent;
   border-radius: 0;
   background: transparent;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font: var(--text-label) var(--mono);
   letter-spacing: 0.06em;
   text-align: left;
@@ -2084,16 +2085,16 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-strip-toggle:hover {
-  border-color: var(--line2);
-  color: var(--fg);
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 
 /* An open row or the lifted cap is a ringed, tinted button. */
 .pk-tr-strip-toggle.on {
-  border-color: var(--blue);
-  background: color-mix(in srgb, var(--blue) 14%, var(--bg));
-  box-shadow: inset 0 0 0 1px var(--blue);
-  color: var(--fg);
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-background));
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+  color: var(--color-text);
 }
 
 /* A no-item label is cut at 14 glyphs, tracking included: NO ITEM: BRAN… */
@@ -2105,7 +2106,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-count {
-  color: var(--line2);
+  color: var(--color-border);
   font: var(--text-label) var(--mono);
   letter-spacing: 0.06em;
 }
@@ -2113,7 +2114,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 .pk-tr-empty {
   margin: 0;
   padding: 8px;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font: var(--text-label) var(--mono);
 }
 
@@ -2142,17 +2143,17 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 .pk-tr-foot {
   position: sticky;
   z-index: 1;
-  background: var(--bg);
+  background: var(--color-background);
 }
 
 .pk-tr-top {
   top: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .pk-tr-foot {
   bottom: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color-divider);
 }
 
 .pk-tr-svg {
@@ -2162,12 +2163,12 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-hatch-line {
-  stroke: var(--line);
+  stroke: var(--color-divider);
   stroke-width: 1;
 }
 
 .pk-tr-tick {
-  stroke: var(--line);
+  stroke: var(--color-divider);
   stroke-width: 1;
 }
 
@@ -2176,19 +2177,19 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-tick-day {
-  stroke: var(--line2);
+  stroke: var(--color-border);
   shape-rendering: crispEdges;
 }
 
 .pk-tr-tick-label {
-  fill: var(--line2);
+  fill: var(--color-border);
   letter-spacing: 0.06em;
   pointer-events: none;
   text-transform: uppercase;
 }
 
 .pk-tr-tick-label-day {
-  fill: var(--dim);
+  fill: var(--color-text-muted);
 }
 
 .pk-tr-tick-label-time {
@@ -2206,16 +2207,16 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-strip rect:not(.pk-tr-hit) {
-  fill: var(--dim);
+  fill: var(--color-text-muted);
   pointer-events: none;
 }
 
 .pk-tr-strip:hover rect:not(.pk-tr-hit) {
-  fill: var(--fg);
+  fill: var(--color-text);
 }
 
 .pk-tr-loose-line {
-  stroke: var(--line);
+  stroke: var(--color-divider);
   stroke-dasharray: 2 3;
   pointer-events: none;
 }
@@ -2227,27 +2228,27 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-item:hover .pk-tr-hit {
-  fill: var(--panel);
+  fill: var(--color-surface);
 }
 
 .pk-tr-item:focus-visible .pk-tr-hit {
-  stroke: var(--blue);
+  stroke: var(--color-primary);
 }
 
 /* The picked item sits in a ringed, tinted band with a bold id. */
 .pk-tr-item.on .pk-tr-hit {
-  fill: color-mix(in srgb, var(--blue) 14%, var(--bg));
-  stroke: var(--blue);
+  fill: color-mix(in srgb, var(--color-primary) 14%, var(--color-background));
+  stroke: var(--color-primary);
 }
 
 .pk-tr-item.on .pk-tr-label {
-  fill: var(--fg);
+  fill: var(--color-text);
   font-weight: 700;
 }
 
 .pk-tr-line {
   fill: none;
-  stroke: var(--line2);
+  stroke: var(--color-border);
   stroke-width: 2;
   pointer-events: none;
 }
@@ -2257,19 +2258,19 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-info .pk-tr-line {
-  stroke: var(--blue);
+  stroke: var(--color-primary);
 }
 
 .pk-tr-ok .pk-tr-line {
-  stroke: var(--green);
+  stroke: var(--color-success);
 }
 
 .pk-tr-warn .pk-tr-line {
-  stroke: var(--yellow);
+  stroke: var(--color-warning);
 }
 
 .pk-tr-err .pk-tr-line {
-  stroke: var(--red);
+  stroke: var(--color-error);
 }
 
 .pk-tr-done .pk-tr-line {
@@ -2278,7 +2279,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 
 .pk-tr-edge {
   fill: none;
-  stroke: var(--dim);
+  stroke: var(--color-text-muted);
   stroke-width: 1;
   stroke-linecap: butt;
   stroke-linejoin: miter;
@@ -2290,73 +2291,73 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 }
 
 .pk-tr-label {
-  fill: var(--dim);
+  fill: var(--color-text-muted);
   pointer-events: none;
 }
 
 .pk-tr-item:hover .pk-tr-label,
 .pk-tr-item:focus-visible .pk-tr-label {
-  fill: var(--fg);
+  fill: var(--color-text);
   text-decoration: underline;
 }
 
 .pk-tr-fork-label {
-  fill: var(--fg);
+  fill: var(--color-text);
   pointer-events: none;
 }
 
 /* Fork tip nodes: 7px squares, tinted by what the lane is. */
 .pk-tr-fork-node {
-  fill: var(--dim);
+  fill: var(--color-text-muted);
 }
 
 .pk-tr-fork-node.pk-tr-info {
-  fill: var(--blue);
+  fill: var(--color-primary);
 }
 
 .pk-tr-fork-node.pk-tr-ok {
-  fill: var(--green);
+  fill: var(--color-success);
 }
 
 .pk-tr-fork-node.pk-tr-warn {
-  fill: var(--yellow);
+  fill: var(--color-warning);
 }
 
 .pk-tr-fork-node.pk-tr-err {
-  fill: var(--red);
+  fill: var(--color-error);
 }
 
 /* Dots: hollow for neutral, solid for a tone; a burst is a numbered bubble. */
 circle.pk-tr-dot {
-  fill: var(--bg);
-  stroke: var(--dim);
+  fill: var(--color-background);
+  stroke: var(--color-text-muted);
   stroke-width: 1.5;
 }
 
 circle.pk-tr-dot.pk-tr-info {
-  fill: var(--blue);
-  stroke: var(--blue);
+  fill: var(--color-primary);
+  stroke: var(--color-primary);
 }
 
 circle.pk-tr-dot.pk-tr-ok {
-  fill: var(--green);
-  stroke: var(--green);
+  fill: var(--color-success);
+  stroke: var(--color-success);
 }
 
 circle.pk-tr-dot.pk-tr-warn {
-  fill: var(--yellow);
-  stroke: var(--yellow);
+  fill: var(--color-warning);
+  stroke: var(--color-warning);
 }
 
 circle.pk-tr-dot.pk-tr-err {
-  fill: var(--red);
-  stroke: var(--red);
+  fill: var(--color-error);
+  stroke: var(--color-error);
 }
 
 /* A neutral burst is a solid light-grey bubble so its count reads. */
 .pk-tr-cluster circle.pk-tr-dot.pk-tr-neutral {
-  fill: color-mix(in srgb, var(--fg) 65%, var(--bg));
-  stroke: color-mix(in srgb, var(--fg) 65%, var(--bg));
+  fill: color-mix(in srgb, var(--color-text) 65%, var(--color-background));
+  stroke: color-mix(in srgb, var(--color-text) 65%, var(--color-background));
 }
 
 /* A dot, a burst and a fork leaf open their own node: they are clickable. */
@@ -2367,11 +2368,11 @@ circle.pk-tr-dot.pk-tr-err {
 
 circle.pk-tr-glyph:hover,
 .pk-tr-cluster:hover > circle.pk-tr-dot {
-  stroke: var(--fg);
+  stroke: var(--color-text);
 }
 
 .pk-tr-cluster-count {
-  fill: var(--bg);
+  fill: var(--color-background);
   font: 8px/1 var(--mono);
   pointer-events: none;
 }
@@ -2405,7 +2406,7 @@ circle.pk-tr-glyph:hover,
    takes the chip's own colour. */
 .pk-tr-chip .pk-tr-count {
   margin-left: 2px;
-  color: var(--dim);
+  color: var(--color-text-muted);
 }
 
 .pk-tr-chip.on .pk-tr-count {
@@ -2421,7 +2422,7 @@ circle.pk-tr-glyph:hover,
   max-height: 560px;
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-divider);
 }
 
 /* The lane headers stick to the top and the gutter to the left; the head's
@@ -2432,8 +2433,8 @@ circle.pk-tr-glyph:hover,
   top: 0;
   z-index: 3;
   box-sizing: border-box;
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .pk-tr-seq-corner {
@@ -2442,8 +2443,8 @@ circle.pk-tr-glyph:hover,
   left: 0;
   z-index: 4;
   box-sizing: border-box;
-  background: var(--bg);
-  border-right: 1px solid var(--line);
+  background: var(--color-background);
+  border-right: 1px solid var(--color-divider);
 }
 
 .pk-tr-seq-lane {
@@ -2459,7 +2460,7 @@ circle.pk-tr-glyph:hover,
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font: 11px/1.4 var(--mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2468,16 +2469,16 @@ circle.pk-tr-glyph:hover,
 
 .pk-tr .pk-tr-seq-lane:hover,
 .pk-tr .pk-tr-seq-lane:focus-visible {
-  outline: 1px solid var(--blue);
+  outline: 1px solid var(--color-primary);
   outline-offset: -1px;
 }
 
 /* The lane the rows are narrowed to keeps its frame. */
 .pk-tr .pk-tr-seq-lane.on,
 .pk-tr .pk-tr-seq-lane[aria-pressed="true"] {
-  outline: 1px solid var(--blue);
+  outline: 1px solid var(--color-primary);
   outline-offset: -1px;
-  color: var(--fg);
+  color: var(--color-text);
 }
 
 .pk-tr-seq-lane .pk-tr-count {
@@ -2518,8 +2519,8 @@ circle.pk-tr-glyph:hover,
   left: 0;
   z-index: 2;
   box-sizing: border-box;
-  background: var(--bg);
-  border-right: 1px solid var(--line);
+  background: var(--color-background);
+  border-right: 1px solid var(--color-divider);
 }
 
 .pk-tr-seq-svg {
@@ -2528,7 +2529,7 @@ circle.pk-tr-glyph:hover,
 }
 
 .pk-tr-seq-life {
-  stroke: var(--line2);
+  stroke: var(--color-border);
   stroke-width: 1;
   shape-rendering: crispEdges;
 }
@@ -2538,13 +2539,13 @@ circle.pk-tr-glyph:hover,
 }
 
 .pk-tr-seq-rule {
-  stroke: var(--line);
+  stroke: var(--color-divider);
   stroke-width: 1;
 }
 
 .pk-tr-seq-daylabel,
 .pk-tr-seq-stamp {
-  fill: var(--dim);
+  fill: var(--color-text-muted);
   font-size: 10px;
   text-anchor: end;
 }
@@ -2581,58 +2582,58 @@ circle.pk-tr-glyph:hover,
 .pk-tr-seq-broadcast:focus-visible .pk-tr-seq-hit,
 .pk-tr-seq-act:hover .pk-tr-seq-hit,
 .pk-tr-seq-act:focus-visible .pk-tr-seq-hit {
-  fill: color-mix(in srgb, var(--blue) 8%, transparent);
+  fill: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
 
 .pk-tr-seq-edge:focus-visible .pk-tr-seq-hit,
 .pk-tr-seq-broadcast:focus-visible .pk-tr-seq-hit,
 .pk-tr-seq-act:focus-visible .pk-tr-seq-hit {
-  stroke: var(--blue);
+  stroke: var(--color-primary);
 }
 
 .pk-tr-seq-edge.on .pk-tr-seq-hit,
 .pk-tr-seq-broadcast.on .pk-tr-seq-hit,
 .pk-tr-seq-act.on .pk-tr-seq-hit {
-  fill: color-mix(in srgb, var(--blue) 14%, transparent);
-  stroke: var(--blue);
+  fill: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  stroke: var(--color-primary);
   stroke-width: 1;
 }
 
 /* Edge and broadcast groups carry their tone for arrow, anchor and bar. */
 .pk-tr-seq-edge,
 .pk-tr-seq-broadcast {
-  --tone: var(--fg);
+  --tone: var(--color-text);
 }
 
 .pk-tr-seq-edge.pk-tr-info,
 .pk-tr-seq-broadcast.pk-tr-info {
-  --tone: var(--blue);
+  --tone: var(--color-primary);
 }
 
 .pk-tr-seq-edge.pk-tr-ok,
 .pk-tr-seq-broadcast.pk-tr-ok {
-  --tone: var(--green);
+  --tone: var(--color-success);
 }
 
 .pk-tr-seq-edge.pk-tr-warn,
 .pk-tr-seq-broadcast.pk-tr-warn {
-  --tone: var(--yellow);
+  --tone: var(--color-warning);
 }
 
 .pk-tr-seq-edge.pk-tr-err,
 .pk-tr-seq-broadcast.pk-tr-err {
-  --tone: var(--red);
+  --tone: var(--color-error);
 }
 
 .pk-tr-seq-edge.pk-tr-neutral,
 .pk-tr-seq-broadcast.pk-tr-neutral {
-  --tone: var(--dim);
+  --tone: var(--color-text-muted);
 }
 
 /* A neutral arrow lifts to the foreground while hovered or open. */
 .pk-tr-seq-edge.pk-tr-neutral:hover,
 .pk-tr-seq-edge.pk-tr-neutral.on {
-  --tone: var(--fg);
+  --tone: var(--color-text);
 }
 
 .pk-tr-seq-arrow {
@@ -2647,7 +2648,7 @@ circle.pk-tr-glyph:hover,
 }
 
 .pk-tr-seq-bar {
-  stroke: var(--tone, var(--dim));
+  stroke: var(--tone, var(--color-text-muted));
   stroke-width: 1;
 }
 
@@ -2656,11 +2657,11 @@ circle.pk-tr-glyph:hover,
   stroke: none;
 }
 
-.pk-tr-seq-mark.pk-tr-info { fill: var(--blue); }
-.pk-tr-seq-mark.pk-tr-ok { fill: var(--green); }
-.pk-tr-seq-mark.pk-tr-warn { fill: var(--yellow); }
-.pk-tr-seq-mark.pk-tr-err { fill: var(--red); }
-.pk-tr-seq-mark.pk-tr-neutral { fill: var(--dim); }
+.pk-tr-seq-mark.pk-tr-info { fill: var(--color-primary); }
+.pk-tr-seq-mark.pk-tr-ok { fill: var(--color-success); }
+.pk-tr-seq-mark.pk-tr-warn { fill: var(--color-warning); }
+.pk-tr-seq-mark.pk-tr-err { fill: var(--color-error); }
+.pk-tr-seq-mark.pk-tr-neutral { fill: var(--color-text-muted); }
 
 /* Handoff and baton are solid lines; a review is dashed. */
 .pk-tr-seq-handoff .pk-tr-seq-arrow,
@@ -2692,14 +2693,14 @@ circle.pk-tr-glyph:hover,
   .pk-tr-seq-edge.on .pk-tr-seq-arrow {
     animation: none;
     stroke-dasharray: none;
-    stroke: var(--fg);
+    stroke: var(--color-text);
     stroke-width: 2;
     filter: none;
   }
 }
 
 .pk-tr-seq-cap {
-  fill: var(--fg);
+  fill: var(--color-text);
   font-size: 11px;
   text-anchor: middle;
 }
@@ -2711,7 +2712,7 @@ circle.pk-tr-glyph:hover,
 .pk-tr-seq-foot {
   margin: 0;
   padding: 4px 0;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font: 11px/1.4 var(--mono);
 }
 
@@ -2729,7 +2730,7 @@ circle.pk-tr-glyph:hover,
   display: flex;
   gap: 6px;
   padding: 6px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .pk-tr-lanes-filter {
@@ -2737,16 +2738,16 @@ circle.pk-tr-glyph:hover,
   min-width: 0;
   margin: 0;
   padding: 2px 6px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-divider);
   border-radius: 0;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--color-background);
+  color: var(--color-text);
   font: 13px/1.4 var(--mono);
-  caret-color: var(--blue);
+  caret-color: var(--color-primary);
 }
 
 .pk-tr-lanes-filter::placeholder {
-  color: var(--line2);
+  color: var(--color-border);
 }
 
 .pk-tr-lane-row {
@@ -2757,7 +2758,7 @@ circle.pk-tr-glyph:hover,
 }
 
 .pk-tr-lane-row.on {
-  outline: 1px solid var(--blue);
+  outline: 1px solid var(--color-primary);
   outline-offset: -1px;
 }
 
@@ -2772,7 +2773,7 @@ circle.pk-tr-glyph:hover,
 .pk-tr-lanes-more {
   margin: 0;
   padding: 4px 8px;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font: 11px/1.4 var(--mono);
 }
 
@@ -2795,7 +2796,7 @@ circle.pk-tr-glyph:hover,
   flex: none;
   width: calc(var(--pk-tr-labels) + 1ch);
   overflow: hidden;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font-size: 11px;
   line-height: var(--pk-tr-row);
   letter-spacing: 0.06em;
@@ -2824,7 +2825,7 @@ circle.pk-tr-glyph:hover,
   flex-direction: column;
   min-height: 0;
   max-height: 40%;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color-divider);
 }
 
 .pk-tr-ins-bar {
@@ -2833,7 +2834,7 @@ circle.pk-tr-glyph:hover,
   align-items: baseline;
   gap: 8px;
   padding: 2px 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-divider);
   font: var(--text-label) var(--mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2841,14 +2842,14 @@ circle.pk-tr-glyph:hover,
 
 .pk-tr-ins-kind {
   flex: none;
-  color: var(--dim);
+  color: var(--color-text-muted);
 }
 
 .pk-tr-ins-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  color: var(--fg);
+  color: var(--color-text);
   font-weight: 700;
   letter-spacing: 0;
   text-overflow: ellipsis;
@@ -2870,7 +2871,7 @@ circle.pk-tr-glyph:hover,
 /* The nested rail sits flush: its own 8px padding would double the inset. */
 .pk-tr-ins-rail {
   margin-top: 4px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color-divider);
 }
 
 .pk-tr-ins-rail .pk-tr-rail {
@@ -2885,23 +2886,23 @@ circle.pk-tr-glyph:hover,
   height: 10px;
   margin-right: 8px;
   border-radius: 50%;
-  background: var(--dim);
+  background: var(--color-text-muted);
 }
 
-.pk-tr-ins-dot.pk-tr-info { background: var(--blue); }
-.pk-tr-ins-dot.pk-tr-ok { background: var(--green); }
-.pk-tr-ins-dot.pk-tr-warn { background: var(--yellow); }
-.pk-tr-ins-dot.pk-tr-err { background: var(--red); }
+.pk-tr-ins-dot.pk-tr-info { background: var(--color-primary); }
+.pk-tr-ins-dot.pk-tr-ok { background: var(--color-success); }
+.pk-tr-ins-dot.pk-tr-warn { background: var(--color-warning); }
+.pk-tr-ins-dot.pk-tr-err { background: var(--color-error); }
 .pk-tr-ins-dot.pk-tr-neutral {
-  background: var(--bg);
-  box-shadow: inset 0 0 0 1.5px var(--dim);
+  background: var(--color-background);
+  box-shadow: inset 0 0 0 1.5px var(--color-text-muted);
 }
 
 .pk-tr-ins-more,
 .pk-tr-ins-cap {
   margin: 0;
   overflow: hidden;
-  color: var(--dim);
+  color: var(--color-text-muted);
   font: var(--text-label) var(--mono);
   letter-spacing: 0.06em;
   line-height: 22px;
@@ -2911,7 +2912,7 @@ circle.pk-tr-glyph:hover,
 }
 
 .pk-tr-ins-block + .pk-tr-ins-block {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color-divider);
 }
 
 /* ── COLLAB ────────────────────────────────────────────────────── */
@@ -2923,7 +2924,7 @@ circle.pk-tr-glyph:hover,
   gap: 6px;
   min-width: 0;
   font: var(--text-label) var(--mono);
-  color: var(--fg);
+  color: var(--color-text);
 }
 
 .pk-tr-collab .pk-dt-td {
@@ -2936,8 +2937,8 @@ circle.pk-tr-glyph:hover,
 .pk-tr-threads-head {
   margin: 0;
   padding: 0 0 2px;
-  border-bottom: 1px solid var(--line);
-  color: var(--dim);
+  border-bottom: 1px solid var(--color-divider);
+  color: var(--color-text-muted);
   font: var(--text-label) var(--mono);
   font-weight: 400;
   letter-spacing: .06em;
@@ -2949,21 +2950,21 @@ circle.pk-tr-glyph:hover,
 }
 
 .pk-tr-tee {
-  color: var(--dim);
+  color: var(--color-text-muted);
 }
 
-.pk-tr-a { color: var(--blue); }
-.pk-tr-b { color: var(--green); }
+.pk-tr-a { color: var(--color-primary); }
+.pk-tr-b { color: var(--color-success); }
 
 .pk-tr-faint {
-  color: var(--line2);
+  color: var(--color-border);
 }
 
 .pk-tr-tail {
-  color: var(--dim);
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
 
 span.pk-tr-warn {
-  color: var(--yellow);
+  color: var(--color-warning);
 }
