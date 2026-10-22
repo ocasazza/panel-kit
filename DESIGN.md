@@ -83,15 +83,15 @@ components:
     padding: "0"
   light-mode:
     backgroundColor: "{colors.blue}"
-    rounded: "{rounded.dot}"
+    rounded: "{rounded.panel}"
     size: "12px"
   light-minimize:
     backgroundColor: "{colors.yellow}"
-    rounded: "{rounded.dot}"
+    rounded: "{rounded.panel}"
     size: "12px"
   light-maximize:
     backgroundColor: "{colors.pink}"
-    rounded: "{rounded.dot}"
+    rounded: "{rounded.panel}"
     size: "12px"
   dock-chip:
     backgroundColor: "{colors.bg}"
@@ -401,7 +401,7 @@ not.
 
 - **Overlay lift** (`box-shadow: 0 10px 30px #000c`): the fixed tooltip overlay only. It is genuinely detached and viewport-placed.
 
-Note that three further `box-shadow` declarations exist but are **rings, not elevation** — `0 0 0 2px` spreads used for light hover/focus (`assets/panel-kit.css:83`) and badge hover/active halos (`:164`, `:170`). They borrow the shadow channel to draw a state ring. That is legitimate output but mis-housed: rings belong to a `--focus-ring` / state token, so that removing elevation never removes state feedback.
+Note that two further `box-shadow` declarations exist but are **rings, not elevation** — `0 0 0 2px` spreads used for badge hover/active halos. They borrow the shadow channel to draw a state ring. That is legitimate output but mis-housed: rings belong to a `--focus-ring` / state token, so that removing elevation never removes state feedback.
 
 ### Named Rules
 
@@ -417,21 +417,22 @@ counterpart for any of it. Z-order legibility now rides the tonal/border
 channel both renderers can draw, and a shadow appears only on
 `.ws.floating .panel.dragging` — a panel genuinely lifted mid-drag.
 
-Three `0 0 0 2px` declarations remain in the shadow channel but are **rings,
-not elevation**: light hover/focus and badge hover/active. They draw state, so
-removing elevation never removes feedback.
+Two `0 0 0 2px` declarations remain in the shadow channel but are **rings,
+not elevation**: badge hover/active. They draw state, so removing elevation
+never removes feedback.
 
 ## Shapes
 
-**Small radii, consistent stroke, one pill.** Every bounded object is a
-1px-stroked rectangle with a small radius: `4px` for panels, `5px` for the
-tooltip overlay, `3px` for dock chips. The radius ramp is tight on purpose —
-at these sizes the corner reads as "machined," not "rounded."
+**Square corners, consistent stroke, one pill.** Every bounded object is a
+1px-stroked rectangle at `--panel-radius` (`0`): panels, buttons, dock chips,
+the tooltip overlay, chip-style badges, and the traffic lights, which are
+square lit cells rather than circles. A square corner is what a terminal cell
+draws, so web and terminal chrome are the same shape.
 
-Two shapes break the rectangle, and both earn it: the traffic lights are
-`50%` circles (`12px`), because a control indicator should not look like a
-surface; and badges are full pills (`border-radius: 999px`, which at their
-height is exactly a stadium), inherited from the egui badge they port.
+One shape breaks the rectangle: free-standing badges are full pills
+(`border-radius: 999px`, which at their height is exactly a stadium), inherited
+from the egui badge they port. Inside the data table they take the square chip
+style. The spinner's rotating ring stays circular because it moves.
 Borders do the work that fills would do elsewhere: a badge's *kind* is carried
 by its border color with a near-black fill behind it, so ten badge kinds
 coexist without ten colored blocks fighting for attention. The resize grip is
@@ -444,17 +445,17 @@ grey, folded.
 ### Panels
 
 - **Character:** an instrument module bolted into a rack.
-- **Shape:** `4px` radius, `1px` `--line2` border, `--panel` fill, `overflow: hidden`, floors at `180x110px`.
-- **Chrome:** controls and title are inset into the top border row, not a header band. The body compensates with a `1.75rem` top inset.
+- **Shape:** square corners (`--panel-radius`), `1px` `--line2` border, `--panel` fill, `overflow: hidden`, floors at `180x110px`.
+- **Chrome:** controls and title are inset into the top border row, not a header band. The header's content starts on the body's content column (`--space-md` in); its `--space-xs` padding sits outside that column, where the top border stops. The body compensates with a `1.75rem` top inset.
 - **States:** `.tile-dragging` drops to `.55` opacity with a `1px` dashed accent outline inset `-1px` — the accent's live-state role applied to drag.
 - **Cursor:** `grab` on a tiling panel head, `grabbing` while active; `default` on mobile.
 
 ### Traffic Lights
 
 - **Character:** lit indicators on a dark faceplate.
-- **Shape:** `12px` circles, `6px` apart, no border, `opacity: .9` at rest.
+- **Shape:** `12px` squares at `--panel-radius`, `6px` apart, no border, fully opaque. The terminal draws `■`.
 - **Color:** per-operation via `--light-c` — blue mode, amber minimize, magenta maximize.
-- **Hover / Focus:** full opacity plus a color-matched ring; transitions on `opacity` and `box-shadow` at `.12s ease`.
+- **Hover:** a `1px` `--focus-ring` outline `1px` out; the terminal draws `▣`. **Focus:** the shared `2px` keyboard ring every control takes.
 - **Never:** red/yellow/green macOS mimicry. None of these lights destroys anything.
 
 ### Dock Chips
@@ -526,9 +527,8 @@ The one surface that cannot use this design system at runtime, because it
 paints before the WASM module exists and so cannot read the injected
 stylesheet. It is still held to the system — by generation rather than by
 discipline (see The One Source Rule). It previews the real chrome: the panel
-skeleton, the hairline borders, and the traffic-light cluster as three
-discrete dots, which replaced a striped gradient that approximated the lights
-and could never have been drawn in cells.
+skeleton, the hairline borders, and the traffic-light cluster as three square
+cells, as the mounted app and the terminal draw them.
 
 ## Do's and Don'ts
 

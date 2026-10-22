@@ -97,11 +97,8 @@
 
 .panel-kit-boot-panel:first-child { grid-row: 1 / span 2; }
 
-/* The traffic-light cluster, drawn as three discrete dots rather than the
-   striped gradient this used to be. The dots are what the mounted app shows,
-   so the boot shell now previews the real control instead of approximating
-   it — and three flat circles survive translation into cells, which a
-   gradient never could. */
+/* The traffic-light cluster as three square cells, previewing the real
+   control. Flat squares survive translation into cells. */
 .panel-kit-boot-panel::before {
   content: "";
   position: absolute;
@@ -109,7 +106,7 @@
   left: 12px;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: 0;
   background: {{blue}};
   box-shadow: 14px 0 0 {{yellow}}, 28px 0 0 {{pink}};
 }

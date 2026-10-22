@@ -125,10 +125,14 @@ button { font-family:var(--mono); }
   min-width:180px; min-height:110px; }
 .panel.focused { border-color:var(--fg); }
 .ws.floating .panel.dragging { box-shadow:0 6px 24px #0007; }
+/* Inset so the header's content (first light, last action) lines up with the
+   body's content column, while its --space-xs padding keeps a gap where the
+   top border stops. */
 .panel-head {
-  position:absolute; z-index:2; top:-1px; left:8px; right:8px;
+  position:absolute; z-index:2; top:-1px;
+  left:calc(var(--space-md) - var(--space-xs)); right:calc(var(--space-md) - var(--space-xs));
   display:flex; align-items:center; gap:.5rem; height:var(--panel-head-h);
-  padding:0 .35rem; background:var(--panel); cursor:move; user-select:none;
+  padding:0 var(--space-xs); background:var(--panel); cursor:move; user-select:none;
   touch-action:none;
 }
 .panel-head:focus-visible { outline-offset:-2px; }
@@ -156,7 +160,7 @@ button { font-family:var(--mono); }
 .panel-body { flex:1; min-height:0; overflow:auto;
   padding:calc(var(--panel-head-h) + var(--space-sm)) var(--space-md) var(--space-md); }
 
-/* Traffic lights */
+/* Traffic lights: square lit cells, like every other bounded object. */
 .lights { display:flex; align-items:center; gap:6px; }
 .light { --light-c: var(--line2); position:relative; width:12px; height:12px;
   flex:0 0 12px; border:0; padding:0; cursor:pointer; background:transparent; }
@@ -165,12 +169,9 @@ button { font-family:var(--mono); }
   width:max(100%, var(--hit-min)); height:max(100%, var(--hit-min));
   transform:translate(-50%, -50%); }
 .light::after { content:""; position:absolute; width:12px; height:12px; inset:50% auto auto 50%;
-  border-radius:50%; opacity:.9; background:var(--light-c); box-shadow:0 0 0 0 transparent;
-  transform:translate(-50%, -50%); transition:opacity .12s ease, box-shadow .12s ease; }
-.light:hover::after, .light:focus-visible::after {
-  opacity:1;
-  box-shadow:0 0 0 2px color-mix(in srgb, var(--light-c) 70%, transparent);
-}
+  border-radius:var(--panel-radius); background:var(--light-c);
+  transform:translate(-50%, -50%); }
+.light:hover::after { outline:1px solid var(--focus-ring); outline-offset:1px; }
 /* The lights are deliberately NOT the macOS red/yellow/green: none of them
    destroys anything, so the cluster uses a printer-CMY scheme instead —
    blue (mode toggle), yellow (minimize), pink (maximize). Yellow keeps its
