@@ -2115,16 +2115,17 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 
 /* ── The canvas ────────────────────────────────────────────────── */
 
-/* The scroller. It takes the room the body leaves and scrolls past it, never
-   past the screen, so a host with no height of its own still gets a bounded
-   window of rows. The scrollbar's room is kept, so the layout width is stable.
-   It takes focus (not by Tab) when a row scrolls out of the window, so the
-   page keys keep scrolling; rows mounting under the offset are not anchored. */
+/* The scroller. It takes the room the body leaves and scrolls past it, so a
+   host with no height of its own still gets a bounded window of rows and a
+   host that embeds the trace in a panel scrolls the canvas, not the panel.
+   The scrollbar's room is kept, so the layout width is stable. It takes focus
+   (not by Tab) when a row scrolls out of the window, so the page keys keep
+   scrolling; rows mounting under the offset are not anchored. */
 .pk-tr-canvas {
   position: relative;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: 100vh;
+  max-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   overflow-anchor: none;
