@@ -103,6 +103,8 @@ pub struct PanelWorkspace<K: PanelKind> {
     save_policy: SavePolicy,
     fill_order: TileFillOrder,
     snap: SnapPolicy,
+    defaults: fn() -> Vec<PanelWin<K>>,
+    default_mode: Mode,
 }
 
 impl<K: PanelKind> Clone for PanelWorkspace<K> {
@@ -116,6 +118,8 @@ impl<K: PanelKind> Clone for PanelWorkspace<K> {
             save_policy: self.save_policy.clone(),
             fill_order: self.fill_order,
             snap: self.snap,
+            defaults: self.defaults,
+            default_mode: self.default_mode,
         }
     }
 }
@@ -166,6 +170,8 @@ pub fn use_panel_workspace<K: PanelKind>(
         save_policy: SavePolicy::OnSettle,
         fill_order: options.fill_order,
         snap: options.snap,
+        defaults,
+        default_mode: options.default_mode,
     }
 }
 
@@ -218,6 +224,38 @@ pub fn workspace_area_class<K: PanelKind>(frame: &ProjectedFrame<'_, K>) -> &'st
     }
 }
 
+/// Paint one projected panel: shell, chrome with traffic lights, body, grip.
+///
+/// Hosts keep their own loop over `frame.panels` (they differ in keep-alive
+/// slots, per-view chrome, and wheel routing) but not this composition.
+pub fn panel_element<K: PanelKind>(
+    panel: panel_kit_core::frame::PanelProjection<K>,
+    meta: &panel_kit_core::PanelMeta<K>,
+    emit: EventHandler<WorkspaceEvent<K>>,
+    body: Element,
+    header_actions: Option<Element>,
+) -> Element {
+    let class = format!("panel-{}", meta.slug);
+    let chrome = crate::widgets::panel::panel_chrome_with_events(
+        panel,
+        meta,
+        emit,
+        Some(crate::widgets::panel::traffic_lights(panel, emit)),
+        header_actions,
+    );
+
+    crate::widgets::panel::panel_shell_with_events(
+        panel,
+        Some(&class),
+        rsx! {
+            {chrome}
+            {crate::widgets::panel::panel_body(body)}
+            {crate::widgets::panel::resize_grip(panel, emit)}
+        },
+        emit,
+    )
+}
+
 /// Mutate the snapshot through a persistence-aware write.
 pub fn mutate_snapshot<K: PanelKind>(
     workspace: &PanelWorkspace<K>,
@@ -226,6 +264,18 @@ pub fn mutate_snapshot<K: PanelKind>(
     let mut snapshot_signal = workspace.snapshot;
     let mut snapshot = snapshot_signal.write();
     mutate(&mut snapshot);
+    if let Err(error) = persist_snapshot(&*workspace.store, &snapshot, &workspace.catalog) {
+        log_layout_error("save layout", workspace.storage_key, &error);
+    }
+}
+
+/// Restore the shipped default layout, discarding the saved one.
+pub fn reset_workspace<K: PanelKind>(workspace: &PanelWorkspace<K>) {
+    let viewport = workspace.snapshot.peek().viewport;
+    let fresh = Snapshot::from_defaults((workspace.defaults)(), workspace.default_mode, viewport);
+    let mut snapshot_signal = workspace.snapshot;
+    snapshot_signal.set(fresh);
+    let mut snapshot = snapshot_signal.write();
     if let Err(error) = persist_snapshot(&*workspace.store, &snapshot, &workspace.catalog) {
         log_layout_error("save layout", workspace.storage_key, &error);
     }
