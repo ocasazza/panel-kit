@@ -2002,20 +2002,34 @@ button.pk-rail-hit:focus-visible .pk-rail-caret,
   scrollbar-gutter: stable;
 }
 
+/* GRAPH: the body is a column, the figure fills it and only the canvas
+   scrolls, so the head stays put and the canvas can mount just its rows. */
+.pk-ag[data-mode="graph"] .pk-ag-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
 .pk-ag-fig {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
   min-width: 0;
   margin: 0;
   padding: 4px 8px;
   overflow: hidden;
 }
 
-/* The lists and tables of LANES and COLLAB sit inset like the figure. */
+/* The sequence diagram and the COLLAB tables sit inset like the figure. */
 .pk-ag:not([data-mode="graph"]) .pk-ag-body {
   padding: 4px 8px;
 }
 
 .pk-ag-head {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   align-items: center;
   gap: 2px 16px;
@@ -2076,8 +2090,35 @@ button.pk-rail-hit:focus-visible .pk-rail-caret,
 
 /* ── The canvas ────────────────────────────────────────────────── */
 
+/* The scroller. It takes the room the body leaves and scrolls past it, never
+   past the screen, so a host with no height of its own still gets a bounded
+   window of rows. The scrollbar's room is kept, so the layout width is stable. */
 .pk-ag-canvas {
   position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* The no-item strip and the axis stay in view while the rows scroll between them. */
+.pk-ag-top,
+.pk-ag-foot {
+  position: sticky;
+  z-index: 1;
+  background: var(--bg);
+}
+
+.pk-ag-top {
+  top: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-ag-foot {
+  bottom: 0;
+  border-top: 1px solid var(--line);
 }
 
 .pk-ag-svg {
@@ -2324,134 +2365,369 @@ circle.pk-ag-glyph:hover,
   opacity: 1;
 }
 
-/* ── LANES ─────────────────────────────────────────────────────── */
+/* ── LANES: the sequence diagram ───────────────────────────────── */
 
-.pk-ag-lane-list,
-.pk-ag-nodes,
-.pk-ag-steps,
-.pk-ag-threads {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.pk-ag-lanes {
-  min-width: 0;
-}
-
-.pk-ag-lane {
-  min-width: 0;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 4px;
-  margin-bottom: 4px;
-}
-
-.pk-ag-lane-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-height: 18px;
-  font: var(--text-label) var(--mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-
-.pk-ag-lane-label {
-  color: var(--fg);
-  font-weight: 700;
-}
-
-.pk-ag-node,
-.pk-ag-earlier {
-  min-width: 0;
-  min-height: 16px;
-  border-top: 1px solid var(--line);
-  font: var(--text-label) var(--mono);
-  color: var(--fg);
-}
-
-.pk-ag-earlier {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 0 0 4px;
+/* The activity chip's count sits after its label; on an inverted chip it
+   takes the chip's own colour. */
+.pk-ag-chip .pk-ag-count {
+  margin-left: 2px;
   color: var(--dim);
-  letter-spacing: .06em;
-  text-transform: uppercase;
 }
 
-/* A node is a disclosure button: caret, dot, one-line caption. */
-.pk-ag-node-hit {
+.pk-ag-chip.on .pk-ag-count {
+  color: inherit;
+}
+
+.pk-ag-seq {
+  min-width: 0;
+}
+
+.pk-ag-seq-scroll {
+  position: relative;
+  max-height: 560px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+}
+
+/* The lane headers stick to the top and the gutter to the left; the head's
+   width is inline. */
+.pk-ag-seq-head {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  box-sizing: border-box;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-ag-seq-corner {
+  flex: none;
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  box-sizing: border-box;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+}
+
+.pk-ag-seq-lane {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   box-sizing: border-box;
-  width: 100%;
-  min-height: 16px;
+  min-width: 0;
+  height: 28px;
   margin: 0;
-  padding: 0 0 0 4px;
+  padding: 0 8px;
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-align: left;
+  color: var(--dim);
+  font: 11px/1.4 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
-.pk-ag .pk-ag-node-hit:focus-visible {
-  outline-offset: -1px;
-}
-
-.pk-ag-node:hover {
+.pk-ag .pk-ag-seq-lane:hover,
+.pk-ag .pk-ag-seq-lane:focus-visible {
   outline: 1px solid var(--blue);
   outline-offset: -1px;
 }
 
-/* Open: the same solid blue frame and 3px bar as an open rail row. */
-.pk-ag-node.open {
+/* The lane the rows are narrowed to keeps its frame. */
+.pk-ag .pk-ag-seq-lane.on,
+.pk-ag .pk-ag-seq-lane[aria-pressed="true"] {
   outline: 1px solid var(--blue);
   outline-offset: -1px;
-  box-shadow: inset 3px 0 0 var(--blue);
-}
-
-.pk-ag-node.open .pk-ag-caption {
-  font-weight: 700;
-}
-
-/* The caret is quiet until hover, focus or open. */
-.pk-ag-node-hit > .pk-ag-caret {
-  color: var(--dim);
-}
-
-.pk-ag-node-hit:hover > .pk-ag-caret,
-.pk-ag-node-hit:focus-visible > .pk-ag-caret,
-.pk-ag-node.open > .pk-ag-node-hit > .pk-ag-caret {
   color: var(--fg);
 }
 
-.pk-ag-node-hit > .pk-ag-dot {
+.pk-ag-seq-lane .pk-ag-count {
   flex: none;
+}
+
+.pk-ag-seq-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The folded `+N` lane is a plain label, not a button. */
+.pk-ag .pk-ag-seq-fold,
+.pk-ag .pk-ag-seq-fold:hover {
+  justify-content: center;
+  outline: none;
+  cursor: help;
+}
+
+.pk-ag-seq-fold .pk-ag-seq-name {
+  flex: none;
+  text-align: center;
+}
+
+.pk-ag-seq-body {
+  display: flex;
+  position: relative;
+}
+
+.pk-ag-seq-gutter {
+  display: block;
+  flex: none;
+  position: sticky;
+  left: 0;
+  z-index: 2;
   box-sizing: border-box;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--dim);
-}
-
-.pk-ag-node.pk-ag-info .pk-ag-node-hit > .pk-ag-dot { background: var(--blue); }
-.pk-ag-node.pk-ag-ok .pk-ag-node-hit > .pk-ag-dot { background: var(--green); }
-.pk-ag-node.pk-ag-warn .pk-ag-node-hit > .pk-ag-dot { background: var(--yellow); }
-.pk-ag-node.pk-ag-err .pk-ag-node-hit > .pk-ag-dot { background: var(--red); }
-
-/* Neutral is a hollow ring, distinct from the filled tones by shape. */
-.pk-ag-node.pk-ag-neutral .pk-ag-node-hit > .pk-ag-dot {
   background: var(--bg);
-  box-shadow: inset 0 0 0 1.5px var(--dim);
+  border-right: 1px solid var(--line);
 }
 
-.pk-ag-caption {
+.pk-ag-seq-svg {
+  display: block;
+  flex: none;
+}
+
+.pk-ag-seq-life {
+  stroke: var(--line2);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.pk-ag-seq-day {
+  pointer-events: none;
+}
+
+.pk-ag-seq-rule {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.pk-ag-seq-daylabel,
+.pk-ag-seq-stamp {
+  fill: var(--dim);
+  font-size: 10px;
+  text-anchor: end;
+}
+
+.pk-ag-seq-daylabel {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A row is a button: the transparent hit rect takes the click, the tint
+   shows hover, focus and the event open in the inspector. */
+.pk-ag-seq-edge,
+.pk-ag-seq-broadcast,
+.pk-ag-seq-act {
+  cursor: pointer;
+}
+
+.pk-ag-seq-hit {
+  fill: transparent;
+}
+
+.pk-ag-seq-edge:hover,
+.pk-ag-seq-edge:focus-visible,
+.pk-ag-seq-broadcast:hover,
+.pk-ag-seq-broadcast:focus-visible,
+.pk-ag-seq-act:hover,
+.pk-ag-seq-act:focus-visible {
+  outline: none;
+}
+
+.pk-ag-seq-edge:hover .pk-ag-seq-hit,
+.pk-ag-seq-edge:focus-visible .pk-ag-seq-hit,
+.pk-ag-seq-broadcast:hover .pk-ag-seq-hit,
+.pk-ag-seq-broadcast:focus-visible .pk-ag-seq-hit,
+.pk-ag-seq-act:hover .pk-ag-seq-hit,
+.pk-ag-seq-act:focus-visible .pk-ag-seq-hit {
+  fill: color-mix(in srgb, var(--blue) 8%, transparent);
+}
+
+.pk-ag-seq-edge:focus-visible .pk-ag-seq-hit,
+.pk-ag-seq-broadcast:focus-visible .pk-ag-seq-hit,
+.pk-ag-seq-act:focus-visible .pk-ag-seq-hit {
+  stroke: var(--blue);
+}
+
+.pk-ag-seq-edge.on .pk-ag-seq-hit,
+.pk-ag-seq-broadcast.on .pk-ag-seq-hit,
+.pk-ag-seq-act.on .pk-ag-seq-hit {
+  fill: color-mix(in srgb, var(--blue) 14%, transparent);
+  stroke: var(--blue);
+  stroke-width: 1;
+}
+
+/* Edge and broadcast groups carry their tone for arrow, anchor and bar. */
+.pk-ag-seq-edge,
+.pk-ag-seq-broadcast {
+  --tone: var(--fg);
+}
+
+.pk-ag-seq-edge.pk-ag-info,
+.pk-ag-seq-broadcast.pk-ag-info {
+  --tone: var(--blue);
+}
+
+.pk-ag-seq-edge.pk-ag-ok,
+.pk-ag-seq-broadcast.pk-ag-ok {
+  --tone: var(--green);
+}
+
+.pk-ag-seq-edge.pk-ag-warn,
+.pk-ag-seq-broadcast.pk-ag-warn {
+  --tone: var(--yellow);
+}
+
+.pk-ag-seq-edge.pk-ag-err,
+.pk-ag-seq-broadcast.pk-ag-err {
+  --tone: var(--red);
+}
+
+.pk-ag-seq-edge.pk-ag-neutral,
+.pk-ag-seq-broadcast.pk-ag-neutral {
+  --tone: var(--dim);
+}
+
+/* A neutral arrow lifts to the foreground while hovered or open. */
+.pk-ag-seq-edge.pk-ag-neutral:hover,
+.pk-ag-seq-edge.pk-ag-neutral.on {
+  --tone: var(--fg);
+}
+
+.pk-ag-seq-arrow {
+  fill: none;
+  stroke: var(--tone);
+  stroke-width: 1.5;
+}
+
+.pk-ag-seq-anchor {
+  fill: var(--tone);
+  stroke: none;
+}
+
+.pk-ag-seq-bar {
+  stroke: var(--tone, var(--dim));
+  stroke-width: 1;
+}
+
+/* Arrowheads are shared marker defs, so they take a fixed tone colour. */
+.pk-ag-seq-mark {
+  stroke: none;
+}
+
+.pk-ag-seq-mark.pk-ag-info { fill: var(--blue); }
+.pk-ag-seq-mark.pk-ag-ok { fill: var(--green); }
+.pk-ag-seq-mark.pk-ag-warn { fill: var(--yellow); }
+.pk-ag-seq-mark.pk-ag-err { fill: var(--red); }
+.pk-ag-seq-mark.pk-ag-neutral { fill: var(--dim); }
+
+/* Handoff and baton are solid lines; a review is dashed. */
+.pk-ag-seq-handoff .pk-ag-seq-arrow,
+.pk-ag-seq-baton .pk-ag-seq-arrow {
+  stroke-dasharray: none;
+}
+
+.pk-ag-seq-review .pk-ag-seq-arrow {
+  stroke-dasharray: 3 2;
+}
+
+/* Still by default; hover, focus and the open row show dashes travelling
+   toward the target. Three-class selectors outrank the kind rules above. */
+.pk-ag-seq-edge:hover .pk-ag-seq-arrow,
+.pk-ag-seq-edge:focus-visible .pk-ag-seq-arrow,
+.pk-ag-seq-edge.on .pk-ag-seq-arrow {
+  stroke-dasharray: 6 4;
+  animation: pk-ag-seq-flow 900ms linear infinite;
+  filter: brightness(1.25);
+}
+
+@keyframes pk-ag-seq-flow {
+  to { stroke-dashoffset: -10; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-ag-seq-edge:hover .pk-ag-seq-arrow,
+  .pk-ag-seq-edge:focus-visible .pk-ag-seq-arrow,
+  .pk-ag-seq-edge.on .pk-ag-seq-arrow {
+    animation: none;
+    stroke-dasharray: none;
+    stroke: var(--fg);
+    stroke-width: 2;
+    filter: none;
+  }
+}
+
+.pk-ag-seq-cap {
+  fill: var(--fg);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.pk-ag-seq-cap.pk-ag-seq-cap-start {
+  text-anchor: start;
+}
+
+.pk-ag-seq-foot {
+  margin: 0;
+  padding: 4px 0;
+  color: var(--dim);
+  font: 11px/1.4 var(--mono);
+}
+
+/* Lanes menu: the data-table menu inside the swimlane toolbar, lifted above
+   the sticky sequence header. */
+.pk-ag-lanes-menu .pk-dt-menu-body {
+  z-index: 6;
+  min-width: 260px;
+  max-height: 320px;
+  padding: 0;
+  overflow: auto;
+}
+
+.pk-ag-lanes-tools {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-ag-lanes-filter {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 var(--mono);
+  caret-color: var(--blue);
+}
+
+.pk-ag-lanes-filter::placeholder {
+  color: var(--line2);
+}
+
+.pk-ag-lane-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 6px;
+}
+
+.pk-ag-lane-row.on {
+  outline: 1px solid var(--blue);
+  outline-offset: -1px;
+}
+
+.pk-ag-lane-name {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -2459,16 +2735,18 @@ circle.pk-ag-glyph:hover,
   white-space: nowrap;
 }
 
-/* An open node's facts start under its caption: caret, dot and both gaps. */
-.pk-ag-node-facts {
-  padding: 0 8px 0 calc(4px + 1ch + 26px);
+.pk-ag-lanes-more {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--dim);
+  font: 11px/1.4 var(--mono);
 }
 
 /* ── Facts: one 22px row per value line ─────────────────────────── */
 
 /* Label column fixed to the longest label, values clipped with an ellipsis
-   under a `title` with the full line: the rail's fact grid, for LANES nodes
-   and the inspector. */
+   under a `title` with the full line: the rail's fact grid, for the
+   inspector. */
 .pk-ag-facts {
   --pk-ag-row: 22px;
   min-width: 0;
@@ -2565,7 +2843,7 @@ circle.pk-ag-glyph:hover,
   padding: 4px 0 0;
 }
 
-/* The status's toned dot, the same shapes as a lane node's. */
+/* The status's toned dot, the same shapes as a graph dot's. */
 .pk-ag-ins-dot {
   display: inline-block;
   box-sizing: border-box;
@@ -2602,119 +2880,38 @@ circle.pk-ag-glyph:hover,
   border-top: 1px solid var(--line);
 }
 
-/* ── LANES: the unattributed section ───────────────────────────── */
-
-.pk-ag-unattributed {
-  margin-top: 6px;
-  border: 1px solid var(--line);
-}
-
-.pk-ag-unattributed.on {
-  box-shadow: inset 0 0 0 1px var(--blue);
-}
-
-.pk-ag-unattributed-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 18px;
-  margin: 0;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font: var(--text-label) var(--mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  text-align: left;
-  cursor: pointer;
-}
-
-.pk-ag-unattributed-toggle:hover,
-.pk-ag-unattributed-toggle:focus-visible {
-  outline: 1px solid var(--blue);
-  outline-offset: -1px;
-}
-
-.pk-ag-unattributed-toggle.on,
-.pk-ag-unattributed-toggle[aria-expanded="true"] {
-  background: var(--inv-bg);
-  color: var(--inv-fg);
-}
-
-.pk-ag-unattributed-toggle.on .pk-ag-count {
-  color: inherit;
-}
-
-.pk-ag-caret {
-  flex: none;
-  width: 1ch;
-  text-align: center;
-}
-
-.pk-ag-unattributed-toggle .pk-ag-tl-label {
-  flex: 1 1 auto;
-}
-
-.pk-ag-unattributed > .pk-ag-lane-list {
-  padding: 4px 6px 0;
-}
-
 /* ── COLLAB ────────────────────────────────────────────────────── */
 
+/* Two DataTables, pairs over threads; a cell's text stays on one line. */
 .pk-ag-collab {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
   font: var(--text-label) var(--mono);
   color: var(--fg);
 }
 
-.pk-ag-pairs {
-  width: 100%;
-  border-collapse: collapse;
-  font: var(--text-label) var(--mono);
-}
-
-.pk-ag-pairs th {
-  padding: 2px 8px 2px 0;
-  border-bottom: 1px solid var(--line);
-  color: var(--dim);
-  font-weight: 400;
-  letter-spacing: .06em;
-  text-align: left;
-  text-transform: uppercase;
+.pk-ag-collab .pk-dt-td {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pk-ag-pairs td,
-.pk-ag-pairs th[scope="row"] {
-  padding: 2px 8px 2px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 0;
-  vertical-align: top;
-  color: var(--fg);
+.pk-ag-threads-head {
+  margin: 0;
+  padding: 0 0 2px;
+  border-bottom: 1px solid var(--line);
+  color: var(--dim);
+  font: var(--text-label) var(--mono);
   font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-  white-space: normal;
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 
-.pk-ag-pairs tbody tr:first-child td,
-.pk-ag-pairs tbody tr:first-child th[scope="row"] {
-  border-top: 0;
-}
-
-.pk-ag-pair-items,
-.pk-ag-pair-handoffs,
-.pk-ag-pair-branches {
-  min-width: 0;
-}
-
-.pk-ag-pair-handoffs > span,
-.pk-ag-pair-branches > span {
-  display: block;
+.pk-ag-id {
+  font-weight: 700;
 }
 
 .pk-ag-tee {
@@ -2728,106 +2925,11 @@ circle.pk-ag-glyph:hover,
   color: var(--line2);
 }
 
-.pk-ag-link {
-  box-sizing: border-box;
-  margin: 0 4px 0 0;
-  padding: 0 4px;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--bg);
-  color: var(--blue);
-  font: var(--text-label) var(--mono);
-  cursor: pointer;
-}
-
-.pk-ag-link:hover,
-.pk-ag-link:focus-visible {
-  outline: 1px solid var(--blue);
-  outline-offset: 0;
-}
-
-.pk-ag-link.on,
-.pk-ag-link[aria-pressed="true"] {
-  border-color: var(--blue);
-  background: color-mix(in srgb, var(--blue) 14%, var(--bg));
-  box-shadow: inset 0 0 0 1px var(--blue);
-  font-weight: 700;
-}
-
-.pk-ag-threads-head {
-  margin: 8px 0 2px;
-  padding: 0 0 2px;
-  border-bottom: 1px solid var(--line);
+.pk-ag-tail {
   color: var(--dim);
-  font: var(--text-label) var(--mono);
-  font-weight: 400;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-
-.pk-ag-thread {
-  min-width: 0;
-  padding: 2px 0 4px 6px;
-  border-left: 2px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-
-.pk-ag-thread:hover {
-  outline: 1px solid var(--blue);
-  outline-offset: -1px;
-}
-
-.pk-ag-thread.on {
-  background: color-mix(in srgb, var(--blue) 14%, var(--bg));
-  box-shadow: inset 0 0 0 1px var(--blue);
-}
-
-.pk-ag-thread.pk-ag-stale {
-  border-left: 2px solid var(--yellow);
-}
-
-.pk-ag-thread-head {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-height: 18px;
-}
-
-.pk-ag-thread-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 span.pk-ag-warn {
   color: var(--yellow);
-}
-
-.pk-ag-steps > li {
-  display: grid;
-  grid-template-columns: 11ch minmax(0, 14ch) minmax(0, 1fr);
-  align-items: baseline;
-  gap: 8px;
-  min-height: 14px;
-  border-top: 1px solid var(--line);
-}
-
-.pk-ag-steps time {
-  color: var(--dim);
-}
-
-.pk-ag-step-agent {
-  overflow: hidden;
-  color: var(--dim);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pk-ag-step-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }

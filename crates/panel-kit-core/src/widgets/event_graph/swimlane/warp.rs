@@ -171,17 +171,20 @@ impl Warp {
         I: IntoIterator<Item = Micros>,
     {
         let times = times.into_iter();
-        let mut points: Vec<(i64, u8)> = Vec::with_capacity(times.size_hint().0 + 2);
-        points.extend(times.map(|at| (time::to_ms(at), 1)));
-        points.extend(
-            [params.since, params.now]
-                .into_iter()
-                .flatten()
-                .map(|at| (time::to_ms(at), 0)),
-        );
-        points.sort_unstable();
+        let mut ms: Vec<i64> = Vec::with_capacity(times.size_hint().0);
+        ms.extend(times.map(time::to_ms));
+        // Events mostly arrive oldest first; only a shuffled input pays a sort.
+        if !ms.is_sorted() {
+            ms.sort_unstable();
+        }
+        let mut bounds: Vec<i64> = [params.since, params.now]
+            .into_iter()
+            .flatten()
+            .map(time::to_ms)
+            .collect();
+        bounds.sort_unstable();
 
-        let spans = spans(&points, params.idle_ms);
+        let spans = spans(&ms, &bounds, params.idle_ms);
         if spans.is_empty() {
             return Warp {
                 segments: Vec::new(),
@@ -225,19 +228,26 @@ impl Warp {
     }
 }
 
-fn spans(points: &[(i64, u8)], idle: i64) -> Vec<Span> {
+/// Busy spans of the sorted `times`, each weighing one, and the sorted
+/// `bounds`, weighing nothing. The order of points at one instant cannot
+/// change a span, so the two lists merge in either order.
+fn spans(times: &[i64], bounds: &[i64], idle: i64) -> Vec<Span> {
     let mut spans: Vec<Span> = Vec::new();
-    for &(t, n) in points {
-        match spans.last_mut() {
-            Some(span) if t - span.t1 <= idle => {
-                span.t1 = t;
-                span.n += u32::from(n);
-            }
-            _ => spans.push(Span {
-                t0: t,
-                t1: t,
-                n: u32::from(n),
-            }),
+    let mut push = |t: i64, n: u32| match spans.last_mut() {
+        Some(span) if t - span.t1 <= idle => {
+            span.t1 = t;
+            span.n += n;
+        }
+        _ => spans.push(Span { t0: t, t1: t, n }),
+    };
+    let (mut a, mut b) = (0, 0);
+    while a < times.len() || b < bounds.len() {
+        if b == bounds.len() || (a < times.len() && times[a] <= bounds[b]) {
+            push(times[a], 1);
+            a += 1;
+        } else {
+            push(bounds[b], 0);
+            b += 1;
         }
     }
     spans

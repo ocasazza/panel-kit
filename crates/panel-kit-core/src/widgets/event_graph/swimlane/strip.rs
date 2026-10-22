@@ -141,17 +141,29 @@ pub fn strip(
 
 /// One cell per 4px, darker where more events fall.
 fn cells(xs: impl Iterator<Item = f64>) -> Vec<Cell> {
-    let mut starts: Vec<i64> = xs
-        .map(|x| (x / STRIP_PX).trunc() as i64 * STRIP_PX as i64)
-        .collect();
-    starts.sort_unstable();
-
+    // Events arrive in time order, so their cells almost always do too: count
+    // them as they come and sort only the starts that arrive out of order.
     let mut counted: Vec<(i64, usize)> = Vec::new();
-    for start in starts {
+    let mut late: Vec<i64> = Vec::new();
+    for x in xs {
+        let start = (x / STRIP_PX).trunc() as i64 * STRIP_PX as i64;
         match counted.last_mut() {
             Some((last, n)) if *last == start => *n += 1,
+            Some((last, _)) if start < *last => late.push(start),
             _ => counted.push((start, 1)),
         }
+    }
+    if !late.is_empty() {
+        counted.extend(late.into_iter().map(|start| (start, 1)));
+        counted.sort_unstable_by_key(|cell| cell.0);
+        let mut merged: Vec<(i64, usize)> = Vec::with_capacity(counted.len());
+        for (start, n) in counted {
+            match merged.last_mut() {
+                Some((last, total)) if *last == start => *total += n,
+                _ => merged.push((start, n)),
+            }
+        }
+        counted = merged;
     }
 
     let peak = counted.iter().map(|(_, n)| *n).max().unwrap_or(1);

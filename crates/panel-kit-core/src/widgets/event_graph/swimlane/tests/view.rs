@@ -130,7 +130,7 @@ fn the_row_cap_holds_until_show_all_lifts_it() {
 
     state.reduce(GraphAction::ToggleShowAll);
     let all = view::graph(&events, &state, None, clock());
-    assert_eq!((all.items.len(), all.hidden, all.total_items), (30, 0, 30));
+    assert_eq!((all.item_count(), all.hidden, all.total_items), (30, 0, 30));
 }
 
 #[test]
@@ -265,76 +265,67 @@ fn the_strip_rows_the_state_expanded_are_open_and_unknown_names_are_ignored() {
     assert_eq!(graph.loose.len(), 1);
 }
 
-// -- lanes --------------------------------------------------------------------
+// -- sequence -----------------------------------------------------------------
+
+fn agents(sequence: &Sequence) -> Vec<&str> {
+    sequence
+        .lanes
+        .iter()
+        .map(|lane| lane.agent.as_str())
+        .collect()
+}
 
 #[test]
-fn the_lanes_are_filtered_windowed_and_oldest_first() {
+fn the_sequence_is_windowed_and_filtered() {
     let events = [
         Event {
             agent: Some("worker".into()),
-            summary: Some("second".into()),
-            ..ev("imp-1", 30.0)
-        },
-        Event {
-            agent: Some("worker".into()),
-            summary: Some("first".into()),
             ..ev("imp-1", 10.0)
         },
         Event {
             at: since() - SEC,
-            summary: Some("too old".into()),
+            agent: Some("old".into()),
             ..ev("imp-1", 0.0)
         },
         Event {
             agent: Some("omp".into()),
-            ..ev("imp-2", 20.0)
+            ..ev("imp-1", 20.0)
         },
     ];
 
-    let all = view::lanes(&events, &state_with("7d"), clock());
-    assert_eq!(
-        all.lanes
-            .iter()
-            .map(|lane| lane.label.as_str())
-            .collect::<Vec<_>>(),
-        vec!["omp", "worker"]
-    );
-    let worker = &all.lanes[1];
-    assert_eq!(
-        worker
-            .nodes
-            .iter()
-            .map(|node| node.label.as_str())
-            .collect::<Vec<_>>(),
-        vec!["imp-1 first", "imp-1 second"]
-    );
+    let all = view::sequence(&events, &state_with("7d"), clock(), None);
+    assert_eq!(agents(&all), ["worker", "omp"]);
+    assert_eq!(all.read, 2, "the event before the window is not read");
 
-    let only_omp = view::lanes(
+    let only_omp = view::sequence(
         &events,
         &filtered(Filters {
             agent: Some("omp".into()),
             ..Filters::default()
         }),
         clock(),
+        Some(false),
     );
-    assert_eq!(only_omp.lanes.len(), 1);
-    assert!(only_omp.unattributed.is_empty());
+    assert_eq!(only_omp.read, 1);
+    assert!(only_omp.is_empty(), "one agent meets no one");
 }
 
 #[test]
-fn an_unknown_agent_leaves_the_lanes_empty() {
+fn an_unknown_agent_leaves_the_sequence_empty() {
     let events = [ev("imp-1", 5.0)];
 
-    let split = view::lanes(
+    let sequence = view::sequence(
         &events,
         &filtered(Filters {
             agent: Some("nobody".into()),
             ..Filters::default()
         }),
         clock(),
+        None,
     );
 
-    assert!(split.is_empty());
+    assert!(sequence.is_empty());
+    assert_eq!((sequence.read, sequence.lanes.len()), (0, 0));
 }
 
 // -- collaboration --------------------------------------------------------------

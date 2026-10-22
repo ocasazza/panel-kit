@@ -283,7 +283,7 @@ impl FilterKey {
 
 /// What an event exposes to the filters.
 pub trait Queryable {
-    /// Agent that produced the event; `None` or blank means unattributed.
+    /// Agent that produced the event; `None` or blank means no lane.
     fn agent(&self) -> Option<&str>;
     /// Item the event belongs to.
     fn item_id(&self) -> Option<&str>;
@@ -315,7 +315,7 @@ impl Queryable for EventFields {
     }
 }
 
-/// Whether an agent name is a real lane; blank agents are unattributed.
+/// Whether an agent name is a real lane; blank agents have no lane.
 pub fn is_attributed(agent: Option<&str>) -> bool {
     agent.is_some_and(|a| !a.trim().is_empty())
 }
@@ -740,7 +740,7 @@ pub enum Mode {
     /// Swimlane graph.
     #[default]
     Graph,
-    /// Lanes list.
+    /// Lanes sequence diagram.
     Lanes,
     /// Collaboration pairs and threads.
     Collab,
@@ -785,6 +785,19 @@ impl Mode {
     pub fn has_legend(self) -> bool {
         self == Mode::Graph
     }
+}
+
+/// Which lanes of the LANES diagram are drawn; the rest fold into one `+N` lane.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LanePick {
+    /// The busiest eight when there are more lanes than the cap, every lane otherwise.
+    #[default]
+    Auto,
+    /// Every lane.
+    All,
+    /// Exactly these agents, by name; an empty set draws none.
+    Only(BTreeSet<String>),
 }
 
 /// A mode chip ready to paint.
@@ -838,8 +851,12 @@ pub struct GraphState {
     pub mode: Mode,
     /// Draw forks as child lanes.
     pub tree: bool,
-    /// Lanes mode: the unattributed section is expanded.
-    pub unattributed_open: bool,
+    /// LANES: the lanes drawn; the rest fold into one `+N` lane.
+    pub lanes: LanePick,
+    /// LANES: the agent whose rows alone are drawn.
+    pub lane: Option<String>,
+    /// LANES: the lane menu's filter text.
+    pub lane_filter: String,
     /// Width in px the swimlane is laid out at; always > 0.
     pub graph_width: u32,
     /// Tokens the last submitted line ignored.
@@ -863,7 +880,9 @@ impl Default for GraphState {
             filters: Filters::default(),
             mode: Mode::Graph,
             tree: false,
-            unattributed_open: false,
+            lanes: LanePick::Auto,
+            lane: None,
+            lane_filter: String::new(),
             graph_width: DEFAULT_GRAPH_WIDTH,
             query_errors: Vec::new(),
             show_all: false,
@@ -887,8 +906,12 @@ pub enum GraphAction {
     SetMode(String),
     /// The show-all button.
     ToggleShowAll,
-    /// The unattributed section toggle.
-    ToggleUnattributed,
+    /// The lane menu: draw these lanes.
+    PickLanes(LanePick),
+    /// A lane header: draw only the rows touching this agent (`None` clears).
+    FocusLane(Option<String>),
+    /// The lane menu's filter box.
+    LaneFilter(String),
     /// Measured graph width; applied only when a positive integer.
     GraphWidth(i64),
     /// A no-item strip row, by kind.
@@ -1041,8 +1064,23 @@ impl GraphState {
                 self.show_all = !self.show_all;
                 Effect::Relayout
             }
-            GraphAction::ToggleUnattributed => {
-                self.unattributed_open = !self.unattributed_open;
+            GraphAction::PickLanes(pick) => {
+                let drops_lane = match (&pick, &self.lane) {
+                    (LanePick::Only(names), Some(lane)) => !names.contains(lane),
+                    _ => false,
+                };
+                if drops_lane {
+                    self.lane = None;
+                }
+                self.lanes = pick;
+                Effect::None
+            }
+            GraphAction::FocusLane(agent) => {
+                self.lane = agent.filter(|name| !name.trim().is_empty());
+                Effect::None
+            }
+            GraphAction::LaneFilter(text) => {
+                self.lane_filter = text;
                 Effect::None
             }
             GraphAction::GraphWidth(width) if width > 0 => {
@@ -1115,7 +1153,18 @@ impl GraphState {
                 .to_string(),
             mode: get("mode").map_or(Mode::Graph, Mode::from_token),
             tree: get("tree") == Some("1"),
-            unattributed_open: get("unattributed") == Some("1"),
+            lanes: match get("lanes") {
+                None => LanePick::Auto,
+                Some("all") => LanePick::All,
+                Some(names) => LanePick::Only(
+                    names
+                        .split(',')
+                        .filter(|n| !n.trim().is_empty())
+                        .map(str::to_string)
+                        .collect(),
+                ),
+            },
+            lane: filter("lane"),
             ..GraphState::default()
         }
     }
@@ -1134,8 +1183,24 @@ impl GraphState {
         if self.window != DEFAULT_WINDOW {
             parts.push(("window", &self.window));
         }
-        if self.unattributed_open {
-            parts.push(("unattributed", "1"));
+        // Agent names containing `,` cannot round-trip and are skipped; so are blank ones.
+        let lanes_value = match &self.lanes {
+            LanePick::Auto => None,
+            LanePick::All => Some("all".to_string()),
+            LanePick::Only(names) => Some(
+                names
+                    .iter()
+                    .filter(|n| !n.contains(',') && !n.trim().is_empty())
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ),
+        };
+        if let Some(value) = &lanes_value {
+            parts.push(("lanes", value));
+        }
+        if let Some(lane) = &self.lane {
+            parts.push(("lane", lane));
         }
         if self.tree {
             parts.push(("tree", "1"));

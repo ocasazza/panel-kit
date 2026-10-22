@@ -310,7 +310,7 @@ fn blank_or_missing_agent_never_matches_an_agent_filter() {
 }
 
 #[test]
-fn p19_blank_agent_is_unattributed() {
+fn p19_blank_agent_has_no_lane() {
     assert!(is_attributed(Some("worker")));
     assert!(!is_attributed(Some("")));
     assert!(!is_attributed(Some("  ")));
@@ -675,7 +675,7 @@ fn defaults_match_mount() {
     assert_eq!(s.window, "24h");
     assert_eq!(s.mode, Mode::Graph);
     assert_eq!(s.graph_width, 1200);
-    assert!(!s.tree && !s.show_all && !s.unattributed_open && !s.compact);
+    assert!(!s.tree && !s.show_all && !s.compact);
     assert!(s.loose_kinds.is_empty() && s.query_errors.is_empty() && s.tones.is_empty());
     assert_eq!(s.followed, Followed::Unset);
 }
@@ -922,13 +922,70 @@ fn p8_second_agent_replaces_the_first() {
 }
 
 #[test]
-fn p9_open_unattributed_stays_open_across_a_query() {
+fn lane_state_defaults() {
+    let s = GraphState::default();
+    assert_eq!(s.lanes, LanePick::Auto);
+    assert_eq!(s.lane, None);
+    assert_eq!(s.lane_filter, "");
+}
+
+fn only(names: &[&str]) -> LanePick {
+    LanePick::Only(names.iter().map(|n| n.to_string()).collect())
+}
+
+#[rstest]
+#[case::outside_the_set_clears(only(&["bob"]), None)]
+#[case::inside_the_set_stays(only(&["amy", "bob"]), Some("amy"))]
+#[case::empty_set_clears(only(&[]), None)]
+#[case::all_keeps(LanePick::All, Some("amy"))]
+#[case::auto_keeps(LanePick::Auto, Some("amy"))]
+fn p9_pick_lanes_drops_a_focus_the_set_excludes(
+    #[case] pick: LanePick,
+    #[case] lane: Option<&str>,
+) {
     let mut s = GraphState::default();
-    assert_eq!(s.reduce(GraphAction::ToggleUnattributed), Effect::None);
+    s.reduce(GraphAction::FocusLane(Some("amy".into())));
+    assert_eq!(s.reduce(GraphAction::PickLanes(pick.clone())), Effect::None);
+    assert_eq!(s.lanes, pick);
+    assert_eq!(s.lane.as_deref(), lane);
+}
+
+#[rstest]
+#[case(Some("amy"), Some("amy"))]
+#[case(None, None)]
+#[case(Some(""), None)]
+#[case(Some("  "), None)]
+fn p9_focus_lane_sets_clears_and_treats_blank_as_clear(
+    #[case] agent: Option<&str>,
+    #[case] expect: Option<&str>,
+) {
+    let mut s = GraphState {
+        lane: Some("old".into()),
+        ..GraphState::default()
+    };
+    let action = GraphAction::FocusLane(agent.map(str::to_string));
+    assert_eq!(s.reduce(action), Effect::None);
+    assert_eq!(s.lane.as_deref(), expect);
+}
+
+#[test]
+fn p9_lane_state_stays_across_a_query_and_a_mode() {
+    let mut s = GraphState::default();
+    assert_eq!(
+        s.reduce(GraphAction::PickLanes(only(&["amy"]))),
+        Effect::None
+    );
+    assert_eq!(
+        s.reduce(GraphAction::FocusLane(Some("amy".into()))),
+        Effect::None
+    );
+    assert_eq!(s.reduce(GraphAction::LaneFilter("am".into())), Effect::None);
     s.reduce(query("agent:worker"));
-    assert!(s.unattributed_open);
-    s.reduce(GraphAction::ToggleUnattributed);
-    assert!(!s.unattributed_open);
+    s.reduce(mode("graph"));
+    s.reduce(mode("lanes"));
+    assert_eq!(s.lanes, only(&["amy"]));
+    assert_eq!(s.lane.as_deref(), Some("amy"));
+    assert_eq!(s.lane_filter, "am");
 }
 
 #[test]
@@ -1030,10 +1087,9 @@ fn state_completions_use_state_line_context() {
     "mode=collaboration&agent=worker&window=7d",
     "?mode=collaboration&agent=worker&window=7d"
 )]
-#[case(
-    "mode=lanes&agent=worker&unattributed=1",
-    "?mode=lanes&agent=worker&unattributed=1"
-)]
+#[case("mode=lanes&lanes=all", "?mode=lanes&lanes=all")]
+#[case("lanes=", "?lanes=")]
+#[case("mode=lanes&lanes=all&lane=amy", "?mode=lanes&lanes=all&lane=amy")]
 #[case("", "")]
 fn url_round_trips(#[case] raw: &str, #[case] expect: &str) {
     let params: Vec<(&str, &str)> = raw.split('&').filter_map(|p| p.split_once('=')).collect();
@@ -1055,6 +1111,35 @@ fn url_params_are_sanitised() {
         (s.window.as_str(), s.mode, s.tree),
         ("24h", Mode::Graph, false)
     );
+}
+
+#[test]
+fn url_lane_names_join_on_comma_before_encoding() {
+    let s = GraphState::from_params(&[("mode", "lanes"), ("lanes", "amy,bob"), ("lane", "amy")]);
+    assert_eq!(
+        s.lanes,
+        LanePick::Only(["amy", "bob"].map(String::from).into())
+    );
+    assert_eq!(s.lane.as_deref(), Some("amy"));
+    assert_eq!(s.query_string(), "?mode=lanes&lanes=amy%2Cbob&lane=amy");
+}
+
+#[test]
+fn url_lane_params_are_sanitised() {
+    let blank = GraphState::from_params(&[("lane", "  ")]);
+    assert_eq!(blank.lane, None);
+    let empty = GraphState::from_params(&[("lanes", "")]);
+    assert_eq!(empty.lanes, LanePick::Only(BTreeSet::new()));
+    assert_eq!(GraphState::from_params(&[]).lanes, LanePick::Auto);
+}
+
+#[test]
+fn url_skips_lane_names_with_a_comma() {
+    let s = GraphState {
+        lanes: LanePick::Only(["a,b", "amy"].map(String::from).into()),
+        ..GraphState::default()
+    };
+    assert_eq!(s.query_string(), "?lanes=amy");
 }
 
 #[test]
@@ -1108,6 +1193,22 @@ fn tone() -> impl Strategy<Value = Tone> {
     prop::sample::select(Tone::ALL.to_vec())
 }
 
+fn lane_name() -> impl Strategy<Value = Option<String>> {
+    prop::option::of(prop::sample::select(vec!["amy", "bob", ""]).prop_map(str::to_string))
+}
+
+fn lane_pick() -> impl Strategy<Value = LanePick> {
+    prop_oneof![
+        Just(LanePick::Auto),
+        Just(LanePick::All),
+        prop::collection::btree_set(
+            prop::sample::select(vec!["amy", "bob", ""]).prop_map(str::to_string),
+            0..3
+        )
+        .prop_map(LanePick::Only),
+    ]
+}
+
 fn action() -> impl Strategy<Value = GraphAction> {
     prop_oneof![
         "[a-z:0-9 ]{0,24}".prop_map(GraphAction::Query),
@@ -1123,7 +1224,11 @@ fn action() -> impl Strategy<Value = GraphAction> {
         prop::sample::select(vec!["graph", "lanes", "collaboration", "x"])
             .prop_map(|s| GraphAction::SetMode(s.to_string())),
         Just(GraphAction::ToggleShowAll),
-        Just(GraphAction::ToggleUnattributed),
+        lane_pick().prop_map(GraphAction::PickLanes),
+        lane_name().prop_map(GraphAction::FocusLane),
+        lane_name()
+            .prop_map(Option::unwrap_or_default)
+            .prop_map(GraphAction::LaneFilter),
         any::<i64>().prop_map(GraphAction::GraphWidth),
         prop::sample::select(vec!["commit", "branch_head", "pr_merged"])
             .prop_map(|s| GraphAction::ToggleStripKind(s.to_string())),
@@ -1242,6 +1347,10 @@ proptest! {
             let keep_show_all = matches!(a, GraphAction::Query(_) | GraphAction::ToggleTree | GraphAction::SetMode(_));
             let effect = s.reduce(a.clone());
             prop_assert!(s.graph_width > 0);
+            prop_assert!(s.lane.as_deref().is_none_or(|l| !l.trim().is_empty()));
+            if let GraphAction::PickLanes(LanePick::Only(names)) = &a {
+                prop_assert!(s.lane.as_ref().is_none_or(|l| names.contains(l)));
+            }
             prop_assert!(Window::is_valid(&s.window));
             prop_assert!(s.mode == Mode::Graph || s.loose_kinds.is_empty());
             let unique: BTreeSet<&String> = s.loose_kinds.iter().collect();

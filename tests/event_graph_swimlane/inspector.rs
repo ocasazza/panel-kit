@@ -1,6 +1,6 @@
-//! The inspector and the LANES row expansion of the swimlane `EventGraph`,
-//! against real SSR output: what each kind of node opens, that nothing is open
-//! by default, and which elements carry the handlers that open and close it.
+//! The inspector of the swimlane `EventGraph`, against real SSR output: what
+//! each kind of node opens, that nothing is open by default, and which
+//! elements carry the handlers that open and close it.
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -9,9 +9,8 @@ use std::rc::Rc;
 use dioxus::dioxus_core::Mutation;
 use dioxus::prelude::*;
 use panel_kit::widgets::event_graph::swimlane::EventGraph;
-use panel_kit_core::widgets::event_graph::facts::Expansion;
 use panel_kit_core::widgets::event_graph::query::{GraphState, Mode};
-use panel_kit_core::widgets::event_graph::swimlane::{slug, view, Node};
+use panel_kit_core::widgets::event_graph::swimlane::{view, Node};
 use panel_kit_core::widgets::event_graph::{
     Edge, EdgeKind, Event, EventKind, Lane, LaneKind, SessionTree,
 };
@@ -102,7 +101,6 @@ type Log = Rc<RefCell<Vec<Option<Node>>>>;
 struct Case {
     mode: Mode,
     open: Option<Node>,
-    expanded: Expansion,
     events: Vec<Event>,
     tree: bool,
     extra_fork: bool,
@@ -119,7 +117,6 @@ fn case() -> Case {
     Case {
         mode: Mode::Graph,
         open: None,
-        expanded: Expansion::new(),
         events: events(),
         tree: true,
         extra_fork: false,
@@ -164,7 +161,6 @@ fn Probe(case: Case) -> Element {
             tree: Rc::new(tree_of(case.extra_fork)),
             now: NOW,
             open: case.open.clone(),
-            expanded: case.expanded.clone(),
             on_action: |_| {},
             on_open: move |node| log.borrow_mut().push(node),
         }
@@ -232,10 +228,43 @@ fn an_unresolvable_node_draws_no_region() {
 }
 
 #[test]
-fn the_inspector_is_a_graph_thing() {
-    let mut lanes = case().open(Node::Item("imp-1".to_string()));
-    lanes.mode = Mode::Lanes;
-    assert!(!lanes.render().has("pk-ag-ins"));
+fn the_inspector_opens_in_lanes_over_an_event_and_in_collab_over_a_pair() {
+    let lanes = Case {
+        mode: Mode::Lanes,
+        ..case()
+    }
+    .open(Node::Event("loose:1".to_string()))
+    .render();
+    assert_eq!(lanes.kind().as_deref(), Some("event"));
+
+    let collab = Case {
+        mode: Mode::Collab,
+        ..case()
+    }
+    .open(Node::Pair("omp".to_string(), "worker".to_string()))
+    .render();
+    assert_eq!(collab.kind().as_deref(), Some("pair"));
+    let region = collab.inspector();
+    for want in [
+        "omp \u{2194} worker",
+        "imp-1",
+        "agent a",
+        "shared",
+        "co-commits",
+    ] {
+        assert!(region.contains(want), "{want} in {region}");
+    }
+
+    let stranger = Case {
+        mode: Mode::Collab,
+        ..case()
+    }
+    .open(Node::Pair("a".to_string(), "b".to_string()))
+    .render();
+    assert!(
+        !stranger.has("pk-ag-ins"),
+        "an unknown pair draws no region"
+    );
 }
 
 // -- an item --------------------------------------------------------------------
@@ -371,56 +400,6 @@ fn values_are_one_ellipsised_line_each_under_a_title() {
     assert!(region.contains("--pk-ag-labels: 7ch"), "{region}");
 }
 
-// -- LANES rows -------------------------------------------------------------------
-
-fn lanes(expanded: Expansion) -> Html {
-    Case {
-        mode: Mode::Lanes,
-        expanded,
-        ..case()
-    }
-    .render()
-}
-
-#[test]
-fn lane_rows_are_closed_disclosure_buttons_by_default() {
-    let html = lanes(Expansion::new());
-    let nodes = html.count("class=\"pk-ag-node-hit\"");
-    assert_eq!(nodes, 18);
-    assert_eq!(html.count("aria-expanded=\"false\""), nodes);
-    assert_eq!(html.count("aria-expanded=\"true\""), 0);
-    assert_eq!(html.count("\u{25b8}"), nodes);
-    assert!(!html.has("pk-ag-node-facts") && !html.has("pk-ag-fact "));
-}
-
-#[test]
-fn an_open_lane_row_shows_its_events_facts_under_it() {
-    let mut expanded = Expansion::new();
-    expanded.toggle(&slug("a2"));
-    let html = lanes(expanded);
-    assert_eq!(html.count("aria-expanded=\"true\""), 1);
-    assert_eq!(html.count("\u{25be}"), 1);
-    assert_eq!(html.count("class=\"pk-ag-node-facts\""), 1);
-    let node = html.0.find("id=\"activity-node-a2\"").unwrap();
-    let rest = &html.0[node..];
-    assert!(
-        rest[..rest.find("</li>").unwrap()].contains("pk-ag-node pk-ag-"),
-        "{rest}"
-    );
-    for want in [">first line<", ">second line<", ">imp-1<", ">a2<"] {
-        assert!(rest.contains(want), "{want} in {rest}");
-    }
-    let tag = &rest[..rest.find('>').unwrap()];
-    assert!(
-        tag.contains(" open\""),
-        "the open row carries `open`: {tag}"
-    );
-    assert!(
-        html.has("aria-controls=\"activity-node-a2-facts\"")
-            && html.has("id=\"activity-node-a2-facts\"")
-    );
-}
-
 // -- handlers ---------------------------------------------------------------------
 
 /// How many listeners of `name` a fresh mount of `case` registers. Events
@@ -469,42 +448,30 @@ fn an_open_inspector_adds_the_close_button_the_bar_and_one_per_rail_row() {
     );
 }
 
-#[test]
-fn every_lane_row_carries_a_click_listener() {
-    let lanes = Case {
-        mode: Mode::Lanes,
-        ..case()
-    };
-    let mut fewer = events();
-    fewer.retain(|e| e.id != "a2");
-    let one = Case {
-        events: fewer,
-        ..lanes.clone()
-    };
-    assert_eq!(listeners(&lanes, "click"), listeners(&one, "click") + 1);
-}
-
 // -- the stylesheet ---------------------------------------------------------------
 
 #[test]
-fn the_stylesheet_styles_every_class_the_inspector_and_lane_rows_emit() {
+fn the_stylesheet_styles_every_class_the_inspector_emits() {
     let css = include_str!("../../assets/panel-kit.css");
-    let mut expanded = Expansion::new();
-    expanded.toggle(&slug("a2"));
     let pages = [
         case().open(Node::Item("imp-1".to_string())).render(),
         case().open(Node::Event("loose:1".to_string())).render(),
         case()
             .open(Node::Lane("imp-1/branch/fix".to_string()))
             .render(),
-        lanes(expanded),
+        Case {
+            mode: Mode::Collab,
+            ..case()
+        }
+        .open(Node::Pair("omp".to_string(), "worker".to_string()))
+        .render(),
     ];
     let mut seen = BTreeSet::new();
     for page in &pages {
         for (at, _) in page.0.match_indices("class=\"") {
             let rest = &page.0[at + 7..];
             for token in rest[..rest.find('"').unwrap()].split_whitespace() {
-                if ["pk-ag-ins", "pk-ag-fact", "pk-ag-node"]
+                if ["pk-ag-ins", "pk-ag-fact"]
                     .iter()
                     .any(|p| token.starts_with(p))
                 {

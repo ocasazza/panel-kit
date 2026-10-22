@@ -1,18 +1,21 @@
 //! `EventGraph`: the activity swimlane. A toolbar (mode chips, query line,
 //! TREE toggle, colour legend) over one of three bodies: the GRAPH canvas, the
-//! LANES list or the COLLAB tables, all derived from the events the host holds
+//! LANES sequence diagram or the COLLAB pair table, all derived from the events the host holds
 //! by [`panel_kit_core::widgets::event_graph::swimlane::view`].
 //!
 //! The host owns the [`GraphState`] and applies every [`GraphAction`] the
 //! component raises with `GraphState::reduce`; the component keeps only the
 //! query box's draft, the open inspector node and, unless the host passes
 //! `selected`, the clicked item. Clicking an item, a dot, a burst or a fork
-//! leaf of the GRAPH docks that node's facts under the canvas (`open` seeds it,
-//! `on_open` reports it; the close button or Escape clears it); in LANES a node
-//! row opens its event's facts in place.
+//! leaf of the GRAPH, an arrow, bar or dot of LANES, or a pair of COLLAB docks
+//! that node's facts under the body (`open` seeds it, `on_open` reports it; the
+//! close button or Escape clears it).
 //! Layouts are memoised on the identity of `events` and `tree`, so a host that
-//! keeps its `Rc`s keeps its layout. Styled by the `pk-ag-*` rules in
-//! `assets/panel-kit.css`.
+//! keeps its `Rc`s keeps its layout. The GRAPH canvas scrolls inside the body
+//! with its strip and axis pinned, and mounts only the item rows near the
+//! viewport (the rest is height), so show-all over a million events is a few
+//! thousand nodes; the window moves when the rows on screen leave it. Styled by
+//! the `pk-ag-*` rules in `assets/panel-kit.css`.
 //!
 //! ```no_run
 //! use std::rc::Rc;
@@ -43,32 +46,34 @@ mod collab;
 mod dom;
 mod graph;
 mod inspector;
-mod lanes;
 mod legend;
+mod sequence;
 mod shared;
 mod toolbar;
+mod window;
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use dioxus::prelude::*;
-use panel_kit_core::widgets::event_graph::facts::Expansion;
 use panel_kit_core::widgets::event_graph::query::{
-    Completion, Filters, Followed, GraphAction, GraphState, Mode, Queryable,
+    Completion, Filters, Followed, GraphAction, GraphState, LanePick, Mode, Queryable,
 };
-use panel_kit_core::widgets::event_graph::swimlane::{view, Collaboration, Graph, Node, Split};
+use panel_kit_core::widgets::event_graph::swimlane::{view, Collaboration, Graph, Node, Sequence};
 use panel_kit_core::widgets::event_graph::{Event, SessionTree};
 
 use collab::CollabBody;
 use graph::GraphBody;
 use inspector::Inspector;
-use lanes::LanesBody;
 use legend::legend;
+use sequence::SequenceBody;
 use shared::{Shared, Slot};
 use toolbar::{modes, tokens, QueryLine};
 
 const MICROS_PER_SEC: i64 = 1_000_000;
+/// Datalist options one query key offers; a longer list is left to typing.
+const OPTIONS_PER_KEY: usize = 200;
 
 /// The events and clock every derivation reads.
 #[derive(PartialEq)]
@@ -86,12 +91,13 @@ struct GraphKey {
     state: GraphState,
 }
 
-/// What the LANES split depends on.
+/// What the LANES sequence depends on.
 #[derive(PartialEq)]
-struct LanesKey {
+struct SequenceKey {
     source: Source,
     window: String,
     filters: Filters,
+    activity: Option<bool>,
 }
 
 /// What the COLLAB tables depend on: the window alone, never the filters.
@@ -114,7 +120,8 @@ struct CompletionKey {
 #[derive(Default)]
 struct Caches {
     graph: Slot<GraphKey, Shared<Graph>>,
-    lanes: Slot<LanesKey, Rc<Split>>,
+    sequence: Slot<SequenceKey, Shared<Sequence>>,
+    shown: Slot<(Shared<Sequence>, LanePick), Shared<Sequence>>,
     collab: Slot<CollabKey, Rc<Collaboration>>,
     completions: Slot<CompletionKey, Shared<Vec<Completion>>>,
 }
@@ -124,7 +131,9 @@ fn layout_state(state: &GraphState) -> GraphState {
     GraphState {
         mode: Mode::Graph,
         query_errors: Vec::new(),
-        unattributed_open: false,
+        lanes: LanePick::Auto,
+        lane: None,
+        lane_filter: String::new(),
         followed: Followed::Unset,
         compact: false,
         tones: BTreeSet::new(),
@@ -149,7 +158,8 @@ impl Queryable for Row<'_> {
     }
 }
 
-/// Datalist options over every event of the window, filters ignored.
+/// Datalist options over every event of the window, filters ignored, at most
+/// [`OPTIONS_PER_KEY`] each of agents, items and kinds.
 fn completions(events: &[Event], state: &GraphState, now: i64) -> Vec<Completion> {
     let window = state.interval(now);
     let rows: Vec<Row<'_>> = events
@@ -161,7 +171,21 @@ fn completions(events: &[Event], state: &GraphState, now: i64) -> Vec<Completion
         })
         .map(Row)
         .collect();
-    state.completions(&rows)
+    let mut seen = [0usize; 3];
+    state
+        .completions(&rows)
+        .into_iter()
+        .filter(|completion| {
+            let key = match completion.label.split(':').next() {
+                Some("agent") => 0,
+                Some("item") => 1,
+                Some("kind") => 2,
+                _ => return true,
+            };
+            seen[key] += 1;
+            seen[key] <= OPTIONS_PER_KEY
+        })
+        .collect()
 }
 
 impl Caches {
@@ -187,17 +211,32 @@ impl Caches {
         })
     }
 
-    fn lanes(&mut self, events: &Rc<Vec<Event>>, state: &GraphState, now: i64) -> Rc<Split> {
-        let key = LanesKey {
+    /// `sequence` with the lanes `pick` draws standing and the rest folded.
+    fn shown(&mut self, sequence: &Shared<Sequence>, pick: &LanePick) -> Shared<Sequence> {
+        self.shown.get((sequence.clone(), pick.clone()), || {
+            Shared::new(sequence.show(pick))
+        })
+    }
+
+    fn sequence(
+        &mut self,
+        events: &Rc<Vec<Event>>,
+        state: &GraphState,
+        now: i64,
+        activity: Option<bool>,
+    ) -> Shared<Sequence> {
+        let key = SequenceKey {
             source: Source {
                 events: Shared(Rc::clone(events)),
                 now,
             },
             window: state.window.clone(),
             filters: state.filters.clone(),
+            activity,
         };
-        self.lanes
-            .get(key, || Rc::new(view::lanes(events, state, now)))
+        self.sequence.get(key, || {
+            Shared::new(view::sequence(events, state, now, activity))
+        })
     }
 
     fn collab(
@@ -261,16 +300,12 @@ pub fn EventGraph(
     #[props(default)]
     on_select: EventHandler<String>,
     /// The node open in the inspector when the graph mounts; the component
-    /// owns it from then on. GRAPH mode only.
+    /// owns it from then on.
     #[props(default)]
     open: Option<Node>,
     /// The inspector opened a node (`Some`) or was closed (`None`).
     #[props(default)]
     on_open: EventHandler<Option<Node>>,
-    /// LANES rows open when the graph mounts, by the DOM-safe event id the row
-    /// carries (`{id}-node-<slug>`); the component owns them from then on.
-    #[props(default)]
-    expanded: Expansion,
 ) -> Element {
     // Handles that outlive the host's closures keep memoised children from
     // re-rendering when only a closure was rebuilt.
@@ -295,10 +330,8 @@ pub fn EventGraph(
             on_open.call(None);
         }
     });
-    let mut lane_open = use_signal(|| expanded.clone());
-    let toggle_node = use_callback(move |node: String| {
-        lane_open.write().toggle(&node);
-    });
+    let mut activity = use_signal(|| None::<bool>);
+    let set_activity = use_callback(move |on: bool| activity.set(Some(on)));
     let caches = use_hook(|| Rc::new(RefCell::new(Caches::default())));
 
     let mode = state.mode;
@@ -320,6 +353,16 @@ pub fn EventGraph(
         }
     });
 
+    let mut extra: Option<Element> = None;
+    let mut pairs = None::<Rc<Collaboration>>;
+    let picked_event = match &*revealed.read() {
+        Some(Node::Event(id)) => Some(id.clone()),
+        _ => None,
+    };
+    let open_pair = match &*revealed.read() {
+        Some(Node::Pair(a, b)) => Some((a.clone(), b.clone())),
+        _ => None,
+    };
     let body = match mode {
         Mode::Graph => {
             let layout = caches
@@ -329,6 +372,7 @@ pub fn EventGraph(
                 GraphBody {
                     id: id.clone(),
                     graph: layout,
+                    events: Shared(events.clone()),
                     chips: if compact { Vec::new() } else { legend_chips.clone() },
                     inline_legend: !compact,
                     show_all: state.show_all,
@@ -340,27 +384,35 @@ pub fn EventGraph(
             }
         }
         Mode::Lanes => {
-            let split = caches.borrow_mut().lanes(&events, &state, now);
+            let base = caches
+                .borrow_mut()
+                .sequence(&events, &state, now, *activity.read());
+            let sequence = caches.borrow_mut().shown(&base, &state.lanes);
+            extra = Some(rsx! {
+                {toolbar::activity_chip(&id, sequence.activity, sequence.quiet, set_activity)}
+                {toolbar::lane_menu(&id, &sequence, &state.lane_filter, state.lane.as_deref(), act)}
+            });
             rsx! {
-                LanesBody {
+                SequenceBody {
                     id: id.clone(),
-                    split,
-                    unattributed_open: state.unattributed_open,
+                    sequence,
+                    events: Shared(events.clone()),
+                    picked: picked_event,
+                    focus: state.lane.clone(),
+                    on_open: reveal,
                     on_action: act,
-                    events: events.clone(),
-                    open: lane_open.read().clone(),
-                    on_toggle: toggle_node,
                 }
             }
         }
         Mode::Collab => {
             let table = caches.borrow_mut().collab(&events, &state, now);
+            pairs = Some(table.clone());
             rsx! {
                 CollabBody {
                     id: id.clone(),
                     collab: table,
-                    selected: highlighted.clone(),
-                    on_select: pick,
+                    open: open_pair,
+                    on_open: reveal,
                 }
             }
         }
@@ -395,6 +447,7 @@ pub fn EventGraph(
                     aria_label: "event graph controls",
                     {chips}
                     {query}
+                    {extra.clone()}
                     if mode.has_legend() {
                         {legend(&id, &legend_chips, true, act)}
                     }
@@ -403,6 +456,7 @@ pub fn EventGraph(
                 div { class: "pk-ag-stack", role: "toolbar", aria_label: "event graph controls",
                     {chips}
                     {query}
+                    {extra}
                 }
             }
             if mode.has_query_line() {
@@ -417,13 +471,14 @@ pub fn EventGraph(
                 },
                 {body}
             }
-            if let (Mode::Graph, Some(node)) = (mode, revealed.read().clone()) {
+            if let Some(node) = revealed.read().clone() {
                 Inspector {
                     key: "{node.key()}",
                     id: id.clone(),
-                    node,
+                    node: node.clone(),
                     events: events.clone(),
                     tree: if state.tree { tree.clone() } else { None },
+                    collab: pairs,
                     on_close: dismiss,
                 }
             }

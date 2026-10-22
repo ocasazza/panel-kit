@@ -2,8 +2,9 @@
 //!
 //! A painter keeps a [`Node`] and asks [`Node::inspect`] for the content: an
 //! item header and the item's events (with the clicked ones open), or plain
-//! fact blocks for a fork lane and for events that belong to no item. Nothing
-//! here measures or draws.
+//! fact blocks for a fork lane and for events that belong to no item. A
+//! collaboration pair is answered from the table's own [`Pair`] by
+//! [`Node::inspect_pair`]. Nothing here measures or draws.
 
 use serde::{Deserialize, Serialize};
 
@@ -11,11 +12,16 @@ use super::super::facts::{event_facts, lane_facts, Fact};
 use super::super::model::{is_named, Event, ItemRef, SessionTree};
 use super::super::query::{tone_for_status, Tone};
 use super::super::time::format_iso8601;
+use super::collab::Pair;
 use super::layout::summarize;
 
 /// Events a cluster opens (and fact blocks an item-less cluster shows); the
 /// rest are counted in [`Inspection::more`].
 pub const CLUSTER_OPEN_CAP: usize = 12;
+
+/// Shared items, branches or handoffs a pair's facts list; the rest are
+/// counted.
+pub const PAIR_LIST_CAP: usize = 200;
 
 /// The node an inspector shows. Every variant names the thing clicked; a
 /// painter resolves it against the events and tree it already holds. Serialized
@@ -31,6 +37,8 @@ pub enum Node {
     Cluster(Vec<String>),
     /// A fork leaf: the lane's id.
     Lane(String),
+    /// A collaboration pair: the two agents' names, the lesser first.
+    Pair(String, String),
 }
 
 /// What an item is, as the inspector's header states it.
@@ -93,6 +101,7 @@ impl Node {
             Node::Event(id) => format!("event:{id}"),
             Node::Cluster(ids) => format!("cluster:{}", ids.join(",")),
             Node::Lane(id) => format!("lane:{id}"),
+            Node::Pair(a, b) => format!("pair:{a}|{b}"),
         }
     }
 
@@ -146,7 +155,105 @@ impl Node {
                     }],
                 })
             }
+            // A pair's numbers are the table's, over its window: see `inspect_pair`.
+            Node::Pair(..) => None,
         }
+    }
+}
+
+/// `items` as lines of at most `cols` characters, the first `cap` only and a
+/// `+N more` line for the rest; `none` for an empty list.
+fn list_lines(items: &[String], cap: usize, cols: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut line = String::new();
+    for item in items.iter().take(cap) {
+        if !line.is_empty() && line.len() + 2 + item.len() > cols {
+            line.push(',');
+            lines.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push_str(", ");
+        }
+        line.push_str(item);
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    if items.len() > cap {
+        lines.push(format!("+{} more", items.len() - cap));
+    }
+    if lines.is_empty() {
+        lines.push("none".to_string());
+    }
+    lines
+}
+
+impl Node {
+    /// The content of a [`Node::Pair`] over `pair`, the row the table drew:
+    /// the agents, the shared items, notes each way, reviews, handoffs,
+    /// branches and co-commits, lists capped at [`PAIR_LIST_CAP`]. `None` for
+    /// any other node, or a pair other than `pair`.
+    pub fn inspect_pair(&self, pair: &Pair, cols: usize) -> Option<Inspection> {
+        let Node::Pair(a, b) = self else {
+            return None;
+        };
+        if *a != pair.a || *b != pair.b {
+            return None;
+        }
+        let one = |label: &'static str, value: String| Fact {
+            label,
+            lines: vec![value],
+        };
+        let handoffs: Vec<String> = pair
+            .handoffs
+            .iter()
+            .map(|h| {
+                format!(
+                    "{} \u{2192} {} {} {}",
+                    h.from,
+                    h.to,
+                    h.item_id,
+                    format_iso8601(h.at)
+                )
+            })
+            .collect();
+        let facts = vec![
+            one("agent a", pair.a.clone()),
+            one("agent b", pair.b.clone()),
+            one("shared", pair.shared_items.len().to_string()),
+            Fact {
+                label: "items",
+                lines: list_lines(&pair.shared_items, PAIR_LIST_CAP, cols),
+            },
+            one(
+                "notes",
+                format!("{} \u{2192} {}", pair.notes_ab, pair.notes_ba),
+            ),
+            one("reviews", pair.reviews.to_string()),
+            one("handoffs", pair.handoffs.len().to_string()),
+            Fact {
+                label: "moves",
+                lines: list_lines(&handoffs, PAIR_LIST_CAP, cols),
+            },
+            one("branches", pair.branches.len().to_string()),
+            Fact {
+                label: "names",
+                lines: list_lines(&pair.branches, PAIR_LIST_CAP, cols),
+            },
+            one("co-commits", pair.co_commits.to_string()),
+        ];
+        Some(Inspection {
+            node: self.clone(),
+            header: None,
+            item: None,
+            tree: SessionTree::default(),
+            open: Vec::new(),
+            more: 0,
+            blocks: vec![FactBlock {
+                label: format!("{} \u{2194} {}", pair.a, pair.b),
+                facts,
+            }],
+        })
     }
 }
 

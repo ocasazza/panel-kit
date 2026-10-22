@@ -1,8 +1,7 @@
 //! The view pipeline: one read of the window's events, three derivations.
 //!
 //! The host hands over the events it holds and the toolbar's [`GraphState`];
-//! each mode derives its model from them. The window bounds the read, the
-//! filters narrow the graph and the lanes, and the collaboration table is
+//! filters narrow the graph and the sequence, and the collaboration table is
 //! built from every event of the window, since a filtered table is a table
 //! about nothing.
 
@@ -11,8 +10,8 @@ use std::collections::HashMap;
 use super::super::model::{kinds_of, Event, SessionTree};
 use super::super::query::{GraphState, Interval, Window, DEFAULT_WINDOW, ROW_CAP};
 use super::collab::{current_items, Collaboration, ItemInfo};
-use super::lanes::{split, Split};
 use super::layout::{Graph, Options, Range};
+use super::sequence::{sequence as build_sequence, Options as SequenceOptions, Sequence};
 use super::strip::LooseOpen;
 
 const MICROS_PER_SEC: i64 = 1_000_000;
@@ -45,6 +44,10 @@ fn in_window(window: &Interval, event: &Event) -> bool {
 /// `events` may be any superset of the window; the window bounds the read.
 /// `tree` is the merged session-tree window for these events, drawn only when
 /// the state's `tree` toggle is on. `now` is the clock, in epoch seconds.
+///
+/// With the row cap lifted (`show_all`) the items are not built: the graph
+/// holds every row's geometry and [`Graph::item`] builds the ones a painter
+/// draws from the same `events`.
 pub fn graph(events: &[Event], state: &GraphState, tree: Option<&SessionTree>, now: i64) -> Graph {
     let window = interval(state, now);
     let kinds = kinds_of(&state.loose_kinds);
@@ -53,28 +56,33 @@ pub fn graph(events: &[Event], state: &GraphState, tree: Option<&SessionTree>, n
         Range::from_secs(window.since, window.until, now),
     )
     .limit((!state.show_all).then_some(ROW_CAP))
-    .loose_open(LooseOpen::Kinds(&kinds));
+    .loose_open(LooseOpen::Kinds(&kinds))
+    .lazy(state.show_all);
     if let Some(tree) = tree.filter(|_| state.tree) {
         options = options.tree(tree);
     }
-    Graph::layout(
-        events
-            .iter()
-            .filter(|event| in_window(&window, event) && state.filters.keep(*event)),
+    Graph::layout_slice(
+        events,
+        |event| in_window(&window, event) && state.filters.keep(event),
         &options,
     )
 }
 
-/// The LANES mode: the window's events under the state's filters, split into
-/// one lane per agent and the unattributed events by source, oldest first.
-pub fn lanes(events: &[Event], state: &GraphState, now: i64) -> Split {
+/// The LANES mode: the sequence diagram of the window's events under the
+/// state's filters. `activity` draws plain activity (`Some`) or leaves it to
+/// the event count (`None`).
+pub fn sequence(
+    events: &[Event],
+    state: &GraphState,
+    now: i64,
+    activity: Option<bool>,
+) -> Sequence {
     let window = interval(state, now);
-    let mut kept: Vec<&Event> = events
-        .iter()
-        .filter(|event| in_window(&window, event) && state.filters.keep(*event))
-        .collect();
-    kept.sort_by_key(|event| event.order_key());
-    split(kept)
+    build_sequence(
+        events,
+        |event| in_window(&window, event) && state.filters.keep(event),
+        &SequenceOptions::default().activity(activity),
+    )
 }
 
 /// The COLLAB mode: pairs and threads over every event of the window, the

@@ -9,6 +9,10 @@
 //! - [`activity`]: the 30-day window for the swimlane graph: 2 351 items (20 hero
 //!   items drawn, 2 331 filler), 1 223 loose events, a 2-day idle gap, bursts
 //!   and fork lanes ending in agent and host leaves.
+//! - [`activity_sized`]: [`activity`] scaled to any event count, a million
+//!   included: the same heroes, idle days and fork lanes, filler items and
+//!   loose events in the same proportions, and past [`DEFAULT_EVENTS`] twelve
+//!   agents, handoffs, 41 branch names and a long tail of busy items.
 
 use std::collections::HashMap;
 
@@ -1135,10 +1139,165 @@ fn hex(rng: &mut Lcg) -> String {
     format!("{:08x}", rng.next_u64() & 0xffff_ffff)
 }
 
+/// Events [`activity`] holds: the size [`activity_sized`] reproduces it at.
+pub const DEFAULT_EVENTS: usize = 7423;
+/// Filler-item events at [`DEFAULT_EVENTS`]; what a larger size adds past
+/// them grows a heavy tail of long-lived items.
+const BASE_FILLER_EVENTS: usize = 5805;
+/// Events outside the heroes at [`DEFAULT_EVENTS`]: the unit the loose and
+/// filler shares scale by.
+const BASE_REST_EVENTS: usize =
+    BASE_FILLER_EVENTS + LOOSE_BRANCH_HEADS + LOOSE_COMMITS + LOOSE_PR_MERGED;
+
+const BASE_AGENTS: [&str; 4] = ["omp", "clara", "worker", "selfdev"];
+/// Past [`DEFAULT_EVENTS`] twelve agents share the work, three of them hosts.
+const SCALED_AGENTS: [&str; 12] = [
+    "omp",
+    "clara",
+    "worker",
+    "selfdev",
+    "scheduler",
+    "operator",
+    "planner",
+    "reviewer",
+    "indexer",
+    "gpu-07",
+    "sched-02",
+    FHKD,
+];
+const BASE_BRANCHES: [&str; 5] = [
+    "main",
+    "fix/imp-16-ingest",
+    "feat/assistant-bridge",
+    "fix/imp-45-ask",
+    "feat/seat-scheduling",
+];
+
+/// The five default branches and 36 `{stem}/{topic}` names.
+fn scaled_branches() -> Vec<String> {
+    const STEMS: [&str; 4] = ["fix", "feat", "refactor", "chore"];
+    const TOPICS: [&str; 9] = [
+        "ingest",
+        "seat-scheduling",
+        "assistant-bridge",
+        "ask",
+        "ledger",
+        "validator",
+        "heartbeat",
+        "placement",
+        "retry",
+    ];
+    let mut names: Vec<String> = BASE_BRANCHES.iter().map(|b| (*b).to_owned()).collect();
+    for stem in STEMS {
+        names.extend(TOPICS.iter().map(|topic| format!("{stem}/{topic}")));
+    }
+    names
+}
+
+/// Long-lived items past the fillers. Sizes follow a heavy tail: a few carry
+/// thousands of events, most tens. Their own generator leaves the main
+/// stream, and so [`activity`], untouched.
+fn tail_events(budget: usize, branches: &[String], out: &mut Vec<Event>) {
+    let mut rng = Lcg::new(SEED ^ 0x7A11);
+    let margin = 3 * 3600;
+    // Ages on either side of the idle days, older than the heroes.
+    let sides = [
+        (2 * DAY + margin, 12 * DAY),
+        (14 * DAY + margin, 30 * DAY - 1),
+    ];
+    let (mut left, mut t) = (budget, 0usize);
+    while left > 0 {
+        let size = (5 + 65_536 / (1 + rng.below(4096) as usize)).min(left);
+        let (lo, hi) = sides[rng.below(2) as usize];
+        let span = (size as i64 * (20 + rng.below(600) as i64)).min(hi - lo - 1);
+        let oldest = lo + span + rng.below((hi - lo - span) as u64) as i64;
+        let id = format!("imp-{}", 1_000_000 + t);
+        let agent = *rng.pick(&SCALED_AGENTS);
+        let helper = *rng.pick(&SCALED_AGENTS);
+        let branch = rng.pick(branches);
+        for k in 0..size {
+            let kind = match k {
+                0 => EventKind::ItemCreated,
+                _ if k == size / 2 && helper != agent => EventKind::Handoff,
+                _ if k + 1 == size => EventKind::PrMerged,
+                _ => *rng.pick(&MID_KINDS),
+            };
+            let who = if k >= size / 2 { helper } else { agent };
+            let age = oldest - span * k as i64 / size as i64;
+            let summary = say(&mut rng, kind);
+            let mut e = event(
+                format!("{id}:{k}"),
+                (DEMO_NOW - age) * SECOND,
+                kind,
+                Some(who),
+                Some(&id),
+                &summary,
+            );
+            match kind {
+                EventKind::Handoff => e = e.from(agent),
+                EventKind::PrMerged => {
+                    let pr = 1 + rng.below(250);
+                    e = e.pr(pr).summary(format!("PR #{pr} merged")).branch(branch);
+                }
+                EventKind::Commit | EventKind::PrOpened => e = e.branch(branch),
+                _ => {}
+            }
+            out.push(e);
+        }
+        left -= size;
+        t += 1;
+    }
+}
+
+/// Oldest first, ties by id, `seq` ascending. Sorts 16-byte keys and moves
+/// each event once instead of sorting events of a few hundred bytes.
+fn order_events(events: &mut [Event]) {
+    let mut keys: Vec<(Micros, u32)> = events
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.at, i as u32))
+        .collect();
+    keys.sort_unstable_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then_with(|| events[a.1 as usize].id.cmp(&events[b.1 as usize].id))
+    });
+    // `at[orig]` is where an event sits now, `was[slot]` which event holds a slot.
+    let mut at: Vec<u32> = (0..events.len() as u32).collect();
+    let mut was = at.clone();
+    for (slot, &(_, want)) in keys.iter().enumerate() {
+        let from = at[want as usize] as usize;
+        if from != slot {
+            events.swap(slot, from);
+            let displaced = was[slot];
+            was[from] = displaced;
+            at[displaced as usize] = from as u32;
+            was[slot] = want;
+            at[want as usize] = slot as u32;
+        }
+    }
+    for (seq, e) in events.iter_mut().enumerate() {
+        e.seq = seq as u64;
+    }
+}
+
 /// 30 days of activity ending at [`DEMO_NOW`]; see the module docs.
 pub fn activity() -> Activity {
+    activity_sized(DEFAULT_EVENTS)
+}
+
+/// [`activity`] with `events` events: the 20 heroes (395 events, whatever the
+/// size), then the rest split in the proportions of the default sample into
+/// loose branch heads, commits and merged pull requests and filler items.
+///
+/// At [`DEFAULT_EVENTS`] it is [`activity`] exactly; past it twelve agents
+/// share the work, every third filler item changes hands, 41 branch names
+/// appear and an eighth of the filler events go to a few long-lived items.
+/// Below 395 the heroes alone come back. Deterministic, 30 days, idle days
+/// 12 and 13 kept empty.
+pub fn activity_sized(events: usize) -> Activity {
+    let scaled = events > DEFAULT_EVENTS;
     let mut rng = Lcg::new(SEED);
-    let mut events: Vec<Event> = Vec::new();
+    let mut out: Vec<Event> = Vec::with_capacity(events.max(DEFAULT_EVENTS));
     let mut tree = SessionTree::default();
     let mut statuses = HashMap::new();
 
@@ -1148,22 +1307,45 @@ pub fn activity() -> Activity {
         let times: Vec<Micros> = evs.iter().map(|e| e.at).collect();
         hero_lanes(&mut rng, index, h, &times, &mut tree);
         statuses.insert(h.id.to_owned(), h.status.to_owned());
-        events.extend(evs);
+        out.extend(evs);
     }
+
+    let rest = events.saturating_sub(out.len());
+    let share = |n: usize| (n as u64 * rest as u64 / BASE_REST_EVENTS as u64) as usize;
+    let loose = [
+        (EventKind::BranchHead, share(LOOSE_BRANCH_HEADS), "branch"),
+        (EventKind::Commit, share(LOOSE_COMMITS), "commit"),
+        (EventKind::PrMerged, share(LOOSE_PR_MERGED), "pr"),
+    ];
+    let filler = rest - loose.iter().map(|l| l.1).sum::<usize>();
+    let tail = if scaled {
+        filler.saturating_sub(BASE_FILLER_EVENTS) / 8
+    } else {
+        0
+    };
+    let agents: &[&str] = if scaled { &SCALED_AGENTS } else { &BASE_AGENTS };
+    let branches: Vec<String> = if scaled {
+        scaled_branches()
+    } else {
+        BASE_BRANCHES.iter().map(|b| (*b).to_owned()).collect()
+    };
 
     // Filler items: older than 48 h, spread over days 2 to 30 around the idle
     // days 12 and 13. Up to three follow-up events step at most 50 min each
     // toward now, so a 3 h margin keeps every event of an item off the edges.
-    let agents = ["omp", "clara", "worker", "selfdev"];
     let margin = 3 * 3600;
-    for n in 0..TOTAL_ITEMS - heroes.len() {
+    let (mut left, mut n) = (filler - tail, 0usize);
+    while left > 0 {
         let id = format!("imp-{}", 10_000 + n);
-        let count = 1 + rng.below(4) as usize;
+        let count = (1 + rng.below(4) as usize).min(left);
         let hole = (12 * DAY, 14 * DAY + margin);
         let mut age = age_outside(&mut rng, 2 * DAY + margin, 30 * DAY - 1, hole);
-        let agent = *rng.pick(&agents);
+        let agent = *rng.pick(agents);
+        // Every third item changes hands at its third event.
+        let helper = agents[(n * 7 + 3) % agents.len()];
+        let paired = scaled && n % 3 == 0 && helper != agent;
         for k in 0..count {
-            let kind = if k == 0 {
+            let mut kind = if k == 0 {
                 EventKind::ItemCreated
             } else {
                 *rng.pick(&[
@@ -1175,12 +1357,16 @@ pub fn activity() -> Activity {
                     EventKind::Note,
                 ])
             };
+            if paired && k == 2 {
+                kind = EventKind::Handoff;
+            }
             let summary = say(&mut rng, kind);
+            let who = if paired && k >= 2 { helper } else { agent };
             let mut e = event(
                 format!("{id}:{k}"),
                 (DEMO_NOW - age) * SECOND,
                 kind,
-                Some(agent),
+                Some(who),
                 Some(&id),
                 &summary,
             );
@@ -1188,24 +1374,21 @@ pub fn activity() -> Activity {
                 let pr = 1 + rng.below(250);
                 e = e.pr(pr).summary(format!("PR #{pr} merged"));
             }
-            events.push(e);
+            if paired && kind == EventKind::Handoff {
+                e = e.from(agent);
+            }
+            if scaled && matches!(kind, EventKind::PrOpened | EventKind::PrMerged) {
+                e = e.branch(&branches[(n * 13) % branches.len()]);
+            }
+            out.push(e);
             age -= 5 + rng.below(50) as i64 * 60;
         }
+        left -= count;
+        n += 1;
     }
+    tail_events(tail, &branches, &mut out);
 
     // Loose events: no item, same span, nothing on days 12 and 13.
-    const BRANCHES: [&str; 5] = [
-        "main",
-        "fix/imp-16-ingest",
-        "feat/assistant-bridge",
-        "fix/imp-45-ask",
-        "feat/seat-scheduling",
-    ];
-    let loose = [
-        (EventKind::BranchHead, LOOSE_BRANCH_HEADS, "branch"),
-        (EventKind::Commit, LOOSE_COMMITS, "commit"),
-        (EventKind::PrMerged, LOOSE_PR_MERGED, "pr"),
-    ];
     for (kind, count, prefix) in loose {
         for n in 0..count {
             let age = age_outside(&mut rng, 0, 30 * DAY - 1, (12 * DAY, 14 * DAY));
@@ -1215,7 +1398,7 @@ pub fn activity() -> Activity {
                 _ => None,
             };
             let sha = hex(&mut rng);
-            let branch = *rng.pick(&BRANCHES);
+            let branch = rng.pick(&branches);
             let summary = match kind {
                 EventKind::BranchHead => format!("branch {branch} @ {sha}"),
                 EventKind::Commit => format!("fix: step {n}"),
@@ -1234,19 +1417,16 @@ pub fn activity() -> Activity {
                 EventKind::Commit => e.commit(sha),
                 _ => e.branch(branch).commit(sha),
             };
-            events.push(e);
+            out.push(e);
         }
     }
 
-    events.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id)));
-    for (seq, e) in events.iter_mut().enumerate() {
-        e.seq = seq as u64;
-    }
+    order_events(&mut out);
     for lane in &tree.lanes {
         debug_assert!(lane.from <= lane.to);
     }
     Activity {
-        events,
+        events: out,
         tree,
         statuses,
         now: DEMO_NOW,
@@ -1404,7 +1584,7 @@ mod tests {
                 ..state()
             },
         );
-        assert_eq!(all.items.len(), 2351);
+        assert_eq!(all.item_count(), 2351);
         assert_eq!(all.hidden, 0);
     }
 
@@ -1453,5 +1633,116 @@ mod tests {
                 .statuses(&a.statuses),
         );
         assert_eq!(g.total_items, 2351);
+    }
+
+    fn item_number(e: &Event) -> Option<usize> {
+        e.item_id.as_deref()?.strip_prefix("imp-")?.parse().ok()
+    }
+
+    #[test]
+    fn the_default_size_is_the_default_sample() {
+        assert_eq!(activity().events.len(), DEFAULT_EVENTS);
+        assert_eq!(activity_sized(DEFAULT_EVENTS), activity());
+    }
+
+    #[test]
+    fn sized_samples_hold_exactly_the_events_asked_for() {
+        let idle = 12 * DAY..14 * DAY;
+        for size in [395, 1_000, DEFAULT_EVENTS - 1, DEFAULT_EVENTS + 1, 25_000] {
+            let a = activity_sized(size);
+            assert_eq!(a.events.len(), size, "{size}");
+            for (i, pair) in a.events.windows(2).enumerate() {
+                let (x, y) = (&pair[0], &pair[1]);
+                assert!((x.at, &x.id) < (y.at, &y.id), "{size}: order at {i}");
+            }
+            assert!(a.events.iter().enumerate().all(|(i, e)| e.seq == i as u64));
+            for e in &a.events {
+                let age = DEMO_NOW - e.at / SECOND;
+                assert!((0..30 * DAY).contains(&age), "{size}: {} age {age}", e.id);
+                assert!(
+                    !idle.contains(&age),
+                    "{size}: {} sits in the idle days",
+                    e.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sized_samples_are_deterministic() {
+        assert_eq!(activity_sized(30_000), activity_sized(30_000));
+        assert_ne!(activity_sized(30_000), activity_sized(30_001));
+    }
+
+    #[test]
+    fn sizes_below_the_heroes_come_back_as_the_heroes_alone() {
+        let a = activity_sized(10);
+        assert_eq!(a.events.len(), 395);
+        assert!(a
+            .events
+            .iter()
+            .all(|e| item_number(e).is_some_and(|n| n < 10_000)));
+        assert_eq!(a.statuses.len(), 20);
+    }
+
+    #[test]
+    fn larger_samples_keep_the_heroes_the_default_view_draws() {
+        let heroes = |a: &Activity| -> Vec<Event> {
+            a.events
+                .iter()
+                .filter(|e| item_number(e).is_some_and(|n| n < 10_000))
+                .cloned()
+                .map(|e| Event { seq: 0, ..e })
+                .collect()
+        };
+        let (small, big) = (activity(), activity_sized(40_000));
+        assert_eq!(heroes(&small), heroes(&big));
+        assert_eq!(small.tree, big.tree);
+
+        let ids = |a: &Activity| -> Vec<String> {
+            let mut ids: Vec<String> = drawn(a, &state()).items.into_iter().map(|i| i.id).collect();
+            ids.sort();
+            ids
+        };
+        assert_eq!(ids(&small).len(), 20);
+        assert_eq!(ids(&small), ids(&big));
+    }
+
+    #[test]
+    fn larger_samples_look_like_a_busy_ledger() {
+        use std::collections::HashMap;
+        let a = activity_sized(60_000);
+        let loose = a.events.iter().filter(|e| e.item_id.is_none()).count();
+        assert!((9_000..12_000).contains(&loose), "{loose} loose");
+
+        let mut per_item: HashMap<&str, usize> = HashMap::new();
+        for e in &a.events {
+            if let Some(item) = e.item_id.as_deref() {
+                *per_item.entry(item).or_default() += 1;
+            }
+        }
+        let items = per_item.len();
+        assert!((60_000 / 5..60_000 / 2).contains(&items), "{items} items");
+        let longest = per_item.values().copied().max().unwrap_or(0);
+        assert!(longest >= 200, "longest item has {longest} events");
+        assert!(per_item.values().filter(|n| **n <= 4).count() * 10 >= items * 8);
+
+        let agents: BTreeSet<&str> = a.events.iter().filter_map(|e| e.agent.as_deref()).collect();
+        assert!(agents.len() >= 12, "{agents:?}");
+        let branches: BTreeSet<&str> = a
+            .events
+            .iter()
+            .filter_map(|e| e.branch.as_deref())
+            .collect();
+        assert!(branches.len() >= 36, "{} branches", branches.len());
+        let handoffs = a
+            .events
+            .iter()
+            .filter(|e| e.kind == EventKind::Handoff && e.detail.from.is_some())
+            .count();
+        assert!(
+            handoffs * 10 >= items,
+            "{handoffs} handoffs over {items} items"
+        );
     }
 }

@@ -16,3 +16,33 @@ pub async fn sleep(ms: i32) {
 /// Resolves at once: nothing resizes off the web.
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn sleep(_ms: i32) {}
+
+/// What a scroller shows: pixels scrolled and visible height.
+pub struct Scroll {
+    /// Pixels scrolled from the top.
+    pub top: f64,
+    /// Visible height of the scroller.
+    pub height: f64,
+}
+
+#[cfg(target_arch = "wasm32")]
+fn element(id: &str) -> Option<web_sys::Element> {
+    web_sys::window()?.document()?.get_element_by_id(id)
+}
+
+/// Measure the scroller `id`; `None` when it is not mounted and off the web.
+pub fn scroll(id: &str) -> Option<Scroll> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let el = element(id)?;
+        Some(Scroll {
+            top: f64::from(el.scroll_top()),
+            height: f64::from(el.client_height()),
+        })
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = id;
+        None
+    }
+}

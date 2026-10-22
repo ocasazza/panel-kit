@@ -1,14 +1,15 @@
-//! The inspector: what one clicked node of the GRAPH holds, docked under the
-//! canvas. An item shows its header and its events as a nested [`EventRail`]
-//! whose rows open in place; a fork lane (and events that belong to no item)
-//! show their facts. Content comes from `Node::inspect`; this only paints it.
+//! The inspector: what one clicked node holds, docked under the body. An item
+//! shows its header and its events as a nested [`EventRail`] whose rows open in
+//! place; a fork lane, a collaboration pair and events that belong to no item
+//! show their facts. Content comes from `Node::inspect` (a pair from
+//! `Node::inspect_pair`); this only paints it.
 
 use std::rc::Rc;
 
 use dioxus::prelude::*;
 use panel_kit_core::widgets::event_graph::facts::{Expansion, Fact, WRAP_COLS};
 use panel_kit_core::widgets::event_graph::rails::{vertical_with, RailOptions};
-use panel_kit_core::widgets::event_graph::swimlane::{Inspection, ItemHeader, Node};
+use panel_kit_core::widgets::event_graph::swimlane::{Collaboration, Inspection, ItemHeader, Node};
 use panel_kit_core::widgets::event_graph::{Event, SessionTree};
 
 use crate::widgets::event_graph::rails::EventRail;
@@ -105,6 +106,7 @@ fn caption(node: &Node) -> &'static str {
         Node::Event(_) => "event",
         Node::Cluster(_) => "events",
         Node::Lane(_) => "lane",
+        Node::Pair(..) => "pair",
     }
 }
 
@@ -117,9 +119,19 @@ pub(super) fn Inspector(
     node: Node,
     events: Rc<Vec<Event>>,
     tree: Option<Rc<SessionTree>>,
+    /// The collaboration a pair node is looked up in.
+    #[props(default)]
+    collab: Option<Rc<Collaboration>>,
     on_close: EventHandler<()>,
 ) -> Element {
-    let content = node.inspect(&events, tree.as_deref(), WRAP_COLS);
+    let content = match (&node, &collab) {
+        (Node::Pair(a, b), Some(collab)) => collab
+            .pairs
+            .iter()
+            .find(|pair| pair.a == *a && pair.b == *b)
+            .and_then(|pair| node.inspect_pair(pair, WRAP_COLS)),
+        _ => node.inspect(&events, tree.as_deref(), WRAP_COLS),
+    };
     let mut expanded = use_signal(|| {
         let mut open = Expansion::new();
         if let Some(content) = &content {
@@ -164,6 +176,7 @@ pub(super) fn Inspector(
     let name = match &node {
         Node::Item(id) | Node::Event(id) | Node::Lane(id) => id.clone(),
         Node::Cluster(ids) => format!("{} events", ids.len()),
+        Node::Pair(a, b) => format!("{a} \u{2194} {b}"),
     };
     rsx! {
         section {

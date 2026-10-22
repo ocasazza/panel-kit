@@ -17,7 +17,7 @@ use dioxus::prelude::*;
 use panel_kit::widgets::event_graph::swimlane::EventGraph;
 use panel_kit_core::widgets::event_graph::query::{GraphState, Mode, Tone};
 use panel_kit_core::widgets::event_graph::sample;
-use panel_kit_core::widgets::event_graph::swimlane::{fmt1, view, Graph, TickKind};
+use panel_kit_core::widgets::event_graph::swimlane::{fmt1, slug, view, Graph, TickKind};
 use panel_kit_core::widgets::event_graph::{
     Edge, EdgeKind, Event, EventKind, Lane, LaneKind, SessionTree,
 };
@@ -813,16 +813,17 @@ fn an_empty_window_is_one_line_with_no_canvas() {
 // -- the canvas ---------------------------------------------------------------
 
 #[test]
-fn the_svg_is_the_layout_sized_and_named() {
+fn the_rows_svg_is_the_layout_sized_and_named() {
     let case = graph(vec![note("imp-1", 5.0), note("imp-2", 50.0)]);
     let layout = case.layout();
     let html = case.render();
     let svg = html.find("svg", "class=\"pk-ag-svg\"");
     assert_eq!(attr(svg, "width"), "1400");
-    assert_eq!(attr(svg, "height"), layout.height.to_string());
-    assert_eq!(attr(svg, "viewBox"), format!("0 0 1400 {}", layout.height));
+    assert_eq!(attr(svg, "height"), (layout.axis_y as i64).to_string());
+    assert_eq!(attr(svg, "viewBox"), format!("0 0.0 1400 {}", layout.axis_y));
     assert_eq!(attr(svg, "aria-label"), layout.aria_label());
     assert_eq!(attr(svg, "role"), "group");
+    assert!(!html.has("pk-ag-top"), "no strip, nothing to pin");
     let narrow = graph(vec![note("imp-1", 5.0)])
         .state(|state| state.graph_width = 640)
         .render();
@@ -830,6 +831,50 @@ fn the_svg_is_the_layout_sized_and_named() {
         attr(narrow.find("svg", "class=\"pk-ag-svg\""), "width"),
         "640"
     );
+}
+
+#[test]
+fn the_strip_the_rows_and_the_axis_are_three_svgs_of_one_coordinate_system() {
+    let case = graph(commits());
+    let layout = case.layout();
+    let html = case.render();
+    let top = f64::from(layout.strip.len() as u32) * 14.0;
+    let (strip, rows, foot) = (
+        html.find("svg", "pk-ag-top"),
+        html.find("svg", "class=\"pk-ag-svg\""),
+        html.find("svg", "pk-ag-foot"),
+    );
+    let height = |tag: &str| attr(tag, "height").parse::<f64>().unwrap();
+    assert_eq!(attr(strip, "viewBox"), format!("0 0 1400 {top}"));
+    assert_eq!(attr(rows, "viewBox"), format!("0 {top:.1} 1400 {}", layout.axis_y - top));
+    assert_eq!(attr(foot, "viewBox"), format!("0 {:.1} 1400 28", layout.axis_y));
+    assert_eq!(
+        height(strip) + height(rows) + height(foot),
+        layout.height as f64,
+        "the parts stack to the layout's height"
+    );
+    assert!(strip.contains("class=\"pk-ag-svg pk-ag-top\""), "{strip}");
+    assert!(foot.contains("aria-hidden=\"true\""), "{foot}");
+    // Pinned parts come before and after the rows in the document.
+    assert!(html.position("pk-ag-top") < html.position("class=\"pk-ag-svg\""));
+    assert!(html.position("class=\"pk-ag-svg\"") < html.position("pk-ag-foot"));
+    // The strip rows live in the pinned strip, the item rows between.
+    let pinned = html.between("<svg class=\"pk-ag-svg pk-ag-top\"", "</svg>");
+    assert!(pinned.contains("pk-ag-strip"), "{pinned}");
+    assert!(!pinned.contains("pk-ag-item"), "{pinned}");
+}
+
+#[test]
+fn focus_scrolls_a_row_clear_of_the_pinned_strip_and_axis() {
+    let canvas = |html: &Html| attr(html.find("div", "class=\"pk-ag-canvas\""), "style").to_string();
+    // One strip row (14px) over the rows and the 28px axis band under them.
+    assert_eq!(canvas(&graph(commits()).render()), "scroll-padding: 14px 0 28px;");
+    let bare = graph(vec![note("imp-1", 5.0)]).render();
+    assert_eq!(canvas(&bare), "scroll-padding: 0px 0 28px;");
+    let (case, _) = demo(false);
+    let layout = demo_layout(&case);
+    assert_eq!(layout.strip.len(), 3);
+    assert_eq!(canvas(&render_demo(case)), "scroll-padding: 42px 0 28px;");
 }
 
 #[test]
@@ -1056,7 +1101,7 @@ fn idle_stretches_are_hatched_gaps_with_a_tooltip() {
     assert_eq!(html.count("class=\"pk-ag-gap\""), layout.gaps.len());
     for gap in &layout.gaps {
         let rect = format!(
-            "<rect class=\"pk-ag-gap\" x=\"{}\" y=\"0\" width=\"24.0\" height=\"{}\" fill=\"url(#activity-hatch)\"><title>{} with nothing happening</title></rect>",
+            "<rect class=\"pk-ag-gap\" x=\"{}\" y=\"0.0\" width=\"24.0\" height=\"{}\" fill=\"url(#activity-hatch)\"><title>{} with nothing happening</title></rect>",
             fmt1(gap.x0),
             fmt1(layout.axis_y),
             gap.idle_label()
@@ -1076,29 +1121,33 @@ fn the_grid_has_a_line_per_tick_and_the_axis_a_label() {
     let layout = case.layout();
     assert!(!layout.ticks.is_empty());
     let html = case.render();
-    let lines = html.tags("line");
-    let ticks: Vec<&&str> = lines
-        .iter()
-        .filter(|tag| tag.contains("pk-ag-tick "))
-        .collect();
-    assert_eq!(ticks.len(), layout.ticks.len());
-    for (tag, tick) in ticks.iter().zip(&layout.ticks) {
+    let ticks_of = |part: &str| -> Vec<String> {
+        let part = html.between(part, "</svg>");
+        part.match_indices("<line class=\"pk-ag-tick ")
+            .map(|(at, _)| part[at..part[at..].find('>').unwrap() + at + 1].to_string())
+            .collect()
+    };
+    // The rows draw every tick down to the axis; the pinned axis repeats
+    // the day lines under it.
+    let rows = ticks_of("<svg class=\"pk-ag-svg\"");
+    assert_eq!(rows.len(), layout.ticks.len());
+    for (tag, tick) in rows.iter().zip(&layout.ticks) {
         assert_eq!(attr(tag, "x1"), fmt1(tick.x));
         assert_eq!(attr(tag, "x2"), fmt1(tick.x));
         assert!(
             tag.contains(&format!("pk-ag-tick-{}", tick.kind.as_str())),
             "{tag}"
         );
-        let end = if tick.kind == TickKind::Day {
-            layout.height.to_string()
-        } else {
-            fmt1(layout.axis_y)
-        };
-        assert_eq!(
-            attr(tag, "y2"),
-            end,
-            "day lines run the full height, time lines stop at the axis"
-        );
+        assert_eq!(attr(tag, "y1"), "0.0");
+        assert_eq!(attr(tag, "y2"), fmt1(layout.axis_y));
+    }
+    let foot = ticks_of("<svg class=\"pk-ag-svg pk-ag-foot\"");
+    let days: Vec<_> = layout.ticks.iter().filter(|t| t.kind == TickKind::Day).collect();
+    assert_eq!(foot.len(), days.len(), "time lines stop at the axis");
+    for (tag, tick) in foot.iter().zip(days) {
+        assert_eq!(attr(tag, "x1"), fmt1(tick.x));
+        assert_eq!(attr(tag, "y1"), fmt1(layout.axis_y));
+        assert_eq!(attr(tag, "y2"), layout.height.to_string() + ".0");
     }
     let axis = html.between("<g class=\"pk-ag-axis\"", "</g>");
     for tick in &layout.ticks {
@@ -1282,17 +1331,131 @@ fn the_demo_window_draws_the_newest_twenty_of_2351_with_its_three_no_item_rows()
     assert!(html.has("pk-ag-fork-node"));
     assert!(html.has("pk-ag-gap"));
     let layout = demo_layout(&case);
-    assert_eq!(html.count("class=\"pk-ag-gap\""), layout.gaps.len());
+    // The strip and the rows each stand on the hatch.
+    assert_eq!(html.count("class=\"pk-ag-gap\""), 2 * layout.gaps.len());
+}
+
+/// Pixel rows an unmeasured scroller mounts: 24 on screen and 6 of overscan.
+const FIRST_ROWS: f64 = 30.0;
+
+/// The ids of the items whose row starts inside the first `FIRST_ROWS` rows.
+fn first_screen(layout: &Graph, events: &[Event]) -> Vec<String> {
+    let top = layout.strip.len() as f64 * 14.0;
+    layout
+        .row_spans()
+        .iter()
+        .filter(|span| ((span.y - top) / 14.0).floor() < FIRST_ROWS)
+        .map(|span| layout.item(events, span.item).id.clone())
+        .collect()
+}
+
+/// The id of the item on the lowest row.
+fn lowest(layout: &Graph, events: &[Event]) -> String {
+    let last = layout.row_spans().last().expect("a row");
+    layout.item(events, last.item).id.clone()
 }
 
 #[test]
-fn show_all_draws_every_item_of_the_demo_window() {
+fn show_all_mounts_the_rows_near_the_viewport_of_the_demo_window() {
     let (case, _) = demo(true);
     let layout = demo_layout(&case);
-    assert_eq!(layout.items.len(), 2351);
+    assert_eq!(layout.item_count(), 2351);
+    let near = first_screen(&layout, &case.events);
+    assert!(near.len() > 20 && near.len() < 400, "{} rows", near.len());
+    let last = lowest(&layout, &case.events);
     let html = render_demo(case);
-    assert_eq!(html.count("class=\"pk-ag-item"), 2351);
+    assert_eq!(html.count("class=\"pk-ag-item"), near.len());
+    for id in &near {
+        assert!(html.has_id(&format!("activity-graph-{}", slug(id))), "{id}");
+    }
+    assert!(
+        !html.has_id(&format!("activity-graph-{}", slug(&last))),
+        "the last row waits for the scroll"
+    );
+    // The unmounted rows are still there as height.
+    let top = layout.strip.len() as f64 * 14.0;
+    let rows = html.find("svg", "class=\"pk-ag-svg\"");
+    assert_eq!(attr(rows, "height"), (layout.axis_y - top).to_string());
+    assert_eq!(attr(rows, "data-start"), "0");
+    assert_eq!(attr(rows, "data-end"), (FIRST_ROWS as usize).to_string());
+    assert!(layout.rows > FIRST_ROWS as usize, "some rows wait for the scroll");
     assert_eq!(html.text("activity-show-all"), "show newest 20");
+}
+
+/// The sample window at `events` events, show all, in the compact bar.
+fn sized(events: usize) -> Case {
+    let activity = sample::activity_sized(events);
+    Case {
+        id: "activity",
+        state: GraphState {
+            window: "30d".to_string(),
+            tree: true,
+            compact: true,
+            graph_width: 1200,
+            show_all: true,
+            ..GraphState::default()
+        },
+        events: activity.events,
+        tree: Some(activity.tree),
+        selected: None,
+    }
+}
+
+#[test]
+fn a_hundred_thousand_events_mount_a_bounded_window_of_rows() {
+    let case = sized(100_000);
+    let layout = demo_layout(&case);
+    assert!(layout.item_count() > 10_000, "{} items", layout.item_count());
+    let near = first_screen(&layout, &case.events);
+    let last = lowest(&layout, &case.events);
+    let html = render_demo(case);
+    // What is mounted is the first screen and nothing grows with the events.
+    assert_eq!(html.count("class=\"pk-ag-item"), near.len());
+    assert!(near.len() < 1_000, "{} rows", near.len());
+    assert!(html.0.len() < 2_000_000, "{} bytes", html.0.len());
+    assert!(!html.has_id(&format!("activity-graph-{}", slug(&last))));
+    // The rest is height: every row of the layout, mounted or not.
+    let top = layout.strip.len() as f64 * 14.0;
+    let rows = html.find("svg", "class=\"pk-ag-svg\"");
+    assert_eq!(attr(rows, "height"), (layout.axis_y - top).to_string());
+    assert!(layout.axis_y - top > 100.0 * 14.0 * 10.0, "{} rows", layout.rows);
+    // The no-item rows keep their real counts: the digits, while they fit.
+    for row in &layout.strip {
+        let shown = html.text(&format!("activity-strip-count-{}", row.kind.as_str()));
+        assert_eq!(shown, row.count.to_string(), "{}", row.kind.as_str());
+        assert!(row.count > 1_000, "thousands at this scale: {}", row.count);
+    }
+}
+
+/// The declarations of the top-level rule whose selector list is `selector`.
+fn rule<'a>(css: &'a str, selector: &str) -> &'a str {
+    css.split('}')
+        .find_map(|chunk| {
+            let (head, body) = chunk.split_once('{')?;
+            (head.rsplit("*/").next()?.trim() == selector).then_some(body)
+        })
+        .unwrap_or_else(|| panic!("no rule for {selector}"))
+}
+
+#[test]
+fn the_stylesheet_scrolls_the_canvas_and_pins_the_strip_and_the_axis() {
+    let css = include_str!("../assets/panel-kit.css");
+    let canvas = rule(css, ".pk-ag-canvas");
+    for declaration in [
+        "overflow-y: auto;",
+        "max-height: 100vh;",
+        "scrollbar-gutter: stable;",
+    ] {
+        assert!(canvas.contains(declaration), "{declaration} in {canvas}");
+    }
+    let pinned = rule(css, ".pk-ag-top,\n.pk-ag-foot");
+    assert!(pinned.contains("position: sticky;"), "{pinned}");
+    assert!(pinned.contains("background: var(--bg);"), "{pinned}");
+    assert!(rule(css, ".pk-ag-top").contains("top: 0;"));
+    assert!(rule(css, ".pk-ag-foot").contains("bottom: 0;"));
+    // In GRAPH only the canvas scrolls: the head stays where it is.
+    let body = rule(css, ".pk-ag[data-mode=\"graph\"] .pk-ag-body");
+    assert!(body.contains("overflow: hidden;"), "{body}");
 }
 
 /// The demo probe renders the sample's own clock, not the fixtures'.
