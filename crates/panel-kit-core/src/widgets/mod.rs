@@ -9,6 +9,7 @@ pub mod cascade;
 pub mod charts;
 pub mod data_table;
 pub mod dropdown;
+pub mod trace;
 pub mod meter;
 pub mod scroll;
 pub mod spinner;

@@ -1542,3 +1542,1398 @@ button { font-family:var(--mono); }
 .snap-toggle button.on .snap-toggle-glyph { color:var(--accent); }
 .snap-toggle button.off .snap-toggle-glyph { color:var(--dim); }
 .snap-toggle button.reset { margin-left:.25rem; color:var(--fg); }
+
+/* ── Trace: rails ─────────────────────────────── */
+
+/* TraceRail (src/widgets/trace/rails.rs): session tree / item timeline.
+   Geometry is fixed by core: rows are 22px, the SVG gutter shares their y axis. */
+.pk-tr-rail {
+  --pk-tr-rail-row: 22px;
+  margin: 0;
+  padding: 8px;
+  font: var(--body-size)/var(--body-line-height) var(--mono);
+  color: var(--fg);
+}
+
+.pk-tr-rail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-family: var(--mono);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+
+.pk-tr-rail-title { font-weight: 700; color: var(--dim); }
+.pk-tr-rail-meta { color: var(--line2); }
+.pk-tr-rail-empty { margin: 0; color: var(--dim); }
+
+.pk-tr-rail-canvas { position: relative; }
+
+.pk-tr-rail-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pk-tr-rail-rows {
+  margin: 0 0 0 var(--pk-tr-rail-gutter);
+  padding: 0;
+  list-style: none;
+}
+
+.pk-tr-rail-row { height: var(--pk-tr-rail-row); box-sizing: border-box; }
+.pk-tr-rail-row.sep { box-shadow: inset 0 -1px 0 var(--line); }
+.pk-tr-rail-row.dead { opacity: 0.35; }
+
+.pk-tr-rail-hit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+}
+
+button.pk-tr-rail-hit { cursor: pointer; }
+button.pk-tr-rail-hit:hover { background: var(--panel); }
+button.pk-tr-rail-hit:focus-visible {
+  outline: 1px dashed var(--blue);
+  outline-offset: -1px;
+}
+
+/* Selected or open: filled row, solid blue frame and a 3px bar; hover and focus use neither. */
+.pk-tr-rail-hit.on,
+.pk-tr-rail-hit.open {
+  background: var(--panel);
+  outline: 1px solid var(--blue);
+  outline-offset: -1px;
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.pk-tr-rail-hit.on .pk-tr-rail-label,
+.pk-tr-rail-hit.open .pk-tr-rail-label { font-weight: 700; }
+.pk-tr-rail-hit.on .pk-tr-rail-time,
+.pk-tr-rail-hit.open .pk-tr-rail-time { color: var(--fg); }
+
+/* Disclosure caret: the table's fold glyphs; quiet until hover, focus or open. */
+.pk-tr-rail-caret { flex: none; width: 1ch; color: var(--dim); }
+button.pk-tr-rail-hit:hover .pk-tr-rail-caret,
+button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
+.pk-tr-rail-hit.open .pk-tr-rail-caret { color: var(--fg); }
+
+.pk-tr-rail-time {
+  flex: none;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.pk-tr-rail-chip {
+  flex: none;
+  padding: 0 4px;
+  border: 1px solid var(--line2);
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pk-tr-rail-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pk-tr-rail-row.marker .pk-tr-rail-label { color: var(--dim); }
+
+/* Rails: 2px trunk in the item tone, 1px lanes and elbows. */
+.pk-tr-rail-trunk { stroke: var(--line2); stroke-width: 2; }
+.pk-tr-rail-canvas.blue .pk-tr-rail-trunk { stroke: var(--blue); }
+.pk-tr-rail-canvas.green .pk-tr-rail-trunk { stroke: var(--green); }
+.pk-tr-rail-canvas.yellow .pk-tr-rail-trunk { stroke: var(--yellow); }
+.pk-tr-rail-canvas.red .pk-tr-rail-trunk { stroke: var(--red); }
+.pk-tr-rail-canvas.done .pk-tr-rail-trunk { stroke-opacity: 0.45; }
+
+.pk-tr-rail-lane { stroke: var(--line2); stroke-width: 1; }
+.pk-tr-rail-edge {
+  fill: none;
+  stroke: var(--line2);
+  stroke-width: 1;
+  stroke-linejoin: miter;
+  stroke-linecap: butt;
+}
+.pk-tr-rail-lane.dead,
+.pk-tr-rail-edge.dead { opacity: 0.35; }
+
+/* Dots: 7px; hollow is a 1.5px ring, filled tones are solid. */
+.pk-tr-rail-dot { stroke-width: 0; }
+.pk-tr-rail-dot.hollow { fill: var(--bg); stroke: var(--dim); stroke-width: 1.5; }
+.pk-tr-rail-dot.blue { fill: var(--blue); }
+.pk-tr-rail-dot.green { fill: var(--green); }
+.pk-tr-rail-dot.yellow { fill: var(--yellow); }
+.pk-tr-rail-dot.red { fill: var(--red); }
+.pk-tr-rail-dot.dead { opacity: 0.35; }
+.pk-tr-rail-dot.on { stroke: var(--fg); stroke-width: 2; }
+
+/* Heading actions reuse the table's quiet text buttons. */
+.pk-tr-rail-head .pk-btn { flex: none; }
+
+/* An open row's facts: one 22px row per line, label column fixed to the
+   node's longest label, values clipped with ellipsis under `title`. */
+.pk-tr-rail-ghost { visibility: hidden; }
+
+.pk-tr-rail-detail-in {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 8px 0 4px;
+}
+
+.pk-tr-rail-facts { flex: 1; min-width: 0; }
+.pk-tr-rail-fact { display: flex; gap: 8px; }
+
+.pk-tr-rail-fact-label {
+  flex: none;
+  width: calc(var(--pk-tr-rail-labels) + 1ch);
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: var(--pk-tr-rail-row);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pk-tr-rail-fact-value { flex: 1; min-width: 0; }
+
+.pk-tr-rail-fact-line {
+  display: block;
+  height: var(--pk-tr-rail-row);
+  line-height: var(--pk-tr-rail-row);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ── Trace: swimlane ─────────────────────────────── */
+
+/* Trace swimlane (`Trace`, src/widgets/trace/swimlane).
+   One toolbar over three bodies. Theme tokens only; square edges, 1px rules,
+   monospace. Every active state changes shape (fill, ring, inversion), never
+   hue alone. */
+
+.pk-tr {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.pk-tr button:focus-visible,
+.pk-tr input:focus-visible {
+  outline: 1px solid var(--blue);
+  outline-offset: 1px;
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────── */
+
+.pk-tr-bar,
+.pk-tr-stack {
+  flex: none;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-tr-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pk-tr-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pk-tr-modes {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  margin: 0;
+}
+
+.pk-tr-chip,
+.pk-tr-tree {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--dim);
+  font: 11px/1.4 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.pk-tr-chip:hover,
+.pk-tr-tree:hover {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+
+/* Pressed is an inverted block: the filled face reads at a glance. */
+.pk-tr-chip.on,
+.pk-tr-tree.on {
+  border-color: var(--inv-bg);
+  background: var(--inv-bg);
+  color: var(--inv-fg);
+}
+
+.pk-tr-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.pk-tr-chip.on .pk-tr-chip-dot {
+  background: var(--line2);
+}
+
+.pk-tr-tree {
+  flex: none;
+}
+
+.pk-tr-query {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.pk-tr-query-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 var(--mono);
+  caret-color: var(--blue);
+}
+
+.pk-tr-query-input::placeholder {
+  color: var(--line2);
+}
+
+/* While the box holds a draft it carries a ring: what is typed is not yet applied. */
+.pk-tr-query-input.on {
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue);
+}
+
+.pk-tr-errors {
+  flex: none;
+  color: var(--yellow);
+  font: var(--text-label) var(--mono);
+  white-space: nowrap;
+}
+
+/* ── Active query tokens ───────────────────────────────────────── */
+
+.pk-tr-tokens {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 3px 8px;
+  list-style: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-tr-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--blue);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--blue) 14%, var(--bg));
+  box-shadow: inset 0 0 0 1px var(--blue);
+  color: var(--fg);
+  font: 11px/1.5 var(--mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.pk-tr-token:hover .pk-tr-token-x {
+  color: var(--red);
+}
+
+.pk-tr-token-x {
+  font-weight: 700;
+}
+
+/* ── Legend: one toggle per tone ───────────────────────────────── */
+
+.pk-tr-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: var(--text-label) var(--mono);
+  color: var(--line2);
+}
+
+.pk-tr-legend-compact {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.pk-tr-legend li {
+  display: inline-flex;
+  align-items: center;
+}
+
+.pk-tr-legend-info {
+  --tone: var(--blue);
+}
+
+.pk-tr-legend-ok {
+  --tone: var(--green);
+}
+
+.pk-tr-legend-warn {
+  --tone: var(--yellow);
+}
+
+.pk-tr-legend-err {
+  --tone: var(--red);
+}
+
+.pk-tr-legend-neutral {
+  --tone: var(--dim);
+}
+
+.pk-tr-lg,
+.pk-tr-lg-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.pk-tr-lg:hover,
+.pk-tr-lg-clear:hover {
+  border-color: var(--line2);
+  color: var(--fg);
+}
+
+.pk-tr-lg-clear:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* A picked tone keeps its dots lit: ringed, tinted and bright. */
+.pk-tr-lg.on {
+  border-color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 18%, var(--bg));
+  box-shadow: inset 0 0 0 1px var(--tone);
+  color: var(--fg);
+}
+
+/* A tone the filter hides steps back. */
+.pk-tr-lg.dim {
+  opacity: 0.4;
+}
+
+.pk-tr-lg-dot {
+  flex: none;
+}
+
+.pk-tr-legend-means {
+  color: var(--line2);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ── The figure and its head ───────────────────────────────────── */
+
+.pk-tr-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+/* GRAPH: the body is a column, the figure fills it and only the canvas
+   scrolls, so the head stays put and the canvas can mount just its rows. */
+.pk-tr[data-mode="graph"] .pk-tr-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.pk-tr-fig {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 8px;
+  overflow: hidden;
+}
+
+/* The sequence diagram and the COLLAB tables sit inset like the figure. */
+.pk-tr:not([data-mode="graph"]) .pk-tr-body {
+  padding: 4px 8px;
+}
+
+.pk-tr-head {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 16px;
+  margin-bottom: 4px;
+}
+
+.pk-tr-strip-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dim);
+  font: var(--text-label) var(--mono);
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.pk-tr-strip-toggle:hover {
+  border-color: var(--line2);
+  color: var(--fg);
+}
+
+/* An open row or the lifted cap is a ringed, tinted button. */
+.pk-tr-strip-toggle.on {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 14%, var(--bg));
+  box-shadow: inset 0 0 0 1px var(--blue);
+  color: var(--fg);
+}
+
+/* A no-item label is cut at 14 glyphs, tracking included: NO ITEM: BRAN… */
+.pk-tr-strip-toggle .pk-tr-tl-label {
+  max-width: calc(14ch + 14 * 0.06em);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pk-tr-count {
+  color: var(--line2);
+  font: var(--text-label) var(--mono);
+  letter-spacing: 0.06em;
+}
+
+.pk-tr-empty {
+  margin: 0;
+  padding: 8px;
+  color: var(--dim);
+  font: var(--text-label) var(--mono);
+}
+
+/* ── The canvas ────────────────────────────────────────────────── */
+
+/* The scroller. It takes the room the body leaves and scrolls past it, never
+   past the screen, so a host with no height of its own still gets a bounded
+   window of rows. The scrollbar's room is kept, so the layout width is stable.
+   It takes focus (not by Tab) when a row scrolls out of the window, so the
+   page keys keep scrolling; rows mounting under the offset are not anchored. */
+.pk-tr-canvas {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+  outline: none;
+}
+
+/* The no-item strip and the axis stay in view while the rows scroll between them. */
+.pk-tr-top,
+.pk-tr-foot {
+  position: sticky;
+  z-index: 1;
+  background: var(--bg);
+}
+
+.pk-tr-top {
+  top: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-tr-foot {
+  bottom: 0;
+  border-top: 1px solid var(--line);
+}
+
+.pk-tr-svg {
+  display: block;
+  font: 11px/1 var(--mono);
+  user-select: none;
+}
+
+.pk-tr-hatch-line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.pk-tr-tick {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.pk-tr-tick-time {
+  stroke-opacity: 0.5;
+}
+
+.pk-tr-tick-day {
+  stroke: var(--line2);
+  shape-rendering: crispEdges;
+}
+
+.pk-tr-tick-label {
+  fill: var(--line2);
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.pk-tr-tick-label-day {
+  fill: var(--dim);
+}
+
+.pk-tr-tick-label-time {
+  fill-opacity: 0.7;
+}
+
+.pk-tr-hit {
+  fill: transparent;
+}
+
+/* Density strip: closed no-item rows, one cell per 4px. */
+.pk-tr-strip,
+.pk-tr-loose {
+  cursor: pointer;
+}
+
+.pk-tr-strip rect:not(.pk-tr-hit) {
+  fill: var(--dim);
+  pointer-events: none;
+}
+
+.pk-tr-strip:hover rect:not(.pk-tr-hit) {
+  fill: var(--fg);
+}
+
+.pk-tr-loose-line {
+  stroke: var(--line);
+  stroke-dasharray: 2 3;
+  pointer-events: none;
+}
+
+/* Items */
+.pk-tr-item {
+  cursor: pointer;
+  outline: none;
+}
+
+.pk-tr-item:hover .pk-tr-hit {
+  fill: var(--panel);
+}
+
+.pk-tr-item:focus-visible .pk-tr-hit {
+  stroke: var(--blue);
+}
+
+/* The picked item sits in a ringed, tinted band with a bold id. */
+.pk-tr-item.on .pk-tr-hit {
+  fill: color-mix(in srgb, var(--blue) 14%, var(--bg));
+  stroke: var(--blue);
+}
+
+.pk-tr-item.on .pk-tr-label {
+  fill: var(--fg);
+  font-weight: 700;
+}
+
+.pk-tr-line {
+  fill: none;
+  stroke: var(--line2);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.pk-tr-fork-line {
+  stroke-width: 1;
+}
+
+.pk-tr-info .pk-tr-line {
+  stroke: var(--blue);
+}
+
+.pk-tr-ok .pk-tr-line {
+  stroke: var(--green);
+}
+
+.pk-tr-warn .pk-tr-line {
+  stroke: var(--yellow);
+}
+
+.pk-tr-err .pk-tr-line {
+  stroke: var(--red);
+}
+
+.pk-tr-done .pk-tr-line {
+  stroke-opacity: 0.45;
+}
+
+.pk-tr-edge {
+  fill: none;
+  stroke: var(--dim);
+  stroke-width: 1;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  pointer-events: none;
+}
+
+.pk-tr-dead {
+  opacity: 0.35;
+}
+
+.pk-tr-label {
+  fill: var(--dim);
+  pointer-events: none;
+}
+
+.pk-tr-item:hover .pk-tr-label,
+.pk-tr-item:focus-visible .pk-tr-label {
+  fill: var(--fg);
+  text-decoration: underline;
+}
+
+.pk-tr-fork-label {
+  fill: var(--fg);
+  pointer-events: none;
+}
+
+/* Fork tip nodes: 7px squares, tinted by what the lane is. */
+.pk-tr-fork-node {
+  fill: var(--dim);
+}
+
+.pk-tr-fork-node.pk-tr-info {
+  fill: var(--blue);
+}
+
+.pk-tr-fork-node.pk-tr-ok {
+  fill: var(--green);
+}
+
+.pk-tr-fork-node.pk-tr-warn {
+  fill: var(--yellow);
+}
+
+.pk-tr-fork-node.pk-tr-err {
+  fill: var(--red);
+}
+
+/* Dots: hollow for neutral, solid for a tone; a burst is a numbered bubble. */
+circle.pk-tr-dot {
+  fill: var(--bg);
+  stroke: var(--dim);
+  stroke-width: 1.5;
+}
+
+circle.pk-tr-dot.pk-tr-info {
+  fill: var(--blue);
+  stroke: var(--blue);
+}
+
+circle.pk-tr-dot.pk-tr-ok {
+  fill: var(--green);
+  stroke: var(--green);
+}
+
+circle.pk-tr-dot.pk-tr-warn {
+  fill: var(--yellow);
+  stroke: var(--yellow);
+}
+
+circle.pk-tr-dot.pk-tr-err {
+  fill: var(--red);
+  stroke: var(--red);
+}
+
+/* A neutral burst is a solid light-grey bubble so its count reads. */
+.pk-tr-cluster circle.pk-tr-dot.pk-tr-neutral {
+  fill: color-mix(in srgb, var(--fg) 65%, var(--bg));
+  stroke: color-mix(in srgb, var(--fg) 65%, var(--bg));
+}
+
+/* A dot, a burst and a fork leaf open their own node: they are clickable. */
+.pk-tr-glyph,
+.pk-tr-fork {
+  cursor: pointer;
+}
+
+circle.pk-tr-glyph:hover,
+.pk-tr-cluster:hover > circle.pk-tr-dot {
+  stroke: var(--fg);
+}
+
+.pk-tr-cluster-count {
+  fill: var(--bg);
+  font: 8px/1 var(--mono);
+  pointer-events: none;
+}
+
+/* ── Colour filter: dots and lines of the tones not picked step back ── */
+
+.pk-tr-filtering .pk-tr-glyph {
+  opacity: 0.18;
+}
+
+.pk-tr-filtering .pk-tr-item .pk-tr-line {
+  opacity: 0.35;
+}
+
+.pk-tr-f-info .pk-tr-glyph.pk-tr-info,
+.pk-tr-f-ok .pk-tr-glyph.pk-tr-ok,
+.pk-tr-f-warn .pk-tr-glyph.pk-tr-warn,
+.pk-tr-f-err .pk-tr-glyph.pk-tr-err,
+.pk-tr-f-neutral .pk-tr-glyph.pk-tr-neutral,
+.pk-tr-f-info .pk-tr-item.pk-tr-info .pk-tr-line,
+.pk-tr-f-ok .pk-tr-item.pk-tr-ok .pk-tr-line,
+.pk-tr-f-warn .pk-tr-item.pk-tr-warn .pk-tr-line,
+.pk-tr-f-err .pk-tr-item.pk-tr-err .pk-tr-line,
+.pk-tr-f-neutral .pk-tr-item.pk-tr-neutral .pk-tr-line {
+  opacity: 1;
+}
+
+/* ── LANES: the sequence diagram ───────────────────────────────── */
+
+/* The activity chip's count sits after its label; on an inverted chip it
+   takes the chip's own colour. */
+.pk-tr-chip .pk-tr-count {
+  margin-left: 2px;
+  color: var(--dim);
+}
+
+.pk-tr-chip.on .pk-tr-count {
+  color: inherit;
+}
+
+.pk-tr-seq {
+  min-width: 0;
+}
+
+.pk-tr-seq-scroll {
+  position: relative;
+  max-height: 560px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+}
+
+/* The lane headers stick to the top and the gutter to the left; the head's
+   width is inline. */
+.pk-tr-seq-head {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  box-sizing: border-box;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-tr-seq-corner {
+  flex: none;
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  box-sizing: border-box;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+}
+
+.pk-tr-seq-lane {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dim);
+  font: 11px/1.4 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.pk-tr .pk-tr-seq-lane:hover,
+.pk-tr .pk-tr-seq-lane:focus-visible {
+  outline: 1px solid var(--blue);
+  outline-offset: -1px;
+}
+
+/* The lane the rows are narrowed to keeps its frame. */
+.pk-tr .pk-tr-seq-lane.on,
+.pk-tr .pk-tr-seq-lane[aria-pressed="true"] {
+  outline: 1px solid var(--blue);
+  outline-offset: -1px;
+  color: var(--fg);
+}
+
+.pk-tr-seq-lane .pk-tr-count {
+  flex: none;
+}
+
+.pk-tr-seq-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The folded `+N` lane is a plain label, not a button. */
+.pk-tr .pk-tr-seq-fold,
+.pk-tr .pk-tr-seq-fold:hover {
+  justify-content: center;
+  outline: none;
+  cursor: help;
+}
+
+.pk-tr-seq-fold .pk-tr-seq-name {
+  flex: none;
+  text-align: center;
+}
+
+.pk-tr-seq-body {
+  display: flex;
+  position: relative;
+}
+
+.pk-tr-seq-gutter {
+  display: block;
+  flex: none;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+}
+
+.pk-tr-seq-svg {
+  display: block;
+  flex: none;
+}
+
+.pk-tr-seq-life {
+  stroke: var(--line2);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.pk-tr-seq-day {
+  pointer-events: none;
+}
+
+.pk-tr-seq-rule {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.pk-tr-seq-daylabel,
+.pk-tr-seq-stamp {
+  fill: var(--dim);
+  font-size: 10px;
+  text-anchor: end;
+}
+
+.pk-tr-seq-daylabel {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A row is a button: the transparent hit rect takes the click, the tint
+   shows hover, focus and the event open in the inspector. */
+.pk-tr-seq-edge,
+.pk-tr-seq-broadcast,
+.pk-tr-seq-act {
+  cursor: pointer;
+}
+
+.pk-tr-seq-hit {
+  fill: transparent;
+}
+
+.pk-tr-seq-edge:hover,
+.pk-tr-seq-edge:focus-visible,
+.pk-tr-seq-broadcast:hover,
+.pk-tr-seq-broadcast:focus-visible,
+.pk-tr-seq-act:hover,
+.pk-tr-seq-act:focus-visible {
+  outline: none;
+}
+
+.pk-tr-seq-edge:hover .pk-tr-seq-hit,
+.pk-tr-seq-edge:focus-visible .pk-tr-seq-hit,
+.pk-tr-seq-broadcast:hover .pk-tr-seq-hit,
+.pk-tr-seq-broadcast:focus-visible .pk-tr-seq-hit,
+.pk-tr-seq-act:hover .pk-tr-seq-hit,
+.pk-tr-seq-act:focus-visible .pk-tr-seq-hit {
+  fill: color-mix(in srgb, var(--blue) 8%, transparent);
+}
+
+.pk-tr-seq-edge:focus-visible .pk-tr-seq-hit,
+.pk-tr-seq-broadcast:focus-visible .pk-tr-seq-hit,
+.pk-tr-seq-act:focus-visible .pk-tr-seq-hit {
+  stroke: var(--blue);
+}
+
+.pk-tr-seq-edge.on .pk-tr-seq-hit,
+.pk-tr-seq-broadcast.on .pk-tr-seq-hit,
+.pk-tr-seq-act.on .pk-tr-seq-hit {
+  fill: color-mix(in srgb, var(--blue) 14%, transparent);
+  stroke: var(--blue);
+  stroke-width: 1;
+}
+
+/* Edge and broadcast groups carry their tone for arrow, anchor and bar. */
+.pk-tr-seq-edge,
+.pk-tr-seq-broadcast {
+  --tone: var(--fg);
+}
+
+.pk-tr-seq-edge.pk-tr-info,
+.pk-tr-seq-broadcast.pk-tr-info {
+  --tone: var(--blue);
+}
+
+.pk-tr-seq-edge.pk-tr-ok,
+.pk-tr-seq-broadcast.pk-tr-ok {
+  --tone: var(--green);
+}
+
+.pk-tr-seq-edge.pk-tr-warn,
+.pk-tr-seq-broadcast.pk-tr-warn {
+  --tone: var(--yellow);
+}
+
+.pk-tr-seq-edge.pk-tr-err,
+.pk-tr-seq-broadcast.pk-tr-err {
+  --tone: var(--red);
+}
+
+.pk-tr-seq-edge.pk-tr-neutral,
+.pk-tr-seq-broadcast.pk-tr-neutral {
+  --tone: var(--dim);
+}
+
+/* A neutral arrow lifts to the foreground while hovered or open. */
+.pk-tr-seq-edge.pk-tr-neutral:hover,
+.pk-tr-seq-edge.pk-tr-neutral.on {
+  --tone: var(--fg);
+}
+
+.pk-tr-seq-arrow {
+  fill: none;
+  stroke: var(--tone);
+  stroke-width: 1.5;
+}
+
+.pk-tr-seq-anchor {
+  fill: var(--tone);
+  stroke: none;
+}
+
+.pk-tr-seq-bar {
+  stroke: var(--tone, var(--dim));
+  stroke-width: 1;
+}
+
+/* Arrowheads are shared marker defs, so they take a fixed tone colour. */
+.pk-tr-seq-mark {
+  stroke: none;
+}
+
+.pk-tr-seq-mark.pk-tr-info { fill: var(--blue); }
+.pk-tr-seq-mark.pk-tr-ok { fill: var(--green); }
+.pk-tr-seq-mark.pk-tr-warn { fill: var(--yellow); }
+.pk-tr-seq-mark.pk-tr-err { fill: var(--red); }
+.pk-tr-seq-mark.pk-tr-neutral { fill: var(--dim); }
+
+/* Handoff and baton are solid lines; a review is dashed. */
+.pk-tr-seq-handoff .pk-tr-seq-arrow,
+.pk-tr-seq-baton .pk-tr-seq-arrow {
+  stroke-dasharray: none;
+}
+
+.pk-tr-seq-review .pk-tr-seq-arrow {
+  stroke-dasharray: 3 2;
+}
+
+/* Still by default; hover, focus and the open row show dashes travelling
+   toward the target. Three-class selectors outrank the kind rules above. */
+.pk-tr-seq-edge:hover .pk-tr-seq-arrow,
+.pk-tr-seq-edge:focus-visible .pk-tr-seq-arrow,
+.pk-tr-seq-edge.on .pk-tr-seq-arrow {
+  stroke-dasharray: 6 4;
+  animation: pk-tr-seq-flow 900ms linear infinite;
+  filter: brightness(1.25);
+}
+
+@keyframes pk-tr-seq-flow {
+  to { stroke-dashoffset: -10; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-tr-seq-edge:hover .pk-tr-seq-arrow,
+  .pk-tr-seq-edge:focus-visible .pk-tr-seq-arrow,
+  .pk-tr-seq-edge.on .pk-tr-seq-arrow {
+    animation: none;
+    stroke-dasharray: none;
+    stroke: var(--fg);
+    stroke-width: 2;
+    filter: none;
+  }
+}
+
+.pk-tr-seq-cap {
+  fill: var(--fg);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.pk-tr-seq-cap.pk-tr-seq-cap-start {
+  text-anchor: start;
+}
+
+.pk-tr-seq-foot {
+  margin: 0;
+  padding: 4px 0;
+  color: var(--dim);
+  font: 11px/1.4 var(--mono);
+}
+
+/* Lanes menu: the data-table menu inside the swimlane toolbar, lifted above
+   the sticky sequence header. */
+.pk-tr-lanes-menu .pk-dt-menu-body {
+  z-index: 6;
+  min-width: 260px;
+  max-height: 320px;
+  padding: 0;
+  overflow: auto;
+}
+
+.pk-tr-lanes-tools {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-tr-lanes-filter {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 var(--mono);
+  caret-color: var(--blue);
+}
+
+.pk-tr-lanes-filter::placeholder {
+  color: var(--line2);
+}
+
+.pk-tr-lane-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 6px;
+}
+
+.pk-tr-lane-row.on {
+  outline: 1px solid var(--blue);
+  outline-offset: -1px;
+}
+
+.pk-tr-lane-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pk-tr-lanes-more {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--dim);
+  font: 11px/1.4 var(--mono);
+}
+
+/* ── Facts: one 22px row per value line ─────────────────────────── */
+
+/* Label column fixed to the longest label, values clipped with an ellipsis
+   under a `title` with the full line: the rail's fact grid, for the
+   inspector. */
+.pk-tr-facts {
+  --pk-tr-row: 22px;
+  min-width: 0;
+}
+
+.pk-tr-fact {
+  display: flex;
+  gap: 8px;
+}
+
+.pk-tr-fact-label {
+  flex: none;
+  width: calc(var(--pk-tr-labels) + 1ch);
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: var(--pk-tr-row);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pk-tr-fact-value {
+  flex: 1;
+  min-width: 0;
+}
+
+.pk-tr-fact-line {
+  display: block;
+  height: var(--pk-tr-row);
+  line-height: var(--pk-tr-row);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ── The inspector: the clicked node's facts, docked under the canvas ── */
+
+.pk-tr-ins {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 40%;
+  border-top: 1px solid var(--line);
+}
+
+.pk-tr-ins-bar {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--line);
+  font: var(--text-label) var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pk-tr-ins-kind {
+  flex: none;
+  color: var(--dim);
+}
+
+.pk-tr-ins-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-weight: 700;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.pk-tr-ins-close {
+  flex: none;
+}
+
+.pk-tr-ins-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 8px;
+}
+
+/* The nested rail sits flush: its own 8px padding would double the inset. */
+.pk-tr-ins-rail {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.pk-tr-ins-rail .pk-tr-rail {
+  padding: 4px 0 0;
+}
+
+/* The status's toned dot, the same shapes as a graph dot's. */
+.pk-tr-ins-dot {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.pk-tr-ins-dot.pk-tr-info { background: var(--blue); }
+.pk-tr-ins-dot.pk-tr-ok { background: var(--green); }
+.pk-tr-ins-dot.pk-tr-warn { background: var(--yellow); }
+.pk-tr-ins-dot.pk-tr-err { background: var(--red); }
+.pk-tr-ins-dot.pk-tr-neutral {
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1.5px var(--dim);
+}
+
+.pk-tr-ins-more,
+.pk-tr-ins-cap {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dim);
+  font: var(--text-label) var(--mono);
+  letter-spacing: 0.06em;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pk-tr-ins-block + .pk-tr-ins-block {
+  border-top: 1px solid var(--line);
+}
+
+/* ── COLLAB ────────────────────────────────────────────────────── */
+
+/* Two DataTables, pairs over threads; a cell's text stays on one line. */
+.pk-tr-collab {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font: var(--text-label) var(--mono);
+  color: var(--fg);
+}
+
+.pk-tr-collab .pk-dt-td {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pk-tr-threads-head {
+  margin: 0;
+  padding: 0 0 2px;
+  border-bottom: 1px solid var(--line);
+  color: var(--dim);
+  font: var(--text-label) var(--mono);
+  font-weight: 400;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.pk-tr-id {
+  font-weight: 700;
+}
+
+.pk-tr-tee {
+  color: var(--dim);
+}
+
+.pk-tr-a { color: var(--blue); }
+.pk-tr-b { color: var(--green); }
+
+.pk-tr-faint {
+  color: var(--line2);
+}
+
+.pk-tr-tail {
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+span.pk-tr-warn {
+  color: var(--yellow);
+}
