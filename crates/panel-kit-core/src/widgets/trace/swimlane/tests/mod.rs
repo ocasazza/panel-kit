@@ -1,6 +1,7 @@
 //! Suites of the swimlane model.
 
 mod collab;
+mod derive;
 mod fixtures;
 mod golden;
 mod graph;

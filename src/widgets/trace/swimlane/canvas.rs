@@ -162,6 +162,12 @@ fn fork_row(fork: &Fork, on_pick: EventHandler<Node>) -> Element {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times `ItemRow` has rendered on this thread.
+    static ROW_RENDERS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// One item as a button: its line, dots, forks and elbows, and its id at the
 /// tip (and at the start of a long line). A component of its own, so picking
 /// an item re-renders two rows, not all of them.
@@ -173,6 +179,8 @@ fn ItemRow(
     on_select: EventHandler<String>,
     on_open: EventHandler<Node>,
 ) -> Element {
+    #[cfg(test)]
+    ROW_RENDERS.with(|renders| renders.set(renders.get() + 1));
     let item: &Item = &item;
     let name = item.tone.name();
     let mut class = format!("pk-tr-item pk-tr-{name}");
@@ -624,12 +632,16 @@ mod tests {
         (Shared::new(graph), Shared::new(events))
     }
 
-    /// The scroller's `(scrolled, height)` signal.
-    type ScrollSignal = Signal<(f64, f64)>;
+    /// What a mounted probe lets the test move: the scroller and the selection.
+    #[derive(Clone, Copy)]
+    struct Signals {
+        scroll: Signal<(f64, f64)>,
+        selected: Signal<Option<String>>,
+    }
 
-    /// The scroll signal of a mounted probe, for the test to move.
+    /// The signals of a mounted probe.
     #[derive(Clone)]
-    struct Handle(Rc<RefCell<Option<ScrollSignal>>>);
+    struct Handle(Rc<RefCell<Option<Signals>>>);
 
     impl PartialEq for Handle {
         fn eq(&self, _: &Self) -> bool {
@@ -645,22 +657,31 @@ mod tests {
         handle: Handle,
     ) -> Element {
         let scroll = use_signal(|| (0.0, window::DEFAULT_VIEWPORT));
-        *handle.0.borrow_mut() = Some(scroll);
+        let picked = use_signal(|| selected.clone());
+        *handle.0.borrow_mut() = Some(Signals {
+            scroll,
+            selected: picked,
+        });
+        // Handles outlive a render, as the host's do: closures made here would
+        // differ every time and every row would render again.
+        let on_action = use_callback(|_: GraphAction| {});
+        let on_select = use_callback(|_: String| {});
+        let on_open = use_callback(|_: Node| {});
         rsx! {
             Canvas {
                 id: "t".to_string(),
                 graph,
                 events,
                 scroll,
-                selected,
-                on_action: |_| {},
-                on_select: |_| {},
-                on_open: |_| {},
+                selected: picked(),
+                on_action,
+                on_select,
+                on_open,
             }
         }
     }
 
-    /// A canvas over a layout and the way to scroll it.
+    /// A canvas over a layout and the way to scroll and pick in it.
     struct Rig {
         dom: VirtualDom,
         handle: Handle,
@@ -684,14 +705,31 @@ mod tests {
             dioxus_ssr::render(&self.dom)
         }
 
+        fn signals(&self) -> Signals {
+            self.handle.0.borrow().expect("the canvas is mounted")
+        }
+
         /// The markup after the scroller reports `top` px scrolled.
         fn scrolled(&mut self, top: f64) -> String {
-            let mut signal = self.handle.0.borrow().expect("the canvas is mounted");
+            let mut signal = self.signals().scroll;
             self.dom
                 .in_runtime(|| signal.set((top, window::DEFAULT_VIEWPORT)));
             self.dom.render_immediate(&mut NoOpMutations);
             self.html()
         }
+
+        /// Picks `item`, or nothing, and renders.
+        fn pick(&mut self, item: Option<&str>) {
+            let mut signal = self.signals().selected;
+            self.dom
+                .in_runtime(|| signal.set(item.map(str::to_string)));
+            self.dom.render_immediate(&mut NoOpMutations);
+        }
+    }
+
+    /// Rows rendered on this thread so far.
+    fn renders() -> usize {
+        ROW_RENDERS.with(std::cell::Cell::get)
     }
 
     fn mounted(html: &str) -> usize {
@@ -803,5 +841,34 @@ mod tests {
         let (other, _) = layout(400);
         let fresh = cache.window(&other, &events, top, top + 30.0 * ROW);
         assert!(fresh.iter().all(|row| !before.contains(row)));
+    }
+
+    #[test]
+    fn picking_a_row_renders_the_rows_it_changes_and_no_other() {
+        let layout = layout(400);
+        let spans = layout.0.row_spans();
+        let id = |at: usize| layout.0.item(&layout.1, spans[at].item).id.clone();
+        let (first, second) = (id(0), id(1));
+        let mut rig = Rig::new(&layout, None);
+        assert_eq!(renders(), 30, "every mounted row renders once at mount");
+        rig.pick(Some(&first));
+        assert_eq!(renders(), 31, "the row picked, and none of the other 29");
+        rig.pick(Some(&second));
+        assert_eq!(renders(), 33, "the row let go and the row picked");
+        rig.pick(None);
+        assert_eq!(renders(), 34, "the row let go");
+        rig.pick(None);
+        assert_eq!(renders(), 34, "nothing changed, nothing renders");
+    }
+
+    #[test]
+    fn a_scroll_step_renders_the_rows_that_enter_the_window_and_no_other() {
+        let layout = layout(400);
+        let mut rig = Rig::new(&layout, None);
+        assert_eq!(renders(), 30);
+        // Ten rows down: the window goes from rows 0..30 to rows 4..40.
+        let html = rig.scrolled(10.0 * ROW);
+        assert_eq!(mounted_rows(&html), (4, 40));
+        assert_eq!(renders(), 40, "the ten rows that entered, not the 26 that stayed");
     }
 }

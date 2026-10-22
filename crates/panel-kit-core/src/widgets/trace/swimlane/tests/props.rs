@@ -257,7 +257,7 @@ proptest! {
 
     #[test]
     fn every_fork_hangs_under_its_item_and_every_edge_names_a_fork(events in arb_events(), tree in arb_tree()) {
-        let graph = Graph::layout(&events, &opts().tree(&tree));
+        let graph = Graph::layout(&events, &opts().tree(&tree).derive_forks(false));
 
         for item in &graph.items {
             let lanes = tree.lanes.iter().filter(|lane| lane.item_id == item.id).count();
@@ -402,7 +402,10 @@ fn ledger() -> (Vec<Event>, SessionTree) {
 fn the_boards_whole_ledger_lays_out_and_every_item_fits_a_row() {
     let (events, tree) = ledger();
     let range = Range::new(since(), since() + 61 * 24 * 3_600 * SEC);
-    let options = Options::new(1400, range).tree(&tree).loose_open(true);
+    let options = Options::new(1400, range)
+        .tree(&tree)
+        .derive_forks(false)
+        .loose_open(true);
 
     let started = Instant::now();
     let graph = Graph::layout(&events, &options);

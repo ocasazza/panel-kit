@@ -9,10 +9,11 @@
 use serde::{Deserialize, Serialize};
 
 use super::super::facts::{event_facts, lane_facts, Fact};
-use super::super::model::{is_named, Event, ItemRef, SessionTree};
+use super::super::model::{is_named, Event, ItemRef, Lane, SessionTree};
 use super::super::query::{tone_for_status, Tone};
 use super::super::time::format_iso8601;
 use super::collab::Pair;
+use super::derive::derive_forks;
 use super::layout::summarize;
 
 /// Events a cluster opens (and fact blocks an item-less cluster shows); the
@@ -141,7 +142,7 @@ impl Node {
                 }
             }
             Node::Lane(id) => {
-                let lane = tree?.lanes.iter().find(|l| l.id == *id)?;
+                let lane = lane_of(events, tree?, id)?;
                 Some(Inspection {
                     node: self.clone(),
                     header: None,
@@ -151,7 +152,7 @@ impl Node {
                     more: 0,
                     blocks: vec![FactBlock {
                         label: lane.label.clone(),
-                        facts: lane_facts(lane, cols),
+                        facts: lane_facts(&lane, cols),
                     }],
                 })
             }
@@ -257,19 +258,49 @@ impl Node {
     }
 }
 
-/// The session tree restricted to `id`'s lanes and elbows.
-fn pruned(tree: Option<&SessionTree>, id: &str) -> SessionTree {
+/// The lane `id` names: one of the tree's, else one derived from the events
+/// of the item whose id starts it.
+fn lane_of(events: &[Event], tree: &SessionTree, id: &str) -> Option<Lane> {
+    if let Some(lane) = tree.lanes.iter().find(|lane| lane.id == id) {
+        return Some(lane.clone());
+    }
+    id.match_indices('/').find_map(|(at, _)| {
+        let item = &id[..at];
+        let run: Vec<&Event> = events
+            .iter()
+            .filter(|event| event.item_id.as_deref() == Some(item))
+            .collect();
+        derive_forks(item, &run)
+            .0
+            .into_iter()
+            .find(|lane| lane.id == id)
+    })
+}
+
+/// The session tree restricted to `id`'s lanes and elbows; an item the tree
+/// holds no lane for gets the lanes its `run` of events derives. `None` is
+/// the tree off.
+fn pruned(tree: Option<&SessionTree>, id: &str, run: &[&Event]) -> SessionTree {
     let Some(tree) = tree else {
         return SessionTree::default();
     };
+    let lanes: Vec<Lane> = tree
+        .lanes
+        .iter()
+        .filter(|l| l.item_id == id)
+        .cloned()
+        .collect();
+    if lanes.is_empty() {
+        let (lanes, edges) = derive_forks(id, run);
+        return SessionTree {
+            agent: tree.agent.clone(),
+            lanes,
+            edges,
+        };
+    }
     SessionTree {
         agent: tree.agent.clone(),
-        lanes: tree
-            .lanes
-            .iter()
-            .filter(|l| l.item_id == id)
-            .cloned()
-            .collect(),
+        lanes,
         edges: tree
             .edges
             .iter()
@@ -302,7 +333,7 @@ fn item(
         .collect();
     agents.sort();
     agents.dedup();
-    let tree = pruned(tree, id);
+    let tree = pruned(tree, id, &run);
     let more = clicked.len().saturating_sub(CLUSTER_OPEN_CAP);
     clicked.truncate(CLUSTER_OPEN_CAP);
     Some(Inspection {

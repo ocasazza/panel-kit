@@ -16,6 +16,12 @@ use super::strip::LooseOpen;
 
 const MICROS_PER_SEC: i64 = 1_000_000;
 const DAY_SECS: i64 = 86_400;
+/// The tree of a host that holds none: every item's forks are derived.
+static NO_TREE: SessionTree = SessionTree {
+    agent: None,
+    lanes: Vec::new(),
+    edges: Vec::new(),
+};
 
 /// The window of `state` at `now` (epoch seconds). A label that is not a
 /// window reads as the default one.
@@ -43,7 +49,9 @@ fn in_window(window: &Interval, event: &Event) -> bool {
 ///
 /// `events` may be any superset of the window; the window bounds the read.
 /// `tree` is the merged session-tree window for these events, drawn only when
-/// the state's `tree` toggle is on. `now` is the clock, in epoch seconds.
+/// the state's `tree` toggle is on; items it has no lanes for get theirs from
+/// their own events (see [`derive_forks`](super::derive_forks)), so the toggle
+/// draws forks without a tree. `now` is the clock, in epoch seconds.
 ///
 /// With the row cap lifted (`show_all`) the items are not built: the graph
 /// holds every row's geometry and [`Graph::item`] builds the ones a painter
@@ -58,8 +66,8 @@ pub fn graph(events: &[Event], state: &GraphState, tree: Option<&SessionTree>, n
     .limit((!state.show_all).then_some(ROW_CAP))
     .loose_open(LooseOpen::Kinds(&kinds))
     .lazy(state.show_all);
-    if let Some(tree) = tree.filter(|_| state.tree) {
-        options = options.tree(tree);
+    if state.tree {
+        options = options.tree(tree.unwrap_or(&NO_TREE));
     }
     Graph::layout_slice(
         events,

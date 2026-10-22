@@ -46,3 +46,36 @@ pub fn scroll(id: &str) -> Option<Scroll> {
         None
     }
 }
+
+/// Hands focus from a row that has scrolled out of the scroller `id` to the
+/// scroller itself. A row the window drops would otherwise take focus with it
+/// to the document, and the page keys would stop scrolling.
+pub fn release_hidden_focus(id: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsCast;
+        let Some(root) = element(id) else {
+            return;
+        };
+        let Some(active) = web_sys::window()
+            .and_then(|window| window.document())
+            .and_then(|document| document.active_element())
+        else {
+            return;
+        };
+        if active == root || !root.contains(Some(&active)) {
+            return;
+        }
+        let (view, at) = (root.get_bounding_client_rect(), active.get_bounding_client_rect());
+        if at.bottom() > view.top() && at.top() < view.bottom() {
+            return;
+        }
+        if let Ok(root) = root.dyn_into::<web_sys::HtmlElement>() {
+            let options = web_sys::FocusOptions::new();
+            options.set_prevent_scroll(true);
+            let _ = root.focus_with_options(&options);
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = id;
+}

@@ -147,6 +147,7 @@ pub(super) fn GraphBody(
             let mounted = window::mounted(items, top, height, ROW, rows);
             let measured = now.height.min(window::MAX_VIEWPORT);
             if !window::covers(mounted, now.top, measured, ROW, rows) {
+                dom::release_hidden_focus(&canvas);
                 scroll.set((now.top, measured));
             }
         }
@@ -198,6 +199,7 @@ pub(super) fn GraphBody(
                 div {
                     class: "pk-tr-canvas",
                     id: "{canvas}",
+                    tabindex: "-1",
                     style: "{pinned}",
                     "data-rows": "{graph.rows}",
                     onresize: on_resize,

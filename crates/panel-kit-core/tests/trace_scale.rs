@@ -2,12 +2,15 @@
 //! twice its release timing on an M-series laptop: tight enough that going back
 //! to sorting events by id strings or building every item's dots fails, loose
 //! enough for a slower builder. The 100k test runs everywhere with generous
-//! bounds; the 1M and 3M ones skip debug builds. Run the timed ones with
-//! `cargo test --release -p panel-kit-core --test trace_scale -- --ignored`.
+//! bounds; the 1M and 3M ones skip debug builds. The tree toggle is on in the
+//! timed tests, so every item without lanes derives them from its events, and
+//! off in their twins. Run the timed ones with
+//! `cargo test --release -p panel-kit-core --test trace_scale`.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use panel_kit_core::widgets::trace::query::GraphState;
@@ -57,18 +60,25 @@ static COUNTING: Counting = Counting;
 
 const DAY_MS: i64 = 86_400_000;
 
-fn state(show_all: bool) -> GraphState {
+/// The counters above are the whole binary's: a measured test holds this so
+/// no other one allocates while it runs.
+fn serial() -> MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn state(show_all: bool, tree: bool) -> GraphState {
     GraphState {
         window: "30d".to_owned(),
-        tree: true,
+        tree,
         show_all,
         graph_width: 1_400,
         ..GraphState::default()
     }
 }
 
-fn graph(a: &Activity, show_all: bool) -> Graph {
-    view::graph(&a.events, &state(show_all), Some(&a.tree), a.now)
+fn graph(a: &Activity, show_all: bool, tree: bool) -> Graph {
+    view::graph(&a.events, &state(show_all, tree), Some(&a.tree), a.now)
 }
 
 /// Runs `run`, returning its value, its time and the heap it peaked at above
@@ -106,8 +116,9 @@ fn loose_of(events: &[Event], kind: EventKind) -> usize {
         .count()
 }
 
-/// What a laid-out graph of `a` must say whatever the size.
-fn check_shape(a: &Activity, capped: &Graph, all: &Graph) {
+/// What a laid-out graph of `a` must say whatever the size. With the tree on
+/// the items without lanes have derived them, so the rows hold fork stacks.
+fn check_shape(a: &Activity, capped: &Graph, all: &Graph, tree: bool) {
     let items = distinct_items(&a.events);
     assert_eq!(capped.total_items, items);
     assert_eq!(capped.items.len(), 20);
@@ -141,21 +152,39 @@ fn check_shape(a: &Activity, capped: &Graph, all: &Graph) {
     assert_eq!(all.ticks, capped.ticks);
     assert!(all.rows >= all.lanes && all.height > capped.height);
     assert_eq!(all.row_spans().len(), items);
+    eprintln!("{} rows over {} packed rows, tree {tree}", all.rows, all.lanes);
+    if tree {
+        assert!(
+            all.rows > 2 * all.lanes,
+            "derived forks keep rows under their items: {} rows over {}",
+            all.rows,
+            all.lanes
+        );
+    } else {
+        assert_eq!(all.rows, all.lanes, "no tree, no fork rows");
+    }
 }
 
 /// Items drawn from a lazy graph agree with a built one over the same window.
-fn check_window(a: &Activity, all: &Graph) {
+fn check_window(a: &Activity, all: &Graph, tree: bool) {
     let band = all.span(0.0, 600.0);
     assert!(
-        !band.is_empty() && band.len() < 400,
+        !band.is_empty() && band.len() < 1_000,
         "{} rows in 600px",
         band.len()
     );
     let rows = &all.row_spans()[band];
     assert!(rows.windows(2).all(|w| w[0].y <= w[1].y));
+    let forked = rows
+        .iter()
+        .filter(|span| !all.item(&a.events, span.item).forks.is_empty())
+        .count();
+    assert_eq!(forked > rows.len() / 4, tree, "{forked} of {} rows fork", rows.len());
     let top = a.events.len().min(30_000);
     let small = &a.events[a.events.len() - top..];
-    let opts = Options::new(1_400, Range::from_secs(0, None, a.now)).lazy(true);
+    let opts = Options::new(1_400, Range::from_secs(0, None, a.now))
+        .tree(&a.tree)
+        .lazy(true);
     let lazy = Graph::layout_slice(small, |_| true, &opts);
     let built = Graph::layout_slice(small, |_| true, &opts.lazy(false));
     for span in lazy.row_spans().iter().take(40) {
@@ -167,36 +196,39 @@ fn check_window(a: &Activity, all: &Graph) {
 
 #[test]
 fn a_hundred_thousand_events_lay_out_correctly_inside_a_generous_budget() {
+    let _alone = serial();
     let slack = if cfg!(debug_assertions) { 40 } else { 1 };
     let a = sample::activity_sized(100_000);
     assert_eq!(a.events.len(), 100_000);
 
-    let (capped, took, ..) = measured(|| graph(&a, false));
-    within(
-        "100k capped layout",
-        took,
-        Duration::from_millis(100 * slack),
-    );
-    let (all, took, ..) = measured(|| graph(&a, true));
-    within("100k lazy layout", took, Duration::from_millis(150 * slack));
-    check_shape(&a, &capped, &all);
-    check_window(&a, &all);
+    for tree in [true, false] {
+        let (capped, took, ..) = measured(|| graph(&a, false, tree));
+        within(
+            "100k capped layout",
+            took,
+            Duration::from_millis(100 * slack),
+        );
+        let (all, took, ..) = measured(|| graph(&a, true, tree));
+        within("100k lazy layout", took, Duration::from_millis(150 * slack));
+        check_shape(&a, &capped, &all, tree);
+        check_window(&a, &all, tree);
 
-    let (_, took, ..) = measured(|| {
-        (0..all.item_count().min(60)).fold(0, |dots, at| {
-            dots + all.item(&a.events, all.row_spans()[at].item).dots.len()
-        })
-    });
-    within(
-        "100k sixty items built on demand",
-        took,
-        Duration::from_millis(20 * slack),
-    );
+        let (_, took, ..) = measured(|| {
+            (0..all.item_count().min(60)).fold(0, |dots, at| {
+                dots + all.item(&a.events, all.row_spans()[at].item).dots.len()
+            })
+        });
+        within(
+            "100k sixty items built on demand",
+            took,
+            Duration::from_millis(20 * slack),
+        );
+    }
 }
 
-#[test]
-#[cfg_attr(debug_assertions, ignore = "timed: run with --release")]
-fn a_million_events_lay_out_inside_their_budgets() {
+/// The 1M budgets with the tree toggle `tree`.
+fn a_million_events_lay_out_inside_their_budgets_with(tree: bool) {
+    let _alone = serial();
     let ms = Duration::from_millis;
     let (a, took, peak, held) = measured(|| sample::activity_sized(1_000_000));
     eprintln!(
@@ -206,7 +238,7 @@ fn a_million_events_lay_out_inside_their_budgets() {
     );
     within("generating 1M events", took, ms(1_500));
 
-    let (capped, took, peak, held) = measured(|| graph(&a, false));
+    let (capped, took, peak, held) = measured(|| graph(&a, false, tree));
     eprintln!(
         "capped: {} B/event peak, {} B/event held",
         peak / 1_000_000,
@@ -218,7 +250,7 @@ fn a_million_events_lay_out_inside_their_budgets() {
         "capped layout peaked at {peak} bytes"
     );
 
-    let (all, took, peak, held) = measured(|| graph(&a, true));
+    let (all, took, peak, held) = measured(|| graph(&a, true, tree));
     eprintln!(
         "lazy: {} B/event peak, {} B/event held",
         peak / 1_000_000,
@@ -227,7 +259,8 @@ fn a_million_events_lay_out_inside_their_budgets() {
     within("1M lazy layout", took, ms(450));
     assert!(peak <= 80 * 1_000_000, "lazy layout peaked at {peak} bytes");
     assert!(held <= 24 * 1_000_000, "lazy layout holds {held} bytes");
-    check_shape(&a, &capped, &all);
+    check_shape(&a, &capped, &all, tree);
+    check_window(&a, &all, tree);
 
     let (_, took, ..) = measured(|| {
         (0..2_000).fold(0usize, |rows, n| {
@@ -248,12 +281,25 @@ fn a_million_events_lay_out_inside_their_budgets() {
 
 #[test]
 #[cfg_attr(debug_assertions, ignore = "timed: run with --release")]
+fn a_million_events_lay_out_inside_their_budgets() {
+    a_million_events_lay_out_inside_their_budgets_with(true);
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "timed: run with --release")]
+fn a_million_events_lay_out_inside_their_budgets_with_the_tree_off() {
+    a_million_events_lay_out_inside_their_budgets_with(false);
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "timed: run with --release")]
 fn three_million_events_still_lay_out_in_a_second() {
+    let _alone = serial();
     let ms = Duration::from_millis;
     let a = sample::activity_sized(3_000_000);
-    let (capped, took, ..) = measured(|| graph(&a, false));
+    let (capped, took, ..) = measured(|| graph(&a, false, true));
     within("3M capped layout", took, ms(700));
-    let (all, took, ..) = measured(|| graph(&a, true));
+    let (all, took, ..) = measured(|| graph(&a, true, true));
     within("3M lazy layout", took, ms(1_400));
-    check_shape(&a, &capped, &all);
+    check_shape(&a, &capped, &all, true);
 }

@@ -39,6 +39,7 @@
 //! [`LooseOpen::Kinds`].
 
 mod collab;
+mod derive;
 mod dot;
 mod group;
 mod layout;
@@ -58,6 +59,7 @@ mod tests;
 pub use collab::{
     current_items, Collaboration, Handoff, ItemInfo, Pair, Step, Supplied, Thread, STALE_AFTER_DAYS,
 };
+pub use derive::{derive_forks, FORK_CAP};
 pub use dot::{caption, cluster, merge, title, Dot};
 pub use layout::{
     content_width, summarize, EdgePath, Fork, Graph, Item, Options, Range, Rect, RowSpan, Summary,

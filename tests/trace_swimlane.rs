@@ -878,6 +878,17 @@ fn focus_scrolls_a_row_clear_of_the_pinned_strip_and_axis() {
 }
 
 #[test]
+fn the_canvas_scroller_takes_focus_by_script_and_is_not_a_tab_stop() {
+    let html = graph(vec![note("imp-1", 5.0), note("imp-2", 9.0)]).render();
+    let scroller = html.find("div", "class=\"pk-tr-canvas\"");
+    assert_eq!(attr(scroller, "tabindex"), "-1", "{scroller}");
+    assert_eq!(attr(scroller, "id"), "activity-canvas");
+    // The rows stay the only tab stops: one each, nothing else in the canvas.
+    let canvas = html.between("<div class=\"pk-tr-canvas\"", "</svg></div>");
+    assert_eq!(canvas.matches("tabindex=\"0\"").count(), 2, "{canvas}");
+}
+
+#[test]
 fn an_item_is_one_button_with_a_line_its_dots_and_its_id_at_the_tip() {
     let case = graph(vec![
         note("imp-7", 10.0).summary("first"),
@@ -1445,6 +1456,8 @@ fn the_stylesheet_scrolls_the_canvas_and_pins_the_strip_and_the_axis() {
         "overflow-y: auto;",
         "max-height: 100vh;",
         "scrollbar-gutter: stable;",
+        "overflow-anchor: none;",
+        "outline: none;",
     ] {
         assert!(canvas.contains(declaration), "{declaration} in {canvas}");
     }

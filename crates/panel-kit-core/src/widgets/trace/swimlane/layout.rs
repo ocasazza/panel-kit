@@ -7,7 +7,7 @@
 //!
 //! Pure: the same events, window and width always lay out the same graph.
 
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
 
 use serde::Deserialize;
@@ -15,12 +15,13 @@ use serde::Serialize;
 
 use super::super::model::{Edge, EdgeKind, Event, EventKind, Lane, LaneKind, Micros, SessionTree};
 use super::super::query::{tone_for_kind, tone_for_status, Tone};
+use super::derive::{caption_chars, derive_with, Planned, Scratch};
 use super::dot::{cluster, Dot};
 use super::group::{group, FastMap, Groups};
 use super::metrics::{
     clearance, label_px, label_px_chars, longest_label_reserve, right_reserve, truncate_label,
-    truncated_chars, AXIS, DOT_MERGE_PX, FORK_NODE_PX, LABEL_GAP, PAD_LEFT, PAD_RIGHT, ROW,
-    START_LABEL_PX,
+    truncated_chars, AXIS, DOT_MERGE_PX, FORK_LABEL_MAX, FORK_NODE_PX, LABEL_GAP, PAD_LEFT,
+    PAD_RIGHT, ROW, START_LABEL_PX,
 };
 use super::num::{fmt1, round_half_up};
 use super::pack::FirstFit;
@@ -84,8 +85,12 @@ pub struct Options<'a> {
     pub loose: &'a [Event],
     /// Which no-item strip rows are expanded to dots.
     pub loose_open: LooseOpen<'a>,
-    /// Fork lanes and edges drawn under their items; `None` draws none.
+    /// Fork lanes and edges drawn under their items, from this tree or, when
+    /// `derive_forks` is on, from the events of items it has no lanes for;
+    /// `None` draws none.
     pub tree: Option<&'a SessionTree>,
+    /// Derive lanes from an item's events when `tree` holds none for it.
+    pub derive_forks: bool,
     /// Current status per item id, winning over the events' own.
     pub statuses: Option<&'a HashMap<String, String>>,
     /// Leave the items unbuilt: [`Graph::layout_slice`] lays out their rows
@@ -104,6 +109,7 @@ impl<'a> Options<'a> {
             loose: &[],
             loose_open: LooseOpen::None,
             tree: None,
+            derive_forks: true,
             statuses: None,
             lazy: false,
         }
@@ -130,6 +136,13 @@ impl<'a> Options<'a> {
     /// Draws fork lanes and edges from `tree`.
     pub fn tree(mut self, tree: &'a SessionTree) -> Self {
         self.tree = Some(tree);
+        self
+    }
+
+    /// Whether items the tree has no lanes for get them from their events;
+    /// on by default, and only with a tree.
+    pub fn derive_forks(mut self, on: bool) -> Self {
+        self.derive_forks = on;
         self
     }
 
@@ -337,6 +350,35 @@ struct Placed {
     item: Item,
     left: f64,
     right: f64,
+    /// Lanes and elbows derived from the item's events, when the tree had none for it.
+    derived: Option<(Vec<Lane>, Vec<Edge>)>,
+}
+
+/// What the layout reads of a fork lane before drawing it: where it ends and
+/// how wide its caption is.
+#[derive(Clone, Copy)]
+struct Tip {
+    from: Micros,
+    to: Micros,
+    chars: usize,
+}
+
+impl Tip {
+    fn lane(lane: &Lane) -> Tip {
+        Tip {
+            from: lane.from,
+            to: lane.to,
+            chars: truncated_chars(&lane.label),
+        }
+    }
+
+    fn planned(lane: &Planned<'_>) -> Tip {
+        Tip {
+            from: lane.from,
+            to: lane.to,
+            chars: truncated_chars(lane.label),
+        }
+    }
 }
 
 /// An item as the row packing sees it: how far it reaches, how many fork
@@ -392,6 +434,8 @@ struct Lazy {
     forks_of: FastMap<String, Vec<u32>>,
     edges_of: FastMap<String, Vec<u32>>,
     statuses: FastMap<u32, String>,
+    /// Items the tree has no lanes for derive them from their events.
+    derive: bool,
 }
 
 impl Lazy {
@@ -414,11 +458,11 @@ impl Lazy {
         let pick = |table: &FastMap<String, Vec<u32>>| -> Vec<u32> {
             table.get(id).cloned().unwrap_or_default()
         };
-        let lanes: Vec<&Lane> = pick(&self.forks_of)
+        let tree_lanes: Vec<&Lane> = pick(&self.forks_of)
             .iter()
             .map(|&i| &self.lanes[i as usize])
             .collect();
-        let edges: Vec<&Edge> = pick(&self.edges_of)
+        let tree_edges: Vec<&Edge> = pick(&self.edges_of)
             .iter()
             .map(|&i| &self.edges[i as usize])
             .collect();
@@ -428,6 +472,12 @@ impl Lazy {
             last: run.last().map_or(0, |event| event.at),
         };
         let status = self.statuses.get(&(at as u32)).map(String::as_str);
+        let derived = (self.derive && tree_lanes.is_empty())
+            .then(|| derive_with(id, run.iter().copied(), status, &mut Scratch::default()));
+        let (lanes, edges): (Vec<&Lane>, Vec<&Edge>) = match &derived {
+            Some((lanes, edges)) => (lanes.iter().collect(), edges.iter().collect()),
+            None => (tree_lanes, tree_edges),
+        };
         let mut item = place(&branch, &self.warp, &lanes, status)
             .map(|placed| placed.item)
             .expect("a run holds at least one event");
@@ -527,13 +577,21 @@ fn build<'e>(
 ) -> Graph {
     let no_tree = SessionTree::default();
     let tree = opts.tree.unwrap_or(&no_tree);
+    let derive = opts.tree.is_some() && opts.derive_forks;
 
     let mut with_item: Vec<u32> = Vec::with_capacity(kept.len());
     let mut loose: Vec<&Event> = Vec::new();
+    // The widest caption a derived lane could carry. The axis reserves room
+    // for it before anything is grouped, so a capped graph and a lazy one
+    // share an axis.
+    let mut widest = 0usize;
     for &i in kept {
         let event = get(i);
         if event.item_id.is_some() {
             with_item.push(i);
+            if derive && widest < FORK_LABEL_MAX {
+                widest = widest.max(caption_chars(event));
+            }
         } else {
             loose.push(event);
         }
@@ -544,7 +602,7 @@ fn build<'e>(
         since: Some(opts.range.since),
         now: Some(opts.range.now),
         left: PAD_LEFT + longest_label_reserve(),
-        right: PAD_RIGHT + right_reserve(&tree.lanes),
+        right: PAD_RIGHT + right_reserve(&tree.lanes).max(derived_reserve(widest)),
         ..Params::default()
     };
     // Input order, so a host's oldest-first events reach the warp sorted.
@@ -587,6 +645,7 @@ fn build<'e>(
     let mut slots: Vec<Slot> = Vec::with_capacity(picked.len());
     let mut statuses: FastMap<u32, String> = FastMap::default();
     if lazy.is_none() {
+        let mut derivation = Scratch::default();
         for (p, &item) in picked.iter().enumerate() {
             let run: Vec<&Event> = run_of(p).iter().map(|&i| get(i)).collect();
             let id = id_of(item);
@@ -595,7 +654,15 @@ fn build<'e>(
                 run: &run,
                 last: groups.last[item as usize],
             };
-            if let Some(one) = place(&branch, &warp, lanes_of(id), statuses_of(id)) {
+            let own = lanes_of(id);
+            let derived = (derive && own.is_empty())
+                .then(|| derive_with(id, run.iter().copied(), statuses_of(id), &mut derivation));
+            let one = match &derived {
+                Some((lanes, _)) => place(&branch, &warp, lanes, statuses_of(id)),
+                None => place(&branch, &warp, own, statuses_of(id)),
+            };
+            if let Some(mut one) = one {
+                one.derived = derived;
                 placed.push(one);
             }
         }
@@ -609,21 +676,38 @@ fn build<'e>(
             right: one.right,
             last: one.item.last,
             lane: 0,
-            forks: lanes_of(&one.item.id).len() as u32,
+            forks: one
+                .derived
+                .as_ref()
+                .map_or_else(|| lanes_of(&one.item.id).len(), |(lanes, _)| lanes.len())
+                as u32,
             pick: p as u32,
         }));
     } else {
-        let mut scratch: Vec<(f64, Micros)> = Vec::new();
+        let mut pixels: Vec<(f64, Micros)> = Vec::new();
+        let mut derivation = Scratch::default();
         for (p, &item) in picked.iter().enumerate() {
             let id = id_of(item);
-            let ends = ends_of(run_of(p), get, &warp, &mut scratch);
-            let reach = reach(&ends, id, lanes_of(id), &warp);
+            let ends = ends_of(run_of(p), get, &warp, &mut pixels);
+            let own = lanes_of(id);
+            let (reach, forks) = if derive && own.is_empty() {
+                let plan = derivation.plan(run_of(p).iter().map(|&i| get(i)), statuses_of(id));
+                (
+                    reach(&ends, id, plan.iter().map(Tip::planned), &warp),
+                    plan.len(),
+                )
+            } else {
+                (
+                    reach(&ends, id, own.iter().map(|lane| Tip::lane(lane)), &warp),
+                    own.len(),
+                )
+            };
             slots.push(Slot {
                 left: reach.left,
                 right: reach.right,
                 last: groups.last[item as usize],
                 lane: 0,
-                forks: lanes_of(id).len() as u32,
+                forks: forks as u32,
                 pick: p as u32,
             });
         }
@@ -650,8 +734,16 @@ fn build<'e>(
                 let item = &mut one.item;
                 item.lane = slot.lane;
                 item.y = y_of(slot);
-                item.forks = forks(lanes_of(&item.id), item.y, &warp);
-                item.edges = edge_paths(edges_at(&item.id), &item.forks, item.y, &warp);
+                match &one.derived {
+                    Some((lanes, edges)) => {
+                        item.forks = forks(lanes, item.y, &warp);
+                        item.edges = edge_paths(edges, &item.forks, item.y, &warp);
+                    }
+                    None => {
+                        item.forks = forks(lanes_of(&item.id), item.y, &warp);
+                        item.edges = edge_paths(edges_at(&item.id), &item.forks, item.y, &warp);
+                    }
+                }
             }
             items = placed.into_iter().map(|one| one.item).collect();
         }
@@ -679,6 +771,7 @@ fn build<'e>(
                 forks_of: indices(&tree.lanes, |lane| lane.item_id.as_str()),
                 edges_of: indices(&tree.edges, |edge| edge.item_id.as_str()),
                 statuses,
+                derive,
             });
         }
     }
@@ -870,14 +963,14 @@ fn ends_of<'e>(
 /// Labels and extent of an item from the ends of its line: the tip label
 /// past the last dot, the start label before the first when the line is long
 /// enough, and the fork lanes' reach.
-fn reach(ends: &Ends, id: &str, lanes: &[&Lane], warp: &Warp) -> Reach {
+fn reach(ends: &Ends, id: &str, tips: impl IntoIterator<Item = Tip>, warp: &Warp) -> Reach {
     let label_x = ends.x1 + clearance(ends.last);
     let start_label_x =
         (ends.x1 - ends.x0 >= START_LABEL_PX).then(|| ends.x0 - clearance(ends.first));
     let tip = label_x + label_px(id);
-    let right = lanes.iter().fold(tip, |reach, lane| {
+    let right = tips.into_iter().fold(tip, |reach, lane| {
         let end = warp.x(lane.to).max(warp.x(lane.from));
-        reach.max(end + FORK_NODE_PX + label_px_chars(truncated_chars(&lane.label)))
+        reach.max(end + FORK_NODE_PX + label_px_chars(lane.chars))
     });
     let left = match start_label_x {
         None => ends.x0 - clearance(ends.first),
@@ -891,10 +984,20 @@ fn reach(ends: &Ends, id: &str, lanes: &[&Lane], warp: &Warp) -> Reach {
     }
 }
 
-fn place(
+/// The room to the right of the axis for the widest derived caption of
+/// `chars` characters; none when no event could name a lane.
+fn derived_reserve(chars: usize) -> f64 {
+    if chars == 0 {
+        0.0
+    } else {
+        FORK_NODE_PX + label_px_chars(chars) + LABEL_GAP
+    }
+}
+
+fn place<L: Borrow<Lane>>(
     branch: &Branch<'_>,
     warp: &Warp,
-    lanes: &[&Lane],
+    lanes: &[L],
     override_status: Option<&str>,
 ) -> Option<Placed> {
     let dots = cluster(branch.run.iter().map(|event| (*event, warp.x(event.at))));
@@ -912,7 +1015,12 @@ fn place(
         start_label_x,
         left,
         right,
-    } = reach(&ends, branch.id, lanes, warp);
+    } = reach(
+        &ends,
+        branch.id,
+        lanes.iter().map(|lane| Tip::lane(lane.borrow())),
+        warp,
+    );
 
     Some(Placed {
         item: Item {
@@ -934,6 +1042,7 @@ fn place(
         },
         left,
         right,
+        derived: None,
     })
 }
 
@@ -1012,11 +1121,12 @@ fn row_spans(slots: &[Slot], lanes: usize, y_of: &impl Fn(&Slot) -> f64) -> Vec<
     spans
 }
 
-fn forks(lanes: &[&Lane], item_y: f64, warp: &Warp) -> Vec<Fork> {
+fn forks<L: Borrow<Lane>>(lanes: &[L], item_y: f64, warp: &Warp) -> Vec<Fork> {
     lanes
         .iter()
         .enumerate()
         .map(|(i, lane)| {
+            let lane = lane.borrow();
             let x0 = warp.x(lane.from);
             Fork {
                 id: lane.id.clone(),
@@ -1036,10 +1146,16 @@ fn forks(lanes: &[&Lane], item_y: f64, warp: &Warp) -> Vec<Fork> {
 
 /// One-pixel elbows: a fork drops from the item's line to its lane; a merge
 /// runs along the lane's row to where it rejoins and climbs back.
-fn edge_paths(edges: &[&Edge], forks: &[Fork], item_y: f64, warp: &Warp) -> Vec<EdgePath> {
+fn edge_paths<E: Borrow<Edge>>(
+    edges: &[E],
+    forks: &[Fork],
+    item_y: f64,
+    warp: &Warp,
+) -> Vec<EdgePath> {
     edges
         .iter()
         .filter_map(|edge| {
+            let edge = edge.borrow();
             // Of two forks sharing an id the later one is the lane.
             let fork = forks.iter().rev().find(|fork| fork.id == edge.lane)?;
             let xe = warp.x(edge.at);

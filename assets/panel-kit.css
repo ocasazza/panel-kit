@@ -2092,7 +2092,9 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 
 /* The scroller. It takes the room the body leaves and scrolls past it, never
    past the screen, so a host with no height of its own still gets a bounded
-   window of rows. The scrollbar's room is kept, so the layout width is stable. */
+   window of rows. The scrollbar's room is kept, so the layout width is stable.
+   It takes focus (not by Tab) when a row scrolls out of the window, so the
+   page keys keep scrolling; rows mounting under the offset are not anchored. */
 .pk-tr-canvas {
   position: relative;
   flex: 0 1 auto;
@@ -2100,7 +2102,9 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   max-height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;
+  overflow-anchor: none;
   scrollbar-gutter: stable;
+  outline: none;
 }
 
 /* The no-item strip and the axis stay in view while the rows scroll between them. */

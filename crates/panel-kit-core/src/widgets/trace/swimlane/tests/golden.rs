@@ -277,7 +277,8 @@ fn layouts_match_the_elixir_graph() {
         .limit(case["limit"].as_u64().map(|n| n as usize))
         .loose(&loose)
         .loose_open(open)
-        .tree(&tree);
+        .tree(&tree)
+        .derive_forks(false);
 
         let graph = Graph::layout(&events, &options);
         if let Some(d) = diff("", &case["expected"], &actual(&graph)) {

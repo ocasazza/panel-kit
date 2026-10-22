@@ -8,11 +8,14 @@
 //! - [`item_timeline`]: 50 events and 4 lanes of `imp-42`, crossing three dates.
 //! - [`activity`]: the 30-day window for the swimlane graph: 2 351 items (20 hero
 //!   items drawn, 2 331 filler), 1 223 loose events, a 2-day idle gap, bursts
-//!   and fork lanes ending in agent and host leaves.
+//!   and fork lanes ending in agent and host leaves. The heroes hold explicit
+//!   lanes; the filler holds none and its events carry the facts a tree is
+//!   derived from (branches, other agents, handoffs, failed and retried runs).
 //! - [`activity_sized`]: [`activity`] scaled to any event count, a million
 //!   included: the same heroes, idle days and fork lanes, filler items and
 //!   loose events in the same proportions, and past [`DEFAULT_EVENTS`] twelve
-//!   agents, handoffs, 41 branch names and a long tail of busy items.
+//!   agents, 41 branch names and a long tail of busy items. At every size
+//!   about 56% of the filler derives a lane, a fifth three or more.
 
 use std::collections::HashMap;
 
@@ -1194,9 +1197,133 @@ fn scaled_branches() -> Vec<String> {
     names
 }
 
+/// A non-trunk branch name for the `j`-th branch of item number `n`; the
+/// first four of an item are distinct.
+fn topic(branches: &[String], n: usize, j: usize) -> &str {
+    &branches[1 + (n * 13 + j * 7) % (branches.len() - 1)]
+}
+
+/// One event of a filler item's shape: what it is, who acts (0 is the item's
+/// first agent, 1 to 3 the agents after it) and the branch and run it names.
+#[derive(Clone, Copy)]
+struct Beat {
+    kind: EventKind,
+    who: u8,
+    branch: Option<u8>,
+    run: Option<u8>,
+}
+
+const fn beat(kind: EventKind, who: u8, branch: Option<u8>, run: Option<u8>) -> Beat {
+    Beat {
+        kind,
+        who,
+        branch,
+        run,
+    }
+}
+
+const CREATED: Beat = beat(EventKind::ItemCreated, 0, None, None);
+const NOTE_B: Beat = beat(EventKind::Note, 1, None, None);
+const COMMIT_0: Beat = beat(EventKind::Commit, 0, Some(0), None);
+const OPENED_0: Beat = beat(EventKind::PrOpened, 0, Some(0), None);
+const MERGED_0: Beat = beat(EventKind::PrMerged, 0, Some(0), None);
+const FAILED_0: Beat = beat(EventKind::RunFailed, 0, None, Some(0));
+const FINISHED_1: Beat = beat(EventKind::RunFinished, 0, None, Some(1));
+
+const COMMIT_ONLY: [Beat; 1] = [COMMIT_0];
+const FAILED_ONLY: [Beat; 1] = [FAILED_0];
+const HANDOFF_ONLY: [Beat; 1] = [beat(EventKind::Handoff, 1, None, None)];
+const WITH_COLLAB: [Beat; 2] = [CREATED, NOTE_B];
+const WITH_BRANCH: [Beat; 2] = [CREATED, OPENED_0];
+const RETRY: [Beat; 2] = [FAILED_0, FINISHED_1];
+const BRANCHES_HANDOFF: [Beat; 2] = [COMMIT_0, beat(EventKind::Handoff, 1, Some(1), None)];
+const BRANCH_COLLAB: [Beat; 3] = [CREATED, COMMIT_0, NOTE_B];
+const LANDED: [Beat; 3] = [CREATED, OPENED_0, MERGED_0];
+const RETRY_COLLAB: [Beat; 3] = [
+    beat(EventKind::RunStarted, 0, None, Some(0)),
+    FAILED_0,
+    beat(EventKind::RunFinished, 1, None, Some(1)),
+];
+const HANDED_OVER: [Beat; 3] = [
+    CREATED,
+    beat(EventKind::Handoff, 1, None, None),
+    beat(EventKind::Commit, 1, Some(0), None),
+];
+const THREE_AGENTS: [Beat; 3] = [
+    COMMIT_0,
+    beat(EventKind::Handoff, 1, Some(1), None),
+    beat(EventKind::Note, 2, None, None),
+];
+const MERGED_LATE: [Beat; 4] = [
+    CREATED,
+    OPENED_0,
+    beat(EventKind::ItemClaimed, 0, None, None),
+    MERGED_0,
+];
+const RETRY_ON_BRANCH: [Beat; 4] = [
+    CREATED,
+    beat(EventKind::RunFailed, 0, Some(0), Some(0)),
+    beat(EventKind::RunFinished, 1, None, Some(1)),
+    MERGED_0,
+];
+const FULL_STACK: [Beat; 4] = [
+    COMMIT_0,
+    beat(EventKind::Commit, 1, Some(1), None),
+    beat(EventKind::Handoff, 2, Some(2), None),
+    beat(EventKind::RunFailed, 3, Some(3), Some(0)),
+];
+const HAND_THEN_LAND: [Beat; 4] = [
+    CREATED,
+    NOTE_B,
+    beat(EventKind::Handoff, 2, None, None),
+    MERGED_0,
+];
+const RUNS_RETRIED: [Beat; 4] = [
+    CREATED,
+    FAILED_0,
+    FINISHED_1,
+    beat(EventKind::RunFailed, 0, None, Some(2)),
+];
+const ABANDONED: [Beat; 4] = [
+    CREATED,
+    beat(EventKind::PrOpened, 0, Some(1), None),
+    OPENED_0,
+    MERGED_0,
+];
+
+/// The shape the roll `0..100` gives a filler item of `count` events, or
+/// `None` for a plain one that derives no lane. About 56% of items get lanes
+/// and 20% get three or more; one in seventy keeps the eight the cap allows.
+fn shape(count: usize, roll: u64) -> Option<&'static [Beat]> {
+    let shape: &'static [Beat] = match (count, roll) {
+        (1, 65..=79) => &COMMIT_ONLY,
+        (1, 80..=91) => &FAILED_ONLY,
+        (1, 92..) => &HANDOFF_ONLY,
+        (2, 45..=59) => &WITH_COLLAB,
+        (2, 60..=74) => &WITH_BRANCH,
+        (2, 75..=91) => &RETRY,
+        (2, 92..) => &BRANCHES_HANDOFF,
+        (3, 35..=49) => &BRANCH_COLLAB,
+        (3, 50..=61) => &LANDED,
+        (3, 62..=74) => &RETRY_COLLAB,
+        (3, 75..=88) => &HANDED_OVER,
+        (3, 89..) => &THREE_AGENTS,
+        (4, 30..=41) => &MERGED_LATE,
+        (4, 42..=55) => &RETRY_ON_BRANCH,
+        (4, 56..=61) => &FULL_STACK,
+        (4, 62..=75) => &HAND_THEN_LAND,
+        (4, 76..=89) => &RUNS_RETRIED,
+        (4, 90..) => &ABANDONED,
+        _ => return None,
+    };
+    Some(shape)
+}
+
 /// Long-lived items past the fillers. Sizes follow a heavy tail: a few carry
 /// thousands of events, most tens. Their own generator leaves the main
-/// stream, and so [`activity`], untouched.
+/// stream, and so [`activity`], untouched. Each has up to five branches,
+/// three agents and runs that fail and are retried, so the busiest overflow
+/// the eight lanes an item keeps.
 fn tail_events(budget: usize, branches: &[String], out: &mut Vec<Event>) {
     let mut rng = Lcg::new(SEED ^ 0x7A11);
     let margin = 3 * 3600;
@@ -1214,15 +1341,29 @@ fn tail_events(budget: usize, branches: &[String], out: &mut Vec<Event>) {
         let id = format!("imp-{}", 1_000_000 + t);
         let agent = *rng.pick(&SCALED_AGENTS);
         let helper = *rng.pick(&SCALED_AGENTS);
-        let branch = rng.pick(branches);
+        let third = *rng.pick(&SCALED_AGENTS);
+        let topics = 1 + rng.below(5) as usize;
+        let (mut run, mut runs) = (None::<u32>, 0u32);
         for k in 0..size {
-            let kind = match k {
+            let mut kind = match k {
                 0 => EventKind::ItemCreated,
                 _ if k == size / 2 && helper != agent => EventKind::Handoff,
                 _ if k + 1 == size => EventKind::PrMerged,
                 _ => *rng.pick(&MID_KINDS),
             };
-            let who = if k >= size / 2 { helper } else { agent };
+            if kind == EventKind::Handoff && k != size / 2 {
+                kind = EventKind::Note;
+            }
+            if kind == EventKind::RunFinished && rng.below(10) < 3 {
+                kind = EventKind::RunFailed;
+            }
+            let who = if k % 7 == 5 {
+                third
+            } else if k >= size / 2 {
+                helper
+            } else {
+                agent
+            };
             let age = oldest - span * k as i64 / size as i64;
             let summary = say(&mut rng, kind);
             let mut e = event(
@@ -1237,10 +1378,35 @@ fn tail_events(budget: usize, branches: &[String], out: &mut Vec<Event>) {
                 EventKind::Handoff => e = e.from(agent),
                 EventKind::PrMerged => {
                     let pr = 1 + rng.below(250);
-                    e = e.pr(pr).summary(format!("PR #{pr} merged")).branch(branch);
+                    e = e
+                        .pr(pr)
+                        .summary(format!("PR #{pr} merged"))
+                        .branch(topic(branches, t, 0));
                 }
-                EventKind::Commit | EventKind::PrOpened => e = e.branch(branch),
+                EventKind::Commit | EventKind::PrOpened => {
+                    e = e.branch(topic(branches, t, k % topics));
+                }
+                EventKind::RunStarted => {
+                    runs += 1;
+                    run = Some(runs);
+                }
                 _ => {}
+            }
+            let in_run = matches!(
+                kind,
+                EventKind::RunStarted
+                    | EventKind::RunTool
+                    | EventKind::RunThought
+                    | EventKind::RunReasoning
+                    | EventKind::RunModel
+                    | EventKind::RunFinished
+                    | EventKind::RunFailed
+            );
+            if let (true, Some(r)) = (in_run, run) {
+                e = e.run(format!("run-{id}-{r}"));
+                if matches!(kind, EventKind::RunFinished | EventKind::RunFailed) {
+                    run = None;
+                }
             }
             out.push(e);
         }
@@ -1333,7 +1499,10 @@ pub fn activity_sized(events: usize) -> Activity {
     // Filler items: older than 48 h, spread over days 2 to 30 around the idle
     // days 12 and 13. Up to three follow-up events step at most 50 min each
     // toward now, so a 3 h margin keeps every event of an item off the edges.
+    // The random stream decides each item's size, time and kinds whatever its
+    // shape; the shape comes from a stream of its own.
     let margin = 3 * 3600;
+    let mut styles = Lcg::new(SEED ^ 0x57D1);
     let (mut left, mut n) = (filler - tail, 0usize);
     while left > 0 {
         let id = format!("imp-{}", 10_000 + n);
@@ -1341,11 +1510,12 @@ pub fn activity_sized(events: usize) -> Activity {
         let hole = (12 * DAY, 14 * DAY + margin);
         let mut age = age_outside(&mut rng, 2 * DAY + margin, 30 * DAY - 1, hole);
         let agent = *rng.pick(agents);
-        // Every third item changes hands at its third event.
-        let helper = agents[(n * 7 + 3) % agents.len()];
-        let paired = scaled && n % 3 == 0 && helper != agent;
+        let plan = shape(count, styles.below(100));
+        let first = agents.iter().position(|a| *a == agent).unwrap_or(0);
+        let mut holder = agent;
         for k in 0..count {
-            let mut kind = if k == 0 {
+            let beat = plan.and_then(|beats| beats.get(k));
+            let drawn = if k == 0 {
                 EventKind::ItemCreated
             } else {
                 *rng.pick(&[
@@ -1357,11 +1527,9 @@ pub fn activity_sized(events: usize) -> Activity {
                     EventKind::Note,
                 ])
             };
-            if paired && k == 2 {
-                kind = EventKind::Handoff;
-            }
+            let kind = beat.map_or(drawn, |b| b.kind);
             let summary = say(&mut rng, kind);
-            let who = if paired && k >= 2 { helper } else { agent };
+            let who = beat.map_or(agent, |b| agents[(first + b.who as usize) % agents.len()]);
             let mut e = event(
                 format!("{id}:{k}"),
                 (DEMO_NOW - age) * SECOND,
@@ -1370,16 +1538,23 @@ pub fn activity_sized(events: usize) -> Activity {
                 Some(&id),
                 &summary,
             );
+            let drawn_pr = (drawn == EventKind::PrMerged).then(|| 1 + rng.below(250));
             if kind == EventKind::PrMerged {
-                let pr = 1 + rng.below(250);
+                let pr = drawn_pr.unwrap_or_else(|| 1 + styles.below(250));
                 e = e.pr(pr).summary(format!("PR #{pr} merged"));
             }
-            if paired && kind == EventKind::Handoff {
-                e = e.from(agent);
+            if let Some(b) = beat {
+                if let Some(j) = b.branch {
+                    e = e.branch(topic(&branches, n, j as usize));
+                }
+                if let Some(r) = b.run {
+                    e = e.run(format!("run-{id}-{r}"));
+                }
+                if kind == EventKind::Handoff {
+                    e = e.from(holder);
+                }
             }
-            if scaled && matches!(kind, EventKind::PrOpened | EventKind::PrMerged) {
-                e = e.branch(&branches[(n * 13) % branches.len()]);
-            }
+            holder = who;
             out.push(e);
             age -= 5 + rng.below(50) as i64 * 60;
         }
@@ -1440,7 +1615,7 @@ mod tests {
     use super::*;
     use crate::widgets::trace::query::{GraphState, Tone, Window};
     use crate::widgets::trace::rails::{self, Stamp};
-    use crate::widgets::trace::swimlane::{view, Graph, Options, Range};
+    use crate::widgets::trace::swimlane::{derive_forks, view, Graph, Options, Range, FORK_CAP};
 
     fn state() -> GraphState {
         GraphState {
@@ -1744,5 +1919,129 @@ mod tests {
             handoffs * 10 >= items,
             "{handoffs} handoffs over {items} items"
         );
+    }
+
+    /// What each item draws with the tree on: the explicit lanes the sample
+    /// holds for it, else the ones its events derive.
+    fn lanes_by_item(a: &Activity) -> HashMap<&str, Vec<Lane>> {
+        let mut events: HashMap<&str, Vec<&Event>> = HashMap::new();
+        for e in &a.events {
+            if let Some(item) = e.item_id.as_deref() {
+                events.entry(item).or_default().push(e);
+            }
+        }
+        events
+            .into_iter()
+            .map(|(item, events)| {
+                let own: Vec<Lane> = a
+                    .tree
+                    .lanes
+                    .iter()
+                    .filter(|lane| lane.item_id == item)
+                    .cloned()
+                    .collect();
+                let lanes = if own.is_empty() {
+                    derive_forks(item, &events).0
+                } else {
+                    own
+                };
+                (item, lanes)
+            })
+            .collect()
+    }
+
+    fn item_number_of(id: &str) -> usize {
+        id.strip_prefix("imp-")
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn the_tree_is_derived_for_the_filler_at_every_size() {
+        for size in [DEFAULT_EVENTS, 30_000, 100_000] {
+            let a = activity_sized(size);
+            let lanes = lanes_by_item(&a);
+            let items = lanes.len() as f64;
+            let share = |at_least: usize| {
+                lanes.values().filter(|l| l.len() >= at_least).count() as f64 / items
+            };
+            eprintln!(
+                "{size} events: {:.1}% of {} items with a lane, {:.1}% with three or more",
+                100.0 * share(1),
+                lanes.len(),
+                100.0 * share(3)
+            );
+            assert!(share(1) >= 0.45, "{size}: {:.3} with a lane", share(1));
+            assert!(share(3) >= 0.12, "{size}: {:.3} with three", share(3));
+            assert!(
+                lanes.values().any(|l| l.len() == FORK_CAP),
+                "{size}: no item keeps eight lanes"
+            );
+            assert!(lanes.values().all(|l| l.len() <= FORK_CAP));
+            let all: Vec<&Lane> = lanes.values().flatten().collect();
+            let kinds: HashSet<LaneKind> = all.iter().map(|lane| lane.kind).collect();
+            assert_eq!(kinds.len(), 4, "{size}: {kinds:?}");
+            let retries = all
+                .iter()
+                .filter(|lane| lane.chosen == Some(true) && lane.parent.is_some())
+                .count();
+            assert!(retries >= 10, "{size}: {retries} retried runs");
+            assert!(all.iter().any(|lane| lane.chosen == Some(false)));
+        }
+    }
+
+    #[test]
+    fn the_heroes_keep_their_explicit_lanes_and_the_filler_derives_its_own() {
+        let a = activity();
+        assert!(!a.tree.lanes.is_empty());
+        assert!(a
+            .tree
+            .lanes
+            .iter()
+            .all(|lane| item_number_of(&lane.item_id) < 10_000));
+        let lanes = lanes_by_item(&a);
+        for item in a.tree.lanes.iter().map(|lane| lane.item_id.as_str()) {
+            let own = a.tree.lanes.iter().filter(|l| l.item_id == item).count();
+            assert_eq!(lanes[item].len(), own, "{item}");
+        }
+        let forked = lanes
+            .iter()
+            .filter(|(item, lanes)| item_number_of(item) >= 10_000 && !lanes.is_empty())
+            .count();
+        assert!(forked > 1_000, "{forked} filler items fork");
+    }
+
+    #[test]
+    fn the_default_sample_draws_far_more_forks_than_its_heroes_hold() {
+        let a = activity();
+        let all = drawn(
+            &a,
+            &GraphState {
+                show_all: true,
+                ..state()
+            },
+        );
+        let forked = (0..all.item_count())
+            .filter(|&at| {
+                !all.item(&a.events, all.row_spans()[at].item)
+                    .forks
+                    .is_empty()
+            })
+            .count();
+        assert!(
+            forked > 10 * a.tree.lanes.len(),
+            "{forked} items fork, the heroes hold {} lanes",
+            a.tree.lanes.len()
+        );
+        let off = drawn(
+            &a,
+            &GraphState {
+                show_all: true,
+                tree: false,
+                ..state()
+            },
+        );
+        assert_eq!(off.rows, off.lanes);
+        assert!(all.rows > off.rows);
     }
 }
