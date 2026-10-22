@@ -188,6 +188,8 @@ pub mod surface;
 pub mod theme;
 #[cfg(feature = "web-runtime")]
 pub mod widgets;
+#[cfg(feature = "web-runtime")]
+pub mod workspace;
 #[cfg(feature = "bevy")]
 pub use bevy::{get_bevy_handle, BevyCanvas, BEVY_CSS};
 
