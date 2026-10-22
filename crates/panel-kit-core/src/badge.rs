@@ -125,6 +125,73 @@ pub enum BadgeClickKind {
     Clicked,
 }
 
+/// Semantic tone of a chip-style badge — the state vocabulary a status
+/// column draws from. `None` on [`BadgeSpec::tone`] keeps the per-kind
+/// palette instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum BadgeTone {
+    /// Healthy / finished (`--green`).
+    Ok,
+    /// Needs attention (`--yellow`).
+    Warn,
+    /// Failed (`--red`).
+    Err,
+    /// In progress / informational (`--blue`).
+    Info,
+    /// No state: plain foreground on the base surface.
+    Neutral,
+    /// Needs a human; shares the warn colour.
+    Alert,
+}
+
+impl BadgeTone {
+    /// Stable lowercase name, also the web CSS class suffix
+    /// (`badge-tone-<name>`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Warn => "warn",
+            Self::Err => "err",
+            Self::Info => "info",
+            Self::Neutral => "neutral",
+            Self::Alert => "alert",
+        }
+    }
+}
+
+/// How a toned badge is filled. Only meaningful when
+/// [`BadgeSpec::tone`] is set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum BadgeVariant {
+    /// Tone-coloured outline and text on the base surface. The default.
+    #[default]
+    Outline,
+    /// Tone-coloured fill with inverse text.
+    Solid,
+    /// Outline plus a leading tone-coloured `●`.
+    Dot,
+}
+
+impl BadgeVariant {
+    /// Stable lowercase name, also the web CSS class suffix
+    /// (`badge-variant-<name>`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Outline => "outline",
+            Self::Solid => "solid",
+            Self::Dot => "dot",
+        }
+    }
+
+    pub(crate) fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 mod spec;
 
 pub use spec::BadgeSpec;

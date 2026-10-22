@@ -19,7 +19,9 @@ let
   identity = names: lib.genAttrs names (name: name);
 
   col = key: title: weight: expr: { inherit key title; width = flex weight; align = "left"; cell = textCell expr; };
-  num = key: title: expr: { inherit key title; width = fixed 8; align = "right"; cell = textCell expr; };
+  num = key: title: expr: { inherit key title; width = fixed 8; align = "right"; kind = "number"; cell = textCell expr; };
+  # A column over a small vocabulary: the table offers its values as a filter.
+  vocab = key: title: weight: expr: col key title weight expr // { kind = "enum"; };
 
   shelves = [
     (shelf 3 [
@@ -81,8 +83,8 @@ mkTopos {
       restrict = [ "session" ];
       columns = [
         (col "session" "Session" 2 "title")
-        (col "goal" "Goal state" 1 "tag:0")
-        (col "agent" "Agent" 1 "tag:1")
+        (vocab "goal" "Goal state" 1 "tag:0")
+        (vocab "agent" "Agent" 1 "tag:1")
         (col "cwd" "Directory" 3 "field:cwd")
         # Older producers wrote sessions without these counters.
         (num "continuations" "Cont." "field?:continuations")
@@ -97,7 +99,7 @@ mkTopos {
       columns = [
         (col "ts" "Time" 2 "field:ts")
         (col "session" "Session" 1 "field:sess")
-        (col "class" "Class" 1 "tag:0")
+        (vocab "class" "Class" 1 "tag:0")
         (col "event" "Event" 4 "title")
       ];
     };

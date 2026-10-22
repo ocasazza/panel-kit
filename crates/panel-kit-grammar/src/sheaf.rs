@@ -10,10 +10,16 @@
 //! - morphism: `source`, `target`, `edge_kind` (regime sort label), `weight`,
 //!   `rest_length`.
 //!
+//! A table column holds text, an enum or a number: its `kind` when the spec
+//! names one, else derived from its cell (meters and the numeric expressions
+//! are numbers; status cells, `kind` and `edge_kind` are enums). The
+//! interactive table sorts and filters by that kind. A column's `align` is
+//! kept as declared; when absent, numbers align right and anything else left.
+//!
 //! "Group by kind" sheaves group by **regime sort**, so a non-injective sorting
 //! merges site kinds (e.g. planner + reviewer → head).
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -21,11 +27,12 @@ use panel_kit_core::badge::{BadgeKind, BadgeSpec, Rgb};
 use panel_kit_core::widgets::charts::{BoxItemModel, FlameSpanModel, GaugeModel, SeriesModel};
 use panel_kit_core::widgets::meter::MeterModel;
 use panel_kit_core::widgets::status::{StatusModel, StatusState};
+use panel_kit_core::widgets::data_table::ColumnKind;
 use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign};
 use panel_kit_core::widgets::TextModel;
 
 use crate::error::SheafError;
-use crate::edit::RowEdits;
+use crate::edit::{object_row_id, RowEdits};
 use crate::site::{Morphism, Object, Site};
 use crate::topos::{Resolver, Stages};
 
@@ -191,6 +198,7 @@ impl Sheaf {
                     title: "Invariant".to_owned(),
                     width: ColumnWidth::Flex { weight: 1 },
                     align: TextAlign::Left,
+                    kind: ColumnKind::Text,
                 }],
                 rows: Vec::new(),
             })),
@@ -240,21 +248,25 @@ pub fn status_table(checks_title: &str, holds_title: &str, rows: &[(String, bool
             title: checks_title.to_owned(),
             width: ColumnWidth::Flex { weight: 4 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
         TableColumn {
             key: "holds".to_owned(),
             title: holds_title.to_owned(),
             width: ColumnWidth::Flex { weight: 1 },
             align: TextAlign::Center,
+            kind: ColumnKind::Enum,
         },
     ];
+    let ids = unique_row_ids(rows.iter().map(|(label, _)| format!("gate:{label}")));
     let rows = rows
         .iter()
-        .map(|(label, ok)| {
+        .zip(ids)
+        .map(|((label, ok), id)| {
             let word = if *ok { "ok" } else { "error" };
             let (_, color) = status_of(word);
             TableRow {
-                id: format!("gate:{label}"),
+                id,
                 tags: Vec::new(),
                 cells: vec![
                     TableCell::Text(label.clone()),
@@ -264,6 +276,39 @@ pub fn status_table(checks_title: &str, holds_title: &str, rows: &[(String, bool
         })
         .collect();
     Section::Table(TableModel { columns, rows })
+}
+
+/// Row ids for rows whose natural ids are `bases`, in row order. The first row
+/// to take a base keeps it; each repeat takes `{base}#{n}` for the least
+/// `n >= 2` no row already has, so ids are unique and depend only on row order.
+fn unique_row_ids(bases: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut taken = HashSet::new();
+    let mut ordinals: HashMap<String, usize> = HashMap::new();
+    bases
+        .into_iter()
+        .map(|base| {
+            if taken.insert(base.clone()) {
+                return base;
+            }
+            let ordinal = ordinals.entry(base.clone()).or_insert(1);
+            loop {
+                *ordinal += 1;
+                let id = format!("{base}#{ordinal}");
+                if taken.insert(id.clone()) {
+                    return id;
+                }
+            }
+        })
+        .collect()
+}
+
+/// Id of the row a morphism paints as: `prefix`, its endpoints, and its kind,
+/// so parallel morphisms of different kinds differ.
+fn morphism_row_id(prefix: &str, morphism: &Morphism) -> String {
+    match &morphism.kind {
+        Some(kind) => format!("{prefix}:{}->{}:{kind}", morphism.domain, morphism.codomain),
+        None => format!("{prefix}:{}->{}", morphism.domain, morphism.codomain),
+    }
 }
 
 /// Whether a restriction names object sorts or morphism sorts.
@@ -393,8 +438,12 @@ pub struct ColumnSpec {
     pub title: String,
     /// Width request.
     pub width: ColWidth,
-    /// Text alignment.
-    pub align: CellAlign,
+    /// Text alignment; absent follows the kind: numbers right, else left.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<CellAlign>,
+    /// What the column holds; absent derives it from the cell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ColumnKind>,
     /// How each cell is produced.
     pub cell: CellSpec,
 }
@@ -472,16 +521,45 @@ pub enum CellSpec {
     },
 }
 
+/// The kind a column holds when its spec names none, from what its cell
+/// yields: meters and numeric expressions are numbers, status words and a
+/// row's kind label are enumerations, any other expression is text.
+pub(crate) fn derived_kind(cell: &CellSpec) -> ColumnKind {
+    match cell {
+        CellSpec::Meter { .. } => ColumnKind::Number,
+        CellSpec::Status { .. } => ColumnKind::Enum,
+        CellSpec::Text { expr } => match expr.as_str() {
+            "degree" | "in_degree" | "out_degree" | "repulsion" | "mass" | "weight" | "rest_length" => ColumnKind::Number,
+            "kind" | "edge_kind" => ColumnKind::Enum,
+            _ if expr.starts_with("weighted:") => ColumnKind::Number,
+            _ => ColumnKind::Text,
+        },
+    }
+}
+
+/// The alignment a column gets when its spec names none: numbers read flush
+/// right so their digits line up, anything else flush left.
+pub(crate) fn derived_align(kind: ColumnKind) -> CellAlign {
+    match kind {
+        ColumnKind::Number => CellAlign::Right,
+        ColumnKind::Text | ColumnKind::Enum => CellAlign::Left,
+    }
+}
+
 impl TableSheaf {
     fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
         let columns = self
             .columns
             .iter()
-            .map(|column| TableColumn {
-                key: column.key.clone(),
-                title: column.title.clone(),
-                width: column.width.to_core(),
-                align: column.align.to_core(),
+            .map(|column| {
+                let kind = column.kind.unwrap_or_else(|| derived_kind(&column.cell));
+                TableColumn {
+                    key: column.key.clone(),
+                    title: column.title.clone(),
+                    width: column.width.to_core(),
+                    align: column.align.unwrap_or_else(|| derived_align(kind)).to_core(),
+                    kind,
+                }
             })
             .collect();
 
@@ -495,21 +573,22 @@ impl TableSheaf {
                         .map(|column| object_cell(&column.cell, object, site, resolver))
                         .collect::<Result<Vec<_>, _>>()?;
                     rows.push(TableRow {
-                        id: format!("object:{}", object.id),
+                        id: object_row_id(&object.id),
                         tags: object.tags.clone(),
                         cells,
                     });
                 }
             }
             RowScope::Morphisms => {
-                for morphism in &site.morphisms {
+                let ids = unique_row_ids(site.morphisms.iter().map(|morphism| morphism_row_id("morphism", morphism)));
+                for (morphism, id) in site.morphisms.iter().zip(ids) {
                     let cells = self
                         .columns
                         .iter()
                         .map(|column| morphism_cell(&column.cell, morphism, resolver))
                         .collect::<Result<Vec<_>, _>>()?;
                     rows.push(TableRow {
-                        id: format!("morphism:{}->{}", morphism.domain, morphism.codomain),
+                        id,
                         tags: Vec::new(),
                         cells,
                     });
@@ -704,8 +783,90 @@ pub struct FlamegraphSheaf {
     pub restrict: Option<BTreeSet<String>>,
 }
 
+/// What a flamegraph walk looks up: the first object of each id and, per
+/// domain, the codomains of the followed morphisms in morphism order.
+struct FlameIndex<'a> {
+    objects: HashMap<&'a str, &'a Object>,
+    children: HashMap<&'a str, Vec<&'a str>>,
+}
+
 impl FlamegraphSheaf {
     fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
+        let followed = |morphism: &Morphism| morphism.kind.as_deref() == Some(self.morphism_kind.as_str());
+        let mut index = FlameIndex { objects: HashMap::with_capacity(site.objects.len()), children: HashMap::new() };
+        for object in &site.objects {
+            index.objects.entry(object.id.as_str()).or_insert(object);
+        }
+        for morphism in site.morphisms.iter().filter(|morphism| followed(morphism)) {
+            index.children.entry(morphism.domain.as_str()).or_default().push(morphism.codomain.as_str());
+        }
+
+        let roots: Vec<&str> = match &self.root {
+            Some(id) => {
+                if !index.objects.contains_key(id.as_str()) {
+                    return Err(SheafError::MissingRoot(id.clone()));
+                }
+                vec![id.as_str()]
+            }
+            None => {
+                let called: HashSet<&str> = index.children.values().flatten().copied().collect();
+                site.objects
+                    .iter()
+                    .map(|object| object.id.as_str())
+                    .filter(|id| !called.contains(id))
+                    .collect()
+            }
+        };
+
+        let mut spans = Vec::new();
+        let mut on_path = HashSet::new();
+        for root in roots {
+            on_path.insert(root);
+            self.walk(root, 0, &mut spans, &mut on_path, &index, site, resolver)?;
+            on_path.remove(root);
+        }
+        Ok(Section::Flamegraph(spans))
+    }
+
+    /// Pushes the subtree rooted at `id` in preorder and returns its inclusive value.
+    /// `on_path` holds the ids from the root to `id`; a morphism back into it is skipped.
+    #[allow(clippy::too_many_arguments)]
+    fn walk<'a>(
+        &self,
+        id: &'a str,
+        depth: u16,
+        spans: &mut Vec<FlameSpanModel>,
+        on_path: &mut HashSet<&'a str>,
+        index: &FlameIndex<'a>,
+        site: &Site,
+        resolver: &Resolver,
+    ) -> Result<f64, SheafError> {
+        let object = index.objects.get(id).ok_or_else(|| SheafError::MissingRoot(id.to_owned()))?;
+        let own = object_value(&self.value, object, site, resolver)?.into_number(&self.value)?;
+        let slot = spans.len();
+        spans.push(FlameSpanModel {
+            label: object.title.clone(),
+            depth,
+            value: own,
+            color: None,
+        });
+        let mut total = own;
+        for &child in index.children.get(id).into_iter().flatten() {
+            if !on_path.insert(child) {
+                continue;
+            }
+            total += self.walk(child, depth + 1, spans, on_path, index, site, resolver)?;
+            on_path.remove(child);
+        }
+        // Summation noise (7240.000000000005) would leak into painted labels.
+        total = (total * 1000.0).round() / 1000.0;
+        spans[slot].value = total;
+        Ok(total)
+    }
+
+    /// The pre-index algorithm, quadratic in the site: the oracle `evaluate` must equal.
+    #[cfg(test)]
+    pub(crate) fn evaluate_reference(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
         let roots = match &self.root {
             Some(id) => {
                 if !site.has_object(id) {
@@ -729,13 +890,13 @@ impl FlamegraphSheaf {
         let mut spans = Vec::new();
         for root in roots {
             let mut path = vec![root.clone()];
-            self.walk(&root, 0, &mut spans, &mut path, site, resolver)?;
+            self.walk_reference(&root, 0, &mut spans, &mut path, site, resolver)?;
         }
         Ok(Section::Flamegraph(spans))
     }
 
-    /// Pushes the subtree rooted at `id` in preorder and returns its inclusive value.
-    fn walk(
+    #[cfg(test)]
+    fn walk_reference(
         &self,
         id: &str,
         depth: u16,
@@ -767,7 +928,7 @@ impl FlamegraphSheaf {
                 continue;
             }
             path.push(morphism.codomain.clone());
-            total += self.walk(&morphism.codomain, depth + 1, spans, path, site, resolver)?;
+            total += self.walk_reference(&morphism.codomain, depth + 1, spans, path, site, resolver)?;
             path.pop();
         }
         // Summation noise (7240.000000000005) would leak into painted labels.
@@ -944,7 +1105,7 @@ impl AssemblySheaf {
                 TableCell::Text(stage_label(&resolver.stalks.stages, component.stage).to_owned()),
             ];
             rows.push(TableRow {
-                id: format!("component:{}", component.b0),
+                id: format!("component:{}", component.representative),
                 tags: Vec::new(),
                 cells,
             });
@@ -991,10 +1152,10 @@ impl PhysicsSheaf {
         let (columns, rows) = match self.scope {
             PhysicsScope::Objects => {
                 let columns = vec![
-                    physics_column("object", "Object", TextAlign::Left),
-                    physics_column("type", "Type", TextAlign::Left),
-                    physics_column("repulsion", "Repulsion", TextAlign::Right),
-                    physics_column("mass", "Mass", TextAlign::Right),
+                    physics_column("object", "Object", TextAlign::Left, ColumnKind::Text),
+                    physics_column("type", "Type", TextAlign::Left, ColumnKind::Enum),
+                    physics_column("repulsion", "Repulsion", TextAlign::Right, ColumnKind::Number),
+                    physics_column("mass", "Mass", TextAlign::Right, ColumnKind::Number),
                 ];
                 let rows = section
                     .objects
@@ -1014,17 +1175,19 @@ impl PhysicsSheaf {
             }
             PhysicsScope::Morphisms => {
                 let columns = vec![
-                    physics_column("from", "From", TextAlign::Left),
-                    physics_column("to", "To", TextAlign::Left),
-                    physics_column("type", "Type", TextAlign::Left),
-                    physics_column("k", "k", TextAlign::Right),
-                    physics_column("rest", "Rest", TextAlign::Right),
+                    physics_column("from", "From", TextAlign::Left, ColumnKind::Text),
+                    physics_column("to", "To", TextAlign::Left, ColumnKind::Text),
+                    physics_column("type", "Type", TextAlign::Left, ColumnKind::Enum),
+                    physics_column("k", "k", TextAlign::Right, ColumnKind::Number),
+                    physics_column("rest", "Rest", TextAlign::Right, ColumnKind::Number),
                 ];
+                let ids = unique_row_ids(site.morphisms.iter().map(|morphism| morphism_row_id("bond", morphism)));
                 let rows = section
                     .morphisms
                     .iter()
-                    .map(|(from, to, engine_type, weight, rest_length)| TableRow {
-                        id: format!("bond:{from}->{to}"),
+                    .zip(ids)
+                    .map(|((from, to, engine_type, weight, rest_length), id)| TableRow {
+                        id,
                         tags: Vec::new(),
                         cells: vec![
                             TableCell::Text(from.clone()),
@@ -1265,27 +1428,28 @@ fn stage_label(stages: &Stages, stage: Stage) -> &str {
 
 fn assembly_columns() -> Vec<TableColumn> {
     [
-        ("component", "Component", TextAlign::Left),
-        ("v", "V", TextAlign::Right),
-        ("e", "E", TextAlign::Right),
-        ("f", "F", TextAlign::Right),
-        ("b0", "β0", TextAlign::Right),
-        ("b1", "β1", TextAlign::Right),
-        ("chi", "χ", TextAlign::Right),
-        ("boundary", "Boundary", TextAlign::Right),
-        ("stage", "Stage", TextAlign::Left),
+        ("component", "Component", TextAlign::Left, ColumnKind::Text),
+        ("v", "V", TextAlign::Right, ColumnKind::Number),
+        ("e", "E", TextAlign::Right, ColumnKind::Number),
+        ("f", "F", TextAlign::Right, ColumnKind::Number),
+        ("b0", "β0", TextAlign::Right, ColumnKind::Number),
+        ("b1", "β1", TextAlign::Right, ColumnKind::Number),
+        ("chi", "χ", TextAlign::Right, ColumnKind::Number),
+        ("boundary", "Boundary", TextAlign::Right, ColumnKind::Number),
+        ("stage", "Stage", TextAlign::Left, ColumnKind::Enum),
     ]
     .into_iter()
-    .map(|(key, title, align)| physics_column(key, title, align))
+    .map(|(key, title, align, kind)| physics_column(key, title, align, kind))
     .collect()
 }
 
-fn physics_column(key: &str, title: &str, align: TextAlign) -> TableColumn {
+fn physics_column(key: &str, title: &str, align: TextAlign, kind: ColumnKind) -> TableColumn {
     TableColumn {
         key: key.to_owned(),
         title: title.to_owned(),
         width: ColumnWidth::Flex { weight: 1 },
         align,
+        kind,
     }
 }
 
@@ -1474,5 +1638,127 @@ mod tests {
         let frames: Vec<(&str, u16, f64)> =
             spans.iter().map(|span| (span.label.as_str(), span.depth, span.value)).collect();
         assert_eq!(frames, [("root", 0, 15.0), ("a", 1, 10.0), ("leaf", 2, 8.0), ("b", 1, 4.0)]);
+    }
+
+    /// Evaluate `sheaf` over `site` with the indexed algorithm and with the
+    /// pre-index reference, through an empty resolver.
+    fn flame_both(sheaf: &FlamegraphSheaf, site: &Site) -> (Result<Section, SheafError>, Result<Section, SheafError>) {
+        let object_sorting = BTreeMap::new();
+        let morphism_sorting = BTreeMap::new();
+        let stalks = Stalks { objects: BTreeMap::new(), morphisms: BTreeMap::new(), stages: Stages::default() };
+        let physics = Physics::empty();
+        let resolver = Resolver {
+            object_sorting: &object_sorting,
+            morphism_sorting: &morphism_sorting,
+            stalks: &stalks,
+            physics: &physics,
+        };
+        (sheaf.evaluate(&resolver, site), sheaf.evaluate_reference(&resolver, site))
+    }
+
+    fn flame(value: &str, root: Option<&str>) -> FlamegraphSheaf {
+        FlamegraphSheaf {
+            morphism_kind: "continues".to_owned(),
+            value: value.to_owned(),
+            root: root.map(str::to_owned),
+            restrict: None,
+        }
+    }
+
+    /// Sites over a pool of ids with every shape a call tree meets: repeated
+    /// object ids, objects lacking the cost, calls to an id that is no object,
+    /// self-loops, cycles, parallel and untyped morphisms, several roots.
+    fn arb_flame_site() -> impl proptest::strategy::Strategy<Value = (Site, Option<String>)> {
+        use proptest::prelude::*;
+        const COSTS: [&str; 6] = ["1", "2.5", "0.1", "0.2", "7240.000000000005", "3"];
+        const KINDS: [Option<&str>; 4] = [Some("continues"), Some("continues"), Some("shares"), None];
+        (1usize..7).prop_flat_map(|pool| {
+            let id = move |at: usize| if at == pool { "ghost".to_owned() } else { format!("n{at}") };
+            let objects = prop::collection::vec((0..pool, prop::option::weighted(0.9, 0..COSTS.len())), 0..10);
+            let morphisms = prop::collection::vec((0..=pool, 0..=pool, 0..KINDS.len()), 0..16);
+            (objects, morphisms, prop::option::of(0..=pool)).prop_map(move |(objects, morphisms, root)| {
+                let objects = objects
+                    .into_iter()
+                    .enumerate()
+                    .map(|(at, (object, cost))| Object {
+                        id: id(object),
+                        title: format!("t{at}"),
+                        kind: "planner".to_owned(),
+                        tags: Vec::new(),
+                        fields: cost.map(|cost| ("cost".to_owned(), COSTS[cost].to_owned())).into_iter().collect(),
+                    })
+                    .collect();
+                let morphisms = morphisms
+                    .into_iter()
+                    .map(|(from, to, kind)| Morphism {
+                        domain: id(from),
+                        codomain: id(to),
+                        kind: KINDS[kind].map(str::to_owned),
+                    })
+                    .collect();
+                (Site { objects, morphisms }, root.map(id))
+            })
+        })
+    }
+
+    #[test]
+    fn the_indexed_flamegraph_equals_the_reference_on_every_call_shape() {
+        proptest::proptest!(proptest::prelude::ProptestConfig::with_cases(2000), |((site, root) in arb_flame_site())| {
+            for value in ["field:cost", "in_degree"] {
+                for root in [None, root.as_deref()] {
+                    let (indexed, reference) = flame_both(&flame(value, root), &site);
+                    proptest::prop_assert_eq!(indexed, reference, "{} root {:?}", value, root);
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn the_indexed_flamegraph_equals_the_reference_on_the_arbitrary_sites() {
+        proptest::proptest!(|(site in crate::tests::arb_site())| {
+            let (indexed, reference) = flame_both(&flame("field:energy", None), &site);
+            proptest::prop_assert!(reference.is_ok());
+            proptest::prop_assert_eq!(indexed, reference);
+        });
+    }
+
+    #[test]
+    fn a_flamegraph_with_a_cycle_a_self_loop_and_a_repeated_id_keeps_its_shape() {
+        let mut duplicate = object("a", "100");
+        duplicate.title = "second a".to_owned();
+        let site = Site {
+            objects: vec![object("root", "1"), object("a", "2"), object("b", "4"), duplicate],
+            morphisms: vec![call("root", "a"), call("a", "b"), call("b", "a"), call("b", "b"), call("b", "root")],
+        };
+        let (indexed, reference) = flame_both(&flame("field:cost", None), &site);
+        // Every id is called by another object, so none is a root.
+        assert_eq!(indexed, reference);
+        assert_eq!(indexed, Ok(Section::Flamegraph(Vec::new())));
+        let (indexed, reference) = flame_both(&flame("field:cost", Some("root")), &site);
+        assert_eq!(indexed, reference);
+        let Ok(Section::Flamegraph(spans)) = indexed else { panic!("evaluates") };
+        let frames: Vec<(&str, u16, f64)> =
+            spans.iter().map(|span| (span.label.as_str(), span.depth, span.value)).collect();
+        assert_eq!(frames, [("root", 0, 7.0), ("a", 1, 6.0), ("b", 2, 4.0)]);
+    }
+
+    #[test]
+    fn a_columns_kind_derives_from_its_cell() {
+        let text = |expr: &str| CellSpec::Text { expr: expr.to_owned() };
+        let numeric = ["degree", "in_degree", "out_degree", "repulsion", "mass", "weighted:cost", "weight", "rest_length"];
+        let categorical = ["kind", "edge_kind"];
+        let plain = ["id", "title", "source", "target", "tag:0", "field:cost", "field?:cost", "unknown"];
+        for expr in numeric {
+            assert_eq!(derived_kind(&text(expr)), ColumnKind::Number, "{expr}");
+        }
+        for expr in categorical {
+            assert_eq!(derived_kind(&text(expr)), ColumnKind::Enum, "{expr}");
+        }
+        for expr in plain {
+            assert_eq!(derived_kind(&text(expr)), ColumnKind::Text, "{expr}");
+        }
+        let meter = CellSpec::Meter { value: "field:cost".to_owned(), scale: 1.0, text: "field:cost".to_owned() };
+        assert_eq!(derived_kind(&meter), ColumnKind::Number);
+        assert_eq!(derived_kind(&CellSpec::Status { from: "kind".to_owned() }), ColumnKind::Enum);
     }
 }

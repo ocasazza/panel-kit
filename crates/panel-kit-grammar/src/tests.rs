@@ -7,7 +7,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use panel_kit_core::widgets::table::TableCell;
+use panel_kit_core::widgets::data_table::{
+    natural_cmp, BuildOptions, ColumnKind, SortDir, SortSpec, TableDefaults, TableState, View,
+};
+use panel_kit_core::widgets::table::{TableCell, TableModel, TextAlign};
+use proptest::prelude::{prop, prop_assert, prop_assert_eq, proptest, Strategy};
 
 use crate::error::SheafError;
 use crate::package::CompiledGrammar;
@@ -1065,6 +1069,18 @@ fn each_row_offers_only_the_edits_for_its_objects_sort() {
 }
 
 #[test]
+fn each_rows_id_names_the_row_edits_behind_it() {
+    let topos = table_topos(EDIT_TABLE, STATUS_EDIT);
+    let sections = topos.global_sections(&demo_site(), &physics_a()).unwrap();
+    let Some(Section::Table(table)) = sections.get("load") else {
+        panic!("load resolves to a table");
+    };
+    let row_ids: Vec<&str> = table.rows.iter().map(|row| row.id.as_str()).collect();
+    let edit_ids: Vec<String> = sections.row_edits("load").unwrap().iter().map(crate::RowEdits::row_id).collect();
+    assert_eq!(row_ids, edit_ids);
+}
+
+#[test]
 fn validate_rejects_malformed_or_misplaced_edits() {
     let bad_sort = r##"{"triage":{"label":"T","sorts":["head"],"set":{"status":{"type":"text","max":5}},"grammar":"g"}}"##;
     assert!(matches!(table_topos(EDIT_TABLE, bad_sort).validate(), Err(ToposError::InvalidEdit { .. })));
@@ -1167,4 +1183,707 @@ fn edit_decode_rejects_unknown_keys_and_validation_rejects_max_zero() {
         let table = EDIT_TABLE;
         assert!(matches!(table_topos(table, &edits).validate(), Err(ToposError::InvalidEdit { .. })), "{ty}");
     }
+}
+
+// --- Table row ids ------------------------------------------------------------
+
+const EDGE_KINDS: [&str; 3] = ["continues", "shares", "consolidates"];
+
+/// One table sheaf per row-id format: object and morphism rows, assembly
+/// components, physics objects and physics bonds.
+fn row_id_topos() -> Topos {
+    let column = |key: &str, expr: &str| {
+        format!(r##"{{"key":"{key}","title":"{key}","width":{{"flex":{{"weight":1}}}},"align":"left","cell":{{"cell":"text","expr":"{expr}"}}}}"##)
+    };
+    let sheaves = format!(
+        r##"{{"objs":{{"kind":"table","scope":"objects","edits":["triage"],"columns":[{id}]}},"edges":{{"kind":"table","scope":"morphisms","columns":[{source},{target},{edge}]}},"asm":{{"kind":"assembly","morphism_sorts":["continues","shares","consolidates"]}},"po":{{"kind":"physics","scope":"objects"}},"pm":{{"kind":"physics","scope":"morphisms"}}}}"##,
+        id = column("id", "id"),
+        source = column("from", "source"),
+        target = column("to", "target"),
+        edge = column("kind", "edge_kind"),
+    );
+    let mut topos = agentic_topos(&sheaves);
+    topos.edits = serde_json::from_str(STATUS_EDIT).unwrap();
+    topos
+}
+
+fn row_ids(sections: &crate::GlobalSections, binding: &str) -> Vec<String> {
+    match sections.get(binding) {
+        Some(Section::Table(table)) => table.rows.iter().map(|row| row.id.clone()).collect(),
+        other => panic!("{binding} is not a table: {other:?}"),
+    }
+}
+
+#[test]
+fn parallel_morphisms_get_distinct_row_ids_named_by_endpoints_and_kind() {
+    let mut site = demo_site();
+    site.morphisms = vec![
+        typed("p1", "c1", "continues"),
+        typed("p1", "c1", "shares"),
+        typed("p1", "c1", "continues"),
+        Morphism { domain: "p1".to_owned(), codomain: "c1".to_owned(), kind: None },
+    ];
+    let sections = row_id_topos().global_sections(&site, &physics_a()).unwrap();
+    let expected = [
+        "p1->c1:continues",
+        "p1->c1:shares",
+        "p1->c1:continues#2",
+        "p1->c1",
+    ];
+    assert_eq!(row_ids(&sections, "edges"), expected.map(|id| format!("morphism:{id}")));
+    assert_eq!(row_ids(&sections, "pm"), expected.map(|id| format!("bond:{id}")));
+}
+
+#[test]
+fn assembly_rows_are_identified_by_their_component() {
+    // Two disjoint pairs: every component has β0 = 1, so β0 cannot name a row.
+    let mut site = demo_site();
+    site.morphisms = vec![typed("p1", "c1", "continues"), typed("r1", "m1", "consolidates")];
+    let sections = row_id_topos().global_sections(&site, &physics_a()).unwrap();
+    assert_eq!(row_ids(&sections, "asm"), ["component:p1", "component:r1"]);
+}
+
+#[test]
+fn status_table_row_ids_stay_unique_when_labels_repeat_or_look_like_suffixes() {
+    let rows = [("a", true), ("a", false), ("a#2", true), ("a", true)].map(|(label, ok)| (label.to_owned(), ok));
+    let Section::Table(model) = status_table("Check", "Holds", &rows) else {
+        panic!("status table is a table");
+    };
+    let ids: Vec<&str> = model.rows.iter().map(|row| row.id.as_str()).collect();
+    assert_eq!(ids, ["gate:a", "gate:a#2", "gate:a#2#2", "gate:a#3"]);
+}
+
+/// Sites with unique object ids and morphisms inside up to three groups of
+/// objects, so a site often has several components: parallel, repeated,
+/// untyped and self-loop morphisms included.
+pub(crate) fn arb_site() -> impl Strategy<Value = Site> {
+    (2usize..8, 1usize..4).prop_flat_map(|(objects, groups)| {
+        let kinds = prop::collection::vec(0..E_OBJ.len(), objects);
+        let edge = (0..objects, 0..objects, prop::option::of(0..EDGE_KINDS.len()));
+        (kinds, prop::collection::vec(edge, 0..16)).prop_map(move |(kinds, edges)| Site {
+            objects: kinds.iter().enumerate().map(|(at, kind)| object(&format!("o{at}"), E_OBJ[*kind], "5")).collect(),
+            morphisms: edges
+                .into_iter()
+                .filter(|(from, to, _)| from % groups == to % groups)
+                .map(|(from, to, kind)| Morphism {
+                    domain: format!("o{from}"),
+                    codomain: format!("o{to}"),
+                    kind: kind.map(|kind| EDGE_KINDS[kind].to_owned()),
+                })
+                .collect(),
+        })
+    })
+}
+
+#[test]
+fn every_table_section_lists_unique_row_ids_that_name_their_rows() {
+    let topos = row_id_topos();
+    let physics = physics_a();
+    let extra = (0usize..64, 0usize..64, prop::option::of(0..EDGE_KINDS.len()));
+    proptest!(|(site in arb_site(), extra in extra)| {
+        let sections = topos.global_sections(&site, &physics).unwrap();
+        for binding in ["objs", "edges", "asm", "po", "pm"] {
+            let ids = row_ids(&sections, binding);
+            let distinct: BTreeSet<&String> = ids.iter().collect();
+            prop_assert_eq!(distinct.len(), ids.len(), "{} repeats a row id: {:?}", binding, ids);
+        }
+
+        // One row per object, morphism or bond: no row is dropped to make ids unique.
+        prop_assert_eq!(row_ids(&sections, "objs").len(), site.objects.len());
+        prop_assert_eq!(row_ids(&sections, "po").len(), site.objects.len());
+        prop_assert_eq!(row_ids(&sections, "edges").len(), site.morphisms.len());
+        prop_assert_eq!(row_ids(&sections, "pm").len(), site.morphisms.len());
+
+        // An object row's id is the id of the row edits behind it.
+        let edits: Vec<String> = sections.row_edits("objs").unwrap().iter().map(crate::RowEdits::row_id).collect();
+        prop_assert_eq!(row_ids(&sections, "objs"), edits);
+
+        // A morphism row's id names its endpoints and kind: it follows the
+        // morphism, not its position among parallel ones.
+        for (id, morphism) in row_ids(&sections, "edges").iter().zip(&site.morphisms) {
+            let named = match &morphism.kind {
+                Some(kind) => format!("morphism:{}->{}:{kind}", morphism.domain, morphism.codomain),
+                None => format!("morphism:{}->{}", morphism.domain, morphism.codomain),
+            };
+            prop_assert!(*id == named || id.starts_with(&format!("{named}#")), "{} does not name {:?}", id, morphism);
+        }
+
+        // Appending a morphism renames no existing row.
+        let mut grown = site.clone();
+        grown.morphisms.push(Morphism {
+            domain: format!("o{}", extra.0 % site.objects.len()),
+            codomain: format!("o{}", extra.1 % site.objects.len()),
+            kind: extra.2.map(|kind| EDGE_KINDS[kind].to_owned()),
+        });
+        let after = topos.global_sections(&grown, &physics).unwrap();
+        for binding in ["edges", "pm"] {
+            let before = row_ids(&sections, binding);
+            prop_assert_eq!(&row_ids(&after, binding)[..before.len()], &before[..], "{} renamed a row", binding);
+        }
+    });
+}
+
+// --- Single-binding sections --------------------------------------------------
+
+/// Every sheaf kind that restricts, edits or reads morphisms, beside the
+/// unrestricted ones of `row_id_topos`.
+fn restricted_topos() -> Topos {
+    let column = |expr: &str| format!(r##"{{"key":"c","title":"C","width":{{"flex":{{"weight":1}}}},"align":"left","cell":{{"cell":"text","expr":"{expr}"}}}}"##);
+    let sheaves = format!(
+        r##"{{"legend":{{"kind":"text","heading":"Legend"}},"roles":{{"kind":"badges","group":"kinds","restrict":["coder","reviewer"]}},"flame":{{"kind":"flamegraph","morphism_kind":"continues","value":"field:energy","restrict":["planner","coder","reviewer"]}},"load":{{"kind":"table","scope":"objects","restrict":["coder","reviewer"],"edits":["triage"],"columns":[{objects}]}},"shared":{{"kind":"table","scope":"morphisms","restrict":["shares"],"columns":[{morphisms}]}}}}"##,
+        objects = column("id"),
+        morphisms = column("source"),
+    );
+    let mut topos = agentic_topos(&sheaves);
+    topos.edits = serde_json::from_str(STATUS_EDIT).unwrap();
+    topos
+}
+
+#[test]
+fn one_binding_resolves_to_what_global_sections_holds_for_it() {
+    let physics = physics_a();
+    let topoi = [row_id_topos(), restricted_topos()];
+    proptest!(|(site in arb_site())| {
+        for topos in &topoi {
+            let all = topos.global_sections(&site, &physics).unwrap();
+            for (binding, expected) in all.iter() {
+                let one = topos.section(&site, &physics, binding).unwrap();
+                prop_assert_eq!(one.as_ref(), Some(expected), "{}", binding);
+            }
+            prop_assert_eq!(topos.section(&site, &physics, "unbound").unwrap(), None);
+        }
+    });
+}
+
+#[test]
+fn one_binding_matches_global_sections_on_the_fixture_site() {
+    let physics = physics_a();
+    for site in [demo_site(), site_from_lines()] {
+        let topos = restricted_topos();
+        let all = topos.global_sections(&site, &physics).unwrap();
+        assert_eq!(all.len(), 5);
+        for (binding, expected) in all.iter() {
+            assert_eq!(topos.section(&site, &physics, binding).unwrap().as_ref(), Some(expected), "{binding}");
+        }
+    }
+}
+
+#[test]
+fn one_binding_is_not_evaluated_with_the_rest() {
+    let sheaves = r##"{"roles":{"kind":"badges","group":"kinds"},"flame":{"kind":"flamegraph","root":"absent","morphism_kind":"continues","value":"field:energy"}}"##;
+    let topos = agentic_topos(sheaves);
+    let (site, physics) = (demo_site(), physics_a());
+    assert!(topos.global_sections(&site, &physics).is_err(), "the flamegraph root is not in the site");
+    assert!(matches!(topos.section(&site, &physics, "roles"), Ok(Some(Section::Badges(_)))));
+    assert!(topos.section(&site, &physics, "flame").is_err());
+}
+
+#[test]
+fn one_binding_refuses_a_site_with_an_unsorted_kind_like_global_sections() {
+    let topos = restricted_topos();
+    let mut site = demo_site();
+    site.objects.push(object("x1", "alien", "1"));
+    assert!(matches!(topos.section(&site, &physics_a(), "legend"), Err(SheafError::UnsortedObjectKind(_))));
+    assert!(matches!(topos.global_sections(&site, &physics_a()), Err(SheafError::UnsortedObjectKind(_))));
+}
+
+// --- Typed table columns ------------------------------------------------------
+
+fn column_json(key: &str, kind: Option<&str>, cell: &str) -> String {
+    column_json_aligned(key, kind, Some("left"), cell)
+}
+
+fn column_json_aligned(key: &str, kind: Option<&str>, align: Option<&str>, cell: &str) -> String {
+    let kind = kind.map_or(String::new(), |kind| format!(r##""kind":"{kind}","##));
+    let align = align.map_or(String::new(), |align| format!(r##""align":"{align}","##));
+    format!(r##"{{"key":"{key}","title":"{key}","width":{{"flex":{{"weight":1}}}},{align}{kind}"cell":{cell}}}"##)
+}
+
+fn text_cell(expr: &str) -> String {
+    format!(r##"{{"cell":"text","expr":"{expr}"}}"##)
+}
+
+fn meter_cell(value: &str, scale: f64) -> String {
+    format!(r##"{{"cell":"meter","value":"{value}","scale":{scale:?},"text":"{value}"}}"##)
+}
+
+fn table_sheaf(scope: &str, columns: &[String]) -> String {
+    format!(r##"{{"kind":"table","scope":"{scope}","columns":[{}]}}"##, columns.join(","))
+}
+
+fn model_of<'a>(sections: &'a crate::GlobalSections, binding: &str) -> &'a TableModel {
+    match sections.get(binding) {
+        Some(Section::Table(model)) => model,
+        other => panic!("{binding} is not a table: {other:?}"),
+    }
+}
+
+#[test]
+fn table_columns_take_their_kind_from_the_spec_or_else_from_their_cell() {
+    use ColumnKind::{Enum, Number, Text};
+    let objects = [
+        ("id", None, text_cell("id"), Text),
+        ("title", None, text_cell("title"), Text),
+        ("kind", None, text_cell("kind"), Enum),
+        ("degree", None, text_cell("degree"), Number),
+        ("in", None, text_cell("in_degree"), Number),
+        ("out", None, text_cell("out_degree"), Number),
+        ("repulsion", None, text_cell("repulsion"), Number),
+        ("mass", None, text_cell("mass"), Number),
+        ("weighted", None, text_cell("weighted:energy"), Number),
+        ("load", None, meter_cell("field:energy", 100.0), Number),
+        ("status", None, r##"{"cell":"status","from":"kind"}"##.to_owned(), Enum),
+        ("field", None, text_cell("field:energy"), Text),
+        ("tag", None, text_cell("tag:0"), Text),
+        ("energy", Some("number"), text_cell("field:energy"), Number),
+        ("tag_enum", Some("enum"), text_cell("tag:0"), Enum),
+        ("degree_text", Some("text"), text_cell("degree"), Text),
+        ("kind_number", Some("number"), text_cell("kind"), Number),
+    ];
+    let edges = [
+        ("source", None, text_cell("source"), Text),
+        ("target", None, text_cell("target"), Text),
+        ("edge", None, text_cell("edge_kind"), Enum),
+        ("weight", None, text_cell("weight"), Number),
+        ("rest", None, text_cell("rest_length"), Number),
+    ];
+    let json = |rows: &[(&str, Option<&str>, String, ColumnKind)]| -> Vec<String> {
+        rows.iter().map(|(key, kind, cell, _)| column_json(key, *kind, cell)).collect()
+    };
+    let sheaves = format!(
+        r##"{{"objs":{},"edges":{}}}"##,
+        table_sheaf("objects", &json(&objects)),
+        table_sheaf("morphisms", &json(&edges)),
+    );
+    let sections = agentic_topos(&sheaves).global_sections(&demo_site(), &physics_a()).unwrap();
+
+    for (binding, expected) in [("objs", &objects[..].iter().map(|c| (c.0, c.3)).collect::<Vec<_>>()), ("edges", &edges[..].iter().map(|c| (c.0, c.3)).collect())] {
+        let kinds: Vec<(&str, ColumnKind)> =
+            model_of(&sections, binding).columns.iter().map(|column| (column.key.as_str(), column.kind)).collect();
+        assert_eq!(&kinds, expected, "{binding}");
+    }
+}
+
+#[test]
+fn a_column_without_a_kind_encodes_without_one_and_a_named_kind_round_trips() {
+    let bare: crate::ColumnSpec = serde_json::from_str(&column_json("k", None, &text_cell("degree"))).unwrap();
+    assert_eq!(bare.kind, None);
+    assert!(!serde_json::to_string(&bare).unwrap().contains("kind\":"));
+    let named: crate::ColumnSpec = serde_json::from_str(&column_json("k", Some("number"), &text_cell("id"))).unwrap();
+    assert_eq!(named.kind, Some(ColumnKind::Number));
+    assert_eq!(serde_json::from_str::<crate::ColumnSpec>(&serde_json::to_string(&named).unwrap()).unwrap(), named);
+}
+
+#[test]
+fn an_undeclared_alignment_follows_the_kind_and_a_declared_one_wins() {
+    use crate::CellAlign::{Center, Left, Right};
+    let cases = [
+        // (key, kind, declared alignment, cell, alignment painted)
+        ("degree", None, None, text_cell("degree"), Right),
+        ("load", None, None, meter_cell("field:energy", 10.0), Right),
+        ("energy", Some("number"), None, text_cell("field:energy"), Right),
+        ("id", None, None, text_cell("id"), Left),
+        ("kind", None, None, text_cell("kind"), Left),
+        ("degree_left", None, Some("left"), text_cell("degree"), Left),
+        ("degree_centre", None, Some("center"), text_cell("degree"), Center),
+        ("load_left", None, Some("left"), meter_cell("field:energy", 10.0), Left),
+        ("id_right", None, Some("right"), text_cell("id"), Right),
+    ];
+    let columns: Vec<String> =
+        cases.iter().map(|(key, kind, align, cell, _)| column_json_aligned(key, *kind, *align, cell)).collect();
+    let sections = agentic_topos(&format!(r##"{{"objs":{}}}"##, table_sheaf("objects", &columns)))
+        .global_sections(&demo_site(), &physics_a())
+        .unwrap();
+    let painted: Vec<(&str, TextAlign)> =
+        model_of(&sections, "objs").columns.iter().map(|column| (column.key.as_str(), column.align)).collect();
+    let expected: Vec<(&str, TextAlign)> = cases
+        .iter()
+        .map(|(key, .., painted)| (*key, match painted { Left => TextAlign::Left, Center => TextAlign::Center, Right => TextAlign::Right }))
+        .collect();
+    assert_eq!(painted, expected);
+
+    // An undeclared alignment stays undeclared when the spec is written back.
+    let bare: crate::ColumnSpec = serde_json::from_str(&column_json_aligned("k", None, None, &text_cell("degree"))).unwrap();
+    assert_eq!(bare.align, None);
+    assert!(!serde_json::to_string(&bare).unwrap().contains("align\":"));
+}
+
+/// Row ids in the order the interactive table shows `model` sorted on `column`.
+fn sorted_on(model: &TableModel, column: &str, dir: SortDir) -> Vec<String> {
+    let columns = model.data_columns();
+    let data = model.data();
+    let defaults = TableDefaults { sort: vec![SortSpec::new(column, dir)], ..TableDefaults::default() };
+    let state = TableState::new(&columns, defaults);
+    View::build(&columns, &data, &state, BuildOptions::default()).ids(&data).map(str::to_owned).collect()
+}
+
+/// Sites whose objects carry a decimal `energy`, negatives and repeats included,
+/// and a few morphisms so degrees differ.
+fn arb_energy_site() -> impl Strategy<Value = Site> {
+    (prop::collection::vec((0..E_OBJ.len(), -5000i32..5000), 1..12), prop::collection::vec((0usize..64, 0usize..64), 0..16))
+        .prop_map(|(objects, edges)| {
+            let count = objects.len();
+            Site {
+                objects: objects
+                    .iter()
+                    .enumerate()
+                    .map(|(at, (kind, hundredths))| {
+                        object(&format!("o{at}"), E_OBJ[*kind], &format!("{}", f64::from(*hundredths) / 100.0))
+                    })
+                    .collect(),
+                morphisms: edges
+                    .into_iter()
+                    .map(|(from, to)| typed(&format!("o{}", from % count), &format!("o{}", to % count), "continues"))
+                    .collect(),
+            }
+        })
+}
+
+#[test]
+fn a_grammar_tables_number_columns_sort_by_value_and_its_enum_columns_offer_their_values() {
+    let columns = [
+        column_json("id", None, &text_cell("id")),
+        column_json("energy", Some("number"), &text_cell("field:energy")),
+        column_json("load", None, &meter_cell("field:energy", 10.0)),
+        column_json("degree", None, &text_cell("degree")),
+        column_json("sort", None, &text_cell("kind")),
+    ];
+    let topos = agentic_topos(&format!(r##"{{"objs":{}}}"##, table_sheaf("objects", &columns)));
+    let physics = physics_a();
+    proptest!(|(site in arb_energy_site())| {
+        let sections = topos.global_sections(&site, &physics).unwrap();
+        let model = model_of(&sections, "objs");
+        let energy = |object: &Object| object.number("energy").unwrap();
+        let number = |object: &Object, column: &str| match column {
+            "energy" => energy(object),
+            "load" => energy(object) / 10.0,
+            _ => site.degree(&object.id) as f64,
+        };
+        for column in ["energy", "load", "degree"] {
+            for dir in [SortDir::Asc, SortDir::Desc] {
+                let shown: Vec<f64> = sorted_on(model, column, dir)
+                    .iter()
+                    .map(|id| number(site.objects.iter().find(|object| crate::edit::object_row_id(&object.id) == *id).unwrap(), column))
+                    .collect();
+                let mut expected: Vec<f64> = site.objects.iter().map(|object| number(object, column)).collect();
+                expected.sort_by(f64::total_cmp);
+                if dir == SortDir::Desc {
+                    expected.reverse();
+                }
+                prop_assert_eq!(shown, expected, "{} {:?}", column, dir);
+            }
+        }
+
+        // The enum column offers each regime label present once, in natural order.
+        let mut labels: Vec<String> = site
+            .objects
+            .iter()
+            .map(|object| topos.stalks.objects[&topos.object_sorting[&object.kind]].label.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        labels.sort_by(|a, b| natural_cmp(a, b));
+        let columns = model.data_columns();
+        let view = View::build(&columns, &model.data(), &TableState::new(&columns, TableDefaults::default()), BuildOptions::default());
+        prop_assert_eq!(view.options.get("sort").cloned().unwrap_or_default(), labels);
+    });
+}
+// --- Incremental append ----------------------------------------------------
+
+use proptest::prelude::*;
+
+use crate::Limits;
+
+/// One generated line of the trace-lines format; node ids are `n0, n1, ...` in order of appearance.
+#[derive(Clone, Debug)]
+enum Op {
+    Node { title: String, kind: usize, tags: Vec<String>, props: BTreeMap<String, String> },
+    /// An edge between two nodes written earlier.
+    Edge { from: usize, to: usize, kind: String },
+    /// A node reusing an earlier id.
+    Reuse { of: usize },
+    /// An edge into a node written up to two lines later, if any is.
+    Ahead { from: usize, by: usize, kind: String },
+    /// A line the grammar rejects, or a record it refuses.
+    Junk(usize),
+}
+
+const KINDS: [&str; 4] = ["planner", "coder", "reviewer", "memory"];
+const JUNK: [&str; 8] = ["N|broken", "E|n0", "X|y|z", "", "N|n0|T|k||k=v;k=w", "N||T|k||", "E||n0|k", "N|n1|T||"];
+
+fn op() -> impl Strategy<Value = Op> {
+    let text = "[a-zA-Z0-9 ._é-]{1,8}";
+    prop_oneof![
+        8 => (text, 0..KINDS.len(), prop::collection::vec("[a-z0-9]{1,5}", 0..3), prop::collection::btree_map("[a-z]{1,4}", "[a-zA-Z0-9 ._é-]{1,6}", 0..3))
+            .prop_map(|(title, kind, tags, props)| Op::Node { title, kind, tags, props }),
+        4 => (any::<usize>(), any::<usize>(), "[a-z]{1,8}").prop_map(|(from, to, kind)| Op::Edge { from, to, kind }),
+        1 => any::<usize>().prop_map(|of| Op::Reuse { of }),
+        1 => (any::<usize>(), 1..3usize, "[a-z]{1,8}").prop_map(|(from, by, kind)| Op::Ahead { from, by, kind }),
+        1 => (0..JUNK.len()).prop_map(Op::Junk),
+    ]
+}
+
+fn node_line(id: usize, title: &str, kind: &str, tags: &[String], props: &BTreeMap<String, String>) -> String {
+    let props: Vec<String> = props.iter().map(|(key, value)| format!("{key}={value}")).collect();
+    format!("N|n{id}|{title}|{kind}|{}|{}", tags.join(","), props.join(";"))
+}
+
+/// The line of each op. Ops before `valid_until` are made valid: one the grammar would reject, or
+/// that clashes with an earlier line, is written as a fresh node instead.
+fn lines_of(ops: &[Op], valid_until: usize) -> Vec<String> {
+    let mut nodes = 0;
+    let mut lines = Vec::new();
+    for (at, op) in ops.iter().enumerate() {
+        let strict = at < valid_until;
+        let line = match op {
+            Op::Edge { from, to, kind } if nodes > 0 => format!("E|n{}|n{}|{kind}", from % nodes, to % nodes),
+            Op::Reuse { of } if nodes > 0 && !strict => node_line(of % nodes, "R", KINDS[0], &[], &BTreeMap::new()),
+            Op::Ahead { from, by, kind } if nodes > 0 && !strict => format!("E|n{}|n{}|{kind}", from % nodes, nodes + by - 1),
+            Op::Junk(which) if !strict => JUNK[*which].to_owned(),
+            Op::Node { title, kind, tags, props } => {
+                nodes += 1;
+                node_line(nodes - 1, title, KINDS[*kind], tags, props)
+            }
+            _ => {
+                nodes += 1;
+                node_line(nodes - 1, "T", KINDS[1], &[], &BTreeMap::new())
+            }
+        };
+        lines.push(line);
+    }
+    lines
+}
+
+fn text_of(lines: &[String], newline: &str, terminated: bool) -> String {
+    let mut text = lines.join(newline);
+    if terminated && !lines.is_empty() {
+        text.push_str(newline);
+    }
+    text
+}
+
+/// `suffix` on a new line after `prefix`: the text `parse_append` stands for.
+fn appended(prefix: &str, suffix: &str) -> String {
+    if suffix.is_empty() {
+        return prefix.to_owned();
+    }
+    let separator = if prefix.is_empty() || prefix.ends_with('\n') { "" } else { "\n" };
+    format!("{prefix}{separator}{suffix}")
+}
+
+/// The records `extension` adds, behind the objects and morphisms of `site`.
+fn extended(site: &Site, added: &crate::pest_engine::Mapped) -> Site {
+    Site {
+        objects: site.objects.iter().chain(&added.nodes).cloned().collect(),
+        morphisms: site.morphisms.iter().chain(&added.edges).cloned().collect(),
+    }
+}
+
+#[test]
+fn appending_lines_is_parsing_the_whole_text() {
+    let grammar = lines_grammar();
+    proptest!(ProptestConfig::with_cases(768), |(
+        ops in prop::collection::vec(op(), 0..14),
+        cut in any::<prop::sample::Index>(),
+        prefix_terminated in any::<bool>(),
+        suffix_terminated in any::<bool>(),
+        crlf in any::<bool>(),
+    )| {
+        let split = cut.index(ops.len() + 1);
+        let lines = lines_of(&ops, split);
+        let newline = if crlf { "\r\n" } else { "\n" };
+        let prefix = text_of(&lines[..split], newline, prefix_terminated);
+        let suffix = text_of(&lines[split..], newline, suffix_terminated);
+        let before = grammar.parse(&prefix).expect("the prefix is valid by construction");
+        let whole = grammar.parse(&appended(&prefix, &suffix));
+
+        let mut site = before.clone();
+        let outcome = grammar.parse_append(&mut site, &prefix, &suffix);
+        match &whole {
+            Ok(whole) => {
+                prop_assert_eq!(outcome, Ok(()));
+                prop_assert_eq!(&site, whole);
+            }
+            Err(error) => {
+                prop_assert_eq!(outcome, Err(error.clone()));
+                prop_assert_eq!(&site, &before);
+            }
+        }
+
+        let apart = grammar.extension(&before, &suffix);
+        match &whole {
+            Ok(whole) if !suffix.is_empty() => {
+                let added = apart.ok_or_else(|| TestCaseError::fail("a valid suffix was not parsed apart"))?;
+                prop_assert_eq!(&extended(&before, &added), whole);
+            }
+            Err(_) => prop_assert!(apart.is_none(), "an invalid suffix was parsed apart"),
+            Ok(_) => {}
+        }
+    });
+}
+
+#[test]
+fn appending_lines_one_at_a_time_is_parsing_at_once() {
+    let grammar = lines_grammar();
+    proptest!(|(ops in prop::collection::vec(op(), 0..24))| {
+        let mut source = String::new();
+        let mut site = grammar.parse("").unwrap();
+        for line in lines_of(&ops, ops.len()) {
+            prop_assert!(grammar.extension(&site, &line).is_some(), "'{line}' was not parsed apart");
+            prop_assert_eq!(grammar.parse_append(&mut site, &source, &line), Ok(()));
+            if !source.is_empty() && !source.ends_with('\n') {
+                source.push('\n');
+            }
+            source.push_str(&line);
+            prop_assert_eq!(&site, &grammar.parse(&source).unwrap());
+        }
+    });
+}
+
+#[test]
+fn an_appended_edge_may_join_objects_of_the_prefix_and_of_its_own_lines() {
+    let grammar = lines_grammar();
+    let prefix = "N|a|A|coder||\nN|b|B|coder||\n";
+    let suffix = "E|a|c|shares\nN|c|C|coder||\nE|c|b|shares";
+    let mut site = grammar.parse(prefix).unwrap();
+    assert!(grammar.extension(&site, suffix).is_some(), "the edges are parsed apart from the prefix");
+    grammar.parse_append(&mut site, prefix, suffix).unwrap();
+    assert_eq!(site, grammar.parse(&format!("{prefix}{suffix}")).unwrap());
+    assert_eq!((site.objects.len(), site.morphisms.len()), (3, 2));
+}
+
+#[test]
+fn a_suffix_the_whole_text_would_refuse_is_refused_and_leaves_the_site() {
+    let grammar = lines_grammar();
+    let prefix = "N|a|A|coder||\n";
+    let refused = [
+        ("N|a|Again|coder||", GrammarError::DuplicateNodeId("a".to_owned())),
+        ("E|a|ghost|shares", GrammarError::DanglingEdge { source: "a".to_owned(), target: "ghost".to_owned(), missing: "target" }),
+        ("N|b|B|coder||\nE|b|nowhere|shares", GrammarError::DanglingEdge { source: "b".to_owned(), target: "nowhere".to_owned(), missing: "target" }),
+    ];
+    for (suffix, error) in refused {
+        let before = grammar.parse(prefix).unwrap();
+        let mut site = before.clone();
+        assert_eq!(grammar.parse(&format!("{prefix}{suffix}")), Err(error.clone()), "{suffix}");
+        assert_eq!(grammar.parse_append(&mut site, prefix, suffix), Err(error), "{suffix}");
+        assert_eq!(site, before, "{suffix}");
+        assert!(grammar.extension(&before, suffix).is_none(), "{suffix}");
+    }
+}
+
+#[test]
+fn appending_counts_the_records_already_held_against_the_limits() {
+    let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+    package.limits.nodes = 3;
+    package.limits.edges = 1;
+    let grammar = package.compile().unwrap();
+    let prefix = "N|a|A|k||\nN|b|B|k||\nE|a|b|k\n";
+    let site = grammar.parse(prefix).unwrap();
+    assert!(grammar.extension(&site, "N|c|C|k||").is_some(), "a third node is at the limit");
+    for (suffix, kind, actual, max) in [("N|c|C|k||\nN|d|D|k||", "nodes", 4, 3), ("E|b|a|k", "edges", 2, 1)] {
+        let error = GrammarError::RecordLimit { kind, actual, max };
+        let mut grown = site.clone();
+        assert_eq!(grammar.parse(&format!("{prefix}{suffix}")), Err(error.clone()), "{suffix}");
+        assert_eq!(grammar.parse_append(&mut grown, prefix, suffix), Err(error), "{suffix}");
+        assert_eq!(grown, site, "{suffix}");
+    }
+}
+
+#[test]
+fn appending_counts_the_whole_input_against_the_input_limit() {
+    // 19 bytes whole: the separator counts when the prefix has no final newline.
+    for prefix in ["N|a|A|k||\n", "N|a|A|k||"] {
+        let suffix = "N|b|B|k||";
+        let whole = appended(prefix, suffix);
+        let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+        package.limits.input_bytes = whole.len();
+        let grammar = package.compile().unwrap();
+        let site = grammar.parse(prefix).unwrap();
+        let mut grown = site.clone();
+        assert_eq!(grammar.parse_append(&mut grown, prefix, suffix), Ok(()), "{prefix:?} fits exactly");
+        assert_eq!(grown, grammar.parse(&whole).unwrap());
+
+        package.limits.input_bytes = whole.len() - 1;
+        let grammar = package.compile().unwrap();
+        let mut grown = site.clone();
+        let error = GrammarError::InputTooLarge { actual: whole.len(), max: whole.len() - 1 };
+        assert_eq!(grammar.parse(&whole), Err(error.clone()));
+        assert_eq!(grammar.parse_append(&mut grown, prefix, suffix), Err(error), "{prefix:?} is one byte over");
+        assert_eq!(grown, site);
+    }
+}
+
+#[test]
+fn a_grammar_that_does_not_declare_line_records_is_parsed_whole() {
+    let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+    let ParserSpec::Pest(spec) = &mut package.parser else { unreachable!("trace-lines is a pest package") };
+    spec.line_records = false;
+    let undeclared = package.compile().unwrap();
+    assert!(lines_grammar().appends_incrementally());
+    assert!(!undeclared.appends_incrementally());
+    let (prefix, suffix) = ("N|a|A|coder||\n", "N|b|B|coder||");
+    let mut site = undeclared.parse(prefix).unwrap();
+    assert!(undeclared.extension(&site, suffix).is_none());
+    undeclared.parse_append(&mut site, prefix, suffix).unwrap();
+    assert_eq!(site, undeclared.parse(&format!("{prefix}{suffix}")).unwrap());
+
+    let json = json_grammar();
+    let mut document = json.parse(DATA_JSON).unwrap();
+    assert!(!json.appends_incrementally());
+    assert!(json.extension(&document, "{}").is_none());
+    let error = json.parse(&format!("{DATA_JSON}!")).unwrap_err();
+    assert_eq!(json.parse_append(&mut document, DATA_JSON, "!"), Err(error));
+}
+
+#[test]
+fn a_declaration_the_grammar_contradicts_fails_to_compile() {
+    let lines_with = |file: &str, emitter: bool| {
+        let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+        let ParserSpec::Pest(spec) = &mut package.parser else { unreachable!("trace-lines is a pest package") };
+        spec.grammar = spec.grammar.replacen("file = { SOI ~ (record ~ NEWLINE)* ~ record? ~ EOI }", file, 1);
+        if emitter {
+            package.emitter = Some(serde_json::from_str(LINES_EMITTER).unwrap());
+        }
+        package.compile()
+    };
+    assert!(lines_with("file = { SOI ~ (record ~ NEWLINE)* ~ record? ~ EOI }", true).is_ok());
+    let header = "file = { SOI ~ \"#trace\" ~ NEWLINE ~ (record ~ NEWLINE)* ~ record? ~ EOI }";
+    assert!(matches!(lines_with(header, false), Err(GrammarError::NotLineRecords(_))), "a header makes empty input invalid");
+    let one_record = "file = { SOI ~ record? ~ NEWLINE? ~ EOI }";
+    assert!(matches!(lines_with(one_record, true), Err(GrammarError::NotLineRecords(_))), "two emitted lines do not parse");
+}
+
+/// Timing probe, not an assertion: the parse cost per appended line as the input grows, appending
+/// with `parse_append` and, for `FULL_LINES` lines, reparsing the whole text as a host once did.
+/// `cargo test --release -p panel-kit-grammar -- --ignored --nocapture parse_cost`; `APPEND_LINES`
+/// defaults to 10 000, `FULL_LINES` to 1 000.
+#[test]
+#[ignore = "timing probe"]
+fn parse_cost_by_input_size() {
+    let count = |name: &str, default: usize| std::env::var(name).ok().and_then(|text| text.parse().ok()).unwrap_or(default);
+    let (appended_lines, reparsed_lines) = (count("APPEND_LINES", 10_000), count("FULL_LINES", 1_000));
+    let mut package = GrammarPackage::from_json_str(GRAMMAR_LINES).unwrap();
+    package.limits = Limits { grammar_bytes: 8192, input_bytes: 64 << 20, nodes: 100_000, edges: 100_000 };
+    let grammar = package.compile().unwrap();
+    let line = |n: usize| format!("N|appended_{n}|Appended {n}|memory|demo|latency_ms={};energy={};t={};status=ok", 3 + n, 5 + n, 64 + n);
+
+    let started = std::time::Instant::now();
+    let (mut source, mut site) = (DATA_LINES.to_owned(), site_from_lines());
+    for n in 0..appended_lines {
+        let line = line(n);
+        grammar.parse_append(&mut site, &source, &line).unwrap();
+        source.push_str(&line);
+        source.push('\n');
+    }
+    println!("parse_append: {appended_lines} lines in {:.3?}, {:.3?} per line", started.elapsed(), started.elapsed() / appended_lines as u32);
+    assert_eq!(site, grammar.parse(&source).unwrap());
+
+    let started = std::time::Instant::now();
+    let mut source = DATA_LINES.to_owned();
+    for n in 0..reparsed_lines {
+        source.push_str(&line(n));
+        source.push('\n');
+        grammar.parse(&source).unwrap();
+    }
+    println!("parse of the whole text: {reparsed_lines} lines in {:.3?}, {:.3?} per line", started.elapsed(), started.elapsed() / reparsed_lines as u32);
 }

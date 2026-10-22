@@ -19,7 +19,6 @@ use dioxus::events::{Key, KeyboardEvent, PointerEvent as DioxusPointerEvent};
 use dioxus::prelude::*;
 use panel_kit::CSS;
 use panel_kit_core::reducer::{Viewport, WorkspaceEvent};
-use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::ContentSpec;
 use panel_kit_core::Units;
 use panel_kit_grammar::Topos;
@@ -162,22 +161,19 @@ fn host_content(host: Host, mut draft: Signal<Option<EditDraft>>, id: &str, cont
         };
     };
     let rows = state.row_edits(id).map(|offered_rows| {
-        let offered: Vec<(String, Option<String>)> = offered_rows
+        // (row id, object, first offered edit) per row.
+        let offered: Vec<(String, String, Option<String>)> = offered_rows
             .iter()
-            .map(|row| (row.object.clone(), row.edits.first().cloned()))
+            .map(|row| (row.row_id(), row.object.clone(), row.edits.first().cloned()))
             .collect();
         let binding = id.to_owned();
-        let chosen: Vec<String> = offered.iter().map(|(object, _)| object.clone()).collect();
         EventHandler::new(move |key: String| {
-            let Some(index) = chosen.iter().position(|object| object == &key) else {
-                return;
-            };
-            if let Some((object, Some(edit))) = offered.get(index) {
+            if let Some((_, object, Some(edit))) = offered.iter().find(|(row, ..)| *row == key) {
                 draft.set(open_draft(host, &binding, object, edit));
             }
         })
     });
-    section_view::paint(section, content, rows, None)
+    section_view::paint(id, section, content, rows, None)
 }
 
 /// The open draft's form; writing POSTs the emitted bytes and reloads.

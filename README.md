@@ -41,15 +41,19 @@ layer:
 - **`panel-kit-grammar`** (`crates/panel-kit-grammar`) — topos and grammar
   abstractions. A *grammar* is a declarative import package (`pest` runtime
   grammar with a capture map, or `json` pointers) that turns input into a
-  renderer-neutral `Site`. A *topos* is one UI/UX regime over that site: a
+  renderer-neutral `Site`. A `pest` grammar that declares `line_records` parses
+  appended lines apart (`CompiledGrammar::parse_append`), so a live feed
+  extends its `Site` without reparsing. A *topos* is one UI/UX regime over that
+  site: a
   `WorkspaceSpec` plus `Stalks` (what each object/morphism sort means: label,
   badge, assembly-stage prose) plus `sheaves` from binding ids to panel content
   models. Physics tuning (repulsion, mass, weight, rest length) is not authored
   per regime: it is the inverse image `p_R*` of a shared physics `BaseTopos`,
   carried by a `GeometricMorphism` (`Physics`). `Topos::global_sections(site,
   physics)` returns the `GlobalSections` hosts resolve `DataSource::Binding` ids
-  against, and `Topos::physics_section(site, physics)` the engine parameters a
-  layout consumes. Pure, sync, wasm32-clean.
+  against, `Topos::section(site, physics, binding)` resolves one binding without
+  evaluating the other sheaves, and `Topos::physics_section(site, physics)` the
+  engine parameters a layout consumes. Pure, sync, wasm32-clean.
 
 The core crate is the contract: renderer-neutral state, surface
 classification, geometry, pointer/keyboard semantics, and persistence live

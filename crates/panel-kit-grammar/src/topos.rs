@@ -19,7 +19,7 @@ use crate::edit::{EditInput, RowEdits, SectionEdit, SiteRevision, WriteIntent};
 use crate::error::{EditError, SheafError, ToposError};
 use crate::morphism::Physics;
 use crate::package::CompiledGrammar;
-use crate::sheaf::{GlobalSections, RowScope, Sheaf, SortSpace};
+use crate::sheaf::{GlobalSections, RowScope, Section, Sheaf, SortSpace};
 use crate::site::Site;
 
 /// Supported topos spec version.
@@ -164,28 +164,57 @@ impl Topos {
         let mut map = BTreeMap::new();
         let mut rows = BTreeMap::new();
         for (id, sheaf) in &self.sheaves {
-            map.insert(id.clone(), sheaf.evaluate(&resolver, site)?);
-            if let Sheaf::Table(table) = sheaf {
-                if !table.edits.is_empty() && table.scope == RowScope::Objects {
-                    let restricted = sheaf.restricted_site(&self.object_sorting, &self.morphism_sorting, site);
-                    let objects = &restricted.as_ref().unwrap_or(site).objects;
-                    let offered = objects
-                        .iter()
-                        .map(|object| RowEdits {
-                            object: object.id.clone(),
-                            edits: table
-                                .edits
-                                .iter()
-                                .filter(|edit| self.applies(edit, &object.kind))
-                                .cloned()
-                                .collect(),
-                        })
-                        .collect();
-                    rows.insert(id.clone(), offered);
-                }
+            let (section, offered) = self.resolve_binding(&resolver, site, sheaf)?;
+            map.insert(id.clone(), section);
+            if let Some(offered) = offered {
+                rows.insert(id.clone(), offered);
             }
         }
         Ok(GlobalSections::from_parts(map, rows))
+    }
+
+    /// Γ of the one sheaf bound to `binding`, `None` when unbound. Equals
+    /// `global_sections(..).get(binding)` but evaluates no other sheaf, so an
+    /// unrelated sheaf's failure does not surface here.
+    pub fn section(&self, site: &Site, physics: &Physics, binding: &str) -> Result<Option<Section>, SheafError> {
+        let Some(sheaf) = self.sheaves.get(binding) else {
+            return Ok(None);
+        };
+        self.check_site(site)?;
+        let resolver = self.resolver(physics);
+        Ok(Some(self.resolve_binding(&resolver, site, sheaf)?.0))
+    }
+
+    /// One sheaf's content and, for an object-scoped table that declares edits,
+    /// the edits offered on each of its rows.
+    fn resolve_binding(
+        &self,
+        resolver: &Resolver,
+        site: &Site,
+        sheaf: &Sheaf,
+    ) -> Result<(Section, Option<Vec<RowEdits>>), SheafError> {
+        let section = sheaf.evaluate(resolver, site)?;
+        let Sheaf::Table(table) = sheaf else {
+            return Ok((section, None));
+        };
+        if table.edits.is_empty() || table.scope != RowScope::Objects {
+            return Ok((section, None));
+        }
+        let restricted = sheaf.restricted_site(&self.object_sorting, &self.morphism_sorting, site);
+        let objects = &restricted.as_ref().unwrap_or(site).objects;
+        let offered = objects
+            .iter()
+            .map(|object| RowEdits {
+                object: object.id.clone(),
+                edits: table
+                    .edits
+                    .iter()
+                    .filter(|edit| self.applies(edit, &object.kind))
+                    .cloned()
+                    .collect(),
+            })
+            .collect();
+        Ok((section, Some(offered)))
     }
 
     /// Whether edit `edit` applies to objects of site kind `kind`.

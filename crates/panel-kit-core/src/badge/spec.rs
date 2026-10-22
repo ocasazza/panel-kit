@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{BadgeAction, BadgeClickKind, BadgeKind, Rgb};
+use super::{BadgeAction, BadgeClickKind, BadgeKind, BadgeTone, BadgeVariant, Rgb};
 
 /// Complete renderer-neutral badge model consumed by every backend painter.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -31,6 +31,13 @@ pub struct BadgeSpec {
     pub click_kind: BadgeClickKind,
     /// Whether pointer hover should emit a hover action.
     pub emit_hover: bool,
+    /// Chip-style semantic tone; `None` keeps the per-kind palette.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<BadgeTone>,
+    /// Fill style of a toned badge; ignored without a [`tone`](Self::tone).
+    /// Size follows [`small`](Self::small) (`small` = sm, otherwise md).
+    #[serde(default, skip_serializing_if = "BadgeVariant::is_default")]
+    pub variant: BadgeVariant,
 }
 
 impl BadgeSpec {
@@ -48,7 +55,16 @@ impl BadgeSpec {
             accent_color: None,
             click_kind: BadgeClickKind::Toggle,
             emit_hover: false,
+            tone: None,
+            variant: BadgeVariant::Outline,
         }
+    }
+
+    /// Give the badge a semantic tone and fill variant (chip style).
+    pub fn with_tone(mut self, tone: BadgeTone, variant: BadgeVariant) -> Self {
+        self.tone = Some(tone);
+        self.variant = variant;
+        self
     }
 
     /// Action delivered by a primary body click.

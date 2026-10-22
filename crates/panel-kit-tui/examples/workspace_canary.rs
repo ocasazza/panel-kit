@@ -9,10 +9,11 @@ use panel_kit_core::widgets::charts::{
     five_num, BoxItemView, FlameSpanModel, GaugeModel, SeriesView,
 };
 #[cfg(feature = "spec-plan")]
-use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
 };
+#[cfg(feature = "spec-plan")]
+use panel_kit_core::widgets::data_table::ColumnKind;
 #[cfg(feature = "spec-plan")]
 use panel_kit_tui::badge::hue_color;
 
@@ -66,18 +67,21 @@ pub fn node_rows() -> TableModel {
                 title: "node".into(),
                 width: ColumnWidth::Fixed { value: 12 },
                 align: TextAlign::Left,
+                kind: ColumnKind::Text,
             },
             TableColumn {
                 key: "load".into(),
                 title: "load".into(),
                 width: ColumnWidth::Fixed { value: 10 },
                 align: TextAlign::Left,
+                kind: ColumnKind::Text,
             },
             TableColumn {
                 key: "detail".into(),
                 title: String::new(),
                 width: ColumnWidth::Fixed { value: 10 },
                 align: TextAlign::Left,
+                kind: ColumnKind::Text,
             },
         ],
         rows: vec![

@@ -14,6 +14,8 @@ fn badge_spec_covers_web_and_tui_fields() {
         accent_color: Some((30, 20, 10)),
         click_kind: BadgeClickKind::Clicked,
         emit_hover: true,
+        tone: Some(BadgeTone::Warn),
+        variant: BadgeVariant::Solid,
     };
 
     assert_eq!(spec.field, "tag");
@@ -26,6 +28,8 @@ fn badge_spec_covers_web_and_tui_fields() {
     assert_eq!(spec.accent_color, Some((30, 20, 10)));
     assert_eq!(spec.click_kind, BadgeClickKind::Clicked);
     assert!(spec.emit_hover);
+    assert_eq!(spec.tone, Some(BadgeTone::Warn));
+    assert_eq!(spec.variant, BadgeVariant::Solid);
 }
 
 #[test]

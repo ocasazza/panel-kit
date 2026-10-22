@@ -10,6 +10,7 @@ use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceE
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
 };
+use panel_kit_core::widgets::data_table::ColumnKind;
 use panel_kit_core::{
     FocusContext, Key, KeyChord, PointerButton, PointerEvent, PointerEventKind, Region,
     SurfaceCapabilities, SurfaceClass,
@@ -190,6 +191,7 @@ fn InteractiveTableProbe() -> Element {
         title: "Policy".into(),
         width: ColumnWidth::Flex { weight: 1 },
         align: TextAlign::Left,
+        kind: ColumnKind::Text,
     }];
     let rows = [TableRow {
         id: "r1".into(),
@@ -202,10 +204,10 @@ fn InteractiveTableProbe() -> Element {
     rsx! {
         {{
             let shown: Vec<&TableRow> = rows.iter().collect();
-            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &shown })
+            panel_kit::widgets::table::table("filled", TableView { columns: &columns, rows: &shown }, None)
         }}
         {{
-            panel_kit::widgets::table::table(TableView { columns: &columns, rows: &[] })
+            panel_kit::widgets::table::table("empty", TableView { columns: &columns, rows: &[] }, None)
         }}
     }
 }
@@ -225,8 +227,75 @@ fn table_paints_through_the_one_component_with_its_toolbar_and_empty_state() {
         "{html}"
     );
     // The empty state names the caller's message when the model has no rows.
-    assert!(html.contains("class=\"pk-table-empty\""), "{html}");
+    assert!(html.contains("class=\"pk-dt-empty\""), "{html}");
     assert!(html.contains("no rows"), "{html}");
+}
+
+/// Two panels over the same columns are two tables: their ids must differ, or
+/// the browser finds one grid for both and a row id repeats on the page.
+#[test]
+fn tables_over_the_same_columns_get_the_ids_they_are_named_by() {
+    let html = dioxus_ssr::render_element(rsx! { InteractiveTableProbe {} });
+    for name in ["filled", "empty"] {
+        assert_eq!(html.matches(&format!("id=\"pk-table-{name}\"")).count(), 1, "{name}: {html}");
+    }
+    assert!(html.contains("id=\"pk-table-filled-r1\""), "{html}");
+}
+
+/// A column's declared alignment is painted whatever its kind: numbers are
+/// right-aligned when the spec says so, not otherwise.
+#[test]
+fn a_columns_declared_alignment_is_painted_whatever_its_kind() {
+    let paint = |kind, align| {
+        let columns = [TableColumn {
+            key: "count".into(),
+            title: "Count".into(),
+            width: ColumnWidth::Flex { weight: 1 },
+            align,
+            kind,
+        }];
+        let rows = [TableRow { id: "r1".into(), tags: Vec::new(), cells: vec![TableCell::Text("1.5".into())] }];
+        let shown: Vec<&TableRow> = rows.iter().collect();
+        dioxus_ssr::render_element(rsx! {
+            {panel_kit::widgets::table::table("kinds", TableView { columns: &columns, rows: &shown }, None)}
+        })
+    };
+    let declared_left = paint(ColumnKind::Number, TextAlign::Left);
+    assert!(declared_left.contains("pk-dt-align-left") && !declared_left.contains("pk-dt-align-right"));
+    let declared_right = paint(ColumnKind::Number, TextAlign::Right);
+    assert!(declared_right.contains("pk-dt-align-right") && !declared_right.contains("pk-dt-align-left"));
+}
+
+/// Two panels over the same columns, painted through `content_view`.
+#[component]
+fn OwnedTablesProbe() -> Element {
+    let columns = [TableColumn {
+        key: "policy".into(),
+        title: "Policy".into(),
+        width: ColumnWidth::Flex { weight: 1 },
+        align: TextAlign::Left,
+        kind: ColumnKind::Text,
+    }];
+    let rows = [TableRow { id: "r1".into(), tags: Vec::new(), cells: vec![TableCell::Text("p".into())] }];
+    let shown: Vec<&TableRow> = rows.iter().collect();
+    let noop = EventHandler::new(|_: panel_kit_core::badge::BadgeAction| {});
+    let table = |binding| panel_kit_core::widgets::ContentView::Table {
+        binding,
+        view: TableView { columns: &columns, rows: &shown },
+    };
+    rsx! {
+        {panel_kit::widgets::content_view(table("panel-a"), 0, noop)}
+        {panel_kit::widgets::content_view(table("panel-b"), 0, noop)}
+    }
+}
+
+#[test]
+fn content_view_names_each_table_by_the_panel_that_owns_it() {
+    let html = dioxus_ssr::render_element(rsx! { OwnedTablesProbe {} });
+    for owner in ["panel-a", "panel-b"] {
+        assert_eq!(html.matches(&format!("id=\"pk-table-{owner}\"")).count(), 1, "{owner}: {html}");
+        assert!(html.contains(&format!("id=\"pk-table-{owner}-r1\"")), "{owner}: {html}");
+    }
 }
 
 #[test]
@@ -422,62 +491,36 @@ fn tiling_drag_to_swap_reorders_panels_via_surface_pointer_motion() {
 }
 
 #[component]
-fn DataTableProbe() -> Element {
-    use panel_kit::widgets::{DataColumnSpec, DataRow, DataTable};
-    use panel_kit_core::widgets::data_table::{SortDir, TableState};
-    let columns = vec![
-        DataColumnSpec::new("name", "Name").pinned(),
-        DataColumnSpec::new("score", "Score"),
-        DataColumnSpec::new("cost", "Cost").hidden(),
-    ];
-    let rows = vec![
-        DataRow::new("a")
-            .text("alpha")
-            .num(Some(1.0), "1")
-            .num(Some(9.0), "cost-a"),
-        DataRow::new("b")
-            .text("beta")
-            .num(Some(3.0), "3")
-            .num(Some(8.0), "cost-b"),
-        DataRow::new("c")
-            .text("gamma")
-            .num(None, "-")
-            .num(None, "cost-c"),
-    ];
+fn ButtonProbe() -> Element {
+    use panel_kit::widgets::Button;
     rsx! {
-        DataTable {
-            columns,
-            rows,
-            defaults: panel_kit_core::widgets::data_table::TableDefaults {
-                sort: vec![panel_kit_core::widgets::data_table::SortSpec {
-                    column: "score".into(),
-                    dir: panel_kit_core::widgets::data_table::SortDir::Desc,
-                }],
-                ..Default::default()
-            },
-        }
+        Button { on_press: |_| {}, "plain" }
+        Button { pressed: true, title: "latched", "data-probe": "on", on_press: |_| {}, "on" }
+        Button { pressed: false, compact: true, disabled: true, on_press: |_| {}, "off" }
     }
 }
 
 #[test]
-fn data_table_sorts_hides_default_hidden_columns_and_counts_rows() {
-    let html = dioxus_ssr::render_element(rsx! { DataTableProbe {} });
-
-    let beta = html.find("beta").expect("beta row");
-    let alpha = html.find("alpha").expect("alpha row");
-    let gamma = html.find("gamma").expect("gamma row");
+fn a_button_states_its_toggle_and_passes_its_attributes_through() {
+    let html = dioxus_ssr::render_element(rsx! { ButtonProbe {} });
+    let buttons: Vec<&str> = html.split("<button").skip(1).collect();
+    assert_eq!(buttons.len(), 3, "{html}");
     assert!(
-        beta < alpha && alpha < gamma,
-        "desc by score, missing last: {html}"
+        buttons.iter().all(|b| b.contains("type=\"button\"")),
+        "{html}"
     );
     assert!(
-        !html.contains("cost-a"),
-        "hidden-by-default column painted: {html}"
+        !buttons[0].contains("aria-pressed"),
+        "a plain action is not a toggle: {html}"
+    );
+    assert!(buttons[1].contains("aria-pressed=\"true\""), "{html}");
+    assert!(
+        buttons[1].contains("title=\"latched\"") && buttons[1].contains("data-probe=\"on\""),
+        "{html}"
     );
     assert!(
-        !html.contains(">Cost<"),
-        "hidden column header painted: {html}"
+        buttons[2].contains("aria-pressed=\"false\"") && buttons[2].contains("disabled"),
+        "{html}"
     );
-    assert!(html.contains("aria-sort=\"descending\""), "{html}");
-    assert!(html.contains("class=\"pk-dt-count\">3 ROWS<"), "{html}");
+    assert!(buttons[2].contains("class=\"pk-btn compact\""), "{html}");
 }

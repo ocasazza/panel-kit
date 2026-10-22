@@ -194,7 +194,13 @@ pub enum ContentView<'a> {
     /// Borrowed badge strip.
     Badges(&'a [BadgeSpec]),
     /// Borrowed semantic table.
-    Table(TableView<'a>),
+    Table {
+        /// Host binding or panel identifier: names the table on the page, so
+        /// two tables over the same columns need two.
+        binding: &'a str,
+        /// Borrowed table.
+        view: TableView<'a>,
+    },
     /// Borrowed time-series data and unit label.
     TimeSeries {
         /// Borrowed time-series data.
@@ -227,7 +233,7 @@ impl ContentView<'_> {
             Self::Text { .. } => "text",
             Self::Editor { .. } => "editor",
             Self::Badges(_) => "badges",
-            Self::Table(_) => "table",
+            Self::Table { .. } => "table",
             Self::TimeSeries { .. } => "time_series",
             Self::Gauges(_) => "gauges",
             Self::Flamegraph(_) => "flamegraph",
@@ -246,7 +252,7 @@ impl ContentView<'_> {
             Self::Gauges(items) => Some(items.len()),
             Self::Flamegraph(items) => Some(items.len()),
             Self::Boxplot(items) => Some(items.len()),
-            Self::Table(table) => Some(table.rows.len()),
+            Self::Table { view, .. } => Some(view.rows.len()),
             _ => None,
         }
     }

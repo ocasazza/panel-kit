@@ -273,6 +273,12 @@ impl ToposHost {
         &self.paints
     }
 
+    /// Layout units of the active topos's authored surface.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn units(&self) -> panel_kit_core::Units {
+        self.scenes[self.active].resolved.layout.units
+    }
+
     /// Live canvas size in terminal cells, for browser wheel translation.
     #[cfg(target_arch = "wasm32")]
     pub fn grid(&self) -> (f64, f64) {

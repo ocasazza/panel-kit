@@ -40,6 +40,30 @@
      before the workspace scrolls instead of crushing content. */
   --tile-cols:4;
   --tile-row-min:90px;
+  /* Tag ribbon: eight slot colours and their label ink, plus the segment geometry. */
+  --tag-0: #336e09;
+  --tag-1: #825df2;
+  --tag-2: #c950f1;
+  --tag-3: #36ae0e;
+  --tag-4: #f47dd7;
+  --tag-5: #f79dca;
+  --tag-6: #c4c4fa;
+  --tag-7: #e6d0fb;
+  --tag-ink-0: var(--fg);
+  --tag-ink-1: var(--inv-fg);
+  --tag-ink-2: var(--inv-fg);
+  --tag-ink-3: var(--inv-fg);
+  --tag-ink-4: var(--inv-fg);
+  --tag-ink-5: var(--inv-fg);
+  --tag-ink-6: var(--inv-fg);
+  --tag-ink-7: var(--inv-fg);
+  --tag-seam: var(--bg);
+  --tag-rule: var(--line);
+  --tag-seg: 13px;
+  --tag-overlap: 3px;
+  --tag-inset: 2px;
+  --tag-rake: 2px;
+  --text-label: 11px/1.4;
 }
 
 * { box-sizing: border-box; }
@@ -101,10 +125,14 @@ button { font-family:var(--mono); }
   min-width:180px; min-height:110px; }
 .panel.focused { border-color:var(--fg); }
 .ws.floating .panel.dragging { box-shadow:0 6px 24px #0007; }
+/* Inset so the header's content (first light, last action) lines up with the
+   body's content column, while its --space-xs padding keeps a gap where the
+   top border stops. */
 .panel-head {
-  position:absolute; z-index:2; top:-1px; left:8px; right:8px;
+  position:absolute; z-index:2; top:-1px;
+  left:calc(var(--space-md) - var(--space-xs)); right:calc(var(--space-md) - var(--space-xs));
   display:flex; align-items:center; gap:.5rem; height:var(--panel-head-h);
-  padding:0 .35rem; background:var(--panel); cursor:move; user-select:none;
+  padding:0 var(--space-xs); background:var(--panel); cursor:move; user-select:none;
   touch-action:none;
 }
 .panel-head:focus-visible { outline-offset:-2px; }
@@ -132,7 +160,7 @@ button { font-family:var(--mono); }
 .panel-body { flex:1; min-height:0; overflow:auto;
   padding:calc(var(--panel-head-h) + var(--space-sm)) var(--space-md) var(--space-md); }
 
-/* Traffic lights */
+/* Traffic lights: square lit cells, like every other bounded object. */
 .lights { display:flex; align-items:center; gap:6px; }
 .light { --light-c: var(--line2); position:relative; width:12px; height:12px;
   flex:0 0 12px; border:0; padding:0; cursor:pointer; background:transparent; }
@@ -141,12 +169,9 @@ button { font-family:var(--mono); }
   width:max(100%, var(--hit-min)); height:max(100%, var(--hit-min));
   transform:translate(-50%, -50%); }
 .light::after { content:""; position:absolute; width:12px; height:12px; inset:50% auto auto 50%;
-  border-radius:50%; opacity:.9; background:var(--light-c); box-shadow:0 0 0 0 transparent;
-  transform:translate(-50%, -50%); transition:opacity .12s ease, box-shadow .12s ease; }
-.light:hover::after, .light:focus-visible::after {
-  opacity:1;
-  box-shadow:0 0 0 2px color-mix(in srgb, var(--light-c) 70%, transparent);
-}
+  border-radius:var(--panel-radius); background:var(--light-c);
+  transform:translate(-50%, -50%); }
+.light:hover::after { outline:1px solid var(--focus-ring); outline-offset:1px; }
 /* The lights are deliberately NOT the macOS red/yellow/green: none of them
    destroys anything, so the cluster uses a printer-CMY scheme instead —
    blue (mode toggle), yellow (minimize), pink (maximize). Yellow keeps its
@@ -425,6 +450,36 @@ button { font-family:var(--mono); }
 .badge-url { --badge-c: var(--green); --badge-fg: var(--green); }
 .badge-status { --badge-c: var(--green); }
 .badge-generic { --badge-c: var(--line2); }
+/* Chip style (BadgeSpec.tone/variant; `.small` is the sm size): a square,
+   uppercase state label. --chip-tone is the tone colour; outline draws it on
+   the text, solid fills with it and puts --inv-fg on top, dot adds a mark. */
+.badge-chip {
+  --chip-tone: var(--dim);
+  --badge-c: var(--line);
+  --badge-fg: var(--chip-tone);
+  padding:2px 6px; border-radius:var(--panel-radius);
+  font:var(--text-label) var(--mono); letter-spacing:.06em; text-transform:uppercase;
+}
+.badge-chip.small { padding:0 4px; font-size:10px; line-height:1.3; }
+.badge-chip .badge-main { font:inherit; letter-spacing:inherit; text-transform:inherit; color:inherit; }
+.badge-tone-ok { --chip-tone: var(--green); }
+.badge-tone-warn, .badge-tone-alert { --chip-tone: var(--yellow); }
+.badge-tone-err { --chip-tone: var(--red); }
+.badge-tone-info { --chip-tone: var(--badge-info); }
+.badge-tone-neutral { --chip-tone: var(--dim); }
+.badge-chip.badge-variant-solid {
+  --badge-c: var(--chip-tone); --badge-fg: var(--inv-fg);
+  background:var(--badge-bg, var(--chip-tone));
+}
+.badge-chip.badge-tone-neutral.badge-variant-solid { --chip-tone: var(--fg); }
+.badge-chip.badge-variant-dot::before { content:"●"; margin-right:4px; color:var(--chip-tone); }
+.badge-chip:hover:not(.active) {
+  background:var(--badge-bg, var(--bg)); border-color:var(--fg); box-shadow:none;
+}
+.badge-chip.badge-variant-solid:hover:not(.active),
+.badge-chip.badge-variant-solid.active {
+  background:var(--badge-bg, var(--chip-tone)); box-shadow:none;
+}
 /* Trailing `+` / `×` affordances: dimmed fg, full fg on hover (egui
    tint(fg, 0.7) -> WHITE). */
 .badge-btn { display:inline-grid; place-items:center; width:var(--hit-min); height:var(--hit-min);
@@ -589,77 +644,889 @@ button { font-family:var(--mono); }
   display:flex; align-items:center; justify-content:center;
   color:var(--red, #ff5f56); font-size:12px; padding:8px; text-align:center; }
 
-/* === interactive table === */
-/* The opaque sticky header prevents scrolled rows from bleeding through.
-   Ellipsized cells retain their complete value in a title tooltip. */
-.pk-table-wrap { overflow:auto; max-height:60vh; border:1px solid var(--line);
-  border-radius:var(--panel-radius); }
-.pk-table { width:100%; border-collapse:collapse; font-family:var(--mono);
-  font-size:12px; color:var(--fg); }
-.pk-table th { position:sticky; top:0; z-index:1; background:var(--bg);
-  padding:.35rem .55rem; font-weight:600; color:var(--dim);
-  border-bottom:1px solid var(--line2); white-space:nowrap;
-  overflow:hidden; text-overflow:ellipsis; }
-.pk-table td { padding:.3rem .55rem; border-bottom:1px solid var(--line);
-  max-width:22rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pk-table-dense th { padding:.2rem .45rem; }
-.pk-table-dense td { padding:.14rem .45rem; }
-.pk-table-row.clickable { cursor:pointer; }
-.pk-table-row.clickable:hover { background:color-mix(in srgb, var(--fg) 7%, var(--bg)); }
-.pk-table-row.selected { color:var(--accent);
-  box-shadow:inset 2px 0 0 var(--accent);
-  background:color-mix(in srgb, var(--accent) 8%, var(--bg)); }
-.pk-table-empty { padding:.5rem .55rem; color:var(--dim); text-align:center; }
-/* A header asks for a sort; the marker is painted by the painter, so the
-   affordance is "this is clickable", not a second glyph. */
-.pk-table-sortable { cursor:pointer; user-select:none; }
-.pk-table-sortable:hover { color:var(--fg); }
-.pk-table-sortable.sorted { color:var(--fg); }
-/* Focus is an outline rather than a background, so a focused row that is
-   also selected keeps both facts legible. */
-.pk-table-row.focused { outline:1px solid var(--accent); outline-offset:-1px; }
-
 /* === table cards: the table as records === */
-.pk-dt-card { display:flex; flex-direction:column; gap:.25rem; padding:.45rem .6rem;
+/* A card is exactly one entry tall: --dt-row less the cell's 1px rule, which
+   the painter sets from ViewMode::row_height. Content clamps to it, so the
+   virtual window's spacers (entries x --dt-row) stay true. */
+.pk-dt .pk-dt-td-card { padding:0; height:var(--dt-row); }
+.pk-dt-card { box-sizing:border-box; height:calc(var(--dt-row) - 1px); overflow:hidden;
+  display:flex; flex-direction:column; justify-content:center; gap:2px; padding:4px 8px;
+  line-height:18px; white-space:nowrap;
   border:1px solid var(--line); border-radius:4px; background:var(--panel); }
-.pk-dt-card.compact { flex-direction:row; align-items:center; gap:.6rem; padding:.25rem .5rem; }
-.pk-dt-card.detail { gap:.35rem; }
-.pk-dt-card-title { display:flex; align-items:baseline; gap:.5rem; min-width:0; }
-.pk-dt-card-id { color:var(--dim); font-size:.7rem; }
-.pk-dt-card-head { font-size:.78rem; color:var(--fg); overflow:hidden; text-overflow:ellipsis;
-  white-space:nowrap; }
-.pk-dt-card-meta { display:flex; flex-wrap:wrap; gap:.2rem 1rem; }
-.pk-dt-field { display:inline-flex; gap:.3rem; font-size:.7rem; }
-.pk-dt-field-label { color:var(--line2); }
-.pk-dt-field-value { color:var(--fg); }
-.pk-dt-card-tags { display:flex; flex-wrap:wrap; gap:.25rem; }
-.pk-chip { border:1px solid var(--line2); border-radius:999px; padding:0 .45rem;
-  font-size:.66rem; color:var(--dim); }
-.pk-dt-group-row td { background:color-mix(in srgb, var(--fg) 5%, var(--bg)); }
-.pk-dt-tag { border:1px solid var(--line2); border-radius:999px; padding:.05rem .5rem;
-  background:var(--bg); color:var(--dim); font-size:.68rem; cursor:pointer; }
-.pk-dt-tag.on { color:var(--bg); background:var(--accent); border-color:var(--accent); }
+.pk-dt-card.compact { flex-direction:row; align-items:center; gap:8px; }
+.pk-dt-card-title { display:block; flex:none; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; }
+.pk-dt-card-meta { display:flex; flex:none; flex-wrap:nowrap; gap:0 12px; min-width:0;
+  overflow:hidden; line-height:16px; }
+.pk-dt-card-field { display:flex; flex:0 1 auto; gap:4px; min-width:0; overflow:hidden; }
+.pk-dt-card.compact .pk-dt-card-field { display:block; text-overflow:ellipsis; }
+.pk-dt-card-field-label { flex:none; color:var(--dim); font:var(--text-label) var(--mono);
+  letter-spacing:.06em; text-transform:uppercase; }
+.pk-dt-card-field-value { min-width:0; overflow:hidden; text-overflow:ellipsis;
+  color:var(--fg); }
+.pk-dt-card-tags { display:flex; flex:none; flex-wrap:nowrap; gap:4px; height:14px;
+  overflow:hidden; }
+.pk-dt-tag-chip { flex:none; padding:0 4px; background:var(--tag-fill); color:var(--tag-ink);
+  font:var(--text-label) var(--mono); line-height:14px; }
+.pk-dt[data-density="compact"] .pk-dt-card { gap:1px; padding:2px 6px; line-height:16px; }
+.pk-dt[data-density="compact"] .pk-dt-card.compact { gap:6px; }
+.pk-dt[data-density="compact"] .pk-dt-card-meta { line-height:14px; }
+.pk-dt[data-density="compact"] .pk-dt-card-tags { height:12px; }
+.pk-dt[data-density="compact"] .pk-dt-tag-chip { line-height:12px; }
 
-/* === data table: filter, sort, column visibility === */
-.pk-dt { display:flex; flex-direction:column; gap:.3rem; min-height:0; }
-.pk-dt-bar { display:flex; align-items:center; gap:.5rem; }
-.pk-dt-filter { flex:1; min-width:0; background:var(--bg); color:var(--fg);
-  border:1px solid var(--line2); font-family:var(--mono); font-size:12px; padding:.15rem .35rem; }
-.pk-dt-filter:focus-visible { outline:1px solid var(--focus-ring); }
-.pk-dt-count { color:var(--dim); font-size:.7rem; white-space:nowrap; }
-.pk-dt-cols { position:relative; }
-.pk-dt-cols-btn { background:var(--bg); color:var(--dim); border:1px solid var(--line2);
-  font-family:var(--mono); font-size:.7rem; padding:.1rem .4rem; cursor:pointer; white-space:nowrap; }
-.pk-dt-cols-btn:hover, .pk-dt-cols-btn[aria-expanded="true"] { color:var(--fg); border-color:var(--fg); }
-.pk-dt-cols-menu { position:absolute; right:0; top:calc(100% + 2px); z-index:5; min-width:12rem;
-  background:var(--panel); border:1px solid var(--line2); padding:.3rem .5rem;
-  display:flex; flex-direction:column; gap:.15rem; box-shadow:0 6px 18px #0008; }
-.pk-dt-col-opt { display:flex; align-items:center; gap:.3rem; font-size:.72rem; color:var(--fg);
-  white-space:nowrap; cursor:pointer; }
-.pk-dt-wrap { max-height:none; }
-.pk-dt th.pk-dt-sortable { cursor:pointer; user-select:none; }
-.pk-dt th.pk-dt-sortable:hover { color:var(--fg); }
-.pk-dt td.pk-dt-num { text-align:right; font-variant-numeric:tabular-nums; }
+/* === data table (ported from the imp-agent LiveView grid) === */
+/* Data table: one grid, square edges, 1px rules, monospace, theme tokens only.
+   `.pk-dt` fills its panel; `.pk-dt-bar` is the toolbar; `.pk-dt-scroll` scrolls
+   both ways and contains the sticky header row and sticky columns. */
+
+.pk-dt {
+  --dt-row: 26px;
+  --dt-pad: 3px 8px;
+  --dt-head: 24px;
+  --dt-select: 28px;
+  /* Four 13px segments less three 3px overlaps, plus the +N tail's own mark
+     and a little slack — see .pk-dt-col-tags, which budgets the same arithmetic.
+     Grown from 36px with the segments, or the column clips what it contains. */
+  --dt-tag-gutter: 51px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.pk-dt[data-density="compact"] {
+  --dt-row: 20px;
+  --dt-pad: 1px 6px;
+  --dt-head: 20px;
+}
+
+/* The stateful wrapper's root: present in the DOM, absent from layout. */
+
+.pk-dt-host {
+  display: contents;
+}
+
+.pk-dt-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  /* The window's spacers resize under the offset; anchoring would scroll for them. */
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) var(--bg);
+  outline: none;
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────── */
+
+.pk-dt-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 0 0 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-dt-quick {
+  display: flex;
+  flex: 1 1 12ch;
+  min-width: 8ch;
+  margin: 0;
+}
+
+.pk-dt-quick input {
+  width: 100%;
+  min-width: 0;
+}
+
+.pk-dt input,
+.pk-dt select {
+  margin: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  line-height: 1.4;
+  caret-color: var(--accent);
+}
+
+.pk-dt input::placeholder {
+  color: var(--dim);
+}
+
+.pk-dt input:focus-visible,
+.pk-dt select:focus-visible,
+.pk-dt button:focus-visible,
+.pk-dt summary:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.pk-dt input[type="checkbox"] {
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.pk-dt input[type="search"]::-webkit-search-decoration,
+.pk-dt input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+/* === button component (src/widgets/button.rs) === */
+/* Square, 1px object edge, caps with tracking; inverts on hover; a latched
+   toggle (aria-pressed) takes the accent edge, which is selection state. */
+.pk-btn {
+  margin: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--line2);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: none;
+}
+
+.pk-btn.compact {
+  padding: 1px 4px;
+}
+
+.pk-btn:hover {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--inv-fg);
+}
+
+.pk-btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pk-btn:disabled {
+  color: var(--dim);
+  border-color: var(--line);
+  background: var(--bg);
+  cursor: default;
+}
+
+.pk-dt-n {
+  margin-left: 4px;
+  color: var(--accent);
+}
+
+.pk-dt-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.pk-dt-group {
+  margin: 0;
+}
+
+/* Active filters: one removable chip per thing narrowing the rows, so the
+   query is visible without opening the filter row. */
+.pk-dt-active {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pk-dt-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pk-dt-active-label {
+  font: var(--text-label) var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.pk-dt-th.pk-dt-filtered {
+  color: var(--fg);
+}
+
+.pk-dt-filtered-mark {
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.pk-dt-tally {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.pk-dt-faint {
+  color: var(--dim);
+}
+
+/* Menus are <details>: no script to open them, square like everything. */
+
+.pk-dt-menu {
+  position: relative;
+  margin: 0;
+}
+
+.pk-dt-menu > summary {
+  display: inline-block;
+  list-style: none;
+}
+
+.pk-dt-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pk-dt-menu[open] > summary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pk-dt-menu-body {
+  position: absolute;
+  z-index: 5;
+  top: 100%;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 14ch;
+  max-height: 24rem;
+  margin: 1px 0 0;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+}
+
+.pk-dt-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pk-dt-check {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+/* ── The grid ──────────────────────────────────────────────────── */
+
+.pk-dt-grid {
+  width: 100%;
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.pk-dt-col-select {
+  width: var(--dt-select);
+}
+
+.pk-dt-th,
+.pk-dt-td {
+  min-width: 0;
+  padding: var(--dt-pad);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.pk-dt-align-right {
+  text-align: right;
+}
+
+.pk-dt-align-center {
+  text-align: center;
+}
+
+.pk-dt-th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: var(--dt-head);
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: var(--dt-head);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.pk-dt-filters .pk-dt-th {
+  top: var(--dt-head);
+  z-index: 2;
+  height: auto;
+  padding: 2px 4px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.pk-dt-th-select,
+.pk-dt-td-select {
+  width: var(--dt-select);
+  padding-left: 8px;
+  padding-right: 4px;
+}
+
+/* A sticky column keeps its left edge; the select column, when there is
+   one, sits before it, so it sticks one column in. */
+
+.pk-dt-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.pk-dt-th.pk-dt-sticky {
+  z-index: 3;
+}
+
+.pk-dt-sticky-after-select {
+  left: var(--dt-select);
+}
+
+.pk-dt-th-select,
+.pk-dt-td-select {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.pk-dt-th.pk-dt-th-select {
+  z-index: 3;
+}
+
+.pk-dt-th[draggable="true"] {
+  cursor: grab;
+}
+
+.pk-dt-th.pk-dt-dragging {
+  color: var(--dim);
+}
+
+.pk-dt-th.pk-dt-drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.pk-dt-th.pk-dt-drop-after {
+  box-shadow: inset -2px 0 0 var(--accent);
+}
+
+/* The sort control is the header text itself; the mark is blue, the
+   precedence number faint. */
+
+.pk-dt-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  transition: none;
+}
+
+.pk-dt-sort:hover {
+  color: var(--fg);
+  background: transparent;
+}
+
+.pk-dt-th[aria-sort="ascending"],
+.pk-dt-th[aria-sort="descending"] {
+  color: var(--fg);
+}
+
+.pk-dt-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pk-dt-mark {
+  color: var(--fg);
+  font-size: 9px;
+}
+
+.pk-dt-mark:empty {
+  display: none;
+}
+
+.pk-dt-rank {
+  color: var(--dim);
+  font-weight: 400;
+}
+
+.pk-dt-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.pk-dt-resize:hover {
+  box-shadow: inset -1px 0 0 var(--fg);
+}
+
+/* ── Rows ──────────────────────────────────────────────────────── */
+
+.pk-dt tbody tr[data-id] {
+  cursor: default;
+}
+
+.pk-dt tbody tr[data-id][phx-click] {
+  cursor: pointer;
+}
+
+.pk-dt tbody tr[data-id]:hover > .pk-dt-td {
+  background: var(--panel);
+}
+
+.pk-dt tbody tr[data-id]:focus {
+  outline: none;
+}
+
+.pk-dt tbody tr[data-id]:focus-visible > .pk-dt-td {
+  box-shadow: inset 0 1px 0 var(--focus-ring), inset 0 -1px 0 var(--focus-ring);
+}
+
+.pk-dt tbody tr[data-id]:focus-visible > .pk-dt-td:first-child {
+  box-shadow: inset 1px 1px 0 var(--focus-ring), inset 0 -1px 0 var(--focus-ring);
+}
+
+.pk-dt tbody tr[data-id]:focus-visible > .pk-dt-td:last-child {
+  box-shadow: inset -1px 1px 0 var(--focus-ring), inset 0 -1px 0 var(--focus-ring);
+}
+
+/* A selected row is the raised surface with a 1px accent outline: selection
+   is live state. */
+
+.pk-dt tbody tr[aria-selected="true"] > .pk-dt-td {
+  background: var(--panel);
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 1px 0 var(--accent);
+}
+
+.pk-dt tbody tr[aria-selected="true"] > .pk-dt-td:first-child {
+  box-shadow: inset 1px 1px 0 var(--accent);
+}
+
+.pk-dt tbody tr[aria-selected="true"] > .pk-dt-td:last-child {
+  box-shadow: inset -1px 1px 0 var(--accent);
+}
+
+.pk-dt tbody tr[aria-selected="true"]:focus-visible > .pk-dt-td {
+  box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--focus-ring);
+}
+
+/* Virtual mode needs every row the same height; the window arithmetic
+   assumes it. Other tables let a row grow with its cell. */
+
+.pk-dt[data-virtual="true"] tbody tr[data-id] {
+  height: var(--dt-row);
+}
+
+.pk-dt[data-virtual="true"] tbody tr[data-id] > .pk-dt-td {
+  height: var(--dt-row);
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: calc(var(--dt-row) - 1px);
+}
+
+.pk-dt-spacer > td {
+  padding: 0;
+  border: 0;
+}
+
+.pk-dt-group-row > td {
+  padding: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.pk-dt[data-virtual="true"] .pk-dt-group-row {
+  height: var(--dt-row);
+}
+
+.pk-dt-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: var(--dt-pad);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: none;
+}
+
+.pk-dt[data-virtual="true"] .pk-dt-fold {
+  height: var(--dt-row);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.pk-dt-fold:hover {
+  background: transparent;
+  color: var(--fg);
+}
+
+.pk-dt-caret {
+  display: inline-block;
+  width: 1ch;
+  color: var(--dim);
+}
+
+.pk-dt-group-count {
+  color: var(--dim);
+  font-weight: 400;
+}
+
+.pk-dt-footer > td {
+  padding: var(--dt-pad);
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  color: var(--dim);
+  background: var(--panel);
+}
+
+.pk-dt-empty {
+  margin: 0;
+  padding: var(--dt-pad);
+  color: var(--dim);
+}
+
+.pk-dt-empty .pk-btn {
+  margin-left: 8px;
+}
+
+/* ── Filter row controls ───────────────────────────────────────── */
+
+.pk-dt-text,
+.pk-dt-range {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+}
+
+.pk-dt-text input,
+.pk-dt-range input {
+  flex: 1 1 4ch;
+  width: 100%;
+  min-width: 3ch;
+  padding: 0 4px;
+  font-size: 12px;
+}
+
+.pk-dt-range input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.pk-dt-range input::-webkit-outer-spin-button,
+.pk-dt-range input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.pk-dt-enum > summary {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-dt * {
+    transition: none;
+  }
+}
+
+/* A finished row dims its text. */
+.pk-dt tbody tr.pk-dt-muted > .pk-dt-td { color: var(--dim); }
+
+/* ── the row tag ribbon ──────────────────────────────────────────────────
+   Overlapping raked segments down the row's left edge, split by 1px inset seams
+   (no blur or gradient). The gutter is the first cell, so `:first-child` row-state
+   rules land on it. */
+
+.pk-dt-col-tags {
+  /* inset + 4 segments − 3 overlaps = 45px, plus 14px for the +N tail: 59px.
+     The tail is budgeted so a row at the limit does not overflow the column. */
+  width: calc(
+    var(--tag-inset) + var(--tag-seg) * 4 - var(--tag-overlap) * 3 + 14px
+  );
+}
+
+.pk-dt-th-tags,
+/* The column that takes the slack, so a table's leftover width lands where it
+   is wanted instead of being shared out by the fixed algorithm. */
+.pk-dt-col-title {
+  width: auto;
+  min-width: 12rem;
+}
+
+.pk-dt-td-tags {
+  position: relative;
+  padding-left: 0;
+  padding-right: 0;
+  /* .pk-dt-td sets overflow:hidden, which would clip the last segment's
+     --tag-overlap. */
+  overflow: visible;
+}
+
+.pk-dt-ribbon {
+  display: flex;
+  align-items: stretch;
+  /* --dt-pad is the `3px 8px` shorthand, so its block half cannot be
+     multiplied out of a token; the two densities are stated literally,
+     matching --dt-pad at data_table.css:15 and :31. */
+  height: calc(var(--dt-row) - 6px);
+  margin-left: var(--tag-inset);
+}
+
+.pk-dt[data-density="compact"] .pk-dt-ribbon {
+  height: calc(var(--dt-row) - 2px);
+}
+
+.pk-dt-tag {
+  flex: 0 0 var(--tag-seg);
+  width: var(--tag-seg);
+  /* Each layer covers the one before it, which is what makes the stack read
+     as cloth rather than as a row of chips. */
+  margin-right: calc(-1 * var(--tag-overlap));
+  padding: 0;
+  border: 0;
+  border-radius: var(--panel-radius);
+  background: var(--tag-fill);
+  color: var(--tag-ink);
+  font: var(--text-label) var(--mono);
+  line-height: 1;
+  letter-spacing: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  /* The chevron: a whole-pixel rake on the trailing edge. */
+  clip-path: polygon(0 0, 100% 0, calc(100% - var(--tag-rake)) 100%, 0 100%);
+  /* A 1px --bg seam where this layer crosses the one below, and a 1px --line
+     along the bottom as the shadow of the layer above. */
+  box-shadow:
+    inset 1px 0 0 var(--tag-seam),
+    inset 0 -1px 0 var(--tag-rule);
+}
+
+/* One rule per slot: re-order or re-hue the ladder via the :root tokens. */
+.pk-dt-tag-0 { --tag-fill: var(--tag-0); --tag-ink: var(--tag-ink-0); }
+.pk-dt-tag-1 { --tag-fill: var(--tag-1); --tag-ink: var(--tag-ink-1); }
+.pk-dt-tag-2 { --tag-fill: var(--tag-2); --tag-ink: var(--tag-ink-2); }
+.pk-dt-tag-3 { --tag-fill: var(--tag-3); --tag-ink: var(--tag-ink-3); }
+.pk-dt-tag-4 { --tag-fill: var(--tag-4); --tag-ink: var(--tag-ink-4); }
+.pk-dt-tag-5 { --tag-fill: var(--tag-5); --tag-ink: var(--tag-ink-5); }
+.pk-dt-tag-6 { --tag-fill: var(--tag-6); --tag-ink: var(--tag-ink-6); }
+.pk-dt-tag-7 { --tag-fill: var(--tag-7); --tag-ink: var(--tag-ink-7); }
+
+.pk-dt-tag.on {
+  /* In the filter: an --blue ring plus a doubled seam, so "pulled out of the
+     stack" is also a shape change and not only a hue. */
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    inset 0 0 0 3px var(--tag-seam);
+}
+
+/* While a tag filter is on, the segments it does not name drop to outlines,
+   so the filtering ones are the only filled shapes in the gutter. */
+.pk-dt[data-tag-filter="true"] .pk-dt-tag:not(.on):not(.pk-dt-tag-tail) {
+  background: var(--bg);
+  color: var(--tag-fill);
+  box-shadow: inset 0 0 0 1px var(--tag-fill);
+}
+
+.pk-dt-tag:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* The +N tail carries the row's hidden tag count: a number, not a colour, so
+   it identifies the row at the flat tier too. */
+.pk-dt-tag-tail {
+  --tag-fill: var(--panel);
+  --tag-ink: var(--dim);
+  position: relative;
+  flex: 0 0 auto;
+  margin-right: 0;
+  clip-path: none;
+  width: auto;
+  min-width: 13px;
+  padding: 0 2px;
+  border: 1px solid var(--line);
+}
+
+/* The flat tier: below 3px a segment cannot hold a letter, so overlap and
+   rake go and the ribbon degenerates to flat stripes. */
+.pk-dt[data-tags-mode="flat"] .pk-dt-tag,
+.pk-dt[data-tags-mode="tight"] .pk-dt-tag {
+  clip-path: none;
+}
+
+.pk-dt[data-tags-mode="flat"] .pk-dt-tag {
+  margin-right: 1px;
+  box-shadow: none;
+  width: 3px;
+}
+
+.pk-dt[data-tags-mode="flat"] .pk-dt-tag-letter {
+  display: none;
+}
+
+/* The priority flag: only the first tag is drawn. The +N tail stays — its
+   count is a number, and at this tier it is one of the few channels left. */
+.pk-dt[data-tags-mode="flag"] .pk-dt-tag:not(:first-child):not(.pk-dt-tag-tail) {
+  display: none;
+}
+
+/* The same tiers by available width: a table with no `data-tags-mode` still
+   degrades, because the scroller is the ribbon's containing block. */
+.pk-dt-scroll {
+  container-type: inline-size;
+  container-name: dt-ribbon;
+}
+
+@container dt-ribbon (max-width: 34rem) {
+  /* Once the table is wider than the frame, `table-layout: fixed` gives an
+     auto column whatever is left, which is nothing. The title declares a width
+     again here so it keeps its text and the frame scrolls instead. */
+  .pk-dt-col-title {
+    width: 18rem;
+  }
+
+  .pk-dt-tag {
+    clip-path: none;
+    margin-right: 1px;
+    box-shadow: none;
+    width: 3px;
+  }
+
+  .pk-dt-tag-letter {
+    display: none;
+  }
+
+  .pk-dt-tag-tail {
+    width: auto;
+    min-width: 13px;
+    clip-path: none;
+    margin-right: 0;
+  }
+}
+
+@container dt-ribbon (max-width: 22rem) {
+  .pk-dt-tag:not(:first-child):not(.pk-dt-tag-tail) {
+    display: none;
+  }
+}
+
+/* The cursor-row expansion spells the tags out in place of the ribbon, so any
+   single row can be read without colour, hover or the legend. */
+.pk-dt-tag-expanded {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: calc(var(--dt-row) - 6px);
+  margin-left: var(--tag-inset);
+  font: var(--text-label) var(--mono);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.pk-dt[data-density="compact"] .pk-dt-tag-expanded {
+  height: calc(var(--dt-row) - 2px);
+}
+
+/* Sticky columns must clear the gutter as well as the select column: with a
+   tags gutter the first cell is the ribbon, not the select checkbox. */
+.pk-dt[data-tags="true"] .pk-dt-td-tags .pk-dt-sticky,
+.pk-dt[data-tags="true"] .pk-dt-th-tags .pk-dt-sticky {
+  left: var(--dt-tag-gutter);
+}
+
+.pk-dt[data-tags="true"][data-selectable="multi"] .pk-dt-sticky-after-select {
+  left: calc(var(--dt-select) + var(--dt-tag-gutter));
+}
+
+.pk-dt[data-tags="true"]:not([data-selectable="multi"]) .pk-dt-sticky-after-select {
+  left: var(--dt-tag-gutter);
+}
 
 /* === host-owned dock policy controls === */
 .dock-extras { display:flex; align-items:center; margin-left:auto; }

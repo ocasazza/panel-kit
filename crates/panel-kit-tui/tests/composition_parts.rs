@@ -76,6 +76,44 @@ fn tui_panel_title_and_traffic_lights_do_not_collide() {
         (0..buffer.area.height).map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol()).collect::<String>()).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn unicode_chrome_is_square_like_the_web_chrome() {
+    let (snapshot, catalog) = fixed_snapshot(Mode::Floating);
+    let mut scratch = ProjectionBuffer::with_panel_capacity(snapshot.panels.len());
+    let projected = project_cells(&snapshot, &mut scratch);
+    let panel = projected
+        .panels
+        .iter()
+        .find(|panel| panel.key == TestPanel::Alpha)
+        .copied()
+        .expect("alpha projects");
+    let meta = catalog.get(panel.key).expect("alpha metadata exists");
+    let mut hit_buffer = TuiHitBuffer::with_capacity(1, 0);
+    let theme = ResolvedTuiTheme::default();
+
+    let buffer = render_to_buffer(80, 24, |frame| {
+        widgets::panel::draw_panel_surface(frame, panel, &theme, Charset::Unicode, &mut hit_buffer);
+        widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, Charset::Unicode, &mut hit_buffer);
+        widgets::panel::draw_traffic_lights(frame, panel, projected.mode, None, &theme, Charset::Unicode, &mut hit_buffer);
+    });
+
+    let outer = rect_from_region(panel.chrome.outer);
+    let corners = [
+        buffer[(outer.left(), outer.top())].symbol(),
+        buffer[(outer.right() - 1, outer.top())].symbol(),
+        buffer[(outer.left(), outer.bottom() - 1)].symbol(),
+        buffer[(outer.right() - 1, outer.bottom() - 1)].symbol(),
+    ];
+    assert_eq!(corners, ["┌", "┐", "└", "┘"]);
+    let cells: Vec<&str> = (0..buffer.area.height)
+        .flat_map(|y| (0..buffer.area.width).map(move |x| (x, y)))
+        .map(|at| buffer[at].symbol())
+        .collect();
+    let lights = cells.iter().filter(|cell| **cell == "■").count();
+    assert!(lights > 0, "the lights draw as squares");
+    assert!(!cells.iter().any(|cell| ["●", "◉", "╭", "╮"].contains(cell)));
+}
 #[test]
 fn tui_panel_resize_grip_aligns_with_bottom_right_border() {
     let (snapshot, catalog) = fixed_snapshot(Mode::Floating);

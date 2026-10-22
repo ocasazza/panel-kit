@@ -8,7 +8,9 @@
 use dioxus::prelude::*;
 
 use panel_kit_core::badge::display_label;
-pub use panel_kit_core::badge::{tag_hue, BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec, Rgb};
+pub use panel_kit_core::badge::{
+    tag_hue, BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec, BadgeTone, BadgeVariant, Rgb,
+};
 use panel_kit_core::widgets::badge::{perceived_brightness, tint_over};
 
 fn kind_class(kind: &BadgeKind) -> &'static str {
@@ -37,6 +39,13 @@ fn class_for(spec: &BadgeSpec) -> String {
     let mut class = format!("badge {}", kind_class(&spec.kind));
     if spec.active {
         class.push_str(" active");
+    }
+    if let Some(tone) = spec.tone {
+        class.push_str(&format!(
+            " badge-chip badge-tone-{} badge-variant-{}",
+            tone.as_str(),
+            spec.variant.as_str()
+        ));
     }
     if spec.small {
         class.push_str(" small");

@@ -431,6 +431,10 @@
             ${workspace-spec-tui-native}/bin/workspace --check-offscreen
             touch "$out"
           '';
+          topos-tui-native-offscreen = pkgs.runCommand "panel-kit-topos-tui-native-check" { } ''
+            ${topos-tui-native}/bin/topos --check-offscreen
+            touch "$out"
+          '';
           # Docs must build clean (missing_docs is warn-level in lib.rs;
           # -D warnings promotes it + broken intra-doc links to errors).
           doc = wasmCraneLib.cargoDoc (commonArgs // {

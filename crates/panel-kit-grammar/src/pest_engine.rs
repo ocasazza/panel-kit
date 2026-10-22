@@ -11,6 +11,7 @@ use pest_meta::ast::RuleType;
 use pest_vm::Vm;
 
 use crate::error::GrammarError;
+use crate::emitter::CompiledTemplate;
 use crate::site::{Morphism, Site, Object};
 use crate::package::{CaptureRules, Limits, PestSpec};
 
@@ -19,6 +20,7 @@ pub struct CompiledPest {
     vm: Vm,
     root_rule: String,
     captures: CaptureRules,
+    line_records: bool,
 }
 
 /// Compile and validate a pest grammar: optimize it, check the root and
@@ -37,6 +39,7 @@ pub fn compile(spec: &PestSpec, grammar_bytes: usize) -> Result<CompiledPest, Gr
         vm: Vm::new(optimized),
         root_rule: spec.root_rule.clone(),
         captures: spec.captures.clone(),
+        line_records: spec.line_records,
     })
 }
 
@@ -89,34 +92,14 @@ fn bound_rule(role: &'static str, name: &str, rules: &HashMap<&str, RuleType>) -
 }
 
 impl CompiledPest {
+    /// Whether the package declares the root rule a sequence of line records.
+    pub fn line_records(&self) -> bool {
+        self.line_records
+    }
+
     /// Parse input under the root rule and map its captures to a site.
     pub fn parse(&self, input: &str, limits: &Limits) -> Result<Site, GrammarError> {
-        let root_rule = self.root_rule.as_str();
-        let mut pairs = self.vm.parse(root_rule, input).map_err(|error| GrammarError::Parse {
-            rule: root_rule.to_owned(),
-            message: error.to_string(),
-        })?;
-        let root = pairs.next().ok_or_else(|| GrammarError::Parse {
-            rule: root_rule.to_owned(),
-            message: "parser returned no root capture".to_owned(),
-        })?;
-        if root.as_rule() != root_rule {
-            return Err(GrammarError::Parse {
-                rule: root_rule.to_owned(),
-                message: format!("parser returned unexpected top-level rule '{}'", root.as_rule()),
-            });
-        }
-        let span = root.as_span();
-        if span.start() != 0 || span.end() != input.len() {
-            return Err(GrammarError::PartialParse {
-                rule: root_rule.to_owned(),
-                matched: span.end().saturating_sub(span.start()),
-                total: input.len(),
-            });
-        }
-
-        let mut mapped = Mapped::default();
-        self.collect(root, &mut mapped, limits)?;
+        let mapped = self.map(input, limits, (0, 0))?;
 
         for edge in &mapped.edges {
             let source = mapped.ids.contains(&edge.domain);
@@ -142,12 +125,90 @@ impl CompiledPest {
         })
     }
 
+    /// The records `suffix` adds to `site`, mapped apart from the input `site` was parsed from.
+    /// `None` when that cannot be shown to equal parsing both together: the package does not
+    /// declare `line_records`, `suffix` is not a record sequence, an object reuses an id, or an
+    /// edge names an object neither side holds.
+    pub fn extension(&self, site: &Site, suffix: &str, limits: &Limits) -> Option<Mapped> {
+        if !self.line_records {
+            return None;
+        }
+        let mapped = self.map(suffix, limits, (site.objects.len(), site.morphisms.len())).ok()?;
+        let held: HashSet<&str> = site.objects.iter().map(|object| object.id.as_str()).collect();
+        let known = |id: &String| held.contains(id.as_str()) || mapped.ids.contains(id);
+        let fresh = mapped.nodes.iter().all(|node| !held.contains(node.id.as_str()));
+        let resolved = mapped.edges.iter().all(|edge| known(&edge.domain) && known(&edge.codomain));
+        (fresh && resolved).then_some(mapped)
+    }
+
+    /// Reject a `line_records` declaration the grammar visibly contradicts. Empty input must be
+    /// the empty site; when the package can emit, two emitted lines must parse to their two
+    /// objects with or without the last newline, and the second must extend the first's site.
+    pub fn check_line_records(&self, template: Option<&CompiledTemplate>, limits: &Limits) -> Result<(), GrammarError> {
+        let refuse = |detail: String| GrammarError::NotLineRecords(detail);
+        match self.parse("", limits) {
+            Ok(site) if site.objects.is_empty() && site.morphisms.is_empty() => {}
+            Ok(_) => return Err(refuse("empty input does not parse to the empty site".to_owned())),
+            Err(error) => return Err(refuse(format!("empty input does not parse: {error}"))),
+        }
+        let Some(template) = template else {
+            return Ok(());
+        };
+        let (first, second) = (probe_object(1), probe_object(2));
+        let line = |objects: &[&Object]| String::from_utf8(template.emit(objects)).expect("a template renders UTF-8");
+        let both = line(&[&first, &second]);
+        for text in [both.as_str(), both.trim_end()] {
+            match self.parse(text, limits) {
+                Ok(site) if site.objects == [first.clone(), second.clone()] && site.morphisms.is_empty() => {}
+                Ok(_) => return Err(refuse(format!("emitted lines '{}' do not parse to their two objects", text.trim_end()))),
+                Err(error) => return Err(refuse(format!("emitted lines '{}' do not parse: {error}", text.trim_end()))),
+            }
+        }
+        let site = Site { objects: vec![first], morphisms: Vec::new() };
+        match self.extension(&site, &line(&[&second]), limits) {
+            Some(added) if added.nodes == [second] && added.edges.is_empty() => Ok(()),
+            _ => Err(refuse("a second emitted line does not extend the site of the first".to_owned())),
+        }
+    }
+
+    /// Parse input under the root rule into records, without resolving edge endpoints. `held` is
+    /// the node and edge count of the site this input continues; it counts toward the limits.
+    fn map(&self, input: &str, limits: &Limits, held: (usize, usize)) -> Result<Mapped, GrammarError> {
+        let root_rule = self.root_rule.as_str();
+        let mut pairs = self.vm.parse(root_rule, input).map_err(|error| GrammarError::Parse {
+            rule: root_rule.to_owned(),
+            message: error.to_string(),
+        })?;
+        let root = pairs.next().ok_or_else(|| GrammarError::Parse {
+            rule: root_rule.to_owned(),
+            message: "parser returned no root capture".to_owned(),
+        })?;
+        if root.as_rule() != root_rule {
+            return Err(GrammarError::Parse {
+                rule: root_rule.to_owned(),
+                message: format!("parser returned unexpected top-level rule '{}'", root.as_rule()),
+            });
+        }
+        let span = root.as_span();
+        if span.start() != 0 || span.end() != input.len() {
+            return Err(GrammarError::PartialParse {
+                rule: root_rule.to_owned(),
+                matched: span.end().saturating_sub(span.start()),
+                total: input.len(),
+            });
+        }
+
+        let mut mapped = Mapped { held, ..Mapped::default() };
+        self.collect(root, &mut mapped, limits)?;
+        Ok(mapped)
+    }
+
     fn collect<'a>(&self, pair: Pair<'a, &'a str>, mapped: &mut Mapped, limits: &Limits) -> Result<(), GrammarError> {
         let rule = pair.as_rule();
         let captures = &self.captures;
 
         if rule == captures.node {
-            let count = mapped.nodes.len() + 1;
+            let count = mapped.held.0 + mapped.nodes.len() + 1;
             if count > limits.nodes {
                 return Err(GrammarError::RecordLimit {
                     kind: "nodes",
@@ -164,7 +225,7 @@ impl CompiledPest {
         }
 
         if rule == captures.edge {
-            let count = mapped.edges.len() + 1;
+            let count = mapped.held.1 + mapped.edges.len() + 1;
             if count > limits.edges {
                 return Err(GrammarError::RecordLimit {
                     kind: "edges",
@@ -183,11 +244,25 @@ impl CompiledPest {
     }
 }
 
+/// The records of one input, with edge endpoints not yet resolved.
 #[derive(Default)]
-struct Mapped {
-    nodes: Vec<Object>,
-    edges: Vec<Morphism>,
+pub struct Mapped {
+    pub nodes: Vec<Object>,
+    pub edges: Vec<Morphism>,
     ids: HashSet<String>,
+    /// Node and edge count of the site this input continues.
+    held: (usize, usize),
+}
+
+/// The `n`th object `check_line_records` writes through a template.
+fn probe_object(n: u8) -> Object {
+    Object {
+        id: format!("x{n}"),
+        title: format!("t{n}"),
+        kind: format!("k{n}"),
+        tags: vec![format!("a{n}"), format!("b{n}")],
+        fields: std::collections::BTreeMap::from([("f1".to_owned(), format!("v{n}")), ("f2".to_owned(), format!("w{n}"))]),
+    }
 }
 
 fn map_node<'a>(pair: Pair<'a, &'a str>, captures: &CaptureRules) -> Result<Object, GrammarError> {

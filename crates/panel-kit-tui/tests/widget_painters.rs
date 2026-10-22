@@ -14,6 +14,7 @@ use panel_kit_core::widgets::data_table::TableState;
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
 };
+use panel_kit_core::widgets::data_table::ColumnKind;
 use panel_kit_tui::scroll::PanelScroll;
 use panel_kit_tui::{badge, charts, meter, status, table, ResolvedTuiTheme};
 use ratatui::backend::TestBackend;
@@ -123,6 +124,40 @@ fn canary_node_table_is_buffer_identical_after_core_model_switch() {
 }
 
 #[test]
+fn a_columns_declared_alignment_is_painted_whatever_its_kind() {
+    let theme = ResolvedTuiTheme::default();
+    let column = |key: &str, kind, align| TableColumn {
+        key: key.into(),
+        title: key.into(),
+        width: ColumnWidth::Fixed { value: 8 },
+        align,
+        kind,
+    };
+    let columns = vec![
+        column("name", ColumnKind::Text, TextAlign::Left),
+        column("count", ColumnKind::Number, TextAlign::Right),
+        column("plain", ColumnKind::Number, TextAlign::Left),
+    ];
+    let rows = [TableRow {
+        id: "r1".into(),
+        tags: Vec::new(),
+        cells: vec![TableCell::Text("ab".into()), TableCell::Text("42".into()), TableCell::Text("7".into())],
+    }];
+    let view = TableView { columns: &columns, rows: &rows.iter().collect::<Vec<_>>() };
+    let area = Rect::new(0, 0, 26, 2);
+
+    let mut panels = test_registry();
+    let buffer = render_to_buffer_size(26, 2, |frame| {
+        table::table(frame, area, &theme, &TestKey::One, &mut panels, view, &TableState::default());
+    });
+    let line = |y| (0..26).map(|x| buffer[(x, y)].symbol().to_owned()).collect::<String>();
+
+    // A number declared left stays left; one declared right is flush right.
+    assert_eq!(line(0), format!("{:<8} {:>8} {:<8}", "name", "count", "plain"));
+    assert_eq!(line(1), format!("{:<8} {:>8} {:<8}", "ab", "42", "7"));
+}
+
+#[test]
 fn canary_provider_widgets_are_buffer_identical_after_core_model_switch() {
     let core_model_buffer = render_core_canary_provider_buffer();
     let legacy_buffer = render_legacy_canary_provider_buffer();
@@ -143,21 +178,24 @@ fn widget_painters_render_core_models_to_test_backend() {
             title: "node".into(),
             width: ColumnWidth::Fixed { value: 12 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
         TableColumn {
             key: "load".into(),
             title: "load".into(),
             width: ColumnWidth::Fixed { value: 10 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
         TableColumn {
             key: "detail".into(),
             title: "detail".into(),
             width: ColumnWidth::Flex { weight: 1 },
             align: TextAlign::Left,
+            kind: ColumnKind::Text,
         },
     ];
-    let rows = vec![TableRow {
+    let rows = [TableRow {
         id: "r1".into(),
         tags: Vec::new(),
         cells: vec![

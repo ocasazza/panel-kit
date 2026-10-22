@@ -52,13 +52,14 @@ gloo-storage = { version = "0.3", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }
-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "Event", "EventTarget", "HtmlElement", "MediaQueryList", "Node", "NodeList", "PointerEvent", "ResizeObserver", "ResizeObserverEntry", "Selection", "Storage", "console"], optional = true }
+web-sys = { version = "0.3", features = ["Blob", "BlobPropertyBag", "Clipboard", "DomRect", "Document", "Element", "Event", "EventTarget", "FocusEvent", "FocusOptions", "HtmlAnchorElement", "HtmlElement", "MediaQueryList", "Navigator", "Node", "NodeList", "PointerEvent", "ResizeObserver", "ResizeObserverEntry", "ScrollIntoViewOptions", "ScrollLogicalPosition", "Selection", "Storage", "Url", "Window", "console"], optional = true }
 
 [dev-dependencies]
 # Headless markup rendering for the loading components' contract tests
 # (src/loading.rs): assertions run against real rendered HTML, not rsx
 # source text.
 dioxus-ssr = "0.6"
+rstest = "0.25"
 # Poisoning-free test serialization lock (src/loading.rs drive harness).
 parking_lot = "0.12"
 # Fake-async delays in the loading example's hydration arc demo.
@@ -80,6 +81,11 @@ inherits = "dev"
 
 [profile.android-dev]
 inherits = "dev"
+
+# Optimised wasm for timing the demos; dx's bundled wasm-opt rejects current
+# rustc output, so this goes through dx's non-release path.
+[profile.wasm-perf]
+inherits = "release"
 
 [patch.crates-io]
 beamterm-renderer = { path = "crates/beamterm-renderer" }
