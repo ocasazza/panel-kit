@@ -59,11 +59,13 @@ pub(super) fn reference_spec_value() -> Value {
         "glyphs": "unicode",
         "theme": {
             "colors": {
-                "bg": "#0a0a0a", "panel": "#0d0d0d", "fg": "#ededed", "dim": "#7a7a7a",
-                "line": "#262626", "line2": "#5f5f5f", "inverse_bg": "#ededed",
-                "inverse_fg": "#0a0a0a", "accent": "#5ef38c", "red": "#ff5f56",
-                "yellow": "#ffbd2e", "green": "#27c93f", "blue": "#3b9bff",
-                "pink": "#ff5fc3", "badge_info": "#83b7cc", "focus_ring": "#ededed"
+                "background": "#0a0a0a", "surface": "#0d0d0d", "text": "#ededed",
+                "text_muted": "#7a7a7a", "divider": "#262626", "border": "#5f5f5f",
+                "inverse_background": "#ededed", "inverse_text": "#0a0a0a",
+                "focus_ring": "#ededed", "primary": "#3b9bff", "secondary": "#ff5fc3",
+                "tertiary": "#ffbd2e", "highlight": "#5ef38c", "success": "#27c93f",
+                "failure": "#ff5f56", "error": "#ff5f56", "warning": "#ffbd2e",
+                "info": "#83b7cc"
             },
             "typography": {
                 "family": "ui-monospace", "body_size": 13.0, "body_line_height": 1.5,

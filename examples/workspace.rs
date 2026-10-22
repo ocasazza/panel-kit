@@ -21,19 +21,19 @@ mod spec_workspace;
 const SPEC_JSON: &str = include_str!(env!("PANEL_KIT_WORKSPACE_SPEC"));
 
 const DEMO_CSS: &str = "
-.topbar button { background: var(--bg); color: var(--fg); border: 1px solid var(--line2);
+.topbar button { background: var(--color-background); color: var(--color-text); border: 1px solid var(--color-border);
   border-radius: 3px; padding: .15rem .5rem; font-size: .72rem; cursor: pointer; }
-.topbar button:hover { border-color: var(--fg); }
-.topbar .coverage { color: var(--dim); font-size: .68rem; }
+.topbar button:hover { border-color: var(--color-text); }
+.topbar .coverage { color: var(--color-text-muted); font-size: .68rem; }
 .pk-custom-card { display: grid; gap: .35rem; align-content: start; height: 100%; }
 .pk-custom-card h2 { margin: 0; font-size: .85rem; letter-spacing: .08em; text-transform: uppercase; }
-.pk-custom-card p { margin: 0; color: var(--dim); }
-.pk-editor { width: 100%; min-height: 10rem; height: 75%; background: var(--bg); color: var(--fg);
-  border: 1px solid var(--line2); border-radius: 3px; font-family: var(--mono);
+.pk-custom-card p { margin: 0; color: var(--color-text-muted); }
+.pk-editor { width: 100%; min-height: 10rem; height: 75%; background: var(--color-background); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: 3px; font-family: var(--mono);
   font-size: .78rem; padding: .4rem; resize: none; }
 .spec-list { margin: .25rem 0; padding-left: 1.1rem; }
-.spec-list li { color: var(--dim); }
-.too-small { display: grid; place-items: center; height: 100%; color: var(--yellow); }
+.spec-list li { color: var(--color-text-muted); }
+.too-small { display: grid; place-items: center; height: 100%; color: var(--color-warning); }
 ";
 
 fn main() {

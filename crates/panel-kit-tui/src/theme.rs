@@ -13,43 +13,48 @@ pub use disposition::{TuiDensityTheme, TuiThemeDisposition, TuiTypographyTheme};
 
 /// The chrome palette resolved for ratatui painters.
 ///
-/// Field names match the CSS variables in `assets/panel-kit.css`
-/// (`--bg`, `--focus-ring`, …) so parity checks can walk the same
-/// [`ThemeColor`] slots for web and terminal consumers.
+/// Field names are the snake_case form of the `--color-<role>` CSS variables
+/// in `assets/panel-kit.css` (`--color-text-muted`, `--color-focus-ring`, …) so
+/// parity checks can walk the same [`ThemeColor`] slots for web and terminal
+/// consumers.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ResolvedTuiTheme {
-    /// Page background (`--bg`).
-    pub bg: Color,
-    /// Panel background (`--panel`).
-    pub panel: Color,
-    /// Foreground text (`--fg`).
-    pub fg: Color,
-    /// De-emphasized text (`--dim`).
-    pub dim: Color,
-    /// Hairline borders (`--line`).
-    pub line: Color,
-    /// Stronger borders (`--line2`).
-    pub line2: Color,
-    /// Inverted background (`--inv-bg`).
-    pub inverse_bg: Color,
-    /// Inverted foreground (`--inv-fg`).
-    pub inverse_fg: Color,
-    /// Accent (`--accent`).
-    pub accent: Color,
-    /// Errors / unresolved (`--red`).
-    pub red: Color,
-    /// Minimize light (`--yellow`).
-    pub yellow: Color,
-    /// Success / URLs (`--green`).
-    pub green: Color,
-    /// Mode light (`--blue`).
-    pub blue: Color,
-    /// Maximize light (`--pink`).
-    pub pink: Color,
-    /// Informational badges (`--badge-info`).
-    pub badge_info: Color,
-    /// Keyboard focus indicator (`--focus-ring`).
+    /// Page background (`--color-background`).
+    pub background: Color,
+    /// Panel background (`--color-surface`).
+    pub surface: Color,
+    /// Primary text (`--color-text`).
+    pub text: Color,
+    /// De-emphasized text (`--color-text-muted`).
+    pub text_muted: Color,
+    /// Hairline dividers (`--color-divider`).
+    pub divider: Color,
+    /// Stronger borders (`--color-border`).
+    pub border: Color,
+    /// Inverted background (`--color-inverse-background`).
+    pub inverse_background: Color,
+    /// Inverted text (`--color-inverse-text`).
+    pub inverse_text: Color,
+    /// Keyboard focus indicator (`--color-focus-ring`).
     pub focus_ring: Color,
+    /// Primary brand colour / mode light (`--color-primary`).
+    pub primary: Color,
+    /// Secondary colour / maximize light (`--color-secondary`).
+    pub secondary: Color,
+    /// Tertiary colour / minimize light (`--color-tertiary`).
+    pub tertiary: Color,
+    /// Live-state highlight (`--color-highlight`).
+    pub highlight: Color,
+    /// Success / URLs (`--color-success`).
+    pub success: Color,
+    /// Failed checks and verdicts (`--color-failure`).
+    pub failure: Color,
+    /// Errors / unresolved (`--color-error`).
+    pub error: Color,
+    /// Warnings and thresholds (`--color-warning`).
+    pub warning: Color,
+    /// Informational badges (`--color-info`).
+    pub info: Color,
     /// How terminal rendering handles each typography token.
     pub typography: TuiTypographyTheme,
     /// How terminal rendering handles each density token.
@@ -60,22 +65,24 @@ impl ResolvedTuiTheme {
     /// Convert shared theme tokens into ratatui colours and token dispositions.
     pub fn from_tokens(tokens: &ThemeTokens) -> Self {
         Self {
-            bg: rgb(tokens.colors.bg),
-            panel: rgb(tokens.colors.panel),
-            fg: rgb(tokens.colors.fg),
-            dim: rgb(tokens.colors.dim),
-            line: rgb(tokens.colors.line),
-            line2: rgb(tokens.colors.line2),
-            inverse_bg: rgb(tokens.colors.inverse_bg),
-            inverse_fg: rgb(tokens.colors.inverse_fg),
-            accent: rgb(tokens.colors.accent),
-            red: rgb(tokens.colors.red),
-            yellow: rgb(tokens.colors.yellow),
-            green: rgb(tokens.colors.green),
-            blue: rgb(tokens.colors.blue),
-            pink: rgb(tokens.colors.pink),
-            badge_info: rgb(tokens.colors.badge_info),
+            background: rgb(tokens.colors.background),
+            surface: rgb(tokens.colors.surface),
+            text: rgb(tokens.colors.text),
+            text_muted: rgb(tokens.colors.text_muted),
+            divider: rgb(tokens.colors.divider),
+            border: rgb(tokens.colors.border),
+            inverse_background: rgb(tokens.colors.inverse_background),
+            inverse_text: rgb(tokens.colors.inverse_text),
             focus_ring: rgb(tokens.colors.focus_ring),
+            primary: rgb(tokens.colors.primary),
+            secondary: rgb(tokens.colors.secondary),
+            tertiary: rgb(tokens.colors.tertiary),
+            highlight: rgb(tokens.colors.highlight),
+            success: rgb(tokens.colors.success),
+            failure: rgb(tokens.colors.failure),
+            error: rgb(tokens.colors.error),
+            warning: rgb(tokens.colors.warning),
+            info: rgb(tokens.colors.info),
             typography: TuiTypographyTheme::approximated(),
             density: TuiDensityTheme::approximated(),
         }
@@ -84,22 +91,24 @@ impl ResolvedTuiTheme {
     /// Resolve one semantic colour slot to its ratatui colour.
     pub fn color(&self, slot: ThemeColor) -> Color {
         match slot {
-            ThemeColor::Bg => self.bg,
-            ThemeColor::Panel => self.panel,
-            ThemeColor::Fg => self.fg,
-            ThemeColor::Dim => self.dim,
-            ThemeColor::Line => self.line,
-            ThemeColor::Line2 => self.line2,
-            ThemeColor::InverseBg => self.inverse_bg,
-            ThemeColor::InverseFg => self.inverse_fg,
-            ThemeColor::Accent => self.accent,
-            ThemeColor::Red => self.red,
-            ThemeColor::Yellow => self.yellow,
-            ThemeColor::Green => self.green,
-            ThemeColor::Blue => self.blue,
-            ThemeColor::Pink => self.pink,
-            ThemeColor::BadgeInfo => self.badge_info,
+            ThemeColor::Background => self.background,
+            ThemeColor::Surface => self.surface,
+            ThemeColor::Text => self.text,
+            ThemeColor::TextMuted => self.text_muted,
+            ThemeColor::Divider => self.divider,
+            ThemeColor::Border => self.border,
+            ThemeColor::InverseBackground => self.inverse_background,
+            ThemeColor::InverseText => self.inverse_text,
             ThemeColor::FocusRing => self.focus_ring,
+            ThemeColor::Primary => self.primary,
+            ThemeColor::Secondary => self.secondary,
+            ThemeColor::Tertiary => self.tertiary,
+            ThemeColor::Highlight => self.highlight,
+            ThemeColor::Success => self.success,
+            ThemeColor::Failure => self.failure,
+            ThemeColor::Error => self.error,
+            ThemeColor::Warning => self.warning,
+            ThemeColor::Info => self.info,
         }
     }
 

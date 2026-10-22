@@ -18,10 +18,10 @@ body { overflow: auto !important; }
 .demo { padding: 1rem; max-width: 720px; margin: 0 auto; }
 .demo h1 { font-size: 1rem; }
 .row { display: flex; align-items: center; gap: 1rem; margin: .8rem 0;
-  border: 1px solid var(--line); border-radius: 4px; background: var(--panel);
+  border: 1px solid var(--color-divider); border-radius: 4px; background: var(--color-surface);
   padding: .6rem .8rem; }
-.row .k { color: var(--dim); font-size: .72rem; width: 16rem; flex: none; }
-.demo input { background: var(--bg); color: var(--fg); border: 1px solid var(--line2);
+.row .k { color: var(--color-text-muted); font-size: .72rem; width: 16rem; flex: none; }
+.demo input { background: var(--color-background); color: var(--color-text); border: 1px solid var(--color-border);
   border-radius: 3px; font-family: var(--mono); font-size: .78rem; padding: .3rem .5rem; }
 ";
 

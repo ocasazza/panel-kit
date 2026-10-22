@@ -11,7 +11,7 @@ text div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-plot
 node div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-plot > span.pk-chart-scale pk-chart-scale-min class="pk-chart-scale pk-chart-scale-min"
 text div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-plot > span.pk-chart-scale pk-chart-scale-min => 1 ms
 node div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-plot > svg.pk-chart-svg class="pk-chart-svg" viewBox="0 0 320 140" preserveAspectRatio="none"
-node div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-plot > svg.pk-chart-svg > polyline.pk-chart-line class="pk-chart-line" points="0.00,140.00 160.00,0.00 320.00,84.00" fill="none" stroke="var(--fg)" stroke-width="1.5" vector-effect="non-scaling-stroke"
+node div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-plot > svg.pk-chart-svg > polyline.pk-chart-line class="pk-chart-line" points="0.00,140.00 160.00,0.00 320.00,84.00" fill="none" stroke="var(--color-text)" stroke-width="1.5" vector-effect="non-scaling-stroke"
 node div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-xaxis class="pk-chart-xaxis" aria-hidden="true"
 node div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-xaxis > span
 text div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-xaxis > span => 0
@@ -19,7 +19,7 @@ node div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-xaxi
 text div.snapshot > figure.pk-widget pk-chart pk-time-series > div.pk-chart-xaxis > span => 2
 node div.snapshot > figure.pk-widget pk-chart pk-time-series > ul.pk-chart-legend class="pk-chart-legend" role="list" aria-label="series legend"
 node div.snapshot > figure.pk-widget pk-chart pk-time-series > ul.pk-chart-legend > li.pk-chart-legend-item class="pk-chart-legend-item" aria-label="series latency"
-node div.snapshot > figure.pk-widget pk-chart pk-time-series > ul.pk-chart-legend > li.pk-chart-legend-item > span.pk-chart-swatch class="pk-chart-swatch" aria-hidden="true" style="background:var(--fg);"
+node div.snapshot > figure.pk-widget pk-chart pk-time-series > ul.pk-chart-legend > li.pk-chart-legend-item > span.pk-chart-swatch class="pk-chart-swatch" aria-hidden="true" style="background:var(--color-text);"
 node div.snapshot > figure.pk-widget pk-chart pk-time-series > ul.pk-chart-legend > li.pk-chart-legend-item > span.pk-chart-legend-name class="pk-chart-legend-name"
 text div.snapshot > figure.pk-widget pk-chart pk-time-series > ul.pk-chart-legend > li.pk-chart-legend-item > span.pk-chart-legend-name => latency
 node div.snapshot > figure.pk-widget pk-chart pk-time-series > ul.pk-chart-data pk-visually-hidden class="pk-chart-data pk-visually-hidden"
@@ -43,7 +43,7 @@ node div.snapshot > figure.pk-widget pk-chart pk-boxplot class="pk-widget pk-cha
 node div.snapshot > figure.pk-widget pk-chart pk-boxplot > figcaption
 text div.snapshot > figure.pk-widget pk-chart pk-boxplot > figcaption => Distribution
 node div.snapshot > figure.pk-widget pk-chart pk-boxplot > ul.pk-box-list class="pk-box-list" role="list" aria-label="boxplot chart: 1 distributions"
-node div.snapshot > figure.pk-widget pk-chart pk-boxplot > ul.pk-box-list > li.pk-box-item class="pk-box-item" style="--box-min:0.000%;--box-q1:25.000%;--box-median:50.000%;--box-q3:75.000%;--box-max:100.000%;--box-c:var(--fg);"
+node div.snapshot > figure.pk-widget pk-chart pk-boxplot > ul.pk-box-list > li.pk-box-item class="pk-box-item" style="--box-min:0.000%;--box-q1:25.000%;--box-median:50.000%;--box-q3:75.000%;--box-max:100.000%;--box-c:var(--color-text);"
 node div.snapshot > figure.pk-widget pk-chart pk-boxplot > ul.pk-box-list > li.pk-box-item > span.pk-box-label class="pk-box-label"
 text div.snapshot > figure.pk-widget pk-chart pk-boxplot > ul.pk-box-list > li.pk-box-item > span.pk-box-label => p95
 node div.snapshot > figure.pk-widget pk-chart pk-boxplot > ul.pk-box-list > li.pk-box-item > span.pk-box-track class="pk-box-track" role="img" aria-label="box plot p95: min 1, q1 2, median 3, q3 4, max 5"

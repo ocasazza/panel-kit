@@ -68,7 +68,7 @@ fn draw_whisker(
     max_row: u16,
     t: &ResolvedTuiTheme,
 ) {
-    let dim = Style::default().fg(t.line2);
+    let dim = Style::default().fg(t.border);
     let frame_area = f.area();
     for y in max_row..=min_row {
         if y >= plot_bottom || y >= frame_area.bottom() {
@@ -92,7 +92,7 @@ fn draw_caps(
     max_row: u16,
     t: &ResolvedTuiTheme,
 ) {
-    let dim = Style::default().fg(t.line2);
+    let dim = Style::default().fg(t.border);
     let frame_area = f.area();
     for cap in [max_row, min_row] {
         if cap >= frame_area.bottom() {
@@ -145,7 +145,7 @@ fn draw_median(
         return;
     }
 
-    let median = Style::default().fg(t.fg).bg(color);
+    let median = Style::default().fg(t.text).bg(color);
     for offset in 0..geometry.box_w {
         let x = geometry.box_x + offset;
         if x < area.right() && x < frame_area.right() {
@@ -173,7 +173,7 @@ fn draw_label(
         if x < area.right() && x < frame_area.right() && plot_bottom < area.bottom() && plot_bottom < frame_area.bottom() {
             f.buffer_mut()[(x, plot_bottom)]
                 .set_char(ch)
-                .set_style(Style::default().fg(t.dim));
+                .set_style(Style::default().fg(t.text_muted));
         }
     }
 }

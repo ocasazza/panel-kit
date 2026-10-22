@@ -27,7 +27,7 @@ pub fn gauges(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, items: &[GaugeMod
         f.render_widget(
             ratatui::widgets::Paragraph::new(Span::styled(
                 item.label.as_str(),
-                Style::default().fg(t.fg),
+                Style::default().fg(t.text),
             )),
             Rect::new(area.x, y, label_w, 1),
         );
@@ -57,19 +57,19 @@ fn gauge_widget<'a>(item: &'a GaugeModel, t: &ResolvedTuiTheme) -> Gauge<'a> {
     let ratio = item.ratio.clamp(0.0, 1.0);
     Gauge::default()
         .ratio(ratio)
-        .label(Span::styled(item.text.as_str(), Style::default().fg(t.fg)))
+        .label(Span::styled(item.text.as_str(), Style::default().fg(t.text)))
         // Unfilled track = panel background so an empty gauge reads empty;
         // only the filled fraction shows the fill color.
-        .gauge_style(Style::default().fg(gauge_fill(ratio, t)).bg(t.bg))
+        .gauge_style(Style::default().fg(gauge_fill(ratio, t)).bg(t.background))
         .use_unicode(true)
 }
 
 fn gauge_fill(ratio: f64, t: &ResolvedTuiTheme) -> Color {
     if ratio > 0.92 {
-        return t.red;
+        return t.error;
     }
     if ratio > 0.75 {
-        return t.yellow;
+        return t.warning;
     }
-    t.green
+    t.success
 }

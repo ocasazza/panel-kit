@@ -3,7 +3,7 @@ use panel_kit_core::spec::{BackendKind, BindingManifest, ContentKind, PanelProvi
 #[cfg(feature = "spec-plan")]
 use panel_kit_core::badge::{tag_hue, BadgeKind, BadgeSpec};
 #[cfg(feature = "spec-plan")]
-use panel_kit_core::theme::{GREEN, RED};
+use panel_kit_core::theme::{ERROR, SUCCESS};
 #[cfg(feature = "spec-plan")]
 use panel_kit_core::widgets::charts::{
     five_num, BoxItemView, FlameSpanModel, GaugeModel, SeriesView,
@@ -108,7 +108,7 @@ pub fn node_rows() -> TableModel {
 
 #[cfg(feature = "spec-plan")]
 fn node_row(name: &str, healthy: bool, load: f64, detail: &str) -> TableRow {
-    let color = if healthy { GREEN.rgb } else { RED.rgb };
+    let color = if healthy { SUCCESS.rgb } else { ERROR.rgb };
     TableRow {
     id: name.to_string(),
     tags: Vec::new(),
@@ -500,7 +500,7 @@ pub mod content {
             Paragraph::new(vec![
                 Line::from(Span::styled(
                     "panel-kit-tui workspace-spec canary",
-                    Style::default().fg(context.theme.fg),
+                    Style::default().fg(context.theme.text),
                 )),
                 Line::from(""),
                 Line::from(
@@ -514,7 +514,7 @@ pub mod content {
                 )),
                 Line::from("Input: crossterm → tui::input → core reduce → SavePolicy."),
             ])
-            .style(Style::default().fg(context.theme.dim)),
+            .style(Style::default().fg(context.theme.text_muted)),
             area,
         );
     }
@@ -527,7 +527,7 @@ pub mod content {
     ) {
         frame.render_widget(
             Paragraph::new(format!("native binding: {binding}"))
-                .style(Style::default().fg(theme.dim)),
+                .style(Style::default().fg(theme.text_muted)),
             area,
         );
     }
@@ -622,7 +622,7 @@ pub mod content {
             .map(|action| {
                 Line::from(Span::styled(
                     action.as_str(),
-                    Style::default().fg(theme.badge_info),
+                    Style::default().fg(theme.info),
                 ))
             })
             .collect::<Vec<_>>();
@@ -766,7 +766,7 @@ pub mod content {
         ) {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
-                    Span::styled(model.label.as_str(), Style::default().fg(theme.fg)),
+                    Span::styled(model.label.as_str(), Style::default().fg(theme.text)),
                     Span::raw(" "),
                     panel_kit_tui::meter::span_model(&model, 12),
                     Span::raw(" "),
@@ -820,7 +820,7 @@ pub mod content {
         let swatch = |color, name: &'static str| {
             Line::from(vec![
                 Span::styled("## ", Style::default().fg(color)),
-                Span::styled(name, Style::default().fg(theme.dim)),
+                Span::styled(name, Style::default().fg(theme.text_muted)),
             ])
         };
         frame.render_widget(
@@ -831,11 +831,11 @@ pub mod content {
                     } else {
                         "preset: spec default (press p)"
                     },
-                    Style::default().fg(theme.fg),
+                    Style::default().fg(theme.text),
                 )),
-                swatch(theme.blue, "blue · mode light"),
-                swatch(theme.yellow, "yellow · minimize"),
-                swatch(theme.pink, "pink · maximize"),
+                swatch(theme.primary, "primary · mode light"),
+                swatch(theme.tertiary, "tertiary · minimize"),
+                swatch(theme.secondary, "secondary · maximize"),
                 spinner(demo.tick / 2, "spinner painter", theme),
             ]),
             area,
@@ -848,7 +848,7 @@ pub mod content {
         let heading = |text: &'static str| {
             Line::from(Span::styled(
                 text,
-                Style::default().fg(theme.fg).add_modifier(ratatui::style::Modifier::BOLD),
+                Style::default().fg(theme.text).add_modifier(ratatui::style::Modifier::BOLD),
             ))
         };
 

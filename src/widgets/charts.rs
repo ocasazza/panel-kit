@@ -5,15 +5,15 @@ use panel_kit_core::badge::Rgb;
 use panel_kit_core::widgets::charts::{BoxItemView, FlameSpanModel, GaugeModel, SeriesView};
 
 /// Categorical series colours, in the same order the terminal chart painters
-/// cycle through (`fg, blue, pink, yellow, badge-info, red`), expressed as
+/// cycle through (`text, primary, secondary, tertiary, info, error`), expressed as
 /// theme variables so a retheme restyles the charts without a repaint.
 const SERIES_COLORS: [&str; 6] = [
-    "var(--fg)",
-    "var(--blue)",
-    "var(--pink)",
-    "var(--yellow)",
-    "var(--badge-info)",
-    "var(--red)",
+    "var(--color-text)",
+    "var(--color-primary)",
+    "var(--color-secondary)",
+    "var(--color-tertiary)",
+    "var(--color-info)",
+    "var(--color-error)",
 ];
 
 /// Internal chart coordinate space; the SVG stretches it to its box.

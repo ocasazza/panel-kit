@@ -37,21 +37,21 @@ use serde::{Deserialize, Serialize};
 mod composable_workspace;
 
 const DEMO_CSS: &str = "
-.topbar .editor-state { color: var(--dim); }
+.topbar .editor-state { color: var(--color-text-muted); }
 .controls { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
-.controls button { background: var(--bg); color: var(--dim); border: 1px solid var(--line2);
+.controls button { background: var(--color-background); color: var(--color-text-muted); border: 1px solid var(--color-border);
   border-radius: 3px; padding: .25rem .6rem; font-family: var(--mono);
   font-size: .72rem; cursor: pointer; }
-.controls button.on { color: var(--fg); border-color: var(--accent); }
-.controls .sep { color: var(--dim); }
-.editor-note { color: var(--dim); font-size: .78rem; }
-.preview { border: 1px solid var(--line2); border-radius: 4px; background: var(--panel);
+.controls button.on { color: var(--color-text); border-color: var(--color-highlight); }
+.controls .sep { color: var(--color-text-muted); }
+.editor-note { color: var(--color-text-muted); font-size: .78rem; }
+.preview { border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface);
   padding: .5rem .6rem; min-height: 6rem; max-height: 12rem; overflow: auto;
   font-size: .72rem; white-space: pre-wrap; margin: 0; }
-.log { border: 1px solid var(--line2); border-radius: 4px; background: var(--panel);
+.log { border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface);
   padding: .5rem .6rem; min-height: 4rem; max-height: 10rem; overflow: auto; }
-.log div { font-size: .72rem; color: var(--fg); }
-.log div:nth-child(n+2), .log .none { color: var(--dim); }
+.log div { font-size: .72rem; color: var(--color-text); }
+.log div:nth-child(n+2), .log .none { color: var(--color-text-muted); }
 ";
 /// localStorage key retained for saved-layout compatibility.
 ///

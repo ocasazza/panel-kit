@@ -232,7 +232,7 @@ pub fn traffic_lights<K: PanelKey>(
         ),
         (
             panel.chrome.minimize_hit.is_some(),
-            "light yellow",
+            "light min",
             "minimize",
             PanelCommand::Minimize,
         ),

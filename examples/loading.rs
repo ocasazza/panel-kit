@@ -22,11 +22,11 @@ mod composable_workspace;
 
 const DEMO_CSS: &str = "
 .load-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-left: auto; }
-.load-actions button { background: var(--bg); color: var(--fg);
-  border: 1px solid var(--line2); border-radius: 3px; padding: .15rem .5rem;
+.load-actions button { background: var(--color-background); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: 3px; padding: .15rem .5rem;
   font-family: var(--mono); font-size: .72rem; cursor: pointer; }
-.load-actions button:hover { border-color: var(--fg); }
-.load-note { color: var(--dim); font-size: .78rem; }
+.load-actions button:hover { border-color: var(--color-text); }
+.load-note { color: var(--color-text-muted); font-size: .78rem; }
 ";
 /// localStorage key retained for saved-layout compatibility.
 ///

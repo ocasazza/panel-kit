@@ -87,7 +87,7 @@ pub fn flame(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, spans: &[FlameSpan
         let cell_w = cell_w.min(area.right().saturating_sub(cell_x0));
         let color = s.color.map(rgb_color).unwrap_or_else(|| {
             let base = colors[s.depth as usize % colors.len()];
-            mix(base, t.bg, (s.depth as f64 * 0.08).min(0.45))
+            mix(base, t.background, (s.depth as f64 * 0.08).min(0.45))
         });
         let style = Style::default().bg(color);
         for cx in cell_x0..cell_x0 + cell_w {
@@ -107,11 +107,11 @@ fn contrast_ink(bg: Color, t: &ResolvedTuiTheme) -> Color {
         Color::Rgb(r, g, b) => {
             let luma = 0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64;
             if luma > 140.0 {
-                t.bg
+                t.background
             } else {
-                t.fg
+                t.text
             }
         }
-        _ => t.fg,
+        _ => t.text,
     }
 }

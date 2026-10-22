@@ -485,7 +485,7 @@ impl ToposHost {
         widgets::root::draw_root(frame, area, &self.theme, self.charset);
         if projected.status == FrameStatus::TooSmall {
             frame.render_widget(
-                Paragraph::new("resize").style(Style::default().fg(self.theme.dim)),
+                Paragraph::new("resize").style(Style::default().fg(self.theme.text_muted)),
                 area,
             );
             return Ok(());
@@ -634,11 +634,11 @@ impl ToposHost {
             let rect = Rect::new(x.saturating_sub(item.width), area.y, item.width, 1);
             let style = if item.active {
                 Style::default()
-                    .fg(theme.inverse_fg)
-                    .bg(theme.accent)
+                    .fg(theme.inverse_text)
+                    .bg(theme.highlight)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme.dim)
+                Style::default().fg(theme.text_muted)
             };
             frame.render_widget(
                 Paragraph::new(Line::from(Span::styled(item.text.as_str(), style))),
@@ -653,7 +653,7 @@ impl ToposHost {
             frame.render_widget(
                 Paragraph::new(Line::from(Span::styled(
                     self.demo.status_line(),
-                    Style::default().fg(theme.fg),
+                    Style::default().fg(theme.text),
                 ))),
                 status,
             );
@@ -762,7 +762,7 @@ fn paint_body(
     let Some(content) = content else {
         let binding = spec.binding_id().unwrap_or("<no binding>");
         frame.render_widget(
-            Paragraph::new(format!("unbound: {binding}")).style(Style::default().fg(theme.red)),
+            Paragraph::new(format!("unbound: {binding}")).style(Style::default().fg(theme.error)),
             body,
         );
         return;
@@ -826,11 +826,11 @@ fn paint_body(
         }
         Section::Meter(model) => frame.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled(model.label.as_str(), Style::default().fg(theme.fg)),
+                Span::styled(model.label.as_str(), Style::default().fg(theme.text)),
                 Span::raw(" "),
                 panel_kit_tui::meter::span_model(model, meter_width(body.width)),
                 Span::raw(" "),
-                Span::styled(model.text.as_str(), Style::default().fg(theme.dim)),
+                Span::styled(model.text.as_str(), Style::default().fg(theme.text_muted)),
             ])),
             body,
         ),
@@ -854,7 +854,7 @@ fn meter_width(area_width: u16) -> usize {
 /// Wrap body text to the panel width, keeping the authored indentation.
 fn wrapped_lines(text: &str, width: u16, theme: &ResolvedTuiTheme) -> Vec<Line<'static>> {
     let width = usize::from(width.max(1));
-    let style = Style::default().fg(theme.fg);
+    let style = Style::default().fg(theme.text);
     let mut lines = Vec::new();
     for raw in text.lines() {
         let body = raw.trim_start_matches(' ');

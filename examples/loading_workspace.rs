@@ -22,15 +22,15 @@ mod composable_workspace;
 const DEMO_CSS: &str = "
 .boot-demo-controls { position: fixed; z-index: 2147483001; right: 14px; bottom: 14px;
   display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; max-width: 42rem;
-  border: 1px solid var(--line2); border-radius: 3px; padding: .5rem .65rem;
-  background: var(--bg); color: var(--fg); }
-.boot-demo-controls p { flex-basis: 100%; margin: 0; color: var(--dim); font-size: .78rem; }
-.boot-demo-controls button, .topbar button { border: 1px solid var(--line2);
-  border-radius: 3px; padding: .2rem .55rem; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--color-border); border-radius: 3px; padding: .5rem .65rem;
+  background: var(--color-background); color: var(--color-text); }
+.boot-demo-controls p { flex-basis: 100%; margin: 0; color: var(--color-text-muted); font-size: .78rem; }
+.boot-demo-controls button, .topbar button { border: 1px solid var(--color-border);
+  border-radius: 3px; padding: .2rem .55rem; background: var(--color-background); color: var(--color-text);
   font-family: var(--mono); font-size: .72rem; cursor: pointer; }
-.boot-demo-controls button:hover, .topbar button:hover { border-color: var(--fg); }
-.boot-demo-controls button.on { color: var(--fg); border-color: var(--accent); }
-.ready-state { color: var(--dim); }
+.boot-demo-controls button:hover, .topbar button:hover { border-color: var(--color-text); }
+.boot-demo-controls button.on { color: var(--color-text); border-color: var(--color-highlight); }
+.ready-state { color: var(--color-text-muted); }
 ";
 /// localStorage key retained for saved-layout compatibility.
 ///

@@ -85,25 +85,25 @@ fn time_x_axis(bounds: TimeBounds, t: &ResolvedTuiTheme) -> Axis<'static> {
     Axis::default()
         .bounds([bounds.x_min, bounds.x_max])
         .labels([
-            Span::styled(format!("{:.0}s", bounds.x_min), Style::default().fg(t.dim)),
-            Span::styled(format!("{:.0}s", bounds.x_max), Style::default().fg(t.dim)),
+            Span::styled(format!("{:.0}s", bounds.x_min), Style::default().fg(t.text_muted)),
+            Span::styled(format!("{:.0}s", bounds.x_max), Style::default().fg(t.text_muted)),
         ])
-        .style(Style::default().fg(t.line2))
+        .style(Style::default().fg(t.border))
 }
 
 fn time_y_axis(bounds: TimeBounds, unit: &str, t: &ResolvedTuiTheme) -> Axis<'static> {
     Axis::default()
         .bounds([0.0, bounds.y_top])
         .labels([
-            Span::styled("0", Style::default().fg(t.dim)),
+            Span::styled("0", Style::default().fg(t.text_muted)),
             Span::styled(
                 format!("{:.0}", bounds.y_top / 2.0),
-                Style::default().fg(t.dim),
+                Style::default().fg(t.text_muted),
             ),
             Span::styled(
                 format!("{:.0} {unit}", bounds.y_top),
-                Style::default().fg(t.dim),
+                Style::default().fg(t.text_muted),
             ),
         ])
-        .style(Style::default().fg(t.line2))
+        .style(Style::default().fg(t.border))
 }

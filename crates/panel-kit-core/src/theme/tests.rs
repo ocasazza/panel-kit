@@ -52,7 +52,7 @@ fn line2_clears_the_non_text_contrast_threshold_against_panel() {
         0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
     }
 
-    let ratio = (luminance(LINE2) + 0.05) / (luminance(PANEL) + 0.05);
+    let ratio = (luminance(BORDER) + 0.05) / (luminance(SURFACE) + 0.05);
     assert!(ratio >= 3.0, "line2 on panel is {ratio:.4}, below 3:1");
 }
 
@@ -93,8 +93,8 @@ fn dark_theme_emits_every_web_and_tui_token() {
     // `focus_ring` must exist as a slot even though no generated consumer uses
     // it yet; in the dark preset it aliases the foreground, matching
     // `--focus-ring: var(--fg)`.
-    assert_eq!(dark.focus_ring, dark.fg);
-    assert_eq!(dark.resolve(ThemeColor::FocusRing), dark.fg);
+    assert_eq!(dark.focus_ring, dark.text);
+    assert_eq!(dark.resolve(ThemeColor::FocusRing), dark.text);
 
     let mut keys: Vec<_> = ThemeColor::ALL.iter().map(|slot| slot.key()).collect();
     keys.sort_unstable();
@@ -177,11 +177,11 @@ fn color_ref_serializes_as_tagged_source_and_value() {
     );
 
     for (slot, spelling) in [
-        (ThemeColor::Accent, "accent"),
-        (ThemeColor::Line2, "line2"),
-        (ThemeColor::InverseBg, "inverse_bg"),
-        (ThemeColor::InverseFg, "inverse_fg"),
-        (ThemeColor::BadgeInfo, "badge_info"),
+        (ThemeColor::Highlight, "highlight"),
+        (ThemeColor::Border, "border"),
+        (ThemeColor::InverseBackground, "inverse_background"),
+        (ThemeColor::InverseText, "inverse_text"),
+        (ThemeColor::Info, "info"),
         (ThemeColor::FocusRing, "focus_ring"),
     ] {
         assert_eq!(

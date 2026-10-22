@@ -52,7 +52,7 @@ pub fn boxplot(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, items: &[BoxItem
             row_of(s.q3),
             row_of(s.max),
         );
-        let dim = Style::default().fg(t.line2);
+        let dim = Style::default().fg(t.border);
         for y in r_max..=r_min {
             if y >= plot_bottom {
                 break;
@@ -82,7 +82,7 @@ pub fn boxplot(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, items: &[BoxItem
             }
         }
         if r_med < plot_bottom {
-            let med = Style::default().fg(t.fg).bg(color);
+            let med = Style::default().fg(t.text).bg(color);
             for off in 0..box_w {
                 let x = box_x + off;
                 if x < area.right() {
@@ -97,7 +97,7 @@ pub fn boxplot(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, items: &[BoxItem
             if x < area.right() && plot_bottom < area.bottom() {
                 f.buffer_mut()[(x, plot_bottom)]
                     .set_char(ch)
-                    .set_style(Style::default().fg(t.dim));
+                    .set_style(Style::default().fg(t.text_muted));
             }
         }
     }

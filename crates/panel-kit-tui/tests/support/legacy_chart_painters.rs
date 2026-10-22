@@ -29,7 +29,7 @@ pub(super) fn mix(a: Color, b: Color, t: f64) -> Color {
 }
 
 pub(super) fn series_colors(t: &ResolvedTuiTheme) -> [Color; 6] {
-    [t.fg, t.blue, t.pink, t.yellow, t.badge_info, t.red]
+    [t.text, t.primary, t.secondary, t.tertiary, t.info, t.error]
 }
 
 pub(super) fn rgb_color((r, g, b): Rgb) -> Color {
@@ -78,20 +78,20 @@ pub fn time_series(
             Axis::default()
                 .bounds([x_min, x_max])
                 .labels([
-                    Span::styled(format!("{x_min:.0}s"), Style::default().fg(t.dim)),
-                    Span::styled(format!("{x_max:.0}s"), Style::default().fg(t.dim)),
+                    Span::styled(format!("{x_min:.0}s"), Style::default().fg(t.text_muted)),
+                    Span::styled(format!("{x_max:.0}s"), Style::default().fg(t.text_muted)),
                 ])
-                .style(Style::default().fg(t.line2)),
+                .style(Style::default().fg(t.border)),
         )
         .y_axis(
             Axis::default()
                 .bounds([0.0, y_top])
                 .labels([
-                    Span::styled("0", Style::default().fg(t.dim)),
-                    Span::styled(format!("{:.0}", y_top / 2.0), Style::default().fg(t.dim)),
-                    Span::styled(format!("{y_top:.0} {unit}"), Style::default().fg(t.dim)),
+                    Span::styled("0", Style::default().fg(t.text_muted)),
+                    Span::styled(format!("{:.0}", y_top / 2.0), Style::default().fg(t.text_muted)),
+                    Span::styled(format!("{y_top:.0} {unit}"), Style::default().fg(t.text_muted)),
                 ])
-                .style(Style::default().fg(t.line2)),
+                .style(Style::default().fg(t.border)),
         )
         .legend_position(Some(LegendPosition::TopRight));
     f.render_widget(chart, area);
@@ -112,17 +112,17 @@ pub fn gauges(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, items: &[GaugeMod
         f.render_widget(
             ratatui::widgets::Paragraph::new(Span::styled(
                 item.label.as_str(),
-                Style::default().fg(t.fg),
+                Style::default().fg(t.text),
             )),
             Rect::new(area.x, y, label_w, 1),
         );
         let ratio = item.ratio.clamp(0.0, 1.0);
         let fill = if ratio > 0.92 {
-            t.red
+            t.error
         } else if ratio > 0.75 {
-            t.yellow
+            t.warning
         } else {
-            t.green
+            t.success
         };
         let bar = Rect::new(
             area.x + label_w + 1,
@@ -133,8 +133,8 @@ pub fn gauges(f: &mut Frame, area: Rect, t: &ResolvedTuiTheme, items: &[GaugeMod
         f.render_widget(
             Gauge::default()
                 .ratio(ratio)
-                .label(Span::styled(item.text.as_str(), Style::default().fg(t.fg)))
-                .gauge_style(Style::default().fg(fill).bg(t.bg))
+                .label(Span::styled(item.text.as_str(), Style::default().fg(t.text)))
+                .gauge_style(Style::default().fg(fill).bg(t.background))
                 .use_unicode(true),
             bar,
         );

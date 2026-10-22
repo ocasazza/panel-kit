@@ -35,7 +35,7 @@ pub fn draw_panel_surface<K: PanelKey>(
     if clipped_body.width > 0 && clipped_body.height > 0 {
         frame
             .buffer_mut()
-            .set_style(clipped_body, Style::default().bg(theme.panel));
+            .set_style(clipped_body, Style::default().bg(theme.surface));
     }
     hits.record_panel_surface(panel.key, panel.source_index, outer, body);
 
@@ -67,12 +67,12 @@ pub fn draw_panel_chrome<K: PanelKey>(
         let title = if panel.chrome.mode_hit.is_some() || panel.chrome.minimize_hit.is_some() {
             Line::from(vec![
                 Span::raw("        "),
-                Span::styled(meta.title.as_ref(), Style::default().fg(theme.fg)),
+                Span::styled(meta.title.as_ref(), Style::default().fg(theme.text)),
             ])
         } else {
             Line::from(Span::styled(
                 meta.title.as_ref(),
-                Style::default().fg(theme.fg),
+                Style::default().fg(theme.text),
             ))
         };
 
@@ -106,16 +106,16 @@ pub fn draw_traffic_lights<K: PanelKey>(
     hits: &mut TuiHitBuffer<K>,
 ) {
     for (part, region, color) in [
-        (PanelPart::ModeControl, panel.chrome.mode_hit, theme.blue),
+        (PanelPart::ModeControl, panel.chrome.mode_hit, theme.primary),
         (
             PanelPart::MinimizeControl,
             panel.chrome.minimize_hit,
-            theme.yellow,
+            theme.tertiary,
         ),
         (
             PanelPart::MaximizeControl,
             panel.chrome.maximize_hit,
-            theme.pink,
+            theme.secondary,
         ),
     ] {
         draw_light(
@@ -159,7 +159,7 @@ pub fn draw_resize_grip<K: PanelKey>(
         if glyph_x < frame.area().right() && glyph_y < frame.area().bottom() {
             let glyph = Rect::new(glyph_x, glyph_y, 1, 1);
             frame.render_widget(
-                Paragraph::new("+").style(Style::default().fg(theme.accent)),
+                Paragraph::new("+").style(Style::default().fg(theme.highlight)),
                 glyph,
             );
         }
@@ -236,13 +236,13 @@ fn has_frame<K: PanelKey>(panel: PanelProjection<K>) -> bool {
 
 fn panel_border_style<K: PanelKey>(panel: PanelProjection<K>, theme: &ResolvedTuiTheme) -> Style {
     if panel.tile_dragging {
-        return Style::default().fg(theme.accent);
+        return Style::default().fg(theme.highlight);
     }
     if panel.focused {
         return Style::default().fg(theme.focus_ring);
     }
     if panel.state == WinState::Maximized {
-        return Style::default().fg(theme.fg);
+        return Style::default().fg(theme.text);
     }
-    Style::default().fg(theme.line2)
+    Style::default().fg(theme.border)
 }

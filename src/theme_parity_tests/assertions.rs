@@ -27,11 +27,12 @@ fn assert_color_tokens(
     for slot in ThemeColor::ALL.iter().copied() {
         let expected = tokens.colors.resolve(slot);
         let key = slot.key();
+        let css_var = slot.css_var();
 
         assert_eq!(
-            css_values.get(key),
+            css_values.get(css_var.trim_start_matches("--")),
             Some(&String::from(expected)),
-            "{name} CSS variable --{key} drifted from core"
+            "{name} CSS variable {css_var} drifted from core"
         );
         assert_eq!(
             design_values.get(&format!("colors.{key}")),

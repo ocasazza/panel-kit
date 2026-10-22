@@ -8,18 +8,18 @@ use ratatui::text::{Line, Span};
 
 use crate::ResolvedTuiTheme;
 
-/// One spinner line: the ring (accent) plus an optional label (dim).
+/// One spinner line: the ring (highlight) plus an optional label (text-muted).
 /// Call with a frame/tick counter from your draw loop; empty label renders
 /// the ring alone, matching the web component.
 pub fn spinner(tick: u64, label: &str, t: &ResolvedTuiTheme) -> Line<'static> {
-    let ring = Span::styled(spinner_frame(tick), Style::default().fg(t.accent));
+    let ring = Span::styled(spinner_frame(tick), Style::default().fg(t.highlight));
     if label.is_empty() {
         Line::from(ring)
     } else {
         Line::from(vec![
             ring,
             Span::raw(" "),
-            Span::styled(label.to_string(), Style::default().fg(t.dim)),
+            Span::styled(label.to_string(), Style::default().fg(t.text_muted)),
         ])
     }
 }

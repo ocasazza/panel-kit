@@ -42,7 +42,7 @@ fn controller_era_panel_semantics() -> Vec<SemanticNode> {
         node!("div.chrome-probe > section.panel panel-nodes focused > header.panel-head", "header", Some("panel-head"), Some("toolbar"), Some("0"), Some("Nodes"), None, None),
         node!("div.chrome-probe > section.panel panel-nodes focused > header.panel-head > div.lights", "div", Some("lights"), None, None, None, None, None),
         node!("div.chrome-probe > section.panel panel-nodes focused > header.panel-head > div.lights > button.light mode", "button", Some("light mode"), None, None, Some("tiling / floating"), Some("tiling / floating"), None),
-        node!("div.chrome-probe > section.panel panel-nodes focused > header.panel-head > div.lights > button.light yellow", "button", Some("light yellow"), None, None, Some("minimize"), Some("minimize"), None),
+        node!("div.chrome-probe > section.panel panel-nodes focused > header.panel-head > div.lights > button.light min", "button", Some("light min"), None, None, Some("minimize"), Some("minimize"), None),
         node!("div.chrome-probe > section.panel panel-nodes focused > header.panel-head > div.lights > button.light max", "button", Some("light max"), None, None, Some("maximize / restore"), Some("maximize / restore"), None),
         node!("div.chrome-probe > section.panel panel-nodes focused > header.panel-head > span.panel-title", "span", Some("panel-title"), None, None, Some("Nodes"), None, None),
         node!("div.chrome-probe > section.panel panel-nodes focused > header.panel-head > div.panel-head-actions", "div", Some("panel-head-actions"), None, None, None, None, None),
@@ -123,7 +123,7 @@ fn is_native_panel_node(node: &SemanticNode) -> bool {
                 | "panel-head-actions"
                 | "lights"
                 | "light mode"
-                | "light yellow"
+                | "light min"
                 | "light max"
                 | "resize"
         )

@@ -17,7 +17,7 @@ pub fn draw_root(
     theme: &ResolvedTuiTheme,
     charset: Charset,
 ) -> Rect {
-    draw_border(frame, area, charset, Style::default().fg(theme.line2));
+    draw_border(frame, area, charset, Style::default().fg(theme.border));
     Rect::new(
         area.x.saturating_add(1),
         area.y.saturating_add(1),
@@ -43,8 +43,8 @@ pub fn draw_workspace_scrollbar<K: PanelKey>(
         Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(None)
             .end_symbol(None)
-            .track_style(Style::default().fg(theme.line2))
-            .thumb_style(Style::default().fg(theme.dim)),
+            .track_style(Style::default().fg(theme.border))
+            .thumb_style(Style::default().fg(theme.text_muted)),
         workspace,
         &mut state,
     );

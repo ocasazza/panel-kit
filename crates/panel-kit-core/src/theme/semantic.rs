@@ -6,99 +6,98 @@ use super::Color;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeColor {
-    /// Page background, and the recessed field behind chips and badges.
-    Bg,
-    /// Every raised surface: panels, topbar, dock, tooltip.
-    Panel,
-    /// Body and title text.
-    Fg,
-    /// De-emphasized text.
-    Dim,
-    /// Structural hairline dividing regions.
-    Line,
-    /// Object outline.
-    Line2,
-    /// Inverted background, used by selection.
-    InverseBg,
-    /// Inverted foreground, used by selection.
-    InverseFg,
-    /// Live-system signal only.
-    Accent,
-    /// Errors and unresolved references.
-    Red,
-    /// Minimize light.
-    Yellow,
-    /// Verdict: resolved, valid, reachable.
-    Green,
-    /// Floating/tiling mode light.
-    Blue,
-    /// Maximize/restore light.
-    Pink,
-    /// Informational metadata badges, and the resting tint for tags.
-    BadgeInfo,
-    /// The keyboard-focus indicator.
+    Background,
+    Surface,
+    Text,
+    TextMuted,
+    Divider,
+    Border,
+    InverseBackground,
+    InverseText,
     FocusRing,
+    Primary,
+    Secondary,
+    Tertiary,
+    Highlight,
+    Success,
+    Failure,
+    Error,
+    Warning,
+    Info,
 }
 
 impl ThemeColor {
-    /// Every slot, in [`crate::theme::ColorTokens`] declaration order.
-    ///
-    /// Consumers that generate a palette (and the completeness test) iterate
-    /// this rather than naming variants, so a slot added here reaches every
-    /// consumer without an edit elsewhere — the same rule as the `DARK` seed
-    /// slice.
     pub const ALL: &'static [ThemeColor] = &[
-        ThemeColor::Bg,
-        ThemeColor::Panel,
-        ThemeColor::Fg,
-        ThemeColor::Dim,
-        ThemeColor::Line,
-        ThemeColor::Line2,
-        ThemeColor::InverseBg,
-        ThemeColor::InverseFg,
-        ThemeColor::Accent,
-        ThemeColor::Red,
-        ThemeColor::Yellow,
-        ThemeColor::Green,
-        ThemeColor::Blue,
-        ThemeColor::Pink,
-        ThemeColor::BadgeInfo,
+        ThemeColor::Background,
+        ThemeColor::Surface,
+        ThemeColor::Text,
+        ThemeColor::TextMuted,
+        ThemeColor::Divider,
+        ThemeColor::Border,
+        ThemeColor::InverseBackground,
+        ThemeColor::InverseText,
         ThemeColor::FocusRing,
+        ThemeColor::Primary,
+        ThemeColor::Secondary,
+        ThemeColor::Tertiary,
+        ThemeColor::Highlight,
+        ThemeColor::Success,
+        ThemeColor::Failure,
+        ThemeColor::Error,
+        ThemeColor::Warning,
+        ThemeColor::Info,
     ];
 
-    /// The CSS custom-property key for this slot, without the leading `--`.
-    ///
-    /// This is the spelling the web `:root` block and the `DARK` seed names
-    /// use (`inv-bg`, `badge-info`, `focus-ring`), not the serde spelling.
+    pub const fn css_var(self) -> &'static str {
+        match self {
+            ThemeColor::Background => "--color-background",
+            ThemeColor::Surface => "--color-surface",
+            ThemeColor::Text => "--color-text",
+            ThemeColor::TextMuted => "--color-text-muted",
+            ThemeColor::Divider => "--color-divider",
+            ThemeColor::Border => "--color-border",
+            ThemeColor::InverseBackground => "--color-inverse-background",
+            ThemeColor::InverseText => "--color-inverse-text",
+            ThemeColor::FocusRing => "--color-focus-ring",
+            ThemeColor::Primary => "--color-primary",
+            ThemeColor::Secondary => "--color-secondary",
+            ThemeColor::Tertiary => "--color-tertiary",
+            ThemeColor::Highlight => "--color-highlight",
+            ThemeColor::Success => "--color-success",
+            ThemeColor::Failure => "--color-failure",
+            ThemeColor::Error => "--color-error",
+            ThemeColor::Warning => "--color-warning",
+            ThemeColor::Info => "--color-info",
+        }
+    }
+
     pub const fn key(self) -> &'static str {
         match self {
-            ThemeColor::Bg => "bg",
-            ThemeColor::Panel => "panel",
-            ThemeColor::Fg => "fg",
-            ThemeColor::Dim => "dim",
-            ThemeColor::Line => "line",
-            ThemeColor::Line2 => "line2",
-            ThemeColor::InverseBg => "inv-bg",
-            ThemeColor::InverseFg => "inv-fg",
-            ThemeColor::Accent => "accent",
-            ThemeColor::Red => "red",
-            ThemeColor::Yellow => "yellow",
-            ThemeColor::Green => "green",
-            ThemeColor::Blue => "blue",
-            ThemeColor::Pink => "pink",
-            ThemeColor::BadgeInfo => "badge-info",
-            ThemeColor::FocusRing => "focus-ring",
+            ThemeColor::Background => "color-background",
+            ThemeColor::Surface => "color-surface",
+            ThemeColor::Text => "color-text",
+            ThemeColor::TextMuted => "color-text-muted",
+            ThemeColor::Divider => "color-divider",
+            ThemeColor::Border => "color-border",
+            ThemeColor::InverseBackground => "color-inverse-background",
+            ThemeColor::InverseText => "color-inverse-text",
+            ThemeColor::FocusRing => "color-focus-ring",
+            ThemeColor::Primary => "color-primary",
+            ThemeColor::Secondary => "color-secondary",
+            ThemeColor::Tertiary => "color-tertiary",
+            ThemeColor::Highlight => "color-highlight",
+            ThemeColor::Success => "color-success",
+            ThemeColor::Failure => "color-failure",
+            ThemeColor::Error => "color-error",
+            ThemeColor::Warning => "color-warning",
+            ThemeColor::Info => "color-info",
         }
     }
 }
 
-/// A colour in an authored spec: a literal, or a reference to a semantic
-/// slot the resolved theme fills.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "source", content = "value", rename_all = "snake_case")]
 pub enum ColorRef {
-    /// A literal `#rrggbb` colour.
     Literal(Color),
-    /// A semantic slot, resolved against the active palette.
     Theme(ThemeColor),
 }

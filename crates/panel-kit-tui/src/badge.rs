@@ -17,16 +17,16 @@ pub fn color(spec: &BadgeSpec, t: &ResolvedTuiTheme) -> Color {
     }
 
     match &spec.kind {
-        BadgeKind::Tag => t.badge_info,
-        BadgeKind::Doctype | BadgeKind::Author => t.badge_info,
-        BadgeKind::Folder => t.dim,
-        BadgeKind::Entity { .. } | BadgeKind::Date => t.yellow,
-        BadgeKind::Wikilink { resolved: true, .. } => t.badge_info,
+        BadgeKind::Tag => t.info,
+        BadgeKind::Doctype | BadgeKind::Author => t.info,
+        BadgeKind::Folder => t.text_muted,
+        BadgeKind::Entity { .. } | BadgeKind::Date => t.tertiary,
+        BadgeKind::Wikilink { resolved: true, .. } => t.info,
         BadgeKind::Wikilink {
             resolved: false, ..
-        } => t.red,
-        BadgeKind::Url { .. } | BadgeKind::Status => t.green,
-        BadgeKind::Generic => t.line2,
+        } => t.error,
+        BadgeKind::Url { .. } | BadgeKind::Status => t.success,
+        BadgeKind::Generic => t.border,
     }
 }
 
@@ -41,9 +41,9 @@ pub fn spans(spec: &BadgeSpec, t: &ResolvedTuiTheme) -> Vec<Span<'static>> {
     }
 
     vec![
-        Span::styled("[", Style::default().fg(t.line2)),
+        Span::styled("[", Style::default().fg(t.border)),
         Span::styled(display_label(&spec.kind, &spec.value), style),
-        Span::styled("]", Style::default().fg(t.line2)),
+        Span::styled("]", Style::default().fg(t.border)),
     ]
 }
 

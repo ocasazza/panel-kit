@@ -42,18 +42,18 @@ const BASE_KEY: &str = "panel_kit_example_views";
 
 /// Demo styles layered after `panel_kit::CSS`; the switcher is app-owned UI.
 const DEMO_CSS: &str = "
-.topbar button { background: var(--bg); color: var(--fg); border: 1px solid var(--line2);
+.topbar button { background: var(--color-background); color: var(--color-text); border: 1px solid var(--color-border);
   border-radius: 3px; padding: .15rem .5rem; font-size: .72rem; cursor: pointer; }
-.topbar button:hover { border-color: var(--fg); }
-.topbar button.active-view { background: var(--inv-bg); color: var(--inv-fg); }
-.topbar input { background: var(--bg); color: var(--fg); border: 1px solid var(--line2);
+.topbar button:hover { border-color: var(--color-text); }
+.topbar button.active-view { background: var(--color-inverse-background); color: var(--color-inverse-text); }
+.topbar input { background: var(--color-background); color: var(--color-text); border: 1px solid var(--color-border);
   border-radius: 3px; padding: .15rem .4rem; font-size: .72rem; font-family: var(--mono);
   width: 7rem; }
-.topbar .err { color: var(--red); font-size: .72rem; }
+.topbar .err { color: var(--color-error); font-size: .72rem; }
 .status-list { margin: .25rem 0; padding-left: 1.1rem; }
-.status-list li { color: var(--dim); }
-textarea.notes { width: 100%; height: 70%; background: var(--bg); color: var(--fg);
-  border: 1px solid var(--line2); border-radius: 3px; font-family: var(--mono);
+.status-list li { color: var(--color-text-muted); }
+textarea.notes { width: 100%; height: 70%; background: var(--color-background); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: 3px; font-family: var(--mono);
   font-size: .78rem; padding: .4rem; resize: none; }
 ";
 

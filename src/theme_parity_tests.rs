@@ -1,4 +1,5 @@
 mod assertions;
+mod css_gate;
 mod parsing;
 
 use assertions::assert_generated_consumers_match_core;

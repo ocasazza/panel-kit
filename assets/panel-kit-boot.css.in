@@ -1,6 +1,7 @@
 /* TEMPLATE — not the shipped stylesheet.
-   `build.rs` substitutes every double-brace placeholder from
-   panel_kit_core::tokens and writes the result to OUT_DIR, which
+   `build.rs` substitutes every double-brace placeholder, a theme role key
+   (background, text, divider, ...) or mono, resolving it through
+   panel_kit_core::tokens::by_name, and writes the result to OUT_DIR, which
    `panel_kit::BOOT_CSS` includes. An unknown placeholder name is a hard
    build error, which is why this note spells the syntax out instead of
    showing it.
@@ -22,8 +23,8 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: {{bg}};
-  color: {{fg}};
+  background: {{background}};
+  color: {{text}};
   font: 12px/1.35 {{mono}};
 }
 
@@ -34,13 +35,13 @@
   height: 35px;
   flex: 0 0 35px;
   padding: 0 14px;
-  border-bottom: 1px solid {{line}};
+  border-bottom: 1px solid {{divider}};
   letter-spacing: .08em;
   text-transform: uppercase;
 }
 
 .panel-kit-boot-title { font-weight: 700; }
-.panel-kit-boot-status { color: {{dim}}; font-size: 10px; }
+.panel-kit-boot-status { color: {{text-muted}}; font-size: 10px; }
 
 /* Header progress bar. The static fragment is always indeterminate (no
    script may measure pre-WASM); LoadingWorkspace fills determinate width +
@@ -50,13 +51,13 @@
   max-width: 22rem;
   height: 6px;
   margin-left: auto;
-  background: {{line}};
+  background: {{divider}};
   border-radius: 3px;
   overflow: hidden;
 }
 .panel-kit-boot-fill {
   height: 100%;
-  background: {{blue}};
+  background: {{primary}};
   transition: width .4s ease;
 }
 .panel-kit-boot-fill.indeterminate {
@@ -64,7 +65,7 @@
   animation: panel-kit-boot-indet 1.2s linear infinite;
 }
 .panel-kit-boot-pct {
-  color: {{blue}};
+  color: {{primary}};
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
@@ -89,9 +90,9 @@
   position: relative;
   min-width: 0;
   min-height: 90px;
-  border: 1px solid {{line2}};
+  border: 1px solid {{border}};
   border-radius: 4px;
-  background: {{panel}};
+  background: {{surface}};
   overflow: hidden;
 }
 
@@ -107,15 +108,15 @@
   width: 8px;
   height: 8px;
   border-radius: 0;
-  background: {{blue}};
-  box-shadow: 14px 0 0 {{yellow}}, 28px 0 0 {{pink}};
+  background: {{primary}};
+  box-shadow: 14px 0 0 {{tertiary}}, 28px 0 0 {{secondary}};
 }
 
 .panel-kit-boot-line {
   height: 6px;
   margin: 34px 12px 0;
   border-radius: 3px;
-  background: {{line}};
+  background: {{divider}};
   animation: panel-kit-boot-pulse 1.25s ease-in-out infinite alternate;
 }
 

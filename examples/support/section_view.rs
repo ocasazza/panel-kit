@@ -136,17 +136,17 @@ fn field_input(mut draft: Signal<Option<EditDraft>>, scope: &str, field: &str, t
 /// CSS for [`edit_form`]; hosts include it once.
 pub const EDIT_FORM_CSS: &str = "
 .pk-edit-form { position: fixed; right: .75rem; top: 3.25rem; width: min(26rem, 90vw); max-height: 80vh;
-  overflow: auto; z-index: 50; background: var(--bg); color: var(--fg); border: 1px solid var(--line2);
+  overflow: auto; z-index: 50; background: var(--color-background); color: var(--color-text); border: 1px solid var(--color-border);
   border-radius: 4px; padding: .6rem .75rem; font-size: .75rem; display: flex; flex-direction: column; gap: .5rem; }
 .pk-edit-form h2 { font-size: .74rem; margin: 0; text-transform: uppercase; letter-spacing: .08em; }
-.pk-edit-form .object { color: var(--dim); word-break: break-all; }
+.pk-edit-form .object { color: var(--color-text-muted); word-break: break-all; }
 .pk-edit-form .edits, .pk-edit-form .actions { display: flex; gap: .35rem; flex-wrap: wrap; }
-.pk-edit-form button { background: var(--bg); color: var(--fg); border: 1px solid var(--line2);
+.pk-edit-form button { background: var(--color-background); color: var(--color-text); border: 1px solid var(--color-border);
   border-radius: 3px; padding: .15rem .5rem; font-size: .72rem; cursor: pointer; }
-.pk-edit-form button.active { background: var(--fg); color: var(--bg); }
-.pk-edit-form label { display: flex; flex-direction: column; gap: .2rem; color: var(--dim); }
-.pk-edit-form input, .pk-edit-form select, .pk-edit-form textarea { background: var(--bg); color: var(--fg);
-  border: 1px solid var(--line2); border-radius: 3px; padding: .25rem; font: inherit; }
+.pk-edit-form button.active { background: var(--color-text); color: var(--color-background); }
+.pk-edit-form label { display: flex; flex-direction: column; gap: .2rem; color: var(--color-text-muted); }
+.pk-edit-form input, .pk-edit-form select, .pk-edit-form textarea { background: var(--color-background); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: 3px; padding: .25rem; font: inherit; }
 .pk-edit-form textarea { min-height: 4.5rem; resize: vertical; }
 ";
 

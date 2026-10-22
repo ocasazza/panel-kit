@@ -37,7 +37,7 @@ pub fn draw_dock<K: PanelKey>(
         frame,
         area,
         context.charset,
-        Style::default().fg(context.theme.line2),
+        Style::default().fg(context.theme.border),
     );
     let inner = Rect::new(
         area.x.saturating_add(1),
@@ -52,7 +52,7 @@ pub fn draw_dock<K: PanelKey>(
         &mut x,
         inner,
         context.label,
-        Style::default().fg(context.theme.dim),
+        Style::default().fg(context.theme.text_muted),
     );
     if dock.is_empty() {
         write_text(
@@ -60,7 +60,7 @@ pub fn draw_dock<K: PanelKey>(
             &mut x,
             inner,
             " -- nothing minimized --",
-            Style::default().fg(context.theme.dim),
+            Style::default().fg(context.theme.text_muted),
         );
         return;
     }
@@ -96,15 +96,15 @@ fn write_dock_chip<K: PanelKey>(
         return;
     };
 
-    write_text(frame, x, area, " [", Style::default().fg(theme.fg));
+    write_text(frame, x, area, " [", Style::default().fg(theme.text));
     write_text(
         frame,
         x,
         area,
         meta.title.as_ref(),
-        Style::default().fg(theme.fg),
+        Style::default().fg(theme.text),
     );
-    write_text(frame, x, area, "]", Style::default().fg(theme.fg));
+    write_text(frame, x, area, "]", Style::default().fg(theme.text));
 }
 
 fn write_text(frame: &mut Frame, x: &mut u16, area: Rect, text: &str, style: Style) {

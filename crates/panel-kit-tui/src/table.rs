@@ -83,12 +83,12 @@ pub fn table<K: PanelKey>(
         let title = format!("{}{marker}", column.title);
         Cell::from(align_line(Line::from(title), column.align))
     }))
-    .style(Style::default().fg(t.dim));
+    .style(Style::default().fg(t.text_muted));
     let rows = view.rows.iter().skip(offset.1 as usize).map(|row| {
         let cursor = state.cursor.as_deref() == Some(row.id.as_str());
         let style = match (cursor, state.selection.contains(&row.id)) {
-            (true, _) => Style::default().bg(t.accent).fg(t.bg),
-            (false, true) => Style::default().fg(t.accent),
+            (true, _) => Style::default().bg(t.highlight).fg(t.background),
+            (false, true) => Style::default().fg(t.highlight),
             (false, false) => Style::default(),
         };
         Row::new(
@@ -122,7 +122,7 @@ pub fn table_native(
     widths: &[Constraint],
     rows: Vec<Row<'_>>,
 ) {
-    let header = Row::new(header.iter().copied()).style(Style::default().fg(t.dim));
+    let header = Row::new(header.iter().copied()).style(Style::default().fg(t.text_muted));
     f.render_widget(
         Table::new(rows, widths.iter().copied()).header(header),
         area,
@@ -152,7 +152,7 @@ fn semantic_line<'a>(cell: &'a TableCell, t: &ResolvedTuiTheme) -> Line<'a> {
         TableCell::Meter { ratio, text, color } => {
             let span = match color {
                 Some(color) => crate::meter::span(*ratio, 8, *color),
-                None => Span::styled(core_meter::bar(*ratio, 8), Style::default().fg(t.fg)),
+                None => Span::styled(core_meter::bar(*ratio, 8), Style::default().fg(t.text)),
             };
 
             if text.is_empty() {

@@ -37,13 +37,13 @@ pub const BEVY_CSS: &str = r#"
 .bevy-canvas-loading {
     position: absolute; inset: 0; z-index: 0;
     display: flex; align-items: center; justify-content: center;
-    color: var(--dim, #7a7a7a); font-size: 12px;
+    color: var(--color-text-muted, #7a7a7a); font-size: 12px;
     pointer-events: none;
 }
 .bevy-canvas-error {
     position: absolute; inset: 0; z-index: 2;
     display: flex; align-items: center; justify-content: center;
-    color: var(--red, #ff5f56); font-size: 12px; padding: 8px; text-align: center;
+    color: var(--color-error, #ff5f56); font-size: 12px; padding: 8px; text-align: center;
 }
 "#;
 

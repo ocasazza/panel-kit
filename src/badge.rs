@@ -61,9 +61,9 @@ fn style_for(spec: &BadgeSpec, accent_color: Option<&str>) -> String {
     if let Some(c) = spec.override_color {
         let (br, bg, bb) = tint_over(c, (255, 255, 255), 0.30);
         let fg = if perceived_brightness(c) < 0.55 {
-            "var(--fg)"
+            "var(--color-text)"
         } else {
-            "var(--bg)"
+            "var(--color-background)"
         };
         tint_owns_fill = true;
         style.push_str(&format!(
@@ -206,7 +206,7 @@ pub(crate) fn paint_badge(
 /// Pill-shaped web badge painted from one shared [`BadgeSpec`].
 ///
 /// `accent_color` is intentionally web-only: it accepts arbitrary CSS color
-/// strings such as `var(--accent)` that other renderers cannot interpret.
+/// strings such as `var(--color-highlight)` that other renderers cannot interpret.
 /// Portable RGB accents belong in [`BadgeSpec::accent_color`].
 #[component]
 pub fn Badge(
@@ -236,7 +236,7 @@ mod tests {
         };
 
         rsx! {
-            Badge { spec, accent_color: Some("var(--accent)".to_string()), on_action: move |_| {} }
+            Badge { spec, accent_color: Some("var(--color-highlight)".to_string()), on_action: move |_| {} }
         }
     }
 
@@ -248,7 +248,7 @@ mod tests {
         assert!(html.contains("badge:tag=alpha"), "{html}");
         assert!(html.contains("class=\"badge badge-tag active\""), "{html}");
         assert!(html.contains("--badge-c:rgb(94,243,140);"), "{html}");
-        assert!(html.contains("--badge-fg:var(--accent);"), "{html}");
+        assert!(html.contains("--badge-fg:var(--color-highlight);"), "{html}");
         assert!(html.contains("Add filter: tag=alpha"), "{html}");
         assert!(html.contains("Toggle filter: tag=alpha"), "{html}");
     }

@@ -31,17 +31,17 @@ use wasm_bindgen_futures::JsFuture;
 const DEMO_CSS: &str = "
 body { overflow:hidden !important; }
 .demo { height:100vh; box-sizing:border-box; padding:1.5rem 2rem; display:flex; flex-direction:column; gap:.5rem; }
-.demo h1 { margin:0; font:700 11px/1.4 var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--dim); }
-.demo .sizes { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font:11px/1.4 var(--mono); color:var(--dim); }
+.demo h1 { margin:0; font:700 11px/1.4 var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--color-text-muted); }
+.demo .sizes { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font:11px/1.4 var(--mono); color:var(--color-text-muted); }
 .demo .sizes span { margin-left:8px; }
 .demo .pk-dt { flex:1 1 auto; min-height:0; }
 .item-id { font-weight:700; }
-.item-priority { margin-left:8px; font:11px/1.4 var(--mono); letter-spacing:.06em; color:var(--dim); }
+.item-priority { margin-left:8px; font:11px/1.4 var(--mono); letter-spacing:.06em; color:var(--color-text-muted); }
 .badges { display:inline-flex; gap:0; }
 .stress:empty { display:none; }
-.stress { margin:0; max-height:12rem; overflow:auto; font:11px/1.4 var(--mono); color:var(--dim);
-  border:1px solid var(--line); padding:4px 8px; }
-.stress[data-pass=\"false\"] { border-color:var(--red); }
+.stress { margin:0; max-height:12rem; overflow:auto; font:11px/1.4 var(--mono); color:var(--color-text-muted);
+  border:1px solid var(--color-divider); padding:4px 8px; }
+.stress[data-pass=\"false\"] { border-color:var(--color-failure); }
 ";
 
 #[derive(Clone, Copy)]

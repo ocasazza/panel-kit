@@ -28,23 +28,23 @@ const DEMO_CSS: &str = "
 body { overflow: auto !important; }
 .demo { padding: 1rem; max-width: 980px; margin: 0 auto; }
 .demo h1 { font-size: 1rem; }
-.demo h2 { font-size: .8rem; color: var(--dim); text-transform: uppercase;
+.demo h2 { font-size: .8rem; color: var(--color-text-muted); text-transform: uppercase;
   letter-spacing: .06em; margin: 1.2rem 0 .4rem; }
 .controls { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
-.controls button { background: var(--bg); color: var(--dim); border: 1px solid var(--line2);
+.controls button { background: var(--color-background); color: var(--color-text-muted); border: 1px solid var(--color-border);
   border-radius: 3px; padding: .25rem .6rem; font-size: .72rem; cursor: pointer; }
-.controls button.on { color: var(--fg); border-color: var(--accent); }
-.controls .sep { color: var(--line2); }
+.controls button.on { color: var(--color-text); border-color: var(--color-highlight); }
+.controls .sep { color: var(--color-border); }
 .badge-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .5rem 0; }
-.badge-row .note { color: var(--dim); font-size: .7rem; }
+.badge-row .note { color: var(--color-text-muted); font-size: .7rem; }
 .kind-grid { display: grid; grid-template-columns: 11rem 1fr; gap: .45rem .8rem;
   align-items: center; margin: .5rem 0; }
-.kind-grid .k { color: var(--dim); font-size: .72rem; }
-.log { border: 1px solid var(--line); border-radius: 4px; background: var(--panel);
+.kind-grid .k { color: var(--color-text-muted); font-size: .72rem; }
+.log { border: 1px solid var(--color-divider); border-radius: 4px; background: var(--color-surface);
   padding: .5rem .6rem; min-height: 8rem; max-height: 14rem; overflow: auto; }
-.log div { font-size: .72rem; color: var(--fg); }
-.log div:nth-child(n+2) { color: var(--dim); }
-.log .none { color: var(--line2); }
+.log div { font-size: .72rem; color: var(--color-text); }
+.log div:nth-child(n+2) { color: var(--color-text-muted); }
+.log .none { color: var(--color-border); }
 ";
 
 /// One bundle of `Copy` signals shared with every demo badge via context.
@@ -118,7 +118,7 @@ fn App() -> Element {
                 TintButton { label: "bright yellow", value: Some(TINT_BRIGHT) }
                 span { class: "sep", "│ accent_color:" }
                 AccentButton { label: "none", value: None }
-                AccentButton { label: "var(--yellow)", value: Some("var(--yellow)".to_string()) }
+                AccentButton { label: "var(--color-tertiary)", value: Some("var(--color-tertiary)".to_string()) }
                 AccentButton { label: "#ff7edb", value: Some("#ff7edb".to_string()) }
             }
 
@@ -175,7 +175,7 @@ fn App() -> Element {
                     }
                 }
             }
-            p { class: "note", style: "color: var(--dim); font-size: .72rem;",
+            p { class: "note", style: "color: var(--color-text-muted); font-size: .72rem;",
                 "each chip's colour is hsl(tag_hue(value)·360, 70%, 60%) — stable across reloads and hosts"
             }
 

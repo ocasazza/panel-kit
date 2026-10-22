@@ -51,14 +51,14 @@ const CONTROL_GRAMMAR: &str = include_str!(env!("PANEL_KIT_AUTOLOOP_GRAMMAR_CONT
 const HOST_CSS: &str = "
 .topbar { flex-wrap: wrap; height: auto; min-height: 36px; gap: .45rem; }
 .topbar h1 { font-size: .74rem; text-transform: uppercase; }
-.topbar button { background: var(--bg); color: var(--fg); border: 1px solid var(--line2);
+.topbar button { background: var(--color-background); color: var(--color-text); border: 1px solid var(--color-border);
   border-radius: 3px; padding: .15rem .5rem; font-size: .72rem; cursor: pointer; }
-.topbar button:hover { border-color: var(--fg); }
-.topbar button.active { background: var(--fg); color: var(--bg); }
+.topbar button:hover { border-color: var(--color-text); }
+.topbar button.active { background: var(--color-text); color: var(--color-background); }
 .topbar .axis-buttons { display: flex; gap: .35rem; }
-.topbar .status { color: var(--accent); font-size: .7rem; }
-.topbar .status.error { color: var(--red); }
-.pk-content-unbound { color: var(--yellow); font-size: .78rem; }
+.topbar .status { color: var(--color-highlight); font-size: .7rem; }
+.topbar .status.error { color: var(--color-error); }
+.pk-content-unbound { color: var(--color-warning); font-size: .78rem; }
 ";
 
 static SPECS: Specs<'static> = Specs {

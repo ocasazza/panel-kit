@@ -10,8 +10,8 @@ const DEMO_CSS: &str = "
 body { overflow:auto !important; }
 .demo { max-width:64rem; margin:0 auto; padding:2rem; }
 .demo h1 { margin:0 0 1rem; font-size:.8rem; }
-.demo p { color:var(--dim); }
-.demo button { background:transparent; color:var(--fg); border:1px solid var(--line2);
+.demo p { color:var(--color-text-muted); }
+.demo button { background:transparent; color:var(--color-text); border:1px solid var(--color-border);
   border-radius:3px; padding:.3rem .55rem; font:inherit; cursor:pointer; }
 ";
 

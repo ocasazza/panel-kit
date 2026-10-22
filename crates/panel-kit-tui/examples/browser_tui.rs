@@ -92,7 +92,7 @@ mod browser {
                 Paragraph::new(vec![
                     Line::from(vec![Span::styled(
                         "panel-kit-tui backend canary",
-                        Style::default().fg(context.theme.fg),
+                        Style::default().fg(context.theme.text),
                     )]),
                     Line::from(""),
                     Line::from("The same ratatui workspace renders in terminal and browser."),
@@ -109,7 +109,7 @@ mod browser {
                     ),
                     Line::from("Palette: p · restore: 1-9 · PgUp/PgDn scroll the focused panel."),
                 ])
-                .style(Style::default().fg(context.theme.dim)),
+                .style(Style::default().fg(context.theme.text_muted)),
                 rect,
             );
         }
@@ -141,7 +141,7 @@ mod browser {
                 .map(|action| {
                     Line::from(Span::styled(
                         action.as_str(),
-                        Style::default().fg(context.theme.badge_info),
+                        Style::default().fg(context.theme.info),
                     ))
                 })
                 .collect();
@@ -184,7 +184,7 @@ mod browser {
             let mut lines = vec![
                 Line::from(Span::styled(
                     "docs-as-code canary",
-                    Style::default().fg(context.theme.fg),
+                    Style::default().fg(context.theme.text),
                 )),
                 Line::from(""),
             ];
@@ -235,7 +235,7 @@ mod browser {
             let sw = |color, name: &'static str| {
                 Line::from(vec![
                     Span::styled("## ", Style::default().fg(color)),
-                    Span::styled(name, Style::default().fg(context.theme.dim)),
+                    Span::styled(name, Style::default().fg(context.theme.text_muted)),
                 ])
             };
             frame.render_widget(
@@ -246,11 +246,11 @@ mod browser {
                         } else {
                             "preset: dark (click or press p)"
                         },
-                        Style::default().fg(context.theme.fg),
+                        Style::default().fg(context.theme.text),
                     )),
-                    sw(context.theme.blue, "blue · mode light"),
-                    sw(context.theme.yellow, "yellow · minimize"),
-                    sw(context.theme.pink, "pink · maximize"),
+                    sw(context.theme.primary, "primary · mode light"),
+                    sw(context.theme.tertiary, "tertiary · minimize"),
+                    sw(context.theme.secondary, "secondary · maximize"),
                     spinner(context.tick / 2, "spinner", &context.theme),
                 ]),
                 rect,
@@ -552,7 +552,7 @@ mod browser {
             draw_root(frame, frame.area(), &self.theme, self.charset);
             if projected.status == FrameStatus::TooSmall {
                 frame.render_widget(
-                    Paragraph::new("resize").style(Style::default().fg(self.theme.dim)),
+                    Paragraph::new("resize").style(Style::default().fg(self.theme.text_muted)),
                     frame.area(),
                 );
                 return;

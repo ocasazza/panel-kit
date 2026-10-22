@@ -33,8 +33,9 @@ pub use emitter::{
 pub use schema::{ColorTokens, DensityTokens, ThemeTokens, TypographyTokens};
 pub use semantic::{ColorRef, ThemeColor};
 pub use tokens::{
-    by_name, Token, ACCENT, BADGE_INFO, BG, BLUE, DARK, DIM, FG, GREEN, INV_BG, INV_FG, LINE,
-    LINE2, MONO, PANEL, PINK, RED, YELLOW,
+    by_name, Token, DARK, MONO, BACKGROUND, BORDER, DIVIDER, ERROR, FAILURE, FOCUS_RING, HIGHLIGHT,
+    INFO, INVERSE_BACKGROUND, INVERSE_TEXT, PRIMARY, SECONDARY, SUCCESS, SURFACE, TERTIARY, TEXT,
+    TEXT_MUTED, WARNING,
 };
 
 #[cfg(test)]

@@ -477,9 +477,9 @@ fn legacy_badge_spans(spec: &BadgeSpec, theme: &ResolvedTuiTheme) -> Vec<Span<'s
     }
 
     vec![
-        Span::styled("[", Style::default().fg(theme.line2)),
+        Span::styled("[", Style::default().fg(theme.border)),
         Span::styled(display_label(&spec.kind, &spec.value), style),
-        Span::styled("]", Style::default().fg(theme.line2)),
+        Span::styled("]", Style::default().fg(theme.border)),
     ]
 }
 
@@ -489,16 +489,16 @@ fn legacy_badge_color(spec: &BadgeSpec, theme: &ResolvedTuiTheme) -> Color {
     }
 
     match &spec.kind {
-        BadgeKind::Tag => theme.badge_info,
-        BadgeKind::Doctype | BadgeKind::Author => theme.badge_info,
-        BadgeKind::Folder => theme.dim,
-        BadgeKind::Entity { .. } | BadgeKind::Date => theme.yellow,
-        BadgeKind::Wikilink { resolved: true, .. } => theme.badge_info,
+        BadgeKind::Tag => theme.info,
+        BadgeKind::Doctype | BadgeKind::Author => theme.info,
+        BadgeKind::Folder => theme.text_muted,
+        BadgeKind::Entity { .. } | BadgeKind::Date => theme.tertiary,
+        BadgeKind::Wikilink { resolved: true, .. } => theme.info,
         BadgeKind::Wikilink {
             resolved: false, ..
-        } => theme.red,
-        BadgeKind::Url { .. } | BadgeKind::Status => theme.green,
-        BadgeKind::Generic => theme.line2,
+        } => theme.error,
+        BadgeKind::Url { .. } | BadgeKind::Status => theme.success,
+        BadgeKind::Generic => theme.border,
     }
 }
 

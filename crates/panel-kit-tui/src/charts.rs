@@ -35,7 +35,7 @@ pub(super) fn mix(a: Color, b: Color, t: f64) -> Color {
 
 /// The categorical series palette, derived from the theme.
 pub(super) fn series_colors(t: &ResolvedTuiTheme) -> [Color; 6] {
-    [t.fg, t.blue, t.pink, t.yellow, t.badge_info, t.red]
+    [t.text, t.primary, t.secondary, t.tertiary, t.info, t.error]
 }
 
 pub(super) fn rgb_color((r, g, b): Rgb) -> Color {
@@ -48,12 +48,12 @@ pub(super) fn contrast_ink(bg: Color, t: &ResolvedTuiTheme) -> Color {
             // Rec. 601 luma; light cells get dark ink and vice versa.
             let luma = 0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64;
             if luma > 140.0 {
-                t.bg
+                t.background
             } else {
-                t.fg
+                t.text
             }
         }
-        _ => t.fg,
+        _ => t.text,
     }
 }
 

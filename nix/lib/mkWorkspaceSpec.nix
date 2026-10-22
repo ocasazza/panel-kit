@@ -19,10 +19,11 @@ let
 
   defaultTheme = {
     colors = {
-      bg = "#0a0a0a"; panel = "#0d0d0d"; fg = "#ededed"; dim = "#7a7a7a";
-      line = "#262626"; line2 = "#5f5f5f"; inverse_bg = "#ededed"; inverse_fg = "#0a0a0a";
-      accent = "#5ef38c"; red = "#ff5f56"; yellow = "#ffbd2e"; green = "#27c93f";
-      blue = "#3b9bff"; pink = "#ff5fc3"; badge_info = "#83b7cc"; focus_ring = "#ededed";
+      background = "#0a0a0a"; surface = "#0d0d0d"; text = "#ededed"; text_muted = "#7a7a7a";
+      divider = "#262626"; border = "#5f5f5f"; inverse_background = "#ededed"; inverse_text = "#0a0a0a";
+      focus_ring = "#ededed"; primary = "#3b9bff"; secondary = "#ff5fc3"; tertiary = "#ffbd2e";
+      highlight = "#5ef38c"; success = "#27c93f"; failure = "#ff5f56"; error = "#ff5f56";
+      warning = "#ffbd2e"; info = "#83b7cc";
     };
     typography = {
       family = "ui-monospace, \"SF Mono\", \"JetBrains Mono\", \"Menlo\", \"Consolas\", monospace";
@@ -87,7 +88,7 @@ let
 
   normalizeTheme = pointer: value:
     let input = allowed pointer [ "colors" "typography" "density" ] value; in {
-      colors = normalizeByFields (join pointer "colors") [ "bg" "panel" "fg" "dim" "line" "line2" "inverse_bg" "inverse_fg" "accent" "red" "yellow" "green" "blue" "pink" "badge_info" "focus_ring" ] (x: x) input.colors;
+      colors = normalizeByFields (join pointer "colors") [ "background" "surface" "text" "text_muted" "divider" "border" "inverse_background" "inverse_text" "focus_ring" "primary" "secondary" "tertiary" "highlight" "success" "failure" "error" "warning" "info" ] (x: x) input.colors;
       typography = normalizeByFields (join pointer "typography") [ "family" "body_size" "body_line_height" "label_size" "label_weight" "label_tracking" ] (x: x) input.typography;
       density = normalizeByFields (join pointer "density") [ "panel_radius" "badge_radius" "spacing_xs" "spacing_sm" "spacing_md" ] asFloat input.density;
     };

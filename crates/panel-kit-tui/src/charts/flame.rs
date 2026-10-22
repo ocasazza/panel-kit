@@ -159,7 +159,7 @@ fn paint_span(
     }
     let color = span.color.map(rgb_color).unwrap_or_else(|| {
         let base = colors[span.depth as usize % colors.len()];
-        mix(base, t.bg, (span.depth as f64 * 0.08).min(0.45))
+        mix(base, t.background, (span.depth as f64 * 0.08).min(0.45))
     });
     paint_background(f, row, cell_x0, cell_w, color);
     paint_label(

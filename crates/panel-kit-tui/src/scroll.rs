@@ -180,8 +180,8 @@ pub(crate) fn vertical_scrollbar(
             .track_symbol(Some("│"))
             .begin_symbol(None)
             .end_symbol(None)
-            .style(Style::default().fg(t.dim))
-            .thumb_style(Style::default().fg(t.line2)),
+            .style(Style::default().fg(t.text_muted))
+            .thumb_style(Style::default().fg(t.border)),
         area,
         &mut state,
     );

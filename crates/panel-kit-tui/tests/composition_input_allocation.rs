@@ -203,7 +203,7 @@ fn draw_native_chrome_allocation_baseline(
                     .border_style(Style::default().fg(theme.focus_ring))
                     .title(Line::from(Span::styled(
                         meta.title.as_ref(),
-                        Style::default().fg(theme.fg),
+                        Style::default().fg(theme.text),
                     )));
 
                 let _ = block.inner(outer);

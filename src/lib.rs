@@ -118,10 +118,13 @@
 //!
 //! Inject [`CSS`] once at the app root (`style { {panel_kit::CSS} }`), then
 //! layer app-specific styles after it. The generated `:root` custom properties
-//! mirror [`panel_kit_core::theme::ThemeTokens`]: palette variables (`--bg`,
-//! `--panel`, `--fg`, `--dim`, `--line`, `--line2`, `--inv-bg`, `--inv-fg`,
-//! `--accent`, `--red`, `--yellow`, `--green`, `--blue`, `--pink`,
-//! `--badge-info`, `--focus-ring`), typography (`--mono`, `--body-size`,
+//! mirror [`panel_kit_core::theme::ThemeTokens`]: role-named palette variables
+//! (`--color-background`, `--color-surface`, `--color-text`,
+//! `--color-text-muted`, `--color-divider`, `--color-border`,
+//! `--color-inverse-background`, `--color-inverse-text`, `--color-focus-ring`,
+//! `--color-primary`, `--color-secondary`, `--color-tertiary`,
+//! `--color-highlight`, `--color-success`, `--color-failure`, `--color-error`,
+//! `--color-warning`, `--color-info`), typography (`--mono`, `--body-size`,
 //! `--body-line-height`, `--label-size`, `--label-weight`,
 //! `--label-tracking`), and density (`--panel-radius`, `--badge-radius`,
 //! `--space-xs`, `--space-sm`, `--space-md`). Override them in a later
@@ -463,8 +466,8 @@ mod boot_contract_tests {
 
         for slot in ThemeColor::ALL.iter().copied() {
             let needle = format!(
-                "--{}: {};",
-                slot.key(),
+                "{}: {};",
+                slot.css_var(),
                 String::from(ThemeTokens::dark().colors.resolve(slot))
             );
             assert!(
@@ -481,7 +484,7 @@ mod boot_contract_tests {
     fn generated_boot_stylesheet_carries_token_values_not_variables() {
         use panel_kit_core::tokens;
 
-        for token in [tokens::BG, tokens::PANEL, tokens::FG, tokens::LINE2] {
+        for token in [tokens::BACKGROUND, tokens::SURFACE, tokens::TEXT, tokens::BORDER] {
             assert!(
                 BOOT_CSS.contains(token.hex),
                 "generated BOOT_CSS is missing {} ({})",
