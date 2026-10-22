@@ -8,14 +8,14 @@ use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
 use ratatui::Frame;
 
 use crate::widgets::draw_border;
-use crate::{rect_from_region, Charset, ResolvedTuiTheme};
+use crate::{rect_from_region, TerminalCharset, ResolvedTuiTheme};
 
 /// Draw the workspace root border and return its native inner rect.
 pub fn draw_root(
     frame: &mut Frame,
     area: Rect,
     theme: &ResolvedTuiTheme,
-    charset: Charset,
+    charset: TerminalCharset,
 ) -> Rect {
     draw_border(frame, area, charset, Style::default().fg(theme.border));
     Rect::new(

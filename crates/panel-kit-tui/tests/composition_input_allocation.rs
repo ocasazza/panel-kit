@@ -7,7 +7,7 @@ use panel_kit_core::{
     FocusContext, Key, KeyChord, Mode, PanelCommand, PointerButton, PointerEvent, PointerEventKind,
 };
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
-use panel_kit_tui::{Charset, ResolvedTuiTheme};
+use panel_kit_tui::{TerminalCharset, ResolvedTuiTheme};
 use ratatui::backend::TestBackend;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -38,7 +38,7 @@ fn tui_hit_adapter_maps_drawn_parts_to_workspace_events() {
             frame,
             alpha,
             &ResolvedTuiTheme::default(),
-            Charset::Ascii,
+            TerminalCharset::Ascii,
             &mut hit_buffer,
         );
         widgets::panel::draw_panel_chrome(
@@ -46,7 +46,7 @@ fn tui_hit_adapter_maps_drawn_parts_to_workspace_events() {
             alpha,
             meta,
             &ResolvedTuiTheme::default(),
-            Charset::Ascii,
+            TerminalCharset::Ascii,
             &mut hit_buffer,
         );
         widgets::panel::draw_traffic_lights(
@@ -55,7 +55,7 @@ fn tui_hit_adapter_maps_drawn_parts_to_workspace_events() {
             Mode::Floating,
             None,
             &ResolvedTuiTheme::default(),
-            Charset::Ascii,
+            TerminalCharset::Ascii,
             &mut hit_buffer,
         );
     });

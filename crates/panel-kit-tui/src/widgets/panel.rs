@@ -10,7 +10,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 use crate::widgets::TuiHitBuffer;
-use crate::{rect_from_region, Charset, ResolvedTuiTheme};
+use crate::{rect_from_region, TerminalCharset, ResolvedTuiTheme};
 
 /// Draw only a panel's surface/body and return the projected body rectangle.
 ///
@@ -20,7 +20,7 @@ pub fn draw_panel_surface<K: PanelKey>(
     frame: &mut Frame,
     panel: PanelProjection<K>,
     theme: &ResolvedTuiTheme,
-    _charset: Charset,
+    _charset: TerminalCharset,
     hits: &mut TuiHitBuffer<K>,
 ) -> Rect {
     let outer = rect_from_region(panel.chrome.outer);
@@ -52,7 +52,7 @@ pub fn draw_panel_chrome<K: PanelKey>(
     panel: PanelProjection<K>,
     meta: &PanelMeta<K>,
     theme: &ResolvedTuiTheme,
-    charset: Charset,
+    charset: TerminalCharset,
     hits: &mut TuiHitBuffer<K>,
 ) -> Rect {
     let outer = rect_from_region(panel.chrome.outer);
@@ -102,7 +102,7 @@ pub fn draw_traffic_lights<K: PanelKey>(
     _mode: Mode,
     hover: Option<Position>,
     theme: &ResolvedTuiTheme,
-    charset: Charset,
+    charset: TerminalCharset,
     hits: &mut TuiHitBuffer<K>,
 ) {
     for (part, region, color) in [
@@ -189,9 +189,13 @@ pub fn tiled_cell_rect(
     };
 
     let x = workspace.x as f64 + grid.padding + column as f64 * (grid.track_w + grid.gap);
-    let y = workspace.y as f64 + grid.padding + row as f64 * (grid.track_h + grid.gap) - scroll;
+    // Rows carry their own heights; a row's offset is the sum of the rows
+    // above it, not a shared track height times its index.
+    let rows_above = grid.row_heights.total(row);
+    let y = workspace.y as f64 + grid.padding + rows_above + row as f64 * grid.gap - scroll;
     let w = column_span as f64 * grid.track_w + column_span.saturating_sub(1) as f64 * grid.gap;
-    let h = row_span as f64 * grid.track_h + row_span.saturating_sub(1) as f64 * grid.gap;
+    let h = grid.row_heights.total(row + row_span as u16) - rows_above
+        + row_span.saturating_sub(1) as f64 * grid.gap;
 
     Some(rect_from_region(Region::new(x, y, w, h)))
 }
@@ -203,7 +207,7 @@ struct TrafficLight<K: PanelKey> {
     region: Option<Region>,
     hover: Option<Position>,
     color: ratatui::style::Color,
-    charset: Charset,
+    charset: TerminalCharset,
 }
 
 /// Record and render one panel traffic-light control.

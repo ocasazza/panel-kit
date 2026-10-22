@@ -83,9 +83,9 @@ const ASCII_BORDER: border::Set<'static> = border::Set {
 /// Which glyph set the chrome draws with. A native terminal renders
 /// box-drawing and geometric glyphs (square borders, ■ / ▣ lights); the
 /// ratzilla WebGL backend drops non-atlas glyphs, so it opts into
-/// [`Charset::Ascii`]. Defaults to [`Charset::Unicode`].
+/// [`TerminalCharset::Ascii`]. Defaults to [`TerminalCharset::Unicode`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Charset {
+pub enum TerminalCharset {
     /// Square borders and ■ / ▣ traffic lights (native terminal).
     #[default]
     Unicode,
@@ -93,22 +93,22 @@ pub enum Charset {
     Ascii,
 }
 
-impl Charset {
+impl TerminalCharset {
     /// The panel border glyph set for this charset.
     fn border(self) -> border::Set<'static> {
         match self {
-            Charset::Unicode => border::PLAIN,
-            Charset::Ascii => ASCII_BORDER,
+            TerminalCharset::Unicode => border::PLAIN,
+            TerminalCharset::Ascii => ASCII_BORDER,
         }
     }
 
     /// The traffic-light glyph; `hovered` marks the light.
     fn light(self, hovered: bool) -> char {
         match (self, hovered) {
-            (Charset::Unicode, true) => '▣',
-            (Charset::Unicode, false) => '■',
-            (Charset::Ascii, true) => 'O',
-            (Charset::Ascii, false) => 'o',
+            (TerminalCharset::Unicode, true) => '▣',
+            (TerminalCharset::Unicode, false) => '■',
+            (TerminalCharset::Ascii, true) => 'O',
+            (TerminalCharset::Ascii, false) => 'o',
         }
     }
 }

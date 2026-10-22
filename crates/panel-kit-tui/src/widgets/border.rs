@@ -4,10 +4,10 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::Frame;
 
-use crate::Charset;
+use crate::TerminalCharset;
 
 /// Draw a charset-specific single-cell border into the frame buffer.
-pub(crate) fn draw_border(frame: &mut Frame, area: Rect, charset: Charset, style: Style) {
+pub(crate) fn draw_border(frame: &mut Frame, area: Rect, charset: TerminalCharset, style: Style) {
     if area.width == 0 || area.height == 0 {
         return;
     }

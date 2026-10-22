@@ -852,14 +852,14 @@ fn the_clients_viewport_keeps_what_is_a_length_and_zeroes_the_rest() {
     state.set_viewport(1_500.0, 640.0);
     assert_eq!(
         state.viewport,
-        Viewport {
+        TableViewport {
             top: 1_500.0,
             visible: 640.0,
             seek: false
         }
     );
     state.set_viewport(f64::NAN, -3.0);
-    assert_eq!(state.viewport, Viewport::default());
+    assert_eq!(state.viewport, TableViewport::default());
 }
 
 #[test]
@@ -1142,7 +1142,7 @@ fn the_persisted_payload_is_the_column_layout_and_the_query_as_json() {
     assert_eq!(restored.persisted(), state.persisted());
     assert!(restored.selection.is_empty());
     assert_eq!(restored.window.start, 0);
-    assert_eq!(restored.viewport, Viewport::default());
+    assert_eq!(restored.viewport, TableViewport::default());
 }
 
 #[test]

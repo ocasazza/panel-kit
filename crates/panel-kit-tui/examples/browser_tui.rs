@@ -349,7 +349,7 @@ mod browser {
     };
     use panel_kit_tui::widgets::root::{draw_root, draw_workspace_scrollbar};
     use panel_kit_tui::widgets::TuiHitBuffer;
-    use panel_kit_tui::{rect_from_region, Charset, ResolvedTuiTheme};
+    use panel_kit_tui::{rect_from_region, TerminalCharset, ResolvedTuiTheme};
     use panel_kit_tui::wheel::{self, WheelCell};
     use ratatui::layout::{Position, Rect};
     use ratatui::style::{Color, Style};
@@ -395,7 +395,7 @@ mod browser {
         hits: TuiHitBuffer<SpecPanelId>,
         pointer: RatzillaPointerTranslator,
         theme: ResolvedTuiTheme,
-        charset: Charset,
+        charset: TerminalCharset,
         badges: Vec<BadgeSpec>,
         badge_zones: Vec<(Rect, usize)>,
         theme_zone: Rect,
@@ -773,10 +773,10 @@ mod browser {
         }
     }
 
-    fn tui_charset(charset: panel_kit_core::Charset) -> Charset {
+    fn tui_charset(charset: panel_kit_core::spec::Charset) -> TerminalCharset {
         match charset {
-            panel_kit_core::Charset::Unicode => Charset::Unicode,
-            panel_kit_core::Charset::Ascii => Charset::Ascii,
+            panel_kit_core::spec::Charset::Unicode => TerminalCharset::Unicode,
+            panel_kit_core::spec::Charset::Ascii => TerminalCharset::Ascii,
         }
     }
 

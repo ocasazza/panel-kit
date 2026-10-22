@@ -121,6 +121,7 @@ pub enum ColumnKind {
 
 /// Horizontal alignment of a column's header and cells.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Align {
     /// Flush left.

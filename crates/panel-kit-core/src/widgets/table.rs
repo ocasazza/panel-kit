@@ -1,4 +1,10 @@
 //! Semantic table model shared by web and terminal painters.
+//!
+//! This is the *static* model (cells, columns, rows) consumed by TUI and web
+//! painters. For the *interactive* data table (sorting, filtering,
+//! pagination, state) see [`data_table`]. The two are intentionally
+//! separate: this module is renderer-neutral data, `data_table` owns
+//! behaviour and state.
 
 use serde::{Deserialize, Serialize};
 
@@ -7,17 +13,10 @@ use crate::badge::Rgb;
 use super::data_table::{Align, ColumnKind, DataColumnSpec, TableData, TableDataBuilder, Value};
 
 /// Horizontal text alignment for a semantic table column.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum TextAlign {
-    /// Left-align text.
-    Left,
-    /// Center-align text.
-    Center,
-    /// Right-align text.
-    Right,
-}
+/// Horizontal text alignment for a semantic table column.
+///
+/// Alias for [`data_table::Align`]; kept for backwards compatibility.
+pub type TextAlign = Align;
 
 /// Renderer-neutral column width request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

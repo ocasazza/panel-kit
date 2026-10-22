@@ -7,7 +7,7 @@ use ratatui::style::Style;
 use ratatui::Frame;
 
 use crate::widgets::{draw_border, TuiHitBuffer};
-use crate::{write_header_text, Charset, ResolvedTuiTheme};
+use crate::{write_header_text, TerminalCharset, ResolvedTuiTheme};
 
 /// Dependencies shared by dock rendering and hit recording.
 pub struct DockRenderContext<'a, K: PanelKey> {
@@ -18,7 +18,7 @@ pub struct DockRenderContext<'a, K: PanelKey> {
     /// Resolved terminal colors for border, prefix, and chips.
     pub theme: &'a ResolvedTuiTheme,
     /// Border glyph set used for the dock frame.
-    pub charset: Charset,
+    pub charset: TerminalCharset,
 }
 
 /// Draw a dock from borrowed projected dock entries.

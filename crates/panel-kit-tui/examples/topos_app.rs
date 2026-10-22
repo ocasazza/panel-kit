@@ -39,7 +39,7 @@ use panel_kit_tui::scroll::PanelScroll;
 #[cfg(not(target_arch = "wasm32"))]
 use panel_kit_tui::store::JsonFileLayoutStore;
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
-use panel_kit_tui::{rect_from_region, Charset, ResolvedTuiTheme};
+use panel_kit_tui::{rect_from_region, TerminalCharset, ResolvedTuiTheme};
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -175,7 +175,7 @@ pub struct ToposHost {
     scenes: Vec<Scene>,
     active: usize,
     theme: ResolvedTuiTheme,
-    charset: Charset,
+    charset: TerminalCharset,
     paper: bool,
     scroll: PanelScroll<SpecPanelId>,
     hits: TuiHitBuffer<SpecPanelId>,
@@ -1023,9 +1023,9 @@ fn chrome_input(chrome: &ChromeSpec) -> ChromeProjectionInput {
     }
 }
 
-fn spec_charset(charset: SpecCharset) -> Charset {
+fn spec_charset(charset: SpecCharset) -> TerminalCharset {
     match charset {
-        SpecCharset::Unicode => Charset::Unicode,
-        SpecCharset::Ascii => Charset::Ascii,
+        SpecCharset::Unicode => TerminalCharset::Unicode,
+        SpecCharset::Ascii => TerminalCharset::Ascii,
     }
 }

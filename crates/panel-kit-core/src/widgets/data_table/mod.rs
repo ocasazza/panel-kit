@@ -28,7 +28,7 @@ pub use scroll::{ScrollMap, MAX_SCROLL};
 pub use state::{
     ActiveFilter, ColumnFilter, Density, FilterKind, Mounted, MoveTarget, OrderKey, PersistedTable,
     SelectMode, Selectable, TableDefaults, TableEvent, TableKey, TableQuery, TableState,
-    TableWindow, ViewMode, Viewport, DEFAULT_PAGE, MAX_WIDTH, MAX_WINDOW, MIN_WIDTH, NARROW_WIDTH,
+    TableWindow, ViewMode, TableViewport, DEFAULT_PAGE, MAX_WIDTH, MAX_WINDOW, MIN_WIDTH, NARROW_WIDTH,
     OVERSCAN, QUICK_LIMIT, STATE_VERSION, WINDOW_COUNT,
 };
 pub use stored::{Field, Numeric, StoredFilter, StoredTable};

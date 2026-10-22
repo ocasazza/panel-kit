@@ -40,12 +40,22 @@ pub fn root_class<K: PanelKey>(frame: &ProjectedFrame<'_, K>) -> &'static str {
 /// policy table. Core owns the grid math; the web backend only serializes the
 /// explicit tracks and gaps it receives.
 pub fn tile_grid_style(grid: TileGridProjection) -> String {
+    // Rows are emitted explicitly, one track per row. `repeat(N, h)` forced
+    // every row to the same height in the DOM, so resizing one tile resized
+    // its neighbours even once core stopped forcing a shared number. Columns
+    // stay uniform — nothing varies them per tile.
+    let mut rows = String::new();
+    for row in 0..grid.rows {
+        if row > 0 {
+            rows.push(' ');
+        }
+        rows.push_str(&css_px(grid.row_heights.get(row)));
+    }
     format!(
-        "grid-template-columns:repeat({}, {});grid-template-rows:repeat({}, {});gap:{};padding:{};",
+        "grid-template-columns:repeat({}, {});grid-template-rows:{};gap:{};padding:{};",
         grid.columns,
         css_px(grid.track_w),
-        grid.rows,
-        css_px(grid.track_h),
+        rows,
         css_px(grid.gap),
         css_px(grid.padding),
     )

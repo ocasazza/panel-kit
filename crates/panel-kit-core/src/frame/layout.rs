@@ -107,10 +107,41 @@ pub struct TileGridProjection {
     pub rows: u16,
     /// Width of one column track.
     pub track_w: f64,
-    /// Height of one row track.
-    pub track_h: f64,
+    /// Height of each row track, indexed by row.
+    ///
+    /// Rows are deliberately NOT uniform. One shared track height made every
+    /// row identical, so growing a panel's `row_span` raised `rows`, which
+    /// shrank `usable_h / rows` and so shrank EVERY row - resizing one tile
+    /// silently resized its neighbours. Each row is sized from the panels
+    /// actually in it.
+    pub row_heights: RowHeights,
     /// Gap between tracks.
     pub gap: f64,
     /// Padding around the grid.
     pub padding: f64,
+}
+
+/// Upper bound on rows a tiling grid may project. Inline row heights are
+/// stored in a fixed array so `TileGridProjection` stays cheap to copy.
+pub const MAX_TILE_ROWS: usize = 32;
+
+/// Per-row track heights, inline so `TileGridProjection` stays cheap to copy.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RowHeights(pub [f64; MAX_TILE_ROWS]);
+
+impl RowHeights {
+    /// Height of `row`, falling back to the last entry when `rows` overflows.
+    pub fn get(&self, row: u16) -> f64 {
+        let last = self.0[MAX_TILE_ROWS - 1];
+        self.0
+            .get(row as usize)
+            .copied()
+            .filter(|v| v.is_finite())
+            .unwrap_or(last)
+    }
+
+    /// Sum of the first `rows` tracks. Gaps excluded.
+    pub fn total(&self, rows: u16) -> f64 {
+        (0..rows as usize).map(|r| self.get(r as u16)).sum()
+    }
 }

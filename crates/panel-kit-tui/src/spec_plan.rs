@@ -5,7 +5,7 @@
 //! approximations in [`ResolvedTuiTheme`], matching terminal host limits.
 
 use panel_kit_core::spec::{
-    Charset, ChromeSpec, InputSpec, LayoutSpec, PanelSpec, PersistenceSpec, ResolvedWorkspace,
+    Charset as TerminalCharset, ChromeSpec, InputSpec, LayoutSpec, PanelSpec, PersistenceSpec, ResolvedWorkspace,
     SurfaceSpec,
 };
 use panel_kit_core::theme::ThemeTokens;
@@ -28,7 +28,7 @@ pub struct TuiSpecPlan {
     /// Keyboard command configuration.
     pub input: InputSpec,
     /// Requested glyph family.
-    pub glyphs: Charset,
+    pub glyphs: TerminalCharset,
     /// Source theme tokens retained for parity diagnostics.
     pub theme: ThemeTokens,
     /// Concrete ratatui theme conversion consumed by painters.

@@ -19,7 +19,7 @@ mod tests;
 
 pub use hit::hit_test;
 pub use layout::{
-    FrameStatus, PanelChromeProjection, Placement, TileFillOrder, TileGridProjection,
+    FrameStatus, PanelChromeProjection, Placement, TileFillOrder, TileGridProjection, RowHeights, MAX_TILE_ROWS,
     TileLayoutMetrics,
 };
 pub use partial::{project_chrome, project_dock_into, project_panel};

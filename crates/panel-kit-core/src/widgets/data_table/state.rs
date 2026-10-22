@@ -160,7 +160,7 @@ impl Default for TableWindow {
 
 /// What the client's scroller shows, which a scaled table windows by.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Viewport {
+pub struct TableViewport {
     /// Pixels scrolled.
     pub top: f64,
     /// Height of the rows' area under the header.
@@ -402,7 +402,7 @@ pub struct TableState {
     /// Whether the selection still holds the rows `select_all` selected.
     pub covered: Covered,
     /// What the client's scroller shows.
-    pub viewport: Viewport,
+    pub viewport: TableViewport,
     /// The mounted window.
     pub window: TableWindow,
     /// The tag filter.
@@ -468,7 +468,7 @@ impl TableState {
             cursor: None,
             pos: PositionHint::default(),
             covered: Covered::default(),
-            viewport: Viewport::default(),
+            viewport: TableViewport::default(),
             window: TableWindow::default(),
             tag_filter: BTreeSet::new(),
             tag_mode: TagMode::Any,
@@ -899,7 +899,7 @@ impl TableState {
     /// The client's scroller: pixels scrolled and the height of the rows'
     /// area. A value that is not a length counts as 0.
     pub fn set_viewport(&mut self, top: f64, visible: f64) {
-        self.viewport = Viewport {
+        self.viewport = TableViewport {
             top: clean(top),
             visible: clean(visible),
             seek: false,

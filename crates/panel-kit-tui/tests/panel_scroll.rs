@@ -13,7 +13,7 @@ use panel_kit_tui::input::{route_wheel, route_wheel_to, WheelDelta};
 use panel_kit_tui::scroll::PanelScroll;
 use panel_kit_tui::widgets::panel::{draw_panel_chrome, draw_panel_surface};
 use panel_kit_tui::widgets::TuiHitBuffer;
-use panel_kit_tui::{scroll, table, Charset, ResolvedTuiTheme};
+use panel_kit_tui::{scroll, table, TerminalCharset, ResolvedTuiTheme};
 use ratatui::layout::Rect;
 use ratatui::text::Line;
 
@@ -60,8 +60,8 @@ fn drawn_body(
     let mut hits = TuiHitBuffer::with_capacity(2, 0);
 
     render_to_buffer(80, 24, |frame| {
-        draw_panel_surface(frame, panel, &theme, Charset::Ascii, &mut hits);
-        let body = draw_panel_chrome(frame, panel, meta, &theme, Charset::Ascii, &mut hits);
+        draw_panel_surface(frame, panel, &theme, TerminalCharset::Ascii, &mut hits);
+        let body = draw_panel_chrome(frame, panel, meta, &theme, TerminalCharset::Ascii, &mut hits);
         scroll::lines(frame, body, &theme, &key, registry, content.clone());
     });
 

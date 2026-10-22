@@ -9,7 +9,7 @@ use panel_kit_core::{
     CELLS_TABLET_MAX,
 };
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
-use panel_kit_tui::{Charset, ResolvedTuiTheme};
+use panel_kit_tui::{TerminalCharset, ResolvedTuiTheme};
 pub(crate) use panel_kit_tui::rect_from_region;
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
@@ -141,21 +141,21 @@ pub(crate) fn draw_composed_workspace(
                 frame,
                 rect_from_region(projected.chrome.root),
                 &theme,
-                Charset::Ascii,
+                TerminalCharset::Ascii,
             );
             for panel in projected.panels.iter().copied() {
                 let meta = catalog
                     .get(panel.key)
                     .expect("projected panel metadata exists");
-                widgets::panel::draw_panel_surface(frame, panel, &theme, Charset::Ascii, hits);
-                widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, Charset::Ascii, hits);
+                widgets::panel::draw_panel_surface(frame, panel, &theme, TerminalCharset::Ascii, hits);
+                widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, TerminalCharset::Ascii, hits);
                 widgets::panel::draw_traffic_lights(
                     frame,
                     panel,
                     projected.mode,
                     None,
                     &theme,
-                    Charset::Ascii,
+                    TerminalCharset::Ascii,
                     hits,
                 );
                 widgets::panel::draw_resize_grip(frame, panel, None, &theme, hits);
@@ -168,7 +168,7 @@ pub(crate) fn draw_composed_workspace(
                     catalog,
                     label: "dock:",
                     theme: &theme,
-                    charset: Charset::Ascii,
+                    charset: TerminalCharset::Ascii,
                 },
                 hits,
             );

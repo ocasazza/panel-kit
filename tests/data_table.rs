@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use panel_kit::widgets::{Control, DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
 use panel_kit_core::widgets::data_table::{
     Align, BuildOptions, ColumnFilter, Density, ScrollMap, SelectMode, Selectable, SortDir,
-    SortSpec, TableDefaults, TableEvent, TableState, TableWindow, View, ViewMode, Viewport,
+    SortSpec, TableDefaults, TableEvent, TableState, TableWindow, View, ViewMode, TableViewport as Viewport,
     MAX_SCROLL, WINDOW_COUNT,
 };
 use rstest::rstest;

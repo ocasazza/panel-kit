@@ -798,12 +798,25 @@ pub fn front_z<K>(ps: &[PanelWin<K>]) -> i32 {
 /// clamping one-way: shrink the window once and every panel stays crushed
 /// after it grows back.
 pub fn effective_rect<K>(p: &PanelWin<K>, vw: f64, vh: f64, c: &Clamp) -> (f64, f64, f64, f64) {
-    let ws_w = (vw - c.outer_w).max(c.floor_w);
-    let ws_h = (vh - c.outer_h).max(c.floor_h);
-    let w = p.w.min(ws_w - c.inner).min(ws_w * c.max_frac).max(c.min_w);
-    let h = p.h.min(ws_h - c.inner).min(ws_h * c.max_frac).max(c.min_h);
-    let x = p.x.min(ws_w - w - c.edge).max(0.0);
-    let y = p.y.min(ws_h - h - c.edge).max(0.0);
+    // Floors keep normal layouts usable, but must not manufacture space on a
+    // viewport smaller than the floor. A floating panel must never exceed the
+    // actual browser viewport, including on mobile and split-screen sizes.
+    let available_w = (vw - c.outer_w).max(0.0);
+    let available_h = (vh - c.outer_h).max(0.0);
+    let ws_w = available_w.max(c.floor_w);
+    let ws_h = available_h.max(c.floor_h);
+    let max_w = available_w
+        .min(ws_w - c.inner)
+        .min(ws_w * c.max_frac)
+        .min(vw.max(0.0));
+    let max_h = available_h
+        .min(ws_h - c.inner)
+        .min(ws_h * c.max_frac)
+        .min(vh.max(0.0));
+    let w = p.w.min(max_w).max(c.min_w.min(max_w));
+    let h = p.h.min(max_h).max(c.min_h.min(max_h));
+    let x = p.x.min((available_w - w - c.edge).max(0.0)).max(0.0);
+    let y = p.y.min((available_h - h - c.edge).max(0.0)).max(0.0);
     (x, y, w, h)
 }
 
@@ -1285,6 +1298,17 @@ mod tests {
         let regular = layout.at(TestPanel::Second, 10.0, 10.0, 300.0, 200.0);
         let (_, _, w, h) = effective_rect(&regular, 1000.0, 1000.0, &Clamp::WEB);
         assert_eq!((w, h), (300.0, 200.0));
+    }
+
+    #[test]
+    fn effective_rect_never_exceeds_tiny_viewport() {
+        let mut layout = LayoutBuilder::new();
+        let oversized = layout.at(TestPanel::First, 0.0, 0.0, 5000.0, 5000.0);
+        let (x, y, w, h) = effective_rect(&oversized, 240.0, 120.0, &Clamp::WEB);
+
+        assert!(x >= 0.0 && y >= 0.0);
+        assert!(x + w <= 240.0 + f64::EPSILON, "x={x}, w={w}");
+        assert!(y + h <= 120.0 + f64::EPSILON, "y={y}, h={h}");
     }
 
     #[test]

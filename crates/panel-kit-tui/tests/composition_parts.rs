@@ -3,14 +3,14 @@ mod support;
 
 use panel_kit_core::frame::{
     project_dock_into, project_panel, ChromeProjectionInput, PanelProjectionInput, Placement,
-    ProjectionBuffer, TileGridProjection,
+    ProjectionBuffer, RowHeights, TileGridProjection, MAX_TILE_ROWS,
 };
 use panel_kit_core::reducer::{HitTarget, PanelPart, Snapshot, Viewport};
 use panel_kit_core::{
     ChromeMetrics, Clamp, LayoutBuilder, Mode, PanelCatalog, Region, Units, WinState,
 };
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
-use panel_kit_tui::{Charset, ResolvedTuiTheme};
+use panel_kit_tui::{TerminalCharset, ResolvedTuiTheme};
 use ratatui::layout::{Position, Rect};
 use ratatui::widgets::Paragraph;
 
@@ -41,7 +41,7 @@ fn tui_panel_inner_matches_projection() {
             panel,
             meta,
             &ResolvedTuiTheme::default(),
-            Charset::Ascii,
+            TerminalCharset::Ascii,
             &mut hit_buffer,
         ));
     });
@@ -64,9 +64,9 @@ fn tui_panel_title_and_traffic_lights_do_not_collide() {
     let theme = ResolvedTuiTheme::default();
 
     let buffer = render_to_buffer(80, 24, |frame| {
-        widgets::panel::draw_panel_surface(frame, panel, &theme, Charset::Ascii, &mut hit_buffer);
-        widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, Charset::Ascii, &mut hit_buffer);
-        widgets::panel::draw_traffic_lights(frame, panel, projected.mode, None, &theme, Charset::Ascii, &mut hit_buffer);
+        widgets::panel::draw_panel_surface(frame, panel, &theme, TerminalCharset::Ascii, &mut hit_buffer);
+        widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, TerminalCharset::Ascii, &mut hit_buffer);
+        widgets::panel::draw_traffic_lights(frame, panel, projected.mode, None, &theme, TerminalCharset::Ascii, &mut hit_buffer);
     });
 
     // Title "Alpha" must be present uncorrupted in the rendered buffer
@@ -93,9 +93,9 @@ fn unicode_chrome_is_square_like_the_web_chrome() {
     let theme = ResolvedTuiTheme::default();
 
     let buffer = render_to_buffer(80, 24, |frame| {
-        widgets::panel::draw_panel_surface(frame, panel, &theme, Charset::Unicode, &mut hit_buffer);
-        widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, Charset::Unicode, &mut hit_buffer);
-        widgets::panel::draw_traffic_lights(frame, panel, projected.mode, None, &theme, Charset::Unicode, &mut hit_buffer);
+        widgets::panel::draw_panel_surface(frame, panel, &theme, TerminalCharset::Unicode, &mut hit_buffer);
+        widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, TerminalCharset::Unicode, &mut hit_buffer);
+        widgets::panel::draw_traffic_lights(frame, panel, projected.mode, None, &theme, TerminalCharset::Unicode, &mut hit_buffer);
     });
 
     let outer = rect_from_region(panel.chrome.outer);
@@ -136,8 +136,8 @@ fn tui_panel_resize_grip_aligns_with_bottom_right_border() {
     // Hover directly on resize_hit
     let hover = Some(ratatui::layout::Position::new(resize_hit.x, resize_hit.y));
     let buffer = render_to_buffer(80, 24, |frame| {
-        widgets::panel::draw_panel_surface(frame, panel, &theme, Charset::Ascii, &mut hit_buffer);
-        widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, Charset::Ascii, &mut hit_buffer);
+        widgets::panel::draw_panel_surface(frame, panel, &theme, TerminalCharset::Ascii, &mut hit_buffer);
+        widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, TerminalCharset::Ascii, &mut hit_buffer);
         widgets::panel::draw_resize_grip(frame, panel, hover, &theme, &mut hit_buffer);
     });
 
@@ -180,7 +180,7 @@ fn standalone_panel_surface_draws_no_implicit_chrome_or_dock() {
             frame,
             projected,
             &ResolvedTuiTheme::default(),
-            Charset::Ascii,
+            TerminalCharset::Ascii,
             &mut hit_buffer,
         );
         actual = Some(body);
@@ -225,7 +225,7 @@ fn draw_dock_is_callable_alone_for_replace_only_dock_composition() {
                 catalog: &catalog,
                 label: "dock:",
                 theme: &theme,
-                charset: Charset::Ascii,
+                charset: TerminalCharset::Ascii,
             },
             &mut hit_buffer,
         );
@@ -270,7 +270,7 @@ fn parameterized_dock_chips_are_clickable_for_all_docked_panels() {
                 catalog: &catalog,
                 label: "dock:",
                 theme: &theme,
-                charset: Charset::Ascii,
+                charset: TerminalCharset::Ascii,
             },
             &mut hit_buffer,
         );
@@ -312,8 +312,8 @@ fn parameterized_resize_grip_aligns_across_modes_and_dimensions() {
             let outer = rect_from_region(panel.chrome.outer);
 
             let buffer = render_to_buffer(100, 30, |frame| {
-                widgets::panel::draw_panel_surface(frame, panel, &theme, Charset::Ascii, &mut hit_buffer);
-                widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, Charset::Ascii, &mut hit_buffer);
+                widgets::panel::draw_panel_surface(frame, panel, &theme, TerminalCharset::Ascii, &mut hit_buffer);
+                widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, TerminalCharset::Ascii, &mut hit_buffer);
                 // Hover at bottom-right corner to activate glyph
                 let hover = Some(Position::new(outer.right() - 1, outer.bottom() - 1));
                 widgets::panel::draw_resize_grip(frame, panel, hover, &theme, &mut hit_buffer);
@@ -356,9 +356,9 @@ fn panels_extending_below_or_outside_frame_area_never_panic() {
     render_to_buffer(67, 39, |frame| {
         for panel in projected.panels.iter().copied() {
             let meta = catalog.get(panel.key).unwrap();
-            widgets::panel::draw_panel_surface(frame, panel, &theme, Charset::Ascii, &mut hit_buffer);
-            widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, Charset::Ascii, &mut hit_buffer);
-            widgets::panel::draw_traffic_lights(frame, panel, projected.mode, None, &theme, Charset::Ascii, &mut hit_buffer);
+            widgets::panel::draw_panel_surface(frame, panel, &theme, TerminalCharset::Ascii, &mut hit_buffer);
+            widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, TerminalCharset::Ascii, &mut hit_buffer);
+            widgets::panel::draw_traffic_lights(frame, panel, projected.mode, None, &theme, TerminalCharset::Ascii, &mut hit_buffer);
             widgets::panel::draw_resize_grip(frame, panel, None, &theme, &mut hit_buffer);
         }
     });
@@ -366,11 +366,13 @@ fn panels_extending_below_or_outside_frame_area_never_panic() {
 
 #[test]
 fn web_and_tui_use_same_tile_grid_projection() {
-    let grid = TileGridProjection {
+    // Uniform tracks: the row offset is still the sum of the rows above it,
+    // and with equal rows that is `row * track_h`.
+    let uniform = TileGridProjection {
         columns: 4,
         rows: 3,
         track_w: 5.0,
-        track_h: 2.0,
+        row_heights: RowHeights([2.0; MAX_TILE_ROWS]),
         gap: 1.0,
         padding: 1.0,
     };
@@ -382,8 +384,42 @@ fn web_and_tui_use_same_tile_grid_projection() {
     };
 
     assert_eq!(
-        widgets::panel::tiled_cell_rect(placement, grid, Rect::new(10, 5, 30, 10), 1.0),
+        widgets::panel::tiled_cell_rect(placement, uniform, Rect::new(10, 5, 30, 10), 1.0),
         Some(Rect::new(17, 11, 11, 2))
+    );
+
+    // Non-uniform tracks: the same placement must land lower, because row 1
+    // is taller than row 0. A shared track height could not express this.
+    let mut heights = [1.0; MAX_TILE_ROWS];
+    heights[1] = 2.0;
+    heights[2] = 4.0;
+    let non_uniform = TileGridProjection {
+        columns: 4,
+        rows: 3,
+        track_w: 5.0,
+        row_heights: RowHeights(heights),
+        gap: 1.0,
+        padding: 1.0,
+    };
+    assert_eq!(
+        widgets::panel::tiled_cell_rect(placement, non_uniform, Rect::new(10, 5, 30, 10), 1.0),
+        Some(Rect::new(17, 10, 11, 4))
+    );
+    // A panel on row 0 sits directly under the padding, unaffected by the
+    // taller rows below it.
+    assert_eq!(
+        widgets::panel::tiled_cell_rect(
+            Placement::Tiled {
+                column: 0,
+                row: 0,
+                column_span: 1,
+                row_span: 1,
+            },
+            non_uniform,
+            Rect::new(10, 5, 30, 10),
+            1.0,
+        ),
+        Some(Rect::new(11, 5, 5, 1))
     );
 }
 
@@ -407,7 +443,7 @@ fn fractional_tracks_snap_to_shared_cell_edges() {
         columns: 4,
         rows: 3,
         track_w: 29.5,
-        track_h: 41.0 / 3.0,
+        row_heights: RowHeights([41.0 / 3.0; MAX_TILE_ROWS]),
         gap: 0.0,
         padding: 0.0,
     };

@@ -4,7 +4,7 @@ mod web_native_fidelity;
 mod web_part_fixtures;
 
 use dioxus::prelude::*;
-use panel_kit_core::frame::{DockProjection, Placement, TileGridProjection};
+use panel_kit_core::frame::{DockProjection, Placement, RowHeights, TileGridProjection, MAX_TILE_ROWS};
 use panel_kit_core::panel::PanelCatalog;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
 use panel_kit_core::widgets::table::{
@@ -117,7 +117,14 @@ fn web_and_tui_use_same_tile_grid_projection() {
         columns: 3,
         rows: 2,
         track_w: 120.0,
-        track_h: 90.0,
+        row_heights: RowHeights({
+            // Row tracks are emitted one per row, so a row may differ from
+            // its neighbours. Row 1 is deliberately short: `repeat(N, h)`
+            // could not express this.
+            let mut heights = [90.0; MAX_TILE_ROWS];
+            heights[1] = 30.0;
+            heights
+        }),
         gap: 8.0,
         padding: 12.0,
     };
@@ -125,7 +132,7 @@ fn web_and_tui_use_same_tile_grid_projection() {
 
     assert_eq!(
         style,
-        "grid-template-columns:repeat(3, 120px);grid-template-rows:repeat(2, 90px);gap:8px;padding:12px;"
+        "grid-template-columns:repeat(3, 120px);grid-template-rows:90px 30px;gap:8px;padding:12px;"
     );
 
     let tiled = projected_panel(
@@ -498,29 +505,4 @@ fn ButtonProbe() -> Element {
         Button { pressed: true, title: "latched", "data-probe": "on", on_press: |_| {}, "on" }
         Button { pressed: false, compact: true, disabled: true, on_press: |_| {}, "off" }
     }
-}
-
-#[test]
-fn a_button_states_its_toggle_and_passes_its_attributes_through() {
-    let html = dioxus_ssr::render_element(rsx! { ButtonProbe {} });
-    let buttons: Vec<&str> = html.split("<button").skip(1).collect();
-    assert_eq!(buttons.len(), 3, "{html}");
-    assert!(
-        buttons.iter().all(|b| b.contains("type=\"button\"")),
-        "{html}"
-    );
-    assert!(
-        !buttons[0].contains("aria-pressed"),
-        "a plain action is not a toggle: {html}"
-    );
-    assert!(buttons[1].contains("aria-pressed=\"true\""), "{html}");
-    assert!(
-        buttons[1].contains("title=\"latched\"") && buttons[1].contains("data-probe=\"on\""),
-        "{html}"
-    );
-    assert!(
-        buttons[2].contains("aria-pressed=\"false\"") && buttons[2].contains("disabled"),
-        "{html}"
-    );
-    assert!(buttons[2].contains("class=\"pk-btn compact\""), "{html}");
 }

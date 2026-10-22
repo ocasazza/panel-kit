@@ -30,7 +30,7 @@ use panel_kit_tui::input::{
 };
 use panel_kit_tui::store::JsonFileLayoutStore;
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
-use panel_kit_tui::{rect_from_region, Charset, ResolvedTuiTheme};
+use panel_kit_tui::{rect_from_region, TerminalCharset, ResolvedTuiTheme};
 use ratatui::layout::{Position, Rect};
 use workspace_canary::content::{render_content, ContentRenderContext, DemoData};
 
@@ -52,7 +52,7 @@ struct ResolvedCanary {
     resolved: panel_kit_core::ResolvedWorkspace,
     snapshot: Snapshot<SpecPanelId>,
     theme: ResolvedTuiTheme,
-    charset: Charset,
+    charset: TerminalCharset,
     chrome: ChromeProjectionInput,
 }
 
@@ -443,10 +443,10 @@ fn chrome_input(chrome: &panel_kit_core::ChromeSpec) -> ChromeProjectionInput {
     }
 }
 
-fn spec_charset(charset: SpecCharset) -> Charset {
+fn spec_charset(charset: SpecCharset) -> TerminalCharset {
     match charset {
-        SpecCharset::Unicode => Charset::Unicode,
-        SpecCharset::Ascii => Charset::Ascii,
+        SpecCharset::Unicode => TerminalCharset::Unicode,
+        SpecCharset::Ascii => TerminalCharset::Ascii,
     }
 }
 
