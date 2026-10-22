@@ -523,7 +523,7 @@ mod browser {
 
         fn draw(&mut self, frame: &mut ratatui::Frame) {
             self.tick += 1;
-            if self.tick.is_multiple_of(6) {
+            if self.tick % 6 == 0 {
                 self.metrics.tick();
             }
             self.badge_zones.clear();

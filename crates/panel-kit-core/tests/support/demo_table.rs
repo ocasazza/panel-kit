@@ -156,7 +156,7 @@ fn work_at(row: usize) -> Work {
     let state = STATES[n % STATES.len()];
     work(
         100 + n as u32,
-        if row.is_multiple_of(7) {
+        if row % 7 == 0 {
             TOPICS_I18N[(row / 7) % TOPICS_I18N.len()]
         } else {
             TOPICS[n % TOPICS.len()]

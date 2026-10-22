@@ -107,7 +107,7 @@ fn item(n: usize) -> Row {
             V::T(&format!("item {n}")),
             V::T(STATUSES[n % STATUSES.len()]),
             V::N((n % 5) as f64),
-            if n.is_multiple_of(3) {
+            if n % 3 == 0 {
                 V::Nil
             } else {
                 V::T(&agent)

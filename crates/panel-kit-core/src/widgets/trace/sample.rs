@@ -1070,7 +1070,7 @@ fn hero_context(mut e: Event, item: &str, branch: &str, index: usize, run: &mut 
             e = e
                 .branch(branch)
                 .commit(format!("{:07x}", seed & 0x0fff_ffff));
-            if index.is_multiple_of(2) {
+            if index % 2 == 0 {
                 let first = e.summary.clone().unwrap_or_default();
                 e = e.summary(format!(
                     "{first}\n\nThe flush ran after the leader term moved, so rows queued in the \
