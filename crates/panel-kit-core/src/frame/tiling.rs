@@ -25,11 +25,16 @@ pub(super) fn project_tiles<K: PanelKey>(
     metrics: &TileLayoutMetrics,
     scratch: &mut ProjectionBuffer<K>,
 ) -> TileGridProjection {
-    let columns = metrics.columns.clamp(1, TILE_W_MAX);
+    let cap = metrics.columns.clamp(1, TILE_W_MAX);
+    let start = scratch.tile_rows.len();
     let rows = match metrics.fill_order {
-        TileFillOrder::RowMajor => project_row_major(snapshot, columns, scratch),
-        TileFillOrder::ColumnMajor => project_column_major(snapshot, columns, scratch),
+        TileFillOrder::RowMajor => project_row_major(snapshot, cap, scratch),
+        TileFillOrder::ColumnMajor => project_column_major(snapshot, cap, scratch),
     };
+    // Declare only the columns a tile reaches: the packers stretch a shelf or a
+    // column to fill its own span, so the tracks the spans do not reach would
+    // otherwise sit empty at the right edge while every tile is narrower for it.
+    let columns = reached_columns(&scratch.tile_rows[start..]).min(cap).max(1);
     let usable_w =
         (workspace.w - metrics.padding * 2.0 - metrics.gap * columns.saturating_sub(1) as f64)
             .max(0.0);
@@ -51,6 +56,16 @@ pub(super) fn project_tiles<K: PanelKey>(
         gap: metrics.gap.max(0.0),
         padding: metrics.padding.max(0.0),
     }
+}
+
+/// Columns the placements reach: the furthest tile edge, at least one.
+fn reached_columns(placements: &[TilePlacement]) -> u8 {
+    placements
+        .iter()
+        .map(|placement| placement.column as u16 + placement.column_span as u16)
+        .max()
+        .unwrap_or(1)
+        .min(u8::MAX as u16) as u8
 }
 
 /// Size each row from the panels actually in it.
@@ -167,6 +182,7 @@ fn project_column_major<K: PanelKey>(
     let mut used = 0_u16;
     let mut column_w = 0_u8;
     let mut column_last = None;
+    let mut column_start = 0_usize;
     for (source_index, panel) in snapshot.panels.iter().enumerate() {
         if panel.state != WinState::Floating {
             continue;
@@ -175,10 +191,11 @@ fn project_column_major<K: PanelKey>(
         let column_span = panel.tile_w.clamp(1, columns);
         let row_span = panel.tile_h.clamp(1, TILE_H_MAX);
         if used > 0 && used.saturating_add(row_span as u16) > rows {
-            fill_column(&mut scratch.tile_rows, column_last, used, rows);
+            close_column(scratch, column_start, column_last, used, rows, column_w);
             column = column.saturating_add(column_w.max(1) as u16);
             used = 0;
             column_w = 0;
+            column_start = scratch.tile_rows.len();
         }
 
         scratch.tile_rows.push(TilePlacement {
@@ -192,8 +209,30 @@ fn project_column_major<K: PanelKey>(
         used = used.saturating_add(row_span as u16);
         column_w = column_w.max(column_span);
     }
-    fill_column(&mut scratch.tile_rows, column_last, used, rows);
+    close_column(scratch, column_start, column_last, used, rows, column_w);
     rows
+}
+
+/// Finish one column: its bottom panel takes the rows the column left empty
+/// and every member takes the column's width, so a narrow tile in a wide
+/// column never leaves a gap beside it.
+fn close_column<K: PanelKey>(
+    scratch: &mut ProjectionBuffer<K>,
+    start: usize,
+    last: Option<usize>,
+    used: u16,
+    rows: u16,
+    width: u8,
+) {
+    fill_column(&mut scratch.tile_rows, last, used, rows);
+    stretch_column(&mut scratch.tile_rows[start..], width);
+}
+
+/// Widen every placement in one column to the column's width.
+fn stretch_column(placements: &mut [TilePlacement], width: u8) {
+    for placement in placements {
+        placement.column_span = placement.column_span.max(width);
+    }
 }
 
 /// Stretch a column's bottom panel over the rows the column left empty, so
@@ -368,6 +407,7 @@ fn projected_content_height<K: PanelKey>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use crate::reducer::Viewport;
     use crate::{
         LayoutBuilder, PanelKind, SurfaceCapabilities, SurfaceProfile, TileMetrics, Units,
@@ -904,13 +944,16 @@ mod tests {
                 ],
             },
             LayoutCase {
+                // A single span-2 panel in a 4-column grid fills the band, as
+                // row-major has always done: the two columns no tile reaches
+                // are not declared, so they cannot sit empty.
                 name: "column-major/single panel fills its columns",
                 panels: &[(2, 2)],
                 minimized: &[],
                 fill_order: COLUMN_MAJOR,
                 fill_viewport: true,
                 expected_rows: 2,
-                expected_regions: &[(0.0, 0.0, 600.0, 900.0)],
+                expected_regions: &[(0.0, 0.0, 1200.0, 900.0)],
             },
             LayoutCase {
                 name: "spans/clamp to the grid maxima",
@@ -1115,4 +1158,71 @@ mod tests {
             "the resized panel itself must actually change"
         );
     }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(256))]
+
+        /// Every declared cell has a tile on it: the packers stretch a shelf or
+        /// a column to its full span and the grid declares only reached columns,
+        /// whatever the author's spans ask for.
+        #[test]
+        fn every_declared_cell_holds_a_tile(
+            spans in prop::collection::vec((1_u8..=3, 1_u8..=3), 1..=4),
+            columns in 1_u8..=4,
+            column_major in any::<bool>(),
+        ) {
+            let mut layout = LayoutBuilder::new();
+            let kinds = [TestPanel::One, TestPanel::Two, TestPanel::Three, TestPanel::Four];
+            let panels = spans
+                .iter()
+                .enumerate()
+                .map(|(index, &(w, h))| {
+                    layout
+                        .at(kinds[index], 0.0, 0.0, 20.0, 10.0)
+                        .with_tile(w, h)
+                })
+                .collect::<Vec<_>>();
+            let snapshot = Snapshot::from_defaults(
+                panels,
+                Mode::Tiling,
+                Viewport { width: 1200.0, height: 900.0, units: Units::CssPx },
+            );
+            let surface = SurfaceProfile::from_logical_width(
+                1200.0,
+                crate::WEB_COMPACT_MAX,
+                crate::WEB_TABLET_MAX,
+                SurfaceCapabilities { coarse_pointer: false, hover: true, keyboard: true },
+            );
+            let mut metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+            metrics.columns = columns;
+            metrics.gap = 0.0;
+            metrics.padding = 0.0;
+            metrics.fill_order = if column_major {
+                TileFillOrder::ColumnMajor
+            } else {
+                TileFillOrder::RowMajor
+            };
+            let mut scratch = ProjectionBuffer::with_panel_capacity(snapshot.panels.len());
+            let workspace = Region::new(0.0, 0.0, 1200.0, 900.0);
+            let grid = project_tiles(&snapshot, workspace, &metrics, &mut scratch);
+
+            prop_assert!(grid.columns >= 1 && grid.columns <= columns.max(1));
+            let mut covered = vec![false; grid.rows as usize * grid.columns as usize];
+            for placement in &scratch.tile_rows {
+                prop_assert!(placement.column as u16 + placement.column_span as u16 <= grid.columns as u16);
+                prop_assert!(placement.row + placement.row_span as u16 <= grid.rows);
+                for row in placement.row..placement.row + placement.row_span as u16 {
+                    for column in placement.column..placement.column + placement.column_span {
+                        covered[row as usize * grid.columns as usize + column as usize] = true;
+                    }
+                }
+            }
+            prop_assert!(
+                covered.iter().all(|cell| *cell),
+                "uncovered cell with spans {:?}, {} columns, column-major {}: {} rows x {} columns",
+                spans, columns, column_major, grid.rows, grid.columns
+            );
+        }
+    }
+
 }
