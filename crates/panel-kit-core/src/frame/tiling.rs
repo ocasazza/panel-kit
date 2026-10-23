@@ -1168,7 +1168,7 @@ mod tests {
         #[test]
         fn every_declared_cell_holds_a_tile(
             spans in prop::collection::vec((1_u8..=3, 1_u8..=3), 1..=4),
-            columns in 1_u8..=4,
+            width in 240.0_f64..2400.0,
             column_major in any::<bool>(),
         ) {
             let mut layout = LayoutBuilder::new();
@@ -1185,16 +1185,17 @@ mod tests {
             let snapshot = Snapshot::from_defaults(
                 panels,
                 Mode::Tiling,
-                Viewport { width: 1200.0, height: 900.0, units: Units::CssPx },
+                Viewport { width, height: 900.0, units: Units::CssPx },
             );
+            // The surface class picks the column count, so a width sweep is a
+            // sweep of compact, tablet and regular layouts.
             let surface = SurfaceProfile::from_logical_width(
-                1200.0,
+                width,
                 crate::WEB_COMPACT_MAX,
                 crate::WEB_TABLET_MAX,
                 SurfaceCapabilities { coarse_pointer: false, hover: true, keyboard: true },
             );
             let mut metrics = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
-            metrics.columns = columns;
             metrics.gap = 0.0;
             metrics.padding = 0.0;
             metrics.fill_order = if column_major {
@@ -1203,10 +1204,11 @@ mod tests {
                 TileFillOrder::RowMajor
             };
             let mut scratch = ProjectionBuffer::with_panel_capacity(snapshot.panels.len());
-            let workspace = Region::new(0.0, 0.0, 1200.0, 900.0);
+            let declared = metrics.columns;
+            let workspace = Region::new(0.0, 0.0, width, 900.0);
             let grid = project_tiles(&snapshot, workspace, &metrics, &mut scratch);
 
-            prop_assert!(grid.columns >= 1 && grid.columns <= columns.max(1));
+            prop_assert!(grid.columns >= 1 && grid.columns <= declared.max(1));
             let mut covered = vec![false; grid.rows as usize * grid.columns as usize];
             for placement in &scratch.tile_rows {
                 prop_assert!(placement.column as u16 + placement.column_span as u16 <= grid.columns as u16);
@@ -1219,8 +1221,8 @@ mod tests {
             }
             prop_assert!(
                 covered.iter().all(|cell| *cell),
-                "uncovered cell with spans {:?}, {} columns, column-major {}: {} rows x {} columns",
-                spans, columns, column_major, grid.rows, grid.columns
+                "uncovered cell with spans {:?}, width {}, column-major {}: {} rows x {} columns",
+                spans, width, column_major, grid.rows, grid.columns
             );
         }
     }
