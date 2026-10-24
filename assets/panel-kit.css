@@ -1681,7 +1681,9 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   text-transform: uppercase;
 }
 
-.pk-tr-rail-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Ellipsis needs nowrap: a label that wraps measures its longest line and
+   reports overflow while the row has already clipped it. */
+.pk-tr-rail-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pk-tr-rail-row.marker .pk-tr-rail-label { color: var(--color-text-muted); }
 
 /* Rails: 2px trunk in the item tone, 1px lanes and elbows. */
@@ -2099,7 +2101,9 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 
 /* A no-item label is cut at 14 glyphs, tracking included: NO ITEM: BRAN… */
 .pk-tr-strip-toggle .pk-tr-tl-label {
-  max-width: calc(14ch + 14 * 0.06em);
+  /* The column is the limit, not a character count: at a narrow panel 14ch is
+     wider than the row it sits in. */
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
