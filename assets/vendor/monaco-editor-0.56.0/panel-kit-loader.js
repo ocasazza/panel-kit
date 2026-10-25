@@ -262,12 +262,19 @@
       });
     },
 
+    // Returns null on success, or the validation error: a grammar Monaco
+    // rejects must not leave the editor creator waiting forever.
     registerLanguage(id, monarch, configuration) {
-      if (!monaco.languages.getLanguages().some((l) => l.id === id)) {
-        monaco.languages.register({ id });
+      try {
+        if (!monaco.languages.getLanguages().some((l) => l.id === id)) {
+          monaco.languages.register({ id });
+        }
+        monaco.languages.setMonarchTokensProvider(id, monarch);
+        if (configuration) monaco.languages.setLanguageConfiguration(id, configuration);
+      } catch (e) {
+        return String(e);
       }
-      monaco.languages.setMonarchTokensProvider(id, monarch);
-      if (configuration) monaco.languages.setLanguageConfiguration(id, configuration);
+      return null;
     },
 
     defineTheme(name, tokens) {

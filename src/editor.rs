@@ -110,7 +110,11 @@ mod interop {
         pub fn on_submit(id: u32, callback: &js_sys::Function);
 
         #[wasm_bindgen(js_namespace = ["__panelKitMonaco"], js_name = registerLanguage)]
-        pub fn register_language(id: &str, monarch: &JsValue, configuration: &JsValue);
+        pub fn register_language(
+            id: &str,
+            monarch: &JsValue,
+            configuration: &JsValue,
+        ) -> Option<String>;
 
         #[wasm_bindgen(js_namespace = ["__panelKitMonaco"], js_name = defineTheme)]
         pub fn define_theme(name: &str, data: &JsValue);
@@ -228,14 +232,25 @@ pub async fn register_pest_language() -> Result<(), EditorError> {
     Ok(())
 }
 
-fn register_languages() {
+fn register_languages() -> Result<(), EditorError> {
     if LANGUAGES_READY.with(|r| r.replace(true)) {
-        return;
+        return Ok(());
     }
-    interop::register_language("pest", &pest_monarch(), &pest_language_configuration());
-    interop::register_language("toml", &toml_monarch(), &toml_language_configuration());
-    interop::register_language("nix", &nix_monarch(), &nix_language_configuration());
+    let mut failure = None;
+    for (id, monarch, configuration) in [
+        ("pest", pest_monarch(), pest_language_configuration()),
+        ("toml", toml_monarch(), toml_language_configuration()),
+        ("nix", nix_monarch(), nix_language_configuration()),
+    ] {
+        if let Some(error) = interop::register_language(id, &monarch, &configuration) {
+            failure.get_or_insert(EditorError(format!("{id} grammar: {error}")));
+        }
+    }
     interop::define_theme(PANEL_KIT_DARK_THEME, &panel_kit_theme_tokens());
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
 }
 
 fn editor_alive(id: u32) -> bool {
@@ -475,7 +490,10 @@ pub fn MonacoEditor(
                             status.set(EditorStatus::Failed(e.to_string()));
                             return;
                         }
-                        register_languages();
+                        if let Err(e) = register_languages() {
+                            status.set(EditorStatus::Failed(e.to_string()));
+                            return;
+                        }
                         let text = match value {
                             Some(v) => v.try_peek().map(|g| g.clone()).unwrap_or_else(|_| {
                                 // The consumer is mid-write on this signal (e.g. an
@@ -848,17 +866,54 @@ fn nix_language_configuration() -> JsValue {
     json_to_js(&nix_language_configuration_json())
 }
 
+/// Token names the loader's `panel-kit-dark` theme reads (see
+/// `panelKitTheme` in `panel-kit-loader.js`). The theme cannot reference CSS
+/// custom properties, so the loader asks Rust for each value by these short
+/// names; a canonical token that loses one of them fails
+/// [`theme_tokens_cover_the_loader_contract`] instead of silently breaking the
+/// editor at load time.
+#[cfg(test)]
+const THEME_TOKEN_KEYS: &[&str] = &[
+    "background",
+    "border",
+    "divider",
+    "error",
+    "highlight",
+    "info",
+    "inverse-background",
+    "inverse-text",
+    "success",
+    "surface",
+    "tertiary",
+    "text",
+    "text-muted",
+];
+
 /// Build the token map consumed by the loader's `panel-kit-dark` theme.
 ///
 /// Monaco theme data cannot reference CSS custom properties, so Rust passes
 /// the canonical values rather than duplicating the palette in JavaScript.
+/// Canonical token names carry the CSS custom-property prefix
+/// (`color-surface`); the loader indexes them without it.
+fn panel_kit_theme_map() -> Vec<(&'static str, &'static str)> {
+    tokens::DARK
+        .iter()
+        .map(|token| {
+            (
+                token.name.strip_prefix("color-").unwrap_or(token.name),
+                token.hex,
+            )
+        })
+        .collect()
+}
+
 fn panel_kit_theme_tokens() -> JsValue {
     let values = js_sys::Object::new();
-    for token in tokens::DARK {
+    for (name, hex) in panel_kit_theme_map() {
         let _ = js_sys::Reflect::set(
             values.as_ref(),
-            &JsValue::from_str(token.name),
-            &JsValue::from_str(token.hex),
+            &JsValue::from_str(name),
+            &JsValue::from_str(hex),
         );
     }
     values.into()
@@ -1173,6 +1228,19 @@ mod monarch_tests {
             tokens.contains(&("string".to_string(), "./flake.nix".to_string())),
             "path literal must be one token: {tokens:?}"
         );
+    }
+
+    #[test]
+    fn theme_tokens_cover_the_loader_contract() {
+        let map: std::collections::BTreeMap<&str, &str> =
+            super::panel_kit_theme_map().into_iter().collect();
+        for key in super::THEME_TOKEN_KEYS {
+            assert!(
+                map.contains_key(key),
+                "loader reads token `{key}`; canonical tokens provide {:?}",
+                map.keys().collect::<Vec<_>>()
+            );
+        }
     }
 
     #[test]
