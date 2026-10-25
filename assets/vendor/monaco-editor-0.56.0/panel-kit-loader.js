@@ -215,6 +215,12 @@
       const e = editor(id);
       const model = e.getModel();
       if (!model || e.getValue() === value) return;
+      // executeEdits is dropped by a read-only editor, and a read-only view
+      // has no cursor to preserve: replace the text directly.
+      if (e.getOption(monaco.editor.EditorOption.readOnly)) {
+        e.setValue(value);
+        return;
+      }
       const selections = e.getSelections();
       e.pushUndoStop();
       e.executeEdits('panel-kit', [{ range: model.getFullModelRange(), text: value }]);
