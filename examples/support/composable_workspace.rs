@@ -182,12 +182,12 @@ pub mod web_canary {
     use panel_kit_core::widgets::charts::{
         five_num, BoxItemModel, BoxItemView, FlameSpanModel, GaugeModel, SeriesModel, SeriesView,
     };
+    use panel_kit_core::widgets::data_table::ColumnKind;
     use panel_kit_core::widgets::meter::MeterModel;
     use panel_kit_core::widgets::status::{StatusModel, StatusState};
     use panel_kit_core::widgets::table::{
         ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TableView, TextAlign,
     };
-    use panel_kit_core::widgets::data_table::ColumnKind;
     use panel_kit_core::widgets::{ContentSpec, ContentView, DataSource, ScrollPolicy};
     use panel_kit_core::SpecPanelId;
 

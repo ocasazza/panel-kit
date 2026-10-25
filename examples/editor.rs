@@ -19,8 +19,8 @@
 //!   high-contrast preset and back makes the reactive theme prop observable.
 //! - Two-way `Signal<String>` binding, `on_change`, `on_ready`, and the
 //!   imperative `EditorHandle` value/layout controls.
-//! - Reactive language and read-only props, the `pest` Monarch tokenizer,
-//!   and the minimal `toml` language on real samples.
+//! - Reactive language and read-only props, the `nix`, `pest`, and `toml`
+//!   Monarch tokenizers on real samples.
 //! - The workspace root translates keyboard and pointer events through the
 //!   core reducer; editor text focus remains protected by the key policy.
 
@@ -82,6 +82,35 @@ max_nodes = 0x4000
 
 [[schema.fields]]
 name = "source"
+"#;
+
+const SAMPLE_NIX: &str = r#"{ config, lib, pkgs, ... }:
+
+let
+  inherit (lib) mkIf mkOption types;
+  port = 8080;
+in
+{
+  # Interpolation, paths, and an indented string exercise every state.
+  networking.firewall.allowedTCPPorts = [ port ];
+
+  services.nginx = {
+    enable = true;
+    virtualHosts."bird.local" = {
+      root = ./site;
+      locations."/".proxyPass = "http://127.0.0.1:${toString port}";
+    };
+  };
+
+  systemd.services.bird = {
+    description = "bird-nix playground";
+    script = ''
+      exec ${pkgs.caddy}/bin/caddy file-server --root ${./site}
+    '';
+  };
+
+  boot.kernelParams = [ /* quiet */ "quiet" ];
+}
 "#;
 
 fn push_log(log: &mut Signal<Vec<String>>, entry: String) {
@@ -177,6 +206,9 @@ fn App() -> Element {
                         push_log(&mut log, "on_ready: EditorHandle acquired".to_string());
                         handle.set(Some(editor));
                     },
+                    on_submit: move |_| {
+                        push_log(&mut log, "on_submit: cmd/ctrl+enter".to_string());
+                    },
                 }
             },
             Panel::Controls => rsx! {
@@ -239,6 +271,14 @@ fn App() -> Element {
                             text.set(SAMPLE_TOML.to_string());
                         },
                         "language: toml"
+                    }
+                    button {
+                        class: if *language.read() == "nix" { "on" } else { "" },
+                        onclick: move |_| {
+                            language.set("nix".to_string());
+                            text.set(SAMPLE_NIX.to_string());
+                        },
+                        "language: nix"
                     }
                     button {
                         class: if *read_only.read() { "on" } else { "" },

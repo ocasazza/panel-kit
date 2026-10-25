@@ -196,6 +196,7 @@
       const e = editors.get(id);
       if (e) {
         e.changeSub?.dispose();
+        e.submitSub?.dispose();
         e.dispose();
         e.getModel()?.dispose();
         editors.delete(id);
@@ -245,6 +246,20 @@
     onChange(id, callback) {
       const e = editor(id);
       e.changeSub = e.onDidChangeModelContent(() => callback(e.getValue()));
+    },
+
+    // ⌘/Ctrl+Enter. Registered as a Monaco action rather than a DOM listener
+    // so it fires while focus is inside any editor widget (suggestions,
+    // find) and never double-fires against the editor's own key handling.
+    onSubmit(id, callback) {
+      const e = editor(id);
+      e.submitSub?.dispose();
+      e.submitSub = e.addAction({
+        id: 'panel-kit.submit',
+        label: 'Submit',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+        run: () => callback(),
+      });
     },
 
     registerLanguage(id, monarch, configuration) {
