@@ -8,8 +8,8 @@ and versioned layout persistence. Includes reusable badge, spinner, dropdown,
 cascade, and interactive-table widgets; panel-header actions and
 loading-workspace primitives; Grafana and lightweight IDE panels; retained-DOM
 keepalive composition; an optional Bevy canvas bridge; and a Monaco-based code
-editor (`editor::MonacoEditor`) with a `.pest` grammar language and a
-token-matched dark theme.
+editor (`editor::MonacoEditor`) with `nix`, `.pest`, and `toml` languages, a
+`cmd/ctrl+enter` submit action, and a token-matched dark theme.
 
 Factored out of [jump-cannon](https://github.com/ocasazza/jump-cannon) and
 apple-notes-ocr-flow, which both consume it as a git dependency:
@@ -281,7 +281,7 @@ dx serve --example workspace --platform web
 | `spinner` | `Spinner` with and without `label`, plus a live-editable label |
 | `loading_workspace` | the post-mount `LoadingWorkspace` twin of the static pre-WASM boot contract |
 | `theming` | the documented full-palette retheme path: `:root` variable overrides layered after `panel_kit::CSS`, with three switchable presets |
-| `editor` | `editor::MonacoEditor`: two-way `Signal<String>` binding, `on_change` event log, imperative `EditorHandle` (set/read value, language, read-only, layout), reactive `language`/`read_only` props, the `pest` Monarch tokenizer and minimal `toml` language on real samples |
+| `editor` | `editor::MonacoEditor`: two-way `Signal<String>` binding, `on_change` event log, imperative `EditorHandle` (set/read value, language, read-only, layout), reactive `language`/`read_only` props, the `nix`/`pest`/`toml` Monarch tokenizers, the `on_submit` action, and the minimal `toml` language on real samples |
 | `topos` | two regimes (`topos-agentic`, `topos-membrane`) over one session site parsed by either the `trace-lines` (pest) or `trace-json` grammar, running one shared physics base (`topos-physics`). `t` switches regime (per-topos layout persisted; the Physics panel stays identical, only the UI/UX sheaves change), `g` switches grammar (identical content), `n`/`x` append a valid/malformed line (diagnostic, last good site kept), `r` resets. Each regime carries an active subobject on its per-sort badges: click a Roles/Species badge (web) or `s`/space (terminals) to toggle a sort; switching transports it by `∃f`/`f*` and the status line names the morphism |
 
 `dx build --example <name> --platform web` produces the same app

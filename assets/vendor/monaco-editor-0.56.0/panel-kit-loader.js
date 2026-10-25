@@ -196,6 +196,7 @@
       const e = editors.get(id);
       if (e) {
         e.changeSub?.dispose();
+        e.submitSub?.dispose();
         e.dispose();
         e.getModel()?.dispose();
         editors.delete(id);
@@ -247,12 +248,33 @@
       e.changeSub = e.onDidChangeModelContent(() => callback(e.getValue()));
     },
 
+    // ⌘/Ctrl+Enter. Registered as a Monaco action rather than a DOM listener
+    // so it fires while focus is inside any editor widget (suggestions,
+    // find) and never double-fires against the editor's own key handling.
+    onSubmit(id, callback) {
+      const e = editor(id);
+      e.submitSub?.dispose();
+      e.submitSub = e.addAction({
+        id: 'panel-kit.submit',
+        label: 'Submit',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+        run: () => callback(),
+      });
+    },
+
+    // Returns null on success, or the validation error: a grammar Monaco
+    // rejects must not leave the editor creator waiting forever.
     registerLanguage(id, monarch, configuration) {
-      if (!monaco.languages.getLanguages().some((l) => l.id === id)) {
-        monaco.languages.register({ id });
+      try {
+        if (!monaco.languages.getLanguages().some((l) => l.id === id)) {
+          monaco.languages.register({ id });
+        }
+        monaco.languages.setMonarchTokensProvider(id, monarch);
+        if (configuration) monaco.languages.setLanguageConfiguration(id, configuration);
+      } catch (e) {
+        return String(e);
       }
-      monaco.languages.setMonarchTokensProvider(id, monarch);
-      if (configuration) monaco.languages.setLanguageConfiguration(id, configuration);
+      return null;
     },
 
     defineTheme(name, tokens) {

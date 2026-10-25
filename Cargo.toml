@@ -55,6 +55,9 @@ js-sys = { version = "0.3", optional = true }
 web-sys = { version = "0.3", features = ["Blob", "BlobPropertyBag", "Clipboard", "DomRect", "Document", "Element", "Event", "EventTarget", "FocusEvent", "FocusOptions", "HtmlAnchorElement", "HtmlElement", "MediaQueryList", "Navigator", "Node", "NodeList", "PointerEvent", "ResizeObserver", "ResizeObserverEntry", "ScrollIntoViewOptions", "ScrollLogicalPosition", "Selection", "Storage", "Url", "Window", "console"], optional = true }
 
 [dev-dependencies]
+# Monarch grammars are data; these tests tokenize samples through them. The
+# grammars use look-ahead, which JS RegExp supports and `regex` does not.
+fancy-regex = "0.14"
 # Headless markup rendering for the loading components' contract tests
 # (src/loading.rs): assertions run against real rendered HTML, not rsx
 # source text.
