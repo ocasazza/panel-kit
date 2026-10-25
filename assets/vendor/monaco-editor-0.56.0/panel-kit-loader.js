@@ -241,6 +241,10 @@
       editor(id).updateOptions({ readOnly });
     },
 
+    setWordWrap(id, wordWrap) {
+      editor(id).updateOptions({ wordWrap: wordWrap ? 'on' : 'off' });
+    },
+
     layout(id) {
       editor(id).layout();
     },

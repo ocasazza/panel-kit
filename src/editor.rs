@@ -97,6 +97,9 @@ mod interop {
         #[wasm_bindgen(js_namespace = ["__panelKitMonaco"], js_name = setReadOnly)]
         pub fn set_read_only(id: u32, read_only: bool);
 
+        #[wasm_bindgen(js_namespace = ["__panelKitMonaco"], js_name = setWordWrap)]
+        pub fn set_word_wrap(id: u32, word_wrap: bool);
+
         #[wasm_bindgen(js_namespace = ["__panelKitMonaco"], js_name = layout)]
         pub fn layout(id: u32);
 
@@ -398,6 +401,11 @@ pub fn MonacoEditor(
     /// Reactive read-only flag.
     #[props(default)]
     read_only: bool,
+    /// Wrap long lines instead of scrolling horizontally. Panels are narrow
+    /// and a read-only value has no editing affordance for a hidden column,
+    /// so hosts showing values rather than code usually want this on.
+    #[props(default)]
+    word_wrap: bool,
     /// Monaco theme name; defaults to [`PANEL_KIT_DARK_THEME`]. Reactive.
     /// Monaco themes are global, so one value applies to all open editors.
     #[props(default)]
@@ -436,10 +444,11 @@ pub fn MonacoEditor(
     }));
 
     // Reactive props -> live editor options.
-    use_effect(use_reactive!(|language, read_only| {
+    use_effect(use_reactive!(|language, read_only, word_wrap| {
         if let Some(h) = *handle.read() {
             interop::set_language(h.id, &language);
             interop::set_read_only(h.id, read_only);
+            interop::set_word_wrap(h.id, word_wrap);
         }
     }));
     use_effect(use_reactive!(|theme| {
@@ -460,6 +469,7 @@ pub fn MonacoEditor(
         .clone()
         .unwrap_or_else(|| PANEL_KIT_DARK_THEME.to_string());
     let mount_read_only = read_only;
+    let mount_word_wrap = word_wrap;
 
     rsx! {
         div { class: "pk-monaco",
@@ -503,7 +513,8 @@ pub fn MonacoEditor(
                             }),
                             None => initial,
                         };
-                        let options = editor_options(&text, &language, mount_read_only, &theme);
+                        let options =
+                            editor_options(&text, &language, mount_read_only, mount_word_wrap, &theme);
                         let id = match interop::create(&el, options.as_ref()) {
                             Ok(id) => id,
                             Err(e) => {
@@ -561,7 +572,13 @@ pub fn MonacoEditor(
 /// resize freely), no minimap (panels are small), `fixedOverflowWidgets`
 /// (`.panel` clips overflow; suggestion/hover widgets must escape it), and
 /// the canonical 13px/1.5 monospace typography.
-fn editor_options(value: &str, language: &str, read_only: bool, theme: &str) -> js_sys::Object {
+fn editor_options(
+    value: &str,
+    language: &str,
+    read_only: bool,
+    word_wrap: bool,
+    theme: &str,
+) -> js_sys::Object {
     let options = js_sys::Object::new();
     let set = |key: &str, val: JsValue| {
         let _ = js_sys::Reflect::set(options.as_ref(), &JsValue::from_str(key), &val);
@@ -570,6 +587,7 @@ fn editor_options(value: &str, language: &str, read_only: bool, theme: &str) -> 
     set("language", language.into());
     set("theme", theme.into());
     set("readOnly", read_only.into());
+    set("wordWrap", if word_wrap { "on" } else { "off" }.into());
     set("automaticLayout", true.into());
     set("fontFamily", tokens::MONO.into());
     set("fontSize", 13.into());
