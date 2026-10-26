@@ -14,7 +14,7 @@
 
 use dioxus::prelude::*;
 use panel_kit_core::frame::{PanelChromeProjection, PanelProjection, Placement, ProjectedFrame};
-use panel_kit_core::panel::PanelCatalog;
+use panel_kit_core::panel::{PanelCatalog, PanelMeta};
 use panel_kit_core::reducer::Snapshot;
 use panel_kit_core::{PanelKey, PanelWin, Region};
 
@@ -91,27 +91,7 @@ where
     KeepMounted: Fn(K) -> bool,
     Body: Fn(K, bool) -> Element,
 {
-    let visible = frame.panels.iter().copied().map(|panel| (panel, false));
-    let hidden = snapshot
-        .panels
-        .iter()
-        .copied()
-        .enumerate()
-        .filter(|(source_index, panel)| {
-            keep_mounted(panel.kind)
-                && frame
-                    .panels
-                    .iter()
-                    .all(|projected| projected.source_index != *source_index)
-        })
-        .map(|(source_index, panel)| (hidden_projection(snapshot, source_index, panel), true));
-    let panels: Vec<_> = visible
-        .chain(hidden)
-        .filter_map(|(panel, hidden)| {
-            catalog.get(panel.key).map(|meta| (panel, meta, hidden))
-        })
-        .collect();
-
+    let panels = keepalive_slots(snapshot, catalog, frame, keep_mounted);
     rsx! {
         for (panel, meta, hidden) in panels {
             div {
@@ -128,6 +108,73 @@ where
             }
         }
     }
+}
+
+/// As [`render_keepalive`], but the host supplies the panel's shell too.
+///
+/// A host with its own interactive chrome (traffic lights, header actions, a
+/// resize grip) and its own eventful shell cannot use the passive
+/// [`panel_chrome`] above — but it still needs the keyed, `display: none`
+/// retention that keeps an imperative descendant alive. The closure receives
+/// the projection to render (a hidden panel gets a [`Placement::Floating`]
+/// projection with the same region), the catalog metadata, and whether the
+/// panel is hidden; it returns the whole slot content, shell included. This
+/// helper contributes only the stable key and the hidden class.
+pub fn render_keepalive_with<K, KeepMounted, Inner>(
+    snapshot: &Snapshot<K>,
+    catalog: &PanelCatalog<K>,
+    frame: &ProjectedFrame<'_, K>,
+    keep_mounted: KeepMounted,
+    inner: Inner,
+) -> Element
+where
+    K: PanelKey,
+    KeepMounted: Fn(K) -> bool,
+    Inner: Fn(PanelProjection<K>, &PanelMeta<K>, bool) -> Element,
+{
+    let panels = keepalive_slots(snapshot, catalog, frame, keep_mounted);
+    rsx! {
+        for (panel, meta, hidden) in panels {
+            div {
+                key: "{meta.stable_id}",
+                class: if hidden {
+                    "pk-keepalive-slot pk-keepalive-hidden"
+                } else {
+                    "pk-keepalive-slot"
+                },
+                {inner(panel, meta, hidden)}
+            }
+        }
+    }
+}
+
+/// The slot list both renderers walk: projected panels, then kept panels that
+/// the projection dropped, each with its catalog metadata and hidden flag.
+fn keepalive_slots<'a, K: PanelKey, KeepMounted: Fn(K) -> bool>(
+    snapshot: &'a Snapshot<K>,
+    catalog: &'a PanelCatalog<K>,
+    frame: &'a ProjectedFrame<'_, K>,
+    keep_mounted: KeepMounted,
+) -> Vec<(PanelProjection<K>, &'a PanelMeta<K>, bool)> {
+    let visible = frame.panels.iter().copied().map(|panel| (panel, false));
+    let hidden = snapshot
+        .panels
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(source_index, panel)| {
+            keep_mounted(panel.kind)
+                && frame
+                    .panels
+                    .iter()
+                    .all(|projected| projected.source_index != *source_index)
+        })
+        .map(|(source_index, panel)| (hidden_projection(snapshot, source_index, panel), true));
+    let panels: Vec<_> = visible
+        .chain(hidden)
+        .filter_map(|(panel, hidden)| catalog.get(panel.key).map(|meta| (panel, meta, hidden)))
+        .collect();
+    panels
 }
 
 fn hidden_projection<K: PanelKey>(
