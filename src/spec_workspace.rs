@@ -323,8 +323,8 @@ fn log_layout_error(action: &str, storage_key: &str, error: &LayoutError) {
 /// 1. Settle in-flight gestures and pending saves (the host owns this).
 /// 2. Resolve the new spec.
 /// 3. Build a new `LocalStorageLayoutStore` keyed with
-///    [`layout_key_for_spec`](panel_kit_core::persist::layout_key_for_spec).
-/// 4. Call [`switch_layout`](panel_kit_core::persist::switch_layout) to
+///    [`layout_key_for_spec`].
+/// 4. Call [`switch_layout`] to
 ///    persist the old snapshot and restore the new grammar's layout.
 /// 5. Swap the resolved, store, and snapshot Rc/Signal atomically.
 /// 6. Drive the first data load through the existing `LoadStatus` store.

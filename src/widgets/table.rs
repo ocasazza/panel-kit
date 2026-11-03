@@ -1,6 +1,6 @@
 //! The semantic table painted by the one table component.
 //!
-//! A [`TableModel`](panel_kit_core::widgets::table::TableModel) is static data:
+//! A [`TableModel`] is static data:
 //! cells, columns, rows. The interactive table is
 //! [`data_table`](super::data_table); the model converts itself to its rows by
 //! column kind ([`TableModel::data`]) and this module paints each cell with the
