@@ -41,7 +41,7 @@ pub struct NodeHintMeta {
     pub doctype: Option<String>,
     /// Folder the record lives in.
     pub folder: String,
-    /// Tags; the summary shows at most [`MAX_TAGS`] plus a `+N` count.
+    /// Tags; the summary shows at most `MAX_TAGS` plus a `+N` count.
     pub tags: Vec<String>,
     /// Body text; the summary excerpt is its first non-blank line.
     pub body: String,

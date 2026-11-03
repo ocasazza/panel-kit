@@ -4,8 +4,8 @@
 //! Promoted from the example support glue so every spec canary paints
 //! identical content. [`workspace_contents`] is the composition: one
 //! section per projected panel, spec-authored inline values painted by
-//! [`render_content`], provider-backed ids routed through the host's
-//! [`BindingContent`] seam. [`canary_content`] is the fixed-data
+//! `render_content`, provider-backed ids routed through the host's
+//! [`BindingContent`] seam, and [`canary_content`] as the fixed-data
 //! implementation the canaries pass.
 
 use dioxus::prelude::*;
