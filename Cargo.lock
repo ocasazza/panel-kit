@@ -2068,7 +2068,7 @@ dependencies = [
 
 [[package]]
 name = "panel-kit"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "dioxus",
  "dioxus-ssr",
@@ -2090,7 +2090,7 @@ dependencies = [
 
 [[package]]
 name = "panel-kit-core"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -2102,7 +2102,7 @@ dependencies = [
 
 [[package]]
 name = "panel-kit-grammar"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "panel-kit-core",
  "pest",
@@ -2115,7 +2115,7 @@ dependencies = [
 
 [[package]]
 name = "panel-kit-tui"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "console_error_panic_hook",
  "critical-section",
@@ -3034,7 +3034,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "spec-parity"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "panel-kit",
  "panel-kit-core",

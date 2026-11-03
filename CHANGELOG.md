@@ -1,3 +1,12 @@
+## [1.2.0](https://github.com/ocasazza/panel-kit/compare/v1.1.1...v1.2.0) (2026-11-02)
+
+
+### Features
+
+* **core:** vendored widget models — frame ring, badge detectors, form parsing, hints, selection, build feed ([af4e0ae](https://github.com/ocasazza/panel-kit/commit/af4e0aef757192e8cde405ccfec00112f2407832))
+* **hosts:** promote the example support glue into the library ([fb1af12](https://github.com/ocasazza/panel-kit/commit/fb1af123ad4af1efa88d93aa337437a07d2f267b))
+* **web:** vendored painters — selectable card, form rows, hint bar, build progress, pills, frontmatter grid ([3abc237](https://github.com/ocasazza/panel-kit/commit/3abc23785b728aa3d65c5b49e23ddf2a4015e974))
+
 ## [1.1.1](https://github.com/ocasazza/panel-kit/compare/v1.1.0...v1.1.1) (2026-09-17)
 
 
