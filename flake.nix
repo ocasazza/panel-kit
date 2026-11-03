@@ -253,6 +253,10 @@
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example autoloop --target wasm32-unknown-unknown -- -D warnings";
         });
+        vendoredWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example vendored --target wasm32-unknown-unknown -- -D warnings";
+        });
         toposTuiNativeClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example topos -- -D warnings";
@@ -267,6 +271,7 @@
           ln -s ${webExampleClippy} "$out/web-example"
           ln -s ${toposWebExampleClippy} "$out/topos-web"
           ln -s ${autoloopWebExampleClippy} "$out/autoloop-web"
+          ln -s ${vendoredWebExampleClippy} "$out/vendored-web"
           ln -s ${toposTuiNativeClippy} "$out/topos-tui-native"
           ln -s ${toposBrowserTuiClippy} "$out/topos-browser-tui"
         '';
@@ -300,6 +305,10 @@
         autoloop-web-wasm = wasmCraneLib.buildPackage (commonArgs // autoloopEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit --features web-runtime --example autoloop";
+        });
+        vendored-web-wasm = wasmCraneLib.buildPackage (commonArgs // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p panel-kit --features web-runtime --example vendored";
         });
         topos-tui-native = hostCraneLib.buildPackage (hostArgs // toposCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
@@ -422,6 +431,7 @@
           workspace-spec-web-wasm = workspace-spec-web-wasm;
           topos-web-wasm = topos-web-wasm;
           autoloop-web-wasm = autoloop-web-wasm;
+          vendored-web-wasm = vendored-web-wasm;
           topos-tui-native = topos-tui-native;
           topos-browser-tui-wasm = topos-browser-tui-wasm;
           topos-grammar-test = topos-grammar-test;

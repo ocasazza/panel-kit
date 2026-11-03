@@ -69,6 +69,11 @@ impl HintRegistry {
         self.entries.retain(|h| h.source != source);
     }
 
+    /// Whether `source` currently holds a slot.
+    pub fn contains(&self, source: &'static str) -> bool {
+        self.entries.iter().any(|h| h.source == source)
+    }
+
     /// The currently shown hint, if any.
     pub fn shown(&self) -> Option<&Hint> {
         self.entries.last()
