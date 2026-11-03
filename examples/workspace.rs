@@ -11,12 +11,7 @@ use dioxus::events::PointerEvent as DioxusPointerEvent;
 use dioxus::prelude::*;
 use panel_kit::CSS;
 
-#[allow(dead_code, unused_imports)]
-#[path = "support/composable_workspace.rs"]
-mod composable_workspace;
-#[allow(dead_code)]
-#[path = "support/spec_workspace.rs"]
-mod spec_workspace;
+use panel_kit::{canary as web_canary, spec_workspace};
 
 const SPEC_JSON: &str = include_str!(env!("PANEL_KIT_WORKSPACE_SPEC"));
 
@@ -59,9 +54,9 @@ fn App() -> Element {
         .tile_grid
         .map(panel_kit::widgets::root::tile_grid_style)
         .unwrap_or_default();
-    let mode = composable_workspace::web_canary::mode_label(frame.mode);
-    let surface = composable_workspace::web_canary::surface_label(frame.surface.class);
-    let kinds = composable_workspace::web_canary::content_kinds(&workspace.resolved);
+    let mode = web_canary::mode_label(frame.mode);
+    let surface = web_canary::surface_label(frame.surface.class);
+    let kinds = web_canary::content_kinds(&workspace.resolved);
 
     let pointer_move_workspace = workspace.clone();
     let pointer_up_workspace = workspace.clone();
@@ -102,7 +97,7 @@ fn App() -> Element {
                 class: "{workspace_class}",
                 style: "{workspace_style}",
                 onwheel: move |event| spec_workspace::handle_wheel(&wheel_workspace, &event),
-                {composable_workspace::web_canary::workspace_contents(&frame, &workspace.resolved, emit, header_clicks, &composable_workspace::web_canary::canary_content)}
+                {web_canary::workspace_contents(&frame, &workspace.resolved, emit, header_clicks, &web_canary::canary_content)}
             }
             if workspace.resolved.chrome.dock {
                 {panel_kit::widgets::dock::dock(

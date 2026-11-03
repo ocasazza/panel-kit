@@ -13,12 +13,22 @@ use dioxus::events::PointerEvent as DioxusPointerEvent;
 use dioxus::prelude::*;
 use panel_kit::loading::{loading_store, GlobalLoadingBar, LoadingGate};
 use panel_kit::{LayoutBuilder, LoadingWorkspace, PanelKind, PanelWin};
-use panel_kit_core::persist::SavePolicy;
 use serde::{Deserialize, Serialize};
 
-#[allow(dead_code)]
-#[path = "support/composable_workspace.rs"]
-mod composable_workspace;
+use panel_kit::workspace::{
+    handle_key, handle_pointer_move, handle_pointer_up, handle_wheel, mount_viewport_observer,
+    project_workspace, use_panel_workspace, workspace_area_class, workspace_event_handler,
+    WorkspaceOptions,
+};
+use panel_kit_core::PanelCatalog;
+use std::rc::Rc;
+
+fn catalog() -> Rc<PanelCatalog<Panel>> {
+    Rc::new(
+        PanelCatalog::from_panel_kind_layout(&default_layout())
+            .expect("example panel enum must serialize as stable string IDs"),
+    )
+}
 
 const DEMO_CSS: &str = "
 .load-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-left: auto; }
@@ -77,9 +87,9 @@ fn App() -> Element {
     let graph = loading_store("demo-graph", "loading graph…");
     let branches = loading_store("demo-branches", "loading branches…");
     let workspace =
-        composable_workspace::use_demo_workspace(STORAGE_KEY, default_layout, SavePolicy::OnSettle);
-    composable_workspace::mount_viewport_observer(&workspace);
-    let emit = composable_workspace::workspace_event_handler(&workspace);
+        use_panel_workspace(STORAGE_KEY, default_layout, catalog, WorkspaceOptions::default());
+    mount_viewport_observer(&workspace);
+    let emit = workspace_event_handler(&workspace);
     let mut booted = use_signal(|| false);
     let mut phase = use_signal(|| 0.0f64);
 
@@ -108,9 +118,9 @@ fn App() -> Element {
 
     let snapshot = workspace.snapshot.read();
     let mut scratch = workspace.scratch.borrow_mut();
-    let frame = composable_workspace::project_workspace(&snapshot, &mut scratch);
+    let frame = project_workspace(&workspace, &snapshot, &mut scratch);
     let root_class = panel_kit::widgets::root::root_class(&frame);
-    let workspace_class = composable_workspace::workspace_area_class(&frame);
+    let workspace_class = workspace_area_class(&frame);
     let workspace_style = frame
         .tile_grid
         .map(panel_kit::widgets::root::tile_grid_style)
@@ -128,16 +138,16 @@ fn App() -> Element {
             class: "{root_class}",
             tabindex: "0",
             onpointermove: move |event: DioxusPointerEvent| {
-                composable_workspace::handle_pointer_move(&pointer_move_workspace, &event)
+                handle_pointer_move(&pointer_move_workspace, &event)
             },
             onpointerup: move |event: DioxusPointerEvent| {
-                composable_workspace::handle_pointer_up(&pointer_up_workspace, &event)
+                handle_pointer_up(&pointer_up_workspace, &event)
             },
             onpointercancel: move |event: DioxusPointerEvent| {
-                composable_workspace::handle_pointer_up(&pointer_cancel_workspace, &event)
+                handle_pointer_up(&pointer_cancel_workspace, &event)
             },
             onkeydown: move |event: KeyboardEvent| {
-                composable_workspace::handle_key(&key_workspace, &event)
+                handle_key(&key_workspace, &event)
             },
             header { class: "topbar",
                 h1 { "loading demo" }
@@ -164,7 +174,7 @@ fn App() -> Element {
             div {
                 class: "{workspace_class}",
                 style: "{workspace_style}",
-                onwheel: move |event| composable_workspace::handle_wheel(&wheel_workspace, &event),
+                onwheel: move |event| handle_wheel(&wheel_workspace, &event),
                 for panel in frame.panels.iter().copied() {
                     if let Some(meta) = workspace.catalog.get(panel.key) {
                         {

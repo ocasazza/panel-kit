@@ -31,6 +31,7 @@ web-runtime = [
     "dep:dioxus",
     "dep:gloo-storage",
     "dep:js-sys",
+    "dep:panel-kit-grammar",
     "dep:serde",
     "dep:serde_json",
     "dep:wasm-bindgen",
@@ -43,6 +44,9 @@ spec-plan = ["dep:serde", "dep:serde_json", "panel-kit-core/spec-json"]
 
 [dependencies]
 panel-kit-core = { version = "1.1.1", path = "crates/panel-kit-core" }
+# Host glue for topos/grammar regimes (section_view, autoloop_host) paints
+# sections and edits from panel-kit-grammar's compiled site layer.
+panel-kit-grammar = { version = "1.1.1", path = "crates/panel-kit-grammar", optional = true }
 dioxus = { version = "0.6", features = ["web"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }

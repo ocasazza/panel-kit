@@ -24,18 +24,9 @@ use panel_kit_core::Units;
 use panel_kit_grammar::Topos;
 use wasm_bindgen::{JsCast, JsValue};
 
-#[allow(dead_code, unused_imports)]
-#[path = "support/composable_workspace.rs"]
-mod composable_workspace;
-#[allow(dead_code)]
-#[path = "support/spec_workspace.rs"]
-mod spec_workspace;
-#[allow(dead_code)]
-#[path = "support/autoloop_host.rs"]
-mod autoloop_host;
-#[allow(dead_code)]
-#[path = "support/section_view.rs"]
-mod section_view;
+// The promoted host glue now lives in the library; `web_canary` keeps the
+// spec canary's fixed demo content and bindings.
+use panel_kit::{autoloop_host, canary as web_canary, section_view, spec_workspace};
 
 use autoloop_host::{AutoloopHost, Specs, CONTROL, TRACE};
 use section_view::EditDraft;
@@ -351,7 +342,7 @@ fn App() -> Element {
                 class: "{workspace_class}",
                 style: "{workspace_style}",
                 onwheel: move |event| spec_workspace::handle_wheel(&wheel_workspace, &event),
-                {composable_workspace::web_canary::workspace_contents(&frame, &current.resolved, emit, header_clicks, &binding_content)}
+                {web_canary::workspace_contents(&frame, &current.resolved, emit, header_clicks, &binding_content)}
             }
             if current.resolved.chrome.dock {
                 {panel_kit::widgets::dock::dock(frame.dock, &current.resolved.catalog, emit, None)}
