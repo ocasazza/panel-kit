@@ -1,20 +1,20 @@
-//! Host-owned workspace wiring for the spec-driven web canary example.
+//! Host-owned workspace wiring for spec-driven web consumers.
 //!
-//! This is example support, not a public controller facade: the example still
-//! owns startup decoding, state, event policy, persistence timing, projection,
-//! and render order. The helper only keeps the mechanical reducer/persistence
-//! loop readable.
+//! The host still owns startup decoding, state, event policy, persistence
+//! timing, projection, and render order; this helper keeps the mechanical
+//! reducer/persistence loop readable. The renderer-neutral kernel is
+//! `WorkspaceSpec` / `ResolvedWorkspace` in panel-kit-core.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use dioxus::events::{KeyboardEvent, PointerEvent as DioxusPointerEvent, WheelEvent};
 use dioxus::prelude::*;
-use panel_kit::input::{
+use crate::input::{
     clear_selection, keyboard_event, pointer_event, release_pointer, wheel_event,
 };
-use panel_kit::store::LocalStorageLayoutStore;
-use panel_kit::surface::{browser_capabilities, observe_viewport};
+use crate::store::LocalStorageLayoutStore;
+use crate::surface::{browser_capabilities, observe_viewport};
 use panel_kit_core::frame::{
     project_into, ChromeProjectionInput, Placement, ProjectedFrame, ProjectionBuffer,
     ProjectionInput, TileLayoutMetrics,
@@ -129,7 +129,7 @@ pub fn workspace_event_handler(
 
 /// Reduce a root keyboard event after the example has declined first refusal.
 pub fn handle_key(workspace: &SpecWorkspaceState, event: &KeyboardEvent) {
-    let focus = if panel_kit::input::is_editing() {
+    let focus = if crate::input::is_editing() {
         FocusContext::TextInput
     } else if let Some(key) = workspace.snapshot.read().focused {
         FocusContext::Panel(key)
@@ -323,14 +323,14 @@ fn log_layout_error(action: &str, storage_key: &str, error: &LayoutError) {
 /// 1. Settle in-flight gestures and pending saves (the host owns this).
 /// 2. Resolve the new spec.
 /// 3. Build a new `LocalStorageLayoutStore` keyed with
-///    [`layout_key_for_spec`](panel_kit_core::persist::layout_key_for_spec).
-/// 4. Call [`switch_layout`](panel_kit_core::persist::switch_layout) to
+///    [`layout_key_for_spec`].
+/// 4. Call [`switch_layout`] to
 ///    persist the old snapshot and restore the new grammar's layout.
 /// 5. Swap the resolved, store, and snapshot Rc/Signal atomically.
 /// 6. Drive the first data load through the existing `LoadStatus` store.
 ///
-/// This is example glue for the web canary, not library API. The reusable
-/// kernel is `switch_layout` in core; the signal/Rc swap stays in the app.
+/// The reusable kernel is [`switch_layout`] in core; this helper adds the
+/// signal/Rc swap a Dioxus host would otherwise repeat.
 pub fn switch_workspace_spec(
     workspace: &SpecWorkspaceState,
     new_spec_json: &str,

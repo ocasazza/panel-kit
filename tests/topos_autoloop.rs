@@ -9,9 +9,7 @@
 //! Paths come from the environment at run time (the `topos-autoloop-test`
 //! check sets them), so this target compiles under every check.
 
-#[allow(dead_code)]
-#[path = "../examples/support/autoloop_host.rs"]
-mod autoloop_host;
+use panel_kit::autoloop_host;
 
 use std::collections::BTreeMap;
 

@@ -2972,3 +2972,93 @@ circle.pk-tr-glyph:hover,
 span.pk-tr-warn {
   color: var(--color-warning);
 }
+
+/* Vendored shared components (see VENDORED.md): form rows, selectable
+   cards, hint bar, build progress, neighbour pills, frontmatter grid. All
+   colour through the role tokens; bars and inputs stay square like the
+   progress tracks, chips take --badge-radius, cards --panel-radius. */
+.pk-form-row { display:flex; align-items:center; gap:.5rem; min-width:0; }
+.pk-form-key { color:var(--color-text-muted); font-size:.72rem; white-space:nowrap; }
+.pk-form-range { flex:1; min-width:0; accent-color:var(--color-primary); }
+.pk-form-num, .pk-form-text { background:var(--color-background); color:var(--color-text);
+  border:1px solid var(--color-border); border-radius:0; padding:.1rem .3rem; font:inherit; }
+.pk-form-num { width:5.5rem; flex:0 0 auto; }
+.pk-form-text { flex:1; min-width:0; }
+.pk-form-check { display:flex; align-items:center; gap:.35rem;
+  accent-color:var(--color-primary); cursor:pointer; }
+.pk-form-note { color:var(--color-text-muted); font-size:.68rem; }
+
+/* Selectable cards: one-of-N pickers. The state classes are host-composed
+   (the card's `class` chain arrives complete); these rules paint them. */
+.pk-select-card { display:flex; flex-direction:column; gap:.4rem; text-align:left;
+  background:var(--color-surface); color:var(--color-text);
+  border:1px solid var(--color-border); border-radius:var(--panel-radius);
+  padding:.6rem .75rem; font:inherit; cursor:pointer; }
+.pk-select-card:hover:not(:disabled) { border-color:var(--color-text); }
+.pk-select-card:disabled { opacity:.55; cursor:not-allowed; }
+.pk-select-card.default { border-color:var(--color-primary);
+  outline:1px solid var(--color-primary); }
+.pk-select-card.viewing { border-color:var(--color-warning); }
+.pk-select-card.ghost { border-style:dashed; }
+.pk-select-card-head { display:flex; align-items:baseline; gap:.5rem;
+  justify-content:space-between; }
+.pk-select-card-title h3 { margin:0; font-size:.74rem; }
+.pk-select-card-subtitle { color:var(--color-text-muted); font-size:.68rem; }
+.pk-select-card-chips { display:flex; gap:.3rem; flex-wrap:wrap; }
+.pk-select-card-chip { font-size:.66rem; color:var(--color-text-muted);
+  border:1px solid var(--color-border); border-radius:var(--badge-radius);
+  padding:0 .35rem; }
+.pk-select-card-desc { margin:0; font-size:.72rem; }
+.pk-select-card-why { color:var(--color-warning); font-size:.68rem; }
+
+/* Hint bar: the shown contextual hint plus its hotkey chips. The region
+   renders empty when no hint is shown so the header never reflows. */
+.pk-hintbar { display:flex; align-items:center; gap:.6rem; min-height:1.6rem;
+  min-width:0; font-size:.72rem; color:var(--color-text-muted); }
+.pk-hintbar-title { color:var(--color-text); }
+.pk-hintbar-body { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pk-hintbar-key { display:inline-flex; align-items:center; gap:.25rem; flex:0 0 auto; }
+.pk-hintbar-key kbd { font:inherit; border:1px solid var(--color-border);
+  border-radius:0; padding:0 .25rem; color:var(--color-text); }
+
+/* Build progress: determinate <progress> or a CSS-only indeterminate bar
+   (no JavaScript), plus the first-paint hydration placeholder built on it. */
+.pk-build-progress-bar { display:block; width:100%; height:.55rem; appearance:none;
+  background:var(--color-background); border:1px solid var(--color-border);
+  border-radius:0; overflow:hidden; }
+.pk-build-progress-bar::-webkit-progress-bar { background:var(--color-background); }
+.pk-build-progress-bar::-webkit-progress-value { background:var(--color-highlight);
+  transition:width .4s ease; }
+.pk-build-progress-bar::-moz-progress-bar { background:var(--color-highlight); }
+div.pk-build-progress-bar { position:relative; }
+div.pk-build-progress-bar::before { content:""; position:absolute; inset:0 auto 0 0;
+  width:40%; background:var(--color-highlight);
+  animation:pk-indet 1.2s infinite linear; }
+.pk-panel-hydrating { display:flex; flex-direction:column; gap:.4rem; width:100%; }
+.pk-panel-hydrating-label { color:var(--color-text-muted); font-size:.72rem;
+  letter-spacing:.03em; }
+
+/* Neighbour pills: clickable id rows over the shared badge chrome. */
+.pk-pills { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem; }
+.pk-pill { display:inline-flex; min-width:0; }
+.pk-pill-note { color:var(--color-text-muted); font-size:.68rem; }
+
+/* Frontmatter leftover grid: everything the chip walker did not render. */
+.pk-fm-section { border:1px solid var(--color-border);
+  border-radius:var(--panel-radius); padding:.4rem .6rem; }
+.pk-fm-section summary { cursor:pointer; color:var(--color-text-muted);
+  font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; }
+.pk-fmgrid { display:grid; grid-template-columns:max-content minmax(0, 1fr);
+  gap:.35rem .75rem; padding-top:.4rem; }
+.pk-fmrow { display:contents; }
+.pk-fmkey { color:var(--color-text-muted); font-size:.72rem; }
+.pk-fmtext { font-size:.72rem; white-space:pre-wrap; word-break:break-word; min-width:0; }
+.pk-fmjson { margin:0; font-size:.68rem; color:var(--color-text);
+  white-space:pre-wrap; word-break:break-word; max-height:14rem; overflow:auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-build-progress-bar::-webkit-progress-value { transition:none; }
+  /* Keep an honest indeterminate read with motion removed: a static 40%
+     sliver still says "working, extent unknown". */
+  div.pk-build-progress-bar::before { animation:none; transform:none; }
+}

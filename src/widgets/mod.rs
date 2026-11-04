@@ -4,23 +4,33 @@
 //! `panel-kit-core`, while this crate maps borrowed runtime views to DOM.
 
 pub mod badge;
+pub mod build_progress;
 pub mod button;
 pub mod cascade;
 pub mod charts;
 pub mod data_table;
+pub mod detect;
 pub mod dock;
 pub mod dropdown;
+pub mod forms;
+pub mod frontmatter;
+pub mod hints;
 pub mod trace;
 pub mod meter;
+pub mod pills;
 pub mod panel;
 pub mod panel_layout;
 pub mod root;
 pub mod scroll;
+pub mod selection;
 pub mod spinner;
 pub mod status;
 pub mod table;
 
 pub use button::Button;
+pub use build_progress::PanelHydrating;
+pub use forms::{CheckRow, IntRow, Slider, TextRow};
+pub use selection::SelectableCard;
 pub use cascade::{CascadeAction, CascadeItem, CascadeState, CascadingDropdown};
 pub use data_table::{csv, tsv, write_csv, write_tsv, Control, DataColumnSpec, DataTable, TableData, TableDataBuilder, Value};
 pub use dropdown::{Dropdown, DropdownAction, DropdownItem, DropdownState};

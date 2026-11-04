@@ -5,13 +5,21 @@
 //! boundaries.
 
 pub mod badge;
+pub mod build_progress;
 pub mod cascade;
 pub mod charts;
 pub mod data_table;
+pub mod detect;
 pub mod dropdown;
+#[cfg(feature = "spec-json")]
+pub mod frontmatter;
+pub mod forms;
+pub mod frame_ring;
+pub mod hints;
 pub mod trace;
 pub mod meter;
 pub mod scroll;
+pub mod selection;
 pub mod spinner;
 pub mod status;
 pub mod table;

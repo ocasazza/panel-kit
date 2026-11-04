@@ -220,7 +220,7 @@ async fn load_monaco() -> Result<(), EditorError> {
 }
 
 /// Load Monaco (if needed) and register the `nix`, `pest`, and `toml`
-/// languages: the `nix` expression language (see [`nix_monarch_json`]),
+/// languages: the `nix` expression language (see `nix_monarch_json`),
 /// a Monarch tokenizer for `.pest` files (line `//` and block `/* */`
 /// comments, rule definitions, `'x'` / `"x"` / `^"x"` literals, the
 /// `~ | * + ? ! & @{ ${ _{ !{ ( ) , = ..` operators, and pest's built-in

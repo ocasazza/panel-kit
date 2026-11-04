@@ -163,9 +163,13 @@
 #![warn(missing_docs)]
 
 #[cfg(feature = "web-runtime")]
+pub mod autoloop_host;
+#[cfg(feature = "web-runtime")]
 pub mod badge;
 #[cfg(feature = "bevy")]
 pub mod bevy;
+#[cfg(feature = "web-runtime")]
+pub mod canary;
 #[cfg(feature = "web-runtime")]
 pub mod editor;
 #[cfg(feature = "web-runtime")]
@@ -180,6 +184,10 @@ pub mod keepalive;
 pub mod loading;
 #[cfg(feature = "spec-plan")]
 pub mod spec_plan;
+#[cfg(feature = "web-runtime")]
+pub mod section_view;
+#[cfg(feature = "web-runtime")]
+pub mod spec_workspace;
 #[cfg(feature = "web-runtime")]
 pub mod store;
 #[cfg(feature = "web-runtime")]

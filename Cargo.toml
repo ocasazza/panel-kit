@@ -3,7 +3,7 @@ members = ["crates/panel-kit-core", "crates/panel-kit-grammar", "crates/panel-ki
 
 [package]
 name = "panel-kit"
-version = "1.1.1"
+version = "1.2.0"
 edition = "2021"
 license = "MIT"
 description = "Generic Dioxus panel-workspace library: floating/tiling panels, traffic lights, drag/resize, tiling drag-reorder, minimize-to-dock, layout persistence"
@@ -22,7 +22,7 @@ default-target = "wasm32-unknown-unknown"
 # build.rs generates the pre-WASM boot stylesheet from the canonical token
 # source, so the palette cannot be hand-copied out of sync again.
 [build-dependencies]
-panel-kit-core = { version = "1.1.1", path = "crates/panel-kit-core" }
+panel-kit-core = { version = "1.2.0", path = "crates/panel-kit-core" }
 
 
 [features]
@@ -31,6 +31,7 @@ web-runtime = [
     "dep:dioxus",
     "dep:gloo-storage",
     "dep:js-sys",
+    "dep:panel-kit-grammar",
     "dep:serde",
     "dep:serde_json",
     "dep:wasm-bindgen",
@@ -42,7 +43,10 @@ bevy = ["web-runtime"]
 spec-plan = ["dep:serde", "dep:serde_json", "panel-kit-core/spec-json"]
 
 [dependencies]
-panel-kit-core = { version = "1.1.1", path = "crates/panel-kit-core" }
+panel-kit-core = { version = "1.2.0", path = "crates/panel-kit-core" }
+# Host glue for topos/grammar regimes (section_view, autoloop_host) paints
+# sections and edits from panel-kit-grammar's compiled site layer.
+panel-kit-grammar = { version = "1.2.0", path = "crates/panel-kit-grammar", optional = true }
 dioxus = { version = "0.6", features = ["web"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
@@ -67,9 +71,9 @@ rstest = "0.25"
 parking_lot = "0.12"
 # Fake-async delays in the loading example's hydration arc demo.
 gloo-timers = { version = "0.3", features = ["futures"] }
-panel-kit-tui = { version = "1.1.1", path = "crates/panel-kit-tui" }
+panel-kit-tui = { version = "1.2.0", path = "crates/panel-kit-tui" }
 # Topos/grammar demo façade (examples/support/topos_demo.rs) and its test.
-panel-kit-grammar = { version = "1.1.1", path = "crates/panel-kit-grammar" }
+panel-kit-grammar = { version = "1.2.0", path = "crates/panel-kit-grammar" }
 # Fetch for the auto-loop host example (examples/autoloop.rs).
 web-sys = { version = "0.3", features = ["Headers", "Request", "RequestInit", "Response"] }
 

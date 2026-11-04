@@ -30,13 +30,13 @@ pub fn paint(
 ) -> Element {
     let badge = on_badge.unwrap_or_else(noop_badge_action);
     match section {
-        Section::Table(table) => panel_kit::widgets::table::bound_table(binding, table, rows),
+        Section::Table(table) => crate::widgets::table::bound_table(binding, table, rows),
         Section::Text(text) => {
             let scroll = match content {
                 ContentSpec::Text { scroll, .. } => *scroll,
                 _ => ScrollPolicy::Auto,
             };
-            panel_kit::widgets::content_view(ContentView::Text { text: &text.text, scroll }, 0, badge)
+            crate::widgets::content_view(ContentView::Text { text: &text.text, scroll }, 0, badge)
         }
         Section::TimeSeries(series) => {
             let views: Vec<SeriesView<'_>> =
@@ -45,7 +45,7 @@ pub fn paint(
                 ContentSpec::TimeSeries { unit, .. } => unit.as_str(),
                 _ => "",
             };
-            panel_kit::widgets::content_view(ContentView::TimeSeries { series: &views, unit }, 0, badge)
+            crate::widgets::content_view(ContentView::TimeSeries { series: &views, unit }, 0, badge)
         }
         Section::Boxplot(items) => {
             let views: Vec<BoxItemView<'_>> = items
@@ -54,13 +54,13 @@ pub fn paint(
                     five_num(&item.samples).map(|summary| BoxItemView { label: &item.label, summary, color: item.color })
                 })
                 .collect();
-            panel_kit::widgets::content_view(ContentView::Boxplot(&views), 0, badge)
+            crate::widgets::content_view(ContentView::Boxplot(&views), 0, badge)
         }
-        Section::Gauges(gauges) => panel_kit::widgets::content_view(ContentView::Gauges(gauges), 0, badge),
-        Section::Flamegraph(spans) => panel_kit::widgets::content_view(ContentView::Flamegraph(spans), 0, badge),
-        Section::Badges(specs) => panel_kit::widgets::content_view(ContentView::Badges(specs), 0, badge),
-        Section::Meter(meter) => panel_kit::widgets::content_view(ContentView::Meter(meter), 0, badge),
-        Section::Status(status) => panel_kit::widgets::content_view(ContentView::Status(status), 0, badge),
+        Section::Gauges(gauges) => crate::widgets::content_view(ContentView::Gauges(gauges), 0, badge),
+        Section::Flamegraph(spans) => crate::widgets::content_view(ContentView::Flamegraph(spans), 0, badge),
+        Section::Badges(specs) => crate::widgets::content_view(ContentView::Badges(specs), 0, badge),
+        Section::Meter(meter) => crate::widgets::content_view(ContentView::Meter(meter), 0, badge),
+        Section::Status(status) => crate::widgets::content_view(ContentView::Status(status), 0, badge),
     }
 }
 
