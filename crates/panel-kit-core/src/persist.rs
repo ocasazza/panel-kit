@@ -38,7 +38,8 @@ pub trait LayoutStore {
 /// The policy is pure data: core never hides persistence side effects, and
 /// hosts apply the returned [`SaveDecision`] after each reducer result.
 /// `Manual` lets the host coalesce writes; `OnSettle` writes only completed
-/// changes; `OnChange` writes every changed reduction. A clear/reset operation
+/// changes; `OnChange` writes every continuous or settled change. No policy
+/// writes a [`ChangePhase::Transient`] reduction. A clear/reset operation
 /// is represented as [`SaveDecision::Clear`] so backends do not hand-code a
 /// second persistence table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,10 +72,11 @@ impl SavePolicy {
             return SaveDecision::NoSave;
         }
 
-        match self {
-            Self::Manual => SaveDecision::NoSave,
-            Self::OnSettle if reduction.phase == Some(ChangePhase::Settled) => SaveDecision::Save,
-            Self::OnChange if reduction.phase.is_some() => SaveDecision::Save,
+        match (self, reduction.phase) {
+            (Self::OnSettle, Some(ChangePhase::Settled)) => SaveDecision::Save,
+            (Self::OnChange, Some(ChangePhase::Continuous | ChangePhase::Settled)) => {
+                SaveDecision::Save
+            }
             _ => SaveDecision::NoSave,
         }
     }

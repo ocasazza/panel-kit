@@ -820,7 +820,10 @@ fn the_rows_svg_is_the_layout_sized_and_named() {
     let svg = html.find("svg", "class=\"pk-tr-svg\"");
     assert_eq!(attr(svg, "width"), "1400");
     assert_eq!(attr(svg, "height"), (layout.axis_y as i64).to_string());
-    assert_eq!(attr(svg, "viewBox"), format!("0 0.0 1400 {}", layout.axis_y));
+    assert_eq!(
+        attr(svg, "viewBox"),
+        format!("0 0.0 1400 {}", layout.axis_y)
+    );
     assert_eq!(attr(svg, "aria-label"), layout.aria_label());
     assert_eq!(attr(svg, "role"), "group");
     assert!(!html.has("pk-tr-top"), "no strip, nothing to pin");
@@ -846,8 +849,14 @@ fn the_strip_the_rows_and_the_axis_are_three_svgs_of_one_coordinate_system() {
     );
     let height = |tag: &str| attr(tag, "height").parse::<f64>().unwrap();
     assert_eq!(attr(strip, "viewBox"), format!("0 0 1400 {top}"));
-    assert_eq!(attr(rows, "viewBox"), format!("0 {top:.1} 1400 {}", layout.axis_y - top));
-    assert_eq!(attr(foot, "viewBox"), format!("0 {:.1} 1400 28", layout.axis_y));
+    assert_eq!(
+        attr(rows, "viewBox"),
+        format!("0 {top:.1} 1400 {}", layout.axis_y - top)
+    );
+    assert_eq!(
+        attr(foot, "viewBox"),
+        format!("0 {:.1} 1400 28", layout.axis_y)
+    );
     assert_eq!(
         height(strip) + height(rows) + height(foot),
         layout.height as f64,
@@ -866,9 +875,13 @@ fn the_strip_the_rows_and_the_axis_are_three_svgs_of_one_coordinate_system() {
 
 #[test]
 fn focus_scrolls_a_row_clear_of_the_pinned_strip_and_axis() {
-    let canvas = |html: &Html| attr(html.find("div", "class=\"pk-tr-canvas\""), "style").to_string();
+    let canvas =
+        |html: &Html| attr(html.find("div", "class=\"pk-tr-canvas\""), "style").to_string();
     // One strip row (14px) over the rows and the 28px axis band under them.
-    assert_eq!(canvas(&graph(commits()).render()), "scroll-padding: 14px 0 28px;");
+    assert_eq!(
+        canvas(&graph(commits()).render()),
+        "scroll-padding: 14px 0 28px;"
+    );
     let bare = graph(vec![note("imp-1", 5.0)]).render();
     assert_eq!(canvas(&bare), "scroll-padding: 0px 0 28px;");
     let (case, _) = demo(false);
@@ -1153,7 +1166,11 @@ fn the_grid_has_a_line_per_tick_and_the_axis_a_label() {
         assert_eq!(attr(tag, "y2"), fmt1(layout.axis_y));
     }
     let foot = ticks_of("<svg class=\"pk-tr-svg pk-tr-foot\"");
-    let days: Vec<_> = layout.ticks.iter().filter(|t| t.kind == TickKind::Day).collect();
+    let days: Vec<_> = layout
+        .ticks
+        .iter()
+        .filter(|t| t.kind == TickKind::Day)
+        .collect();
     assert_eq!(foot.len(), days.len(), "time lines stop at the axis");
     for (tag, tick) in foot.iter().zip(days) {
         assert_eq!(attr(tag, "x1"), fmt1(tick.x));
@@ -1389,7 +1406,10 @@ fn show_all_mounts_the_rows_near_the_viewport_of_the_demo_window() {
     assert_eq!(attr(rows, "height"), (layout.axis_y - top).to_string());
     assert_eq!(attr(rows, "data-start"), "0");
     assert_eq!(attr(rows, "data-end"), (FIRST_ROWS as usize).to_string());
-    assert!(layout.rows > FIRST_ROWS as usize, "some rows wait for the scroll");
+    assert!(
+        layout.rows > FIRST_ROWS as usize,
+        "some rows wait for the scroll"
+    );
     assert_eq!(html.text("activity-show-all"), "show newest 20");
 }
 
@@ -1416,7 +1436,11 @@ fn sized(events: usize) -> Case {
 fn a_hundred_thousand_events_mount_a_bounded_window_of_rows() {
     let case = sized(100_000);
     let layout = demo_layout(&case);
-    assert!(layout.item_count() > 10_000, "{} items", layout.item_count());
+    assert!(
+        layout.item_count() > 10_000,
+        "{} items",
+        layout.item_count()
+    );
     let near = first_screen(&layout, &case.events);
     let last = lowest(&layout, &case.events);
     let html = render_demo(case);
@@ -1429,7 +1453,11 @@ fn a_hundred_thousand_events_mount_a_bounded_window_of_rows() {
     let top = layout.strip.len() as f64 * 14.0;
     let rows = html.find("svg", "class=\"pk-tr-svg\"");
     assert_eq!(attr(rows, "height"), (layout.axis_y - top).to_string());
-    assert!(layout.axis_y - top > 100.0 * 14.0 * 10.0, "{} rows", layout.rows);
+    assert!(
+        layout.axis_y - top > 100.0 * 14.0 * 10.0,
+        "{} rows",
+        layout.rows
+    );
     // The no-item rows keep their real counts: the digits, while they fit.
     for row in &layout.strip {
         let shown = html.text(&format!("activity-strip-count-{}", row.kind.as_str()));

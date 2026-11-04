@@ -140,9 +140,14 @@ button { font-family:var(--mono); }
   touch-action:none;
 }
 .panel-head:focus-visible { outline-offset:-2px; }
-.ws.tiling .panel-head { cursor:grab; }      /* drag to reorder into another slot */
-.ws.tiling .panel-head:active { cursor:grabbing; }
-.panel.tile-dragging { opacity:.55; outline:1px dashed var(--color-highlight); outline-offset:-1px; }
+.ws.tiling .panel-head { cursor:grab; }      /* drag to swap into another slot */
+.ws.tiling .panel-head:active, .ws-root.dragging .panel.tile-lifted .panel-head { cursor:grabbing; }
+/* Tile drag: core projects the lifted/landing tile's translate, scale and
+   opacity inline, plus --pk-lift (0..1 elevation) for this shadow. Motion is
+   driven by core ticks; reduced motion completes it in one tick. */
+.ws.tiling .panel.tile-lifted, .ws.tiling .panel.tile-landing { z-index:20; border-color:var(--color-highlight);
+  box-shadow:0 calc(6px * var(--pk-lift, 1)) calc(24px * var(--pk-lift, 1)) color-mix(in srgb, var(--shadow-ink) 46.67%, transparent); }
+.panel.tile-target { outline:1px dashed var(--color-highlight); outline-offset:-1px; }
 .panel-title { color:var(--color-text); font-size:var(--label-size); font-weight:var(--label-weight); text-transform:uppercase; letter-spacing:var(--label-tracking);
   flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .max-hint { margin-left:auto; color:var(--color-text-muted); font-size:.65rem; }
@@ -1275,6 +1280,16 @@ button { font-family:var(--mono); }
 .pk-dt-empty .pk-btn {
   margin-left: 8px;
 }
+
+/* Semantic table cells (src/widgets/table.rs): a status dot in its status
+   colour, a meter as the gauge track filled in its meter colour. */
+.pk-table-status > [aria-hidden="true"] { color: var(--status-c); }
+.pk-table-meter { display: flex; align-items: center; gap: .5rem; width: 100%; }
+.pk-table-meter-track { display: block; flex: 1 1 auto; min-width: 0; height: .55rem;
+  background: var(--color-background); border: 1px solid var(--color-border); overflow: hidden; }
+.pk-table-meter-fill { display: block; height: 100%; background: var(--meter-c, var(--color-highlight)); }
+.pk-table-meter-text { color: var(--color-text-muted); white-space: nowrap; }
+.pk-table-meter-text:empty { display: none; }
 
 /* ── Filter row controls ───────────────────────────────────────── */
 

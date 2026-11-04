@@ -111,11 +111,12 @@ fn report_has_panel_drift(nix_ids: &[String], rust_ids: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider_manifest::live_rust_provider_manifest;
+    use crate::provider_manifest::live_rust_provider_manifests;
 
     /// Extract live executable canary provider IDs for historical drift tests.
     fn live_rust_provider_ids() -> Vec<String> {
-        live_rust_provider_manifest()
+        live_rust_provider_manifests()
+            .swap_remove(0)
             .panels
             .into_iter()
             .map(|provider| provider.panel_id)

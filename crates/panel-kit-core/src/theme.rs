@@ -20,6 +20,7 @@
 
 mod color;
 mod emitter;
+mod paint;
 mod presets;
 mod schema;
 mod semantic;
@@ -32,6 +33,7 @@ pub use emitter::{
 };
 pub use schema::{ColorTokens, DensityTokens, ThemeTokens, TypographyTokens};
 pub use semantic::{ColorRef, ThemeColor};
+pub use paint::{PanelPaint, GRIP_PX, LIGHT_GAP_PX, LIGHT_PX, PANEL_BORDER_PX};
 pub use tokens::{
     by_name, Token, DARK, MONO, BACKGROUND, BORDER, DIVIDER, ERROR, FAILURE, FOCUS_RING, HIGHLIGHT,
     INFO, INVERSE_BACKGROUND, INVERSE_TEXT, PRIMARY, SECONDARY, SUCCESS, SURFACE, TERTIARY, TEXT,

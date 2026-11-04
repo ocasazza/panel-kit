@@ -168,8 +168,9 @@ mod browser {
                 context.panels,
                 panel_kit_core::widgets::table::TableView {
                     columns: &table_model.columns,
-                    rows: &table_model.rows,
+                    rows: &table_model.rows.iter().collect::<Vec<_>>(),
                 },
+                &panel_kit_core::widgets::data_table::TableState::default(),
             );
         }
 
@@ -407,6 +408,8 @@ mod browser {
         metrics: Metrics,
         layout_ready: bool,
         hover: Option<Position>,
+        /// Clock reading at the previous animated frame, in milliseconds.
+        last_frame_ms: Option<f64>,
     }
 
     impl App {
@@ -449,6 +452,7 @@ mod browser {
                 metrics: Metrics::new(),
                 layout_ready: false,
                 hover: None,
+                last_frame_ms: None,
             })
         }
 
@@ -521,11 +525,27 @@ mod browser {
             self.reduce_workspace_event(event);
         }
 
+        /// Advance tile-drag animation by wall time between animated frames.
+        fn tick_tile_drag(&mut self) {
+            if !self.snapshot.tile_drag.is_some_and(|tile| tile.animating()) {
+                self.last_frame_ms = None;
+                return;
+            }
+            const FIRST_FRAME_MS: f64 = 1000.0 / 60.0;
+            let now = ratzilla::web_sys::js_sys::Date::now();
+            let dt_ms = self
+                .last_frame_ms
+                .replace(now)
+                .map_or(FIRST_FRAME_MS, |previous| now - previous);
+            self.reduce_workspace_event(WorkspaceEvent::Tick { dt_ms });
+        }
+
         fn draw(&mut self, frame: &mut ratatui::Frame) {
             self.tick += 1;
             if self.tick % 6 == 0 {
                 self.metrics.tick();
             }
+            self.tick_tile_drag();
             self.badge_zones.clear();
             self.hits.clear();
             self.grid = (f64::from(frame.area().width), f64::from(frame.area().height));

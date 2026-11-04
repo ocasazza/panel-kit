@@ -15,7 +15,10 @@ use std::rc::Rc;
 use dioxus::events::{KeyboardEvent, PointerEvent as DioxusPointerEvent};
 use dioxus::prelude::*;
 use gloo_storage::{LocalStorage, Storage};
-use panel_kit::input::{clear_selection, keyboard_event, pointer_event, wheel_event};
+use panel_kit::input::{
+    clear_selection, keyboard_event, pointer_event, tile_drag_pointer_event,
+    use_tile_drag_frames, wheel_event,
+};
 use panel_kit::store::LocalStorageLayoutStore;
 use panel_kit::surface::{observe_viewport, surface_profile, viewport_size};
 use panel_kit::widgets::{dock, panel, root};
@@ -324,6 +327,12 @@ fn App() -> Element {
             reduce_and_persist(event, snapshot, registry, catalog.clone(), err);
         }
     });
+    let animating = snapshot
+        .read()
+        .tile_drag
+        .is_some_and(|tile| tile.animating());
+    use_tile_drag_frames(animating, emit);
+    let pointer_scratch = scratch.clone();
     observe_viewport(EventHandler::new({
         let catalog = catalog.clone();
         move |viewport| {
@@ -378,7 +387,29 @@ fn App() -> Element {
             class: "{root_class}",
             tabindex: "0",
             onpointermove: move |event: DioxusPointerEvent| {
-                emit.call(pointer_event(HitTarget::Workspace, &event, PointerEventKind::Drag(PointerButton::Primary)));
+                let workspace_event = {
+                    let snapshot = snapshot.read();
+                    if snapshot.tile_drag.is_some_and(|tile| tile.tracks_pointer()) {
+                        let surface = surface_profile(snapshot.viewport.width);
+                        let chrome = ChromeProjectionInput::full(ChromeMetrics::WEB);
+                        let tile = TileLayoutMetrics::from_tile_metrics(TileMetrics::WEB, surface);
+                        let mut scratch = pointer_scratch.borrow_mut();
+                        let frame = project_into(
+                            ProjectionInput {
+                                snapshot: &snapshot,
+                                surface,
+                                chrome: &chrome,
+                                clamp: &Clamp::WEB,
+                                tile: &tile,
+                            },
+                            &mut scratch,
+                        );
+                        tile_drag_pointer_event(&frame, &event)
+                    } else {
+                        pointer_event(HitTarget::Workspace, &event, PointerEventKind::Drag(PointerButton::Primary))
+                    }
+                };
+                emit.call(workspace_event);
             },
             onpointerup: move |event: DioxusPointerEvent| {
                 clear_selection();
@@ -386,7 +417,7 @@ fn App() -> Element {
             },
             onpointercancel: move |event: DioxusPointerEvent| {
                 clear_selection();
-                emit.call(pointer_event(HitTarget::Workspace, &event, PointerEventKind::Up(PointerButton::Primary)));
+                emit.call(pointer_event(HitTarget::Workspace, &event, PointerEventKind::Cancel));
             },
             onkeydown: move |event: KeyboardEvent| {
                 let focus = keyboard_focus(&snapshot.read());

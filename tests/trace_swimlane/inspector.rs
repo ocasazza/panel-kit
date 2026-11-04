@@ -217,7 +217,10 @@ fn nothing_is_open_until_a_node_is_clicked() {
     let html = case().render();
     assert!(!html.has("pk-tr-ins"), "{}", html.0);
     assert!(!html.has("activity-inspector"));
-    assert!(!html.has("pk-tr-rail"), "no nested rail without an open node");
+    assert!(
+        !html.has("pk-tr-rail"),
+        "no nested rail without an open node"
+    );
     assert!(html.has("pk-tr-body"));
 }
 

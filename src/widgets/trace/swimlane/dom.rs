@@ -66,7 +66,10 @@ pub fn release_hidden_focus(id: &str) {
         if active == root || !root.contains(Some(&active)) {
             return;
         }
-        let (view, at) = (root.get_bounding_client_rect(), active.get_bounding_client_rect());
+        let (view, at) = (
+            root.get_bounding_client_rect(),
+            active.get_bounding_client_rect(),
+        );
         if at.bottom() > view.top() && at.top() < view.bottom() {
             return;
         }

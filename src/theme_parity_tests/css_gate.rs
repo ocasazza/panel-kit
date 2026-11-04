@@ -46,8 +46,7 @@ pub fn css_colour_violations(css: &str) -> Vec<String> {
 
         let raw = &clean[decl_start..i];
         let decl_line = line_no - raw.bytes().filter(|byte| *byte == b'\n').count();
-        let spans_generated = generated
-            .is_some_and(|(lo, hi)| decl_start >= lo && i + 1 <= hi);
+        let spans_generated = generated.is_some_and(|(lo, hi)| decl_start >= lo && i + 1 <= hi);
         let decl = raw.trim();
         decl_start = i + 1;
         i += 1;
@@ -55,7 +54,9 @@ pub fn css_colour_violations(css: &str) -> Vec<String> {
         if at_end || decl.is_empty() || spans_generated || is_permitted_declaration(decl) {
             continue;
         }
-        let Some(colon) = decl.find(':') else { continue };
+        let Some(colon) = decl.find(':') else {
+            continue;
+        };
         let prop = decl[..colon].trim();
         if prop.is_empty() || prop.starts_with('@') {
             continue;
@@ -156,7 +157,11 @@ fn check_hex_literal(value: &str, decl: &str, line_no: usize, out: &mut Vec<Stri
                 if before_ok && after_ok {
                     let snippet = &value[start..(start + 1 + digits).min(value.len())];
                     let snippet = snippet.trim();
-                    out.push(violation(line_no, &format!("hex colour literal {snippet}"), decl));
+                    out.push(violation(
+                        line_no,
+                        &format!("hex colour literal {snippet}"),
+                        decl,
+                    ));
                     return;
                 }
             }
@@ -191,11 +196,7 @@ fn check_named_colour(value: &str, decl: &str, line_no: usize, out: &mut Vec<Str
             continue;
         }
         if COLOUR_SET.contains(&token) {
-            out.push(violation(
-                line_no,
-                &format!("named colour `{token}`"),
-                decl,
-            ));
+            out.push(violation(line_no, &format!("named colour `{token}`"), decl));
         }
     }
 }
@@ -218,11 +219,7 @@ fn check_retired_vars(value: &str, decl: &str, line_no: usize, out: &mut Vec<Str
         let name = &name_part[..end].trim_end_matches('-');
 
         if RETIRED_NAMES.contains(name) {
-            out.push(violation(
-                line_no,
-                &format!("retired var(--{name})"),
-                decl,
-            ));
+            out.push(violation(line_no, &format!("retired var(--{name})"), decl));
             return;
         }
 
@@ -240,7 +237,9 @@ fn violation(line_no: usize, what: &str, raw_line: &str) -> String {
 // ---------------------------------------------------------------------------
 
 fn is_colour_bearing_decl(trimmed: &str) -> bool {
-    let Some(colon) = trimmed.find(':') else { return false };
+    let Some(colon) = trimmed.find(':') else {
+        return false;
+    };
     let prop = trimmed[..colon].trim().to_lowercase();
     if prop.is_empty() {
         return false;
@@ -490,7 +489,10 @@ mod tests {
         let css = "/* BEGIN GENERATED THEME TOKENS */\n\n/* END GENERATED THEME TOKENS */\n.x { color: rgb(0,0,0); }\n";
         let v = css_colour_violations(css);
         assert_eq!(v.len(), 1, "{v:?}");
-        assert!(v[0].starts_with("assets/panel-kit.css:4: colour function rgb("), "{v:?}");
+        assert!(
+            v[0].starts_with("assets/panel-kit.css:4: colour function rgb("),
+            "{v:?}"
+        );
     }
 
     #[test]
@@ -498,7 +500,10 @@ mod tests {
         let css = "/* BEGIN GENERATED THEME TOKENS */\n\n/* END GENERATED THEME TOKENS */\n.x { color: hsl(0,0%,0%); }\n";
         let v = css_colour_violations(css);
         assert_eq!(v.len(), 1, "{v:?}");
-        assert!(v[0].starts_with("assets/panel-kit.css:4: colour function hsl("), "{v:?}");
+        assert!(
+            v[0].starts_with("assets/panel-kit.css:4: colour function hsl("),
+            "{v:?}"
+        );
     }
 
     #[test]
@@ -525,8 +530,14 @@ mod tests {
         // Both are violations of the same declaration: the retired name and
         // the literal fallback it carries.
         assert_eq!(v.len(), 2, "{v:?}");
-        assert!(v.iter().any(|m| m.contains("retired var(--border)")), "{v:?}");
-        assert!(v.iter().any(|m| m.contains("hex colour literal #2a2a2a")), "{v:?}");
+        assert!(
+            v.iter().any(|m| m.contains("retired var(--border)")),
+            "{v:?}"
+        );
+        assert!(
+            v.iter().any(|m| m.contains("hex colour literal #2a2a2a")),
+            "{v:?}"
+        );
     }
 
     #[test]

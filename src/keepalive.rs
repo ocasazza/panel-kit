@@ -16,6 +16,7 @@ use dioxus::prelude::*;
 use panel_kit_core::frame::{PanelChromeProjection, PanelProjection, Placement, ProjectedFrame};
 use panel_kit_core::panel::{PanelCatalog, PanelMeta};
 use panel_kit_core::reducer::Snapshot;
+use panel_kit_core::tile_drag::TileRole;
 use panel_kit_core::{PanelKey, PanelWin, Region};
 
 use crate::widgets::panel::{panel_body, panel_chrome, panel_shell};
@@ -187,12 +188,14 @@ fn hidden_projection<K: PanelKey>(
         source_index,
         key: panel.kind,
         region,
+        slot: region,
         placement: Placement::Floating,
         z: panel.z,
         state: panel.state,
         focused: snapshot.focused == Some(panel.kind),
         pointer_dragging: snapshot.drag.map(|drag| drag.idx) == Some(source_index),
-        tile_dragging: snapshot.tile_drag == Some(panel.kind),
+        tile_role: TileRole::Resting,
+        lift: 0.0,
         chrome: PanelChromeProjection {
             outer: region,
             body: region,

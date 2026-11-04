@@ -10,7 +10,7 @@
 
 mod workspace_canary;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseButton, MouseEventKind,
@@ -18,7 +18,8 @@ use crossterm::event::{
 use crossterm::execute;
 use evidence::{check_offscreen, RenderEvidence};
 use panel_kit_core::frame::{
-    project_into, ChromeProjectionInput, ProjectionBuffer, ProjectionInput, TileLayoutMetrics,
+    project_into, ChromeProjectionInput, PanelProjection, ProjectionBuffer, ProjectionInput,
+    TileLayoutMetrics,
 };
 use panel_kit_core::persist::{apply_save_decision, restore_snapshot, LayoutError, RestoreContext};
 use panel_kit_core::reducer::{reduce, Snapshot, Viewport, WorkspaceEvent};
@@ -103,6 +104,7 @@ impl NativeCanary {
         self.evidence.clear();
 
         self.content_jobs.clear();
+        let mut elevated = None;
         {
             let surface = self.surface_profile();
             let tile = self.tile_metrics(surface);
@@ -125,52 +127,26 @@ impl NativeCanary {
                 &self.workspace.theme,
                 self.workspace.charset,
             );
-
             let mode = projected.mode;
             let dock_area = rect_from_region(projected.chrome.dock);
             for panel in projected.panels.iter().copied() {
-                let Some(meta) = self.workspace.resolved.catalog.get(panel.key) else {
+                if panel.tile_role.is_elevated() {
+                    elevated = Some((panel, mode));
                     continue;
-                };
-                self.evidence
-                    .chrome
-                    .push((panel.key, rect_from_region(panel.chrome.outer)));
-                widgets::panel::draw_panel_surface(
-                    frame,
-                    panel,
-                    &self.workspace.theme,
-                    self.workspace.charset,
-                    &mut self.hits,
-                );
-                let body = widgets::panel::draw_panel_chrome(
-                    frame,
-                    panel,
-                    meta,
-                    &self.workspace.theme,
-                    self.workspace.charset,
-                    &mut self.hits,
-                );
-                widgets::panel::draw_traffic_lights(
+                }
+                if let Some(body) = paint_panel(
                     frame,
                     panel,
                     mode,
-                    None,
-                    &self.workspace.theme,
-                    self.workspace.charset,
+                    &self.workspace,
                     &mut self.hits,
-                );
-                widgets::panel::draw_resize_grip(
-                    frame,
-                    panel,
-                    None,
-                    &self.workspace.theme,
-                    &mut self.hits,
-                );
-                self.evidence.bodies.push((panel.key, body));
-                self.content_jobs.push(ContentJob {
-                    body,
-                    key: panel.key,
-                });
+                    &mut self.evidence,
+                ) {
+                    self.content_jobs.push(ContentJob {
+                        body,
+                        key: panel.key,
+                    });
+                }
             }
 
             widgets::dock::draw_dock(
@@ -187,31 +163,39 @@ impl NativeCanary {
             );
             widgets::root::draw_workspace_scrollbar(frame, &projected, &self.workspace.theme);
         }
-        let workspace = &self.workspace;
-        let demo = &mut self.demo;
-        let content_kinds = &mut self.evidence.content_kinds;
         for job in self.content_jobs.iter().copied() {
-            let Some(content) = workspace
-                .resolved
-                .panels
-                .get(job.key.index() as usize)
-                .map(|panel| &panel.content)
-            else {
-                continue;
-            };
-            render_content(
+            render_job(
                 frame,
-                job.body,
-                job.key,
-                content,
-                ContentRenderContext {
-                    resolved: &workspace.resolved,
-                    snapshot: &workspace.snapshot,
-                    theme: &workspace.theme,
-                },
-                demo,
-                content_kinds,
+                job,
+                &self.workspace,
+                &mut self.demo,
+                &mut self.evidence.content_kinds,
             );
+        }
+        // A lifted or landing tile paints after every other panel's content,
+        // so nothing beneath it draws over its chrome.
+        if let Some((panel, mode)) = elevated {
+            if let Some(body) = paint_panel(
+                frame,
+                panel,
+                mode,
+                &self.workspace,
+                &mut self.hits,
+                &mut self.evidence,
+            ) {
+                let job = ContentJob {
+                    body,
+                    key: panel.key,
+                };
+                self.content_jobs.push(job);
+                render_job(
+                    frame,
+                    job,
+                    &self.workspace,
+                    &mut self.demo,
+                    &mut self.evidence.content_kinds,
+                );
+            }
         }
         // Drop scroll state for panels the spec no longer projects.
         self.live_keys.clear();
@@ -219,6 +203,14 @@ impl NativeCanary {
             .extend(self.workspace.snapshot.panels.iter().map(|p| p.kind));
         self.demo.panels.retain_panels(&self.live_keys);
         Ok(())
+    }
+
+    /// Whether the tile drag needs another tick to finish animating.
+    fn animating(&self) -> bool {
+        self.workspace
+            .snapshot
+            .tile_drag
+            .is_some_and(|tile| tile.animating())
     }
 
     fn handle_key(&mut self, event: crossterm::event::KeyEvent) -> Result<bool, LayoutError> {
@@ -366,6 +358,79 @@ impl NativeCanary {
     }
 }
 
+/// Paint one panel's surface, chrome, lights, and grip; returns its body
+/// rect, or `None` when the catalog does not know the panel.
+fn paint_panel(
+    frame: &mut ratatui::Frame,
+    panel: PanelProjection<SpecPanelId>,
+    mode: panel_kit_core::Mode,
+    workspace: &ResolvedCanary,
+    hits: &mut TuiHitBuffer<SpecPanelId>,
+    evidence: &mut RenderEvidence,
+) -> Option<Rect> {
+    let meta = workspace.resolved.catalog.get(panel.key)?;
+    evidence
+        .chrome
+        .push((panel.key, rect_from_region(panel.chrome.outer)));
+    widgets::panel::draw_panel_surface(frame, panel, &workspace.theme, workspace.charset, hits);
+    let body = widgets::panel::draw_panel_chrome(
+        frame,
+        panel,
+        meta,
+        &workspace.theme,
+        workspace.charset,
+        hits,
+    );
+    widgets::panel::draw_traffic_lights(
+        frame,
+        panel,
+        mode,
+        None,
+        &workspace.theme,
+        workspace.charset,
+        hits,
+    );
+    widgets::panel::draw_resize_grip(frame, panel, None, &workspace.theme, hits);
+    evidence.bodies.push((panel.key, body));
+    Some(body)
+}
+
+/// Paint one panel body's spec-bound content.
+fn render_job(
+    frame: &mut ratatui::Frame,
+    job: ContentJob,
+    workspace: &ResolvedCanary,
+    demo: &mut DemoData,
+    content_kinds: &mut std::collections::BTreeSet<&'static str>,
+) {
+    let Some(content) = workspace
+        .resolved
+        .panels
+        .get(job.key.index() as usize)
+        .map(|panel| &panel.content)
+    else {
+        return;
+    };
+    render_content(
+        frame,
+        job.body,
+        job.key,
+        content,
+        ContentRenderContext {
+            resolved: &workspace.resolved,
+            snapshot: &workspace.snapshot,
+            theme: &workspace.theme,
+        },
+        demo,
+        content_kinds,
+    );
+}
+
+/// Event poll interval while idle.
+const IDLE_POLL: Duration = Duration::from_millis(100);
+/// Event poll interval while a tile drag animates: one tick per frame.
+const FRAME_POLL: Duration = Duration::from_millis(16);
+
 fn main() -> std::io::Result<()> {
     if std::env::args().any(|arg| arg == "--check-offscreen") {
         return check_offscreen().map_err(std::io::Error::other);
@@ -375,19 +440,32 @@ fn main() -> std::io::Result<()> {
         NativeCanary::from_spec_env().map_err(|error| std::io::Error::other(error.to_string()))?;
     let mut terminal = ratatui::init();
     let _ = execute!(std::io::stdout(), EnableMouseCapture);
+    let mut last_tick = Instant::now();
     loop {
         let mut draw_result = Ok(());
         terminal.draw(|frame| {
             draw_result = app.draw(frame);
         })?;
         draw_result.map_err(to_io_error)?;
-        if event::poll(Duration::from_millis(100))? {
+        let poll = if app.animating() {
+            FRAME_POLL
+        } else {
+            IDLE_POLL
+        };
+        if event::poll(poll)? {
             match event::read()? {
                 Event::Key(key) if app.handle_key(key).map_err(to_io_error)? => break,
                 Event::Mouse(mouse) => app.handle_mouse(mouse).map_err(to_io_error)?,
                 _ => {}
             }
         }
+        let now = Instant::now();
+        if app.animating() {
+            let dt_ms = now.duration_since(last_tick).as_secs_f64() * 1000.0;
+            app.apply_event(WorkspaceEvent::Tick { dt_ms })
+                .map_err(to_io_error)?;
+        }
+        last_tick = now;
     }
     let _ = execute!(std::io::stdout(), DisableMouseCapture);
     ratatui::restore();
@@ -548,7 +626,7 @@ mod evidence {
                 app.evidence.content_kinds, expected_kinds
             ));
         }
-        expect_text(&mut diff, &buffer, "panel-kit-tui workspace-spec canary");
+        expect_text(&mut diff, &buffer, "HOST-OWNED COMPOSITION");
         expect_text(&mut diff, &buffer, "dock:");
         expect_text(&mut diff, &buffer, "browser-tui");
 

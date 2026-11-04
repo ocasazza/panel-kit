@@ -306,7 +306,7 @@ fn App() -> Element {
                 spec_workspace::handle_pointer_up(&pointer_up_workspace, &event)
             },
             onpointercancel: move |event: DioxusPointerEvent| {
-                spec_workspace::handle_pointer_up(&pointer_cancel_workspace, &event)
+                spec_workspace::handle_pointer_cancel(&pointer_cancel_workspace, &event)
             },
             onkeydown: move |event: KeyboardEvent| on_demo_key(event),
             header { class: "topbar",

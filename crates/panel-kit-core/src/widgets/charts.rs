@@ -52,6 +52,91 @@ pub struct FlameSpanModel {
     pub color: Option<Rgb>,
 }
 
+/// Horizontal extent of one laid-out flamegraph span, in the caller's width
+/// units (cells, percent, pixels).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FlameBand {
+    /// Left edge.
+    pub x0: f64,
+    /// Right edge.
+    pub x1: f64,
+}
+
+/// Icicle layout for preorder `spans` across `width`: roots share the full
+/// width by value, and each span's children share its extent by value, left
+/// to right. One band per span, in input order; the row is the span's depth.
+pub fn flame_bands(spans: &[FlameSpanModel], width: f64) -> Vec<FlameBand> {
+    struct Open {
+        depth: u16,
+        x1: f64,
+        width: f64,
+        cursor: f64,
+        children_total: f64,
+    }
+
+    let mut children_totals = vec![0.0f64; spans.len()];
+    let mut stack: Vec<usize> = Vec::new();
+    for (index, span) in spans.iter().enumerate() {
+        while stack.last().is_some_and(|&parent| spans[parent].depth >= span.depth) {
+            stack.pop();
+        }
+        if let Some(&parent) = stack.last() {
+            children_totals[parent] += flame_weight(span.value);
+        }
+        stack.push(index);
+    }
+    let root_total = spans
+        .iter()
+        .filter(|span| span.depth == 0)
+        .map(|span| flame_weight(span.value))
+        .sum::<f64>()
+        .max(f64::MIN_POSITIVE);
+
+    let mut open: Vec<Open> = Vec::new();
+    let mut root_cursor = 0.0;
+    spans
+        .iter()
+        .zip(children_totals)
+        .map(|(span, children_total)| {
+            while open.last().is_some_and(|parent| parent.depth >= span.depth) {
+                open.pop();
+            }
+            let (cursor, right, total, extent) = match open.last() {
+                Some(parent) => (parent.cursor, parent.x1, parent.children_total, parent.width),
+                None => (root_cursor, width, root_total, width),
+            };
+            let share = if total > 0.0 {
+                flame_weight(span.value) / total
+            } else {
+                0.0
+            };
+            let x0 = cursor;
+            let x1 = (x0 + share * extent).min(right);
+            match open.last_mut() {
+                Some(parent) => parent.cursor = x1,
+                None => root_cursor = x1,
+            }
+            open.push(Open {
+                depth: span.depth,
+                x1,
+                width: x1 - x0,
+                cursor: x0,
+                children_total,
+            });
+            FlameBand { x0, x1 }
+        })
+        .collect()
+}
+
+/// A span's layout weight: negative and non-finite values weigh nothing.
+fn flame_weight(value: f64) -> f64 {
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        0.0
+    }
+}
+
 /// One box-and-whisker distribution with raw samples.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]

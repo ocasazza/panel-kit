@@ -97,7 +97,10 @@ mod tests {
     #[test]
     fn a_layout_up_to_the_whole_limit_is_mounted_whole_and_a_larger_one_windowed() {
         assert_eq!(mounted(WHOLE, 9_000.0, 336.0, 14.0, 500), (0, 500));
-        assert_eq!(mounted(WHOLE + 1, 0.0, 336.0, 14.0, 500), (0, 24 + OVERSCAN));
+        assert_eq!(
+            mounted(WHOLE + 1, 0.0, 336.0, 14.0, 500),
+            (0, 24 + OVERSCAN)
+        );
         assert_eq!(
             mounted(WHOLE + 1, 1_400.0, 336.0, 14.0, 500),
             (100 - OVERSCAN, 124 + OVERSCAN)

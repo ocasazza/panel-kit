@@ -1,9 +1,10 @@
 use super::fixtures::{default_snapshot, web_context, TestPanel};
 use crate::reducer::{reduce, ChangePhase, HitTarget, PanelPart, Reduction, WorkspaceEvent};
+use crate::tile_drag::{swap_tiles, TileDrag, TileDragPhase};
 use crate::{
-    apply_command, apply_drag, begin_drag, begin_tile_resize, reorder_tile, restore, Clamp,
-    CommandStep, DragKind, Mode, PanelCommand, PointerButton, PointerEvent, PointerEventKind,
-    SnapPolicy, TileMetrics, WinState,
+    apply_command, apply_drag, begin_drag, begin_tile_resize, restore, Clamp, CommandStep,
+    DragKind, Mode, PanelCommand, PointerButton, PointerEvent, PointerEventKind, SnapPolicy,
+    TileMetrics, WinState,
 };
 
 /// CK-26: reduced commands and pointer gestures must equal the controllers'
@@ -132,28 +133,24 @@ fn assert_pointer_transition_delegation() {
     assert_eq!(resize.phase, Some(ChangePhase::Continuous));
     assert!(reduced_resize == direct_resize);
 
-    let mut reduced_reorder = default_snapshot();
-    reduced_reorder.preferred_mode = Mode::Tiling;
-    reduced_reorder.tile_drag = Some(TestPanel::First);
-    let mut direct_reorder = reduced_reorder.clone();
-    let reorder = reduce(
-        &mut reduced_reorder,
+    let mut reduced_swap = default_snapshot();
+    reduced_swap.preferred_mode = Mode::Tiling;
+    let mut lifted = TileDrag::pressed(TestPanel::First, (10.0, 10.0));
+    lifted.phase = TileDragPhase::Lifted;
+    lifted.target = Some(TestPanel::Third);
+    reduced_swap.tile_drag = Some(lifted);
+    let mut direct_swap = reduced_swap.clone();
+    let drop = reduce(
+        &mut reduced_swap,
         WorkspaceEvent::Pointer {
-            target: HitTarget::Panel {
-                key: TestPanel::Third,
-                part: PanelPart::Surface,
-            },
-            event: pointer(PointerEventKind::Moved, 140.0, 160.0),
+            target: HitTarget::Workspace,
+            event: pointer(PointerEventKind::Up(PointerButton::Primary), 140.0, 160.0),
         },
         web_context(),
     );
-    reorder_tile(
-        &mut direct_reorder.panels,
-        TestPanel::First,
-        TestPanel::Third,
-    );
-    assert_eq!(reorder.phase, Some(ChangePhase::Continuous));
-    assert!(reduced_reorder == direct_reorder);
+    swap_tiles(&mut direct_swap.panels, TestPanel::First, TestPanel::Third);
+    assert_eq!(drop.phase, Some(ChangePhase::Settled));
+    assert!(reduced_swap.panels == direct_swap.panels);
 
     let mut reduced_restore = default_snapshot();
     reduced_restore.panels[1].state = WinState::Minimized;

@@ -151,6 +151,48 @@ pub fn write_csv<S: AsRef<str>>(
     write_table(Format::Csv, out, data, headers, rows, columns);
 }
 
+/// What COPY and CSV produce.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExportFormat {
+    /// Tab-separated, for the clipboard.
+    Tsv,
+    /// RFC 4180, for a file.
+    Csv,
+}
+
+/// The rows a table shows, over the columns `state` shows headed by their
+/// titles, as `format`. With `selected_only` and a non-empty `selection`,
+/// only the selected rows shown; otherwise every row shown.
+pub fn export_view(
+    columns: &[super::DataColumnSpec],
+    data: &TableData,
+    view: &super::View,
+    state: &super::TableState,
+    selection: &std::collections::BTreeSet<String>,
+    selected_only: bool,
+    format: ExportFormat,
+) -> String {
+    let visible = state.visible(columns);
+    let heads: Vec<&str> = visible.iter().map(|column| column.title.as_str()).collect();
+    let at: Vec<usize> = visible
+        .iter()
+        .filter_map(|column| columns.iter().position(|c| c.id == column.id))
+        .collect();
+    let only = selected_only && !selection.is_empty();
+    let rows = view
+        .rows
+        .iter()
+        .copied()
+        .filter(|&row| !only || selection.contains(data.id(row)));
+    let mut out = String::new();
+    let format = match format {
+        ExportFormat::Tsv => Format::Tsv,
+        ExportFormat::Csv => Format::Csv,
+    };
+    write_table(format, &mut out, data, &heads, rows, &at);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

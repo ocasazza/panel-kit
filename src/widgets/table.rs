@@ -90,7 +90,9 @@ fn paint(cell: &TableCell) -> Element {
                     aria_valuemax: "100",
                     aria_valuenow: "{percent}",
                     aria_label: "{text}",
-                    span { class: "pk-table-meter-fill", style: "width:{percent}%;" }
+                    span { class: "pk-table-meter-track",
+                        span { class: "pk-table-meter-fill", style: "width:{percent}%;" }
+                    }
                     span { class: "pk-table-meter-text", "{text}" }
                 }
             }

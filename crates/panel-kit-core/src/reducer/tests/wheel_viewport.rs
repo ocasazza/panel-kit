@@ -93,6 +93,33 @@ fn viewport_resize_policy_is_explicit() {
     }
 }
 
+/// Cell-authored geometry measured into CSS px is converted, even under
+/// `PreserveIntent`: intent is kept in the new units, not reinterpreted.
+#[test]
+fn a_units_change_rescales_whatever_the_policy() {
+    let mut snapshot = default_snapshot();
+    snapshot.viewport = crate::reducer::Viewport {
+        width: 128.0,
+        height: 52.0,
+        units: crate::Units::Cells,
+    };
+    snapshot.panels[0].x = 1.0;
+    snapshot.panels[0].w = 62.0;
+    snapshot.panels[0].y = 13.0;
+    snapshot.panels[0].h = 26.0;
+    reduce(
+        &mut snapshot,
+        WorkspaceEvent::ViewportChanged {
+            size: viewport(1280.0, 520.0),
+            policy: ResizePolicy::PreserveIntent,
+        },
+        web_context(),
+    );
+    let panel = snapshot.panels[0];
+    assert_eq!((panel.x, panel.w, panel.y, panel.h), (10.0, 620.0, 130.0, 260.0));
+    assert_eq!(snapshot.viewport, viewport(1280.0, 520.0));
+}
+
 fn scrollable_snapshot() -> crate::reducer::Snapshot<TestPanel> {
     let mut snapshot = default_snapshot();
     snapshot.panels[2].y = 1_200.0;

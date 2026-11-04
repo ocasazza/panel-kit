@@ -379,9 +379,10 @@ impl ItemCache {
         let rows = spans
             .iter()
             .map(|span| {
-                let item = self.items.remove(&span.item).unwrap_or_else(|| {
-                    Shared::new(graph.item(events, span.item).into_owned())
-                });
+                let item = self
+                    .items
+                    .remove(&span.item)
+                    .unwrap_or_else(|| Shared::new(graph.item(events, span.item).into_owned()));
                 kept.insert(span.item, item.clone());
                 item
             })
@@ -721,8 +722,7 @@ mod tests {
         /// Picks `item`, or nothing, and renders.
         fn pick(&mut self, item: Option<&str>) {
             let mut signal = self.signals().selected;
-            self.dom
-                .in_runtime(|| signal.set(item.map(str::to_string)));
+            self.dom.in_runtime(|| signal.set(item.map(str::to_string)));
             self.dom.render_immediate(&mut NoOpMutations);
         }
     }
@@ -751,7 +751,9 @@ mod tests {
     fn mounted_rows(html: &str) -> (usize, usize) {
         let read = |key: &str| {
             let at = html.find(key).unwrap() + key.len();
-            html[at..at + html[at..].find('"').unwrap()].parse().unwrap()
+            html[at..at + html[at..].find('"').unwrap()]
+                .parse()
+                .unwrap()
         };
         (read("data-start=\""), read("data-end=\""))
     }
@@ -786,7 +788,11 @@ mod tests {
         let middle = rig.scrolled(2_800.0);
         assert!(!has(&middle, &first) && !has(&middle, &last));
         assert_eq!(mounted_rows(&middle), (194, 230));
-        assert_eq!(mounted(&middle), 36, "24 rows on screen and 6 of overscan twice");
+        assert_eq!(
+            mounted(&middle),
+            36,
+            "24 rows on screen and 6 of overscan twice"
+        );
         let bottom = rig.scrolled(1e9);
         assert!(has(&bottom, &last), "the last row is mounted at the end");
         assert!(!has(&bottom, &first));
@@ -869,6 +875,10 @@ mod tests {
         // Ten rows down: the window goes from rows 0..30 to rows 4..40.
         let html = rig.scrolled(10.0 * ROW);
         assert_eq!(mounted_rows(&html), (4, 40));
-        assert_eq!(renders(), 40, "the ten rows that entered, not the 26 that stayed");
+        assert_eq!(
+            renders(),
+            40,
+            "the ten rows that entered, not the 26 that stayed"
+        );
     }
 }

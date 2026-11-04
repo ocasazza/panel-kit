@@ -65,7 +65,9 @@ fn the_default_sample_draws_many_more_fork_leaves_than_its_twenty_heroes_hold() 
     let heroes = sample::activity().tree.lanes.len();
     let capped = fork_leaves(&render(state(false, true)));
     let all = fork_leaves(&render(state(true, true)));
-    eprintln!("{heroes} hero lanes; {capped} fork leaves capped, {all} with the first rows mounted");
+    eprintln!(
+        "{heroes} hero lanes; {capped} fork leaves capped, {all} with the first rows mounted"
+    );
 
     // The heroes without explicit lanes draw derived ones.
     assert!(capped > heroes, "{capped} leaves for {heroes} hero lanes");

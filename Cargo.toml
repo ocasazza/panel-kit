@@ -1,12 +1,12 @@
 [workspace]
-members = ["crates/panel-kit-core", "crates/panel-kit-grammar", "crates/panel-kit-tui", "tools/spec-parity"]
+members = ["crates/panel-kit-core", "crates/panel-kit-grammar", "crates/panel-kit-tui", "crates/panel-kit-bevy", "tools/spec-parity"]
 
 [package]
 name = "panel-kit"
 version = "1.2.0"
 edition = "2021"
 license = "MIT"
-description = "Generic Dioxus panel-workspace library: floating/tiling panels, traffic lights, drag/resize, tiling drag-reorder, minimize-to-dock, layout persistence"
+description = "Generic Dioxus panel-workspace library: floating/tiling panels, traffic lights, drag/resize, tiling drag-to-swap, minimize-to-dock, layout persistence"
 repository = "https://github.com/ocasazza/panel-kit"
 readme = "README.md"
 keywords = ["dioxus", "ui", "panels", "workspace", "wasm"]

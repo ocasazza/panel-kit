@@ -7,3 +7,5 @@ mod common;
 mod lifecycle;
 #[path = "tests/save_policy.rs"]
 mod save_policy;
+#[path = "tests/tile_drag.rs"]
+mod tile_drag;

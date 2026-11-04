@@ -194,9 +194,17 @@ pub fn gauges(items: &[GaugeModel]) -> Element {
 ///
 /// Each frame's bar width is its value as a share of the summed root values.
 pub fn flamegraph(spans: &[FlameSpanModel]) -> Element {
-    let total: f64 = spans.iter().filter(|span| span.depth == 0).map(|span| span.value).sum();
+    let total: f64 = spans
+        .iter()
+        .filter(|span| span.depth == 0)
+        .map(|span| span.value)
+        .sum();
     let frame_style = |span: &FlameSpanModel| {
-        let share = if total > 0.0 { (span.value / total).clamp(0.0, 1.0) } else { 0.0 };
+        let share = if total > 0.0 {
+            (span.value / total).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         format!(
             "{}--flame-depth:{};--flame-w:{:.1}%;",
             rgb_style(span.color),

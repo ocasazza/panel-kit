@@ -1,4 +1,5 @@
 use crate::reducer::Snapshot;
+use crate::tile_drag::TileRole;
 use crate::{ChromeMetrics, Clamp, Mode, PanelKey, Region, SurfaceProfile, WinState};
 
 use super::{PanelChromeProjection, TileGridProjection, TileLayoutMetrics};
@@ -10,9 +11,14 @@ pub struct PanelProjection<K: PanelKey> {
     pub source_index: usize,
     /// Panel key copied from the source window record.
     pub key: K,
-    /// Full panel rectangle in viewport coordinates.
+    /// Rectangle to draw the panel at, in viewport coordinates. During a
+    /// tile drag this is the lifted, landing, or displaced position; it
+    /// equals [`PanelProjection::slot`] at rest.
     pub region: Region,
-    /// Placement mode and tile spans.
+    /// The panel's resting tile slot in the committed tiling order, or
+    /// `region` outside tiling. Tile-drag hit testing resolves against slots.
+    pub slot: Region,
+    /// Placement mode and tile spans of `slot`.
     pub placement: super::Placement,
     /// Floating z-order copied from the source panel.
     pub z: i32,
@@ -22,9 +28,13 @@ pub struct PanelProjection<K: PanelKey> {
     pub focused: bool,
     /// Whether an active floating drag targets this panel.
     pub pointer_dragging: bool,
-    /// Whether an active tile reorder targets this panel.
-    pub tile_dragging: bool,
-    /// Semantic chrome/hit regions for this panel.
+    /// The panel's part in an in-flight tile drag.
+    pub tile_role: TileRole,
+    /// Eased elevation of a dragged tile, `0` resting to `1` fully lifted;
+    /// see [`lift_scale`](crate::tile_drag::lift_scale) and
+    /// [`lift_opacity`](crate::tile_drag::lift_opacity).
+    pub lift: f64,
+    /// Semantic chrome/hit regions for `region`.
     pub chrome: PanelChromeProjection,
 }
 
@@ -138,8 +148,8 @@ pub struct PanelProjectionInput<'a> {
     pub focused: bool,
     /// Whether an active floating drag targets this panel.
     pub pointer_dragging: bool,
-    /// Whether an active tile drag targets this panel.
-    pub tile_dragging: bool,
+    /// The panel's part in an in-flight tile drag.
+    pub tile_role: TileRole,
     /// Workspace scroll offset to subtract from projected panel y coordinates.
     pub workspace_scroll: f64,
     /// Floating viewport clamp metrics.

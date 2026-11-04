@@ -1,7 +1,9 @@
 use crate::reducer::Snapshot;
+use crate::tile_drag::{TileDrag, TileRole};
 use crate::{effective_mode, front_z, Clamp, Mode, PanelKey, Region, WinState};
 
 use super::chrome::{panel_chrome, PanelChromeMetrics};
+use super::drag_layout::{active_tile_drag, drag_region, prepare};
 use super::scratch::ProjectionBuffer;
 use super::tiling::{
     content_extent, panel_region, project_tiles, projected_scroll, PanelRegionContext,
@@ -93,7 +95,26 @@ pub fn project_into<'frame, K: PanelKey>(
     let tile_grid = (mode == Mode::Tiling)
         .then(|| project_tiles(snapshot, chrome.workspace, input.tile, scratch));
     let scroll = projected_scroll(snapshot, mode, chrome.workspace, tile_grid, scratch);
-    project_panels(input, chrome.workspace, mode, tile_grid, scroll, scratch);
+    let tile_drag = tile_grid.and_then(|_| active_tile_drag(snapshot));
+    if let Some(drag) = &tile_drag {
+        prepare(
+            snapshot,
+            drag,
+            chrome.workspace,
+            input.tile,
+            scroll,
+            &mut scratch.drag,
+        );
+    }
+    project_panels(
+        input,
+        chrome.workspace,
+        mode,
+        tile_grid,
+        scroll,
+        tile_drag,
+        scratch,
+    );
     let content_extent = content_extent(
         snapshot,
         mode,
@@ -135,19 +156,23 @@ fn frame_status<K: PanelKey>(
     FrameStatus::Ready
 }
 
+/// Project every visible panel. A tile drag draws its panels at the
+/// positions [`drag_region`] derives, and an elevated (lifted or landing)
+/// panel is drawn last so painters that paint in order put it on top.
 fn project_panels<K: PanelKey>(
     input: ProjectionInput<'_, K>,
     workspace: Region,
     mode: Mode,
     tile_grid: Option<super::TileGridProjection>,
     scroll: f64,
+    tile_drag: Option<TileDrag<K>>,
     scratch: &mut ProjectionBuffer<K>,
 ) {
     fill_panel_order(input.snapshot, mode, &mut scratch.panel_order);
     let frontmost_z = front_z(&input.snapshot.panels) - 1;
     for &source_index in &scratch.panel_order {
         let panel = input.snapshot.panels[source_index];
-        let (region, placement) = panel_region(
+        let (slot, placement) = panel_region(
             panel,
             source_index,
             PanelRegionContext {
@@ -159,10 +184,14 @@ fn project_panels<K: PanelKey>(
                 tile_rows: &scratch.tile_rows,
             },
         );
-        if region.w <= 0.0 || region.h <= 0.0 {
+        if slot.w <= 0.0 || slot.h <= 0.0 {
             continue;
         }
 
+        let (region, tile_role, lift) = match &tile_drag {
+            Some(drag) => drag_region(drag, panel.kind, slot, &scratch.drag),
+            None => (slot, TileRole::Resting, 0.0),
+        };
         let chrome = panel_chrome(
             region,
             panel.state,
@@ -174,14 +203,28 @@ fn project_panels<K: PanelKey>(
             source_index,
             key: panel.kind,
             region,
+            slot,
             placement,
-            z: panel.z.min(frontmost_z),
+            z: if tile_role.is_elevated() {
+                frontmost_z + 1
+            } else {
+                panel.z.min(frontmost_z)
+            },
             state: panel.state,
             focused: input.snapshot.focused == Some(panel.kind),
             pointer_dragging: input.snapshot.drag.map(|drag| drag.idx) == Some(source_index),
-            tile_dragging: input.snapshot.tile_drag == Some(panel.kind),
+            tile_role,
+            lift,
             chrome,
         });
+    }
+    if let Some(elevated) = scratch
+        .panels
+        .iter()
+        .position(|panel| panel.tile_role.is_elevated())
+    {
+        let panel = scratch.panels.remove(elevated);
+        scratch.panels.push(panel);
     }
 }
 

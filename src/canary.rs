@@ -8,6 +8,10 @@
 //! [`BindingContent`] seam, and [`canary_content`] as the fixed-data
 //! implementation the canaries pass.
 
+#[allow(dead_code)]
+#[path = "../examples/support/canary_content.rs"]
+mod fixtures;
+
 use dioxus::prelude::*;
 use crate::PanelHeaderButton;
 use panel_kit_core::badge::{BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec};
@@ -78,20 +82,6 @@ pub fn workspace_contents(
                                         },
                                         event: panel_kit_core::PointerEvent {
                                             kind: panel_kit_core::PointerEventKind::Down(panel_kit_core::PointerButton::Primary),
-                                            x: coords.x,
-                                            y: coords.y,
-                                        },
-                                    });
-                                },
-                                onpointerenter: move |event: dioxus::events::PointerEvent| {
-                                    let coords = event.client_coordinates();
-                                    emit.call(WorkspaceEvent::Pointer {
-                                        target: panel_kit_core::reducer::HitTarget::Panel {
-                                            key,
-                                            part: panel_kit_core::reducer::PanelPart::Surface,
-                                        },
-                                        event: panel_kit_core::PointerEvent {
-                                            kind: panel_kit_core::PointerEventKind::Moved,
                                             x: coords.x,
                                             y: coords.y,
                                         },
@@ -270,7 +260,7 @@ fn render_content(
 /// each kind showed before, so an unmapped panel is never a blank body.
 pub fn canary_content(id: &str, content: &ContentSpec) -> Element {
     match content {
-        ContentSpec::Text { scroll, .. } => paint_text(bound_text(id), *scroll),
+        ContentSpec::Text { scroll, .. } => paint_text(&bound_text(id), *scroll),
         ContentSpec::Badges { .. } => paint_badges(&bound_badges(id)),
         ContentSpec::Table { .. } => paint_table(id, &bound_table(id)),
         ContentSpec::TimeSeries { unit, .. } => paint_series(&bound_series(id), unit),
@@ -296,21 +286,29 @@ fn render_custom(
     header_clicks: u32,
 ) -> Element {
     match binding {
-        "canary.workspace" => rsx! {
-            section { class: "pk-custom-card", role: "group", aria_label: "workspace summary",
-                h2 { "Host-owned composition" }
-                p { "Panel “{spec.title}” was declared by Nix, resolved into SpecPanelId, and projected into web parts." }
-                p { "maximized: {maximized} · header actions: {header_clicks}" }
+        "canary.workspace" => {
+            let [declared, state] =
+                fixtures::workspace_card_lines(&spec.title, maximized, header_clicks);
+            rsx! {
+                section { class: "pk-custom-card", role: "group", aria_label: "workspace summary",
+                    h2 { "{fixtures::WORKSPACE_CARD_HEADING}" }
+                    p { "{declared}" }
+                    p { "{state}" }
+                }
             }
-        },
+        }
         "canary.theme" => rsx! {
             section { class: "pk-custom-card", role: "group", aria_label: "theme summary",
-                h2 { "Theme + chrome" }
-                p { "CSS variables come from the single core theme source; chrome booleans decide which parts mount." }
+                h2 { "{fixtures::theme_preset_label(false)}" }
                 ul { class: "spec-list",
-                    li { "focus ring, palette, typography, and density are spec leaves" }
-                    li { "dock/header/lights/grip are opt-in composition parts" }
+                    for (slot, caption) in fixtures::THEME_SWATCHES {
+                        li { key: "{caption}",
+                            span { style: "color: var(--{slot.key()})", "## " }
+                            "{caption}"
+                        }
+                    }
                 }
+                {paint_spinner("spinner painter")}
             }
         },
         _ => paint_custom(binding),
@@ -415,14 +413,17 @@ fn noop_badge_action() -> EventHandler<BadgeAction> {
     EventHandler::new(|_: BadgeAction| {})
 }
 
-fn bound_text(id: &str) -> &'static str {
+fn bound_text(id: &str) -> String {
     match id {
-        "canary.notes" => "WorkspaceSpec text binding rendered by the web scroll painter.\n\nScroll policy is native overflow:auto, so wheel chaining can bubble at the content edge.",
-        _ => "unregistered text binding",
+        "canary.notes" => fixtures::notes_text(),
+        _ => "unregistered text binding".to_owned(),
     }
 }
 
 fn bound_badges(id: &str) -> Vec<BadgeSpec> {
+    if id == "canary.badges" {
+        return fixtures::demo_badges();
+    }
     let mut spec = BadgeSpec::new("stage", id.trim_start_matches("canary."), BadgeKind::Status);
     spec.active = true;
     spec.with_plus = true;
@@ -431,7 +432,10 @@ fn bound_badges(id: &str) -> Vec<BadgeSpec> {
     vec![spec]
 }
 
-fn bound_table(_id: &str) -> TableModel {
+fn bound_table(id: &str) -> TableModel {
+    if id == "canary.nodes" {
+        return fixtures::node_rows();
+    }
     TableModel {
         columns: vec![
             TableColumn {
@@ -493,7 +497,17 @@ fn bound_table(_id: &str) -> TableModel {
     }
 }
 
-fn bound_series(_id: &str) -> Vec<SeriesModel> {
+fn bound_series(id: &str) -> Vec<SeriesModel> {
+    if id == "canary.activity" {
+        return fixtures::Metrics::new()
+            .series()
+            .iter()
+            .map(|view| SeriesModel {
+                name: view.name.to_owned(),
+                points: view.points.to_vec(),
+            })
+            .collect();
+    }
     vec![
         SeriesModel {
             name: "p50".into(),
@@ -506,7 +520,10 @@ fn bound_series(_id: &str) -> Vec<SeriesModel> {
     ]
 }
 
-fn bound_gauges(_id: &str) -> Vec<GaugeModel> {
+fn bound_gauges(id: &str) -> Vec<GaugeModel> {
+    if id == "canary.capacity" {
+        return fixtures::capacity_items().to_vec();
+    }
     vec![
         GaugeModel {
             label: "CPU".into(),
@@ -521,7 +538,10 @@ fn bound_gauges(_id: &str) -> Vec<GaugeModel> {
     ]
 }
 
-fn bound_flamegraph(_id: &str) -> Vec<FlameSpanModel> {
+fn bound_flamegraph(id: &str) -> Vec<FlameSpanModel> {
+    if id == "canary.flame" {
+        return fixtures::Metrics::new().flame();
+    }
     vec![
         FlameSpanModel {
             label: "root".into(),
@@ -544,7 +564,19 @@ fn bound_flamegraph(_id: &str) -> Vec<FlameSpanModel> {
     ]
 }
 
-fn bound_boxplot(_id: &str) -> Vec<BoxItemModel> {
+fn bound_boxplot(id: &str) -> Vec<BoxItemModel> {
+    if id == "canary.distribution" {
+        let metrics = fixtures::Metrics::new();
+        return fixtures::STAGES
+            .iter()
+            .zip(metrics.stage_samples)
+            .map(|(label, samples)| BoxItemModel {
+                label: (*label).to_owned(),
+                samples,
+                color: None,
+            })
+            .collect();
+    }
     vec![
         BoxItemModel {
             label: "latency".into(),

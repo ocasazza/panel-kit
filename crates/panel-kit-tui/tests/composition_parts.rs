@@ -162,7 +162,7 @@ fn standalone_panel_surface_draws_no_implicit_chrome_or_dock() {
             surface: regular_cells_surface(),
             focused: true,
             pointer_dragging: false,
-            tile_dragging: false,
+            tile_role: panel_kit_core::tile_drag::TileRole::Resting,
             workspace_scroll: 0.0,
             clamp: &Clamp::CELLS,
             chrome: &chrome,

@@ -224,6 +224,43 @@ Feature-complete authored workspaces use `mkWorkspaceSpec`, which is validated
 against the generated Rust schema and intentionally emits a different document
 shape.
 
+## Tiling header drag: lift, follow, swap
+
+**What changed:** a tiling header drag no longer reorders tiles while the
+pointer hovers. Core owns the whole gesture in
+`panel_kit_core::tile_drag`: press, lift past `lift_threshold(units)`,
+follow the pointer, target the slot under it, and on release swap the
+dragged panel with the target (`swap_tiles`; every other panel keeps its
+index). Escape, `PointerEventKind::Cancel`, or the pointer leaving the window
+fly it home. `reorder_tile` is removed.
+
+**Why:** targets were hit-tested against drawn geometry that the live reorder
+itself moved, so tiles of unequal spans swapped back and forth on every
+motion event, the panel never followed the pointer, and the reorder was
+committed (and saved) before release.
+
+Host changes:
+
+- `Snapshot::tile_drag` is `Option<TileDrag<K>>`, not `Option<K>`.
+- `PanelProjection` gained `slot` (the resting tile slot), `tile_role`
+  (`TileRole`), and `lift` (eased elevation); `tile_dragging` and
+  `PanelProjectionInput::tile_dragging` became `tile_role`. `region` is where
+  to draw the panel; during a drag it moves off `slot`.
+- Send `WorkspaceEvent::Tick { dt_ms }` while
+  `snapshot.tile_drag.is_some_and(|tile| tile.animating())`; core reads no
+  clock, and a landing tile stays put until ticked. Send `f64::INFINITY` to
+  honour reduced motion. Web hosts call
+  `panel_kit::input::use_tile_drag_frames`.
+- Resolve tile-drag motion against slots: `frame::hit_test` and
+  `TuiHitBuffer::hit_test` do this automatically while a tile is held or
+  lifted; web root `pointermove` handlers call
+  `panel_kit::input::tile_drag_pointer_event(&frame, &event)`.
+- Route `pointercancel` to `PointerEventKind::Cancel`, not `Up`, so a
+  cancelled drag never commits.
+- `ChangePhase::Transient` marks gesture-only changes (lift, target,
+  animation); no `SavePolicy` writes it. Match it where you match
+  `ChangePhase`.
+
 ## Migration checklist
 
 - [ ] Keep the consumer pinned to its old panel-kit revision while editing.
@@ -243,3 +280,5 @@ shape.
 - [ ] Build the consumer on its real target.
 - [ ] Update the panel-kit git revision only after the migrated consumer build
       passes.
+- [ ] Tick tile drags with host time and route `pointercancel` to
+      `PointerEventKind::Cancel`.

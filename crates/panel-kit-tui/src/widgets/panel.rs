@@ -2,9 +2,11 @@
 
 use panel_kit_core::frame::{PanelProjection, Placement, TileGridProjection};
 use panel_kit_core::reducer::PanelPart;
+use panel_kit_core::tile_drag::TileRole;
 use panel_kit_core::{Mode, PanelKey, PanelMeta, Region, WinState};
 use ratatui::layout::{Position, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
+use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
@@ -12,10 +14,26 @@ use ratatui::Frame;
 use crate::widgets::TuiHitBuffer;
 use crate::{rect_from_region, TerminalCharset, ResolvedTuiTheme};
 
+/// Elevation at which a lifted tile casts its one-cell drop shadow.
+const SHADOW_LIFT: f64 = 0.5;
+
+/// Dashed box-drawing border marking a tile drag's swap target.
+const TARGET_BORDER: border::Set<'static> = border::Set {
+    top_left: "┌",
+    top_right: "┐",
+    bottom_left: "└",
+    bottom_right: "┘",
+    vertical_left: "╎",
+    vertical_right: "╎",
+    horizontal_top: "╌",
+    horizontal_bottom: "╌",
+};
+
 /// Draw only a panel's surface/body and return the projected body rectangle.
 ///
 /// This part intentionally draws no title, traffic lights, resize grip, or dock.
-/// Hosts opt into those parts with separate calls.
+/// Hosts opt into those parts with separate calls. A lifted tile also casts a
+/// one-cell drop shadow over whatever was painted before it.
 pub fn draw_panel_surface<K: PanelKey>(
     frame: &mut Frame,
     panel: PanelProjection<K>,
@@ -26,6 +44,9 @@ pub fn draw_panel_surface<K: PanelKey>(
     let outer = rect_from_region(panel.chrome.outer);
     let body = rect_from_region(panel.chrome.body);
 
+    if panel.tile_role.is_elevated() && panel.lift >= SHADOW_LIFT {
+        draw_drop_shadow(frame, outer, theme);
+    }
     let clipped_outer = outer.intersection(frame.area());
     let clipped_body = body.intersection(frame.area());
 
@@ -38,8 +59,27 @@ pub fn draw_panel_surface<K: PanelKey>(
             .set_style(clipped_body, Style::default().bg(theme.surface));
     }
     hits.record_panel_surface(panel.key, panel.source_index, outer, body);
+    hits.record_panel_slot(
+        panel.key,
+        panel.source_index,
+        rect_from_region(panel.slot),
+        panel.tile_role,
+    );
 
     body
+}
+
+/// Shade the column right of and the row below `outer`, offset one cell.
+fn draw_drop_shadow(frame: &mut Frame, outer: Rect, theme: &ResolvedTuiTheme) {
+    let style = Style::default().fg(theme.text_muted).bg(theme.divider);
+    let right = Rect::new(outer.right(), outer.y.saturating_add(1), 1, outer.height);
+    let below = Rect::new(outer.x.saturating_add(1), outer.bottom(), outer.width, 1);
+    for shade in [right, below] {
+        let shade = shade.intersection(frame.area());
+        if shade.width > 0 && shade.height > 0 {
+            frame.buffer_mut().set_style(shade, style);
+        }
+    }
 }
 
 /// Draw the native ratatui block chrome/title and return `Block::inner`.
@@ -78,7 +118,7 @@ pub fn draw_panel_chrome<K: PanelKey>(
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_set(charset.border())
+            .border_set(panel_border_set(panel, charset))
             .border_style(panel_border_style(panel, theme))
             .title(title);
         let inner = block.inner(clipped_outer);
@@ -238,9 +278,26 @@ fn has_frame<K: PanelKey>(panel: PanelProjection<K>) -> bool {
     panel.chrome.outer != panel.chrome.body || panel.chrome.header_hit.h > 0.0
 }
 
+fn panel_border_set<K: PanelKey>(
+    panel: PanelProjection<K>,
+    charset: TerminalCharset,
+) -> border::Set<'static> {
+    match (panel.tile_role, charset) {
+        (TileRole::Lifted | TileRole::Landing, TerminalCharset::Unicode) => border::THICK,
+        (TileRole::Target, TerminalCharset::Unicode) => TARGET_BORDER,
+        _ => charset.border(),
+    }
+}
+
 fn panel_border_style<K: PanelKey>(panel: PanelProjection<K>, theme: &ResolvedTuiTheme) -> Style {
-    if panel.tile_dragging {
-        return Style::default().fg(theme.highlight);
+    match panel.tile_role {
+        TileRole::Lifted | TileRole::Landing => {
+            return Style::default()
+                .fg(theme.highlight)
+                .add_modifier(Modifier::BOLD)
+        }
+        TileRole::Target => return Style::default().fg(theme.highlight),
+        TileRole::Held | TileRole::Resting => {}
     }
     if panel.focused {
         return Style::default().fg(theme.focus_ring);

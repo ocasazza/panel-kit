@@ -36,7 +36,7 @@ fn projected_frame_resolves_all_semantic_regions() {
     assert!(gamma.state == WinState::Floating);
     assert!(gamma.focused);
     assert!(gamma.pointer_dragging);
-    assert!(!gamma.tile_dragging);
+    assert_eq!(gamma.tile_role, crate::tile_drag::TileRole::Resting);
     assert!(gamma.chrome.outer.w > 0.0);
     assert!(gamma.chrome.body.h > 0.0);
     assert!(gamma.chrome.header_hit.h > 0.0);
@@ -203,7 +203,7 @@ fn project_panel_requires_no_snapshot_catalog_store_or_dock() {
         surface: super::fixtures::regular_surface(),
         focused: true,
         pointer_dragging: true,
-        tile_dragging: false,
+        tile_role: crate::tile_drag::TileRole::Resting,
         workspace_scroll: 25.0,
         clamp: &Clamp::WEB,
         chrome: &chrome,
@@ -217,7 +217,7 @@ fn project_panel_requires_no_snapshot_catalog_store_or_dock() {
     assert_eq!(projected.key, TestPanel::Gamma);
     assert!(projected.focused);
     assert!(projected.pointer_dragging);
-    assert!(!projected.tile_dragging);
+    assert_eq!(projected.tile_role, crate::tile_drag::TileRole::Resting);
     assert_eq!(projected.state, WinState::Floating);
     assert_eq!(projected.placement, Placement::Floating);
 }
@@ -238,7 +238,7 @@ fn standalone_surface_has_no_implicit_chrome() {
         surface: super::fixtures::regular_surface(),
         focused: false,
         pointer_dragging: false,
-        tile_dragging: false,
+        tile_role: crate::tile_drag::TileRole::Resting,
         workspace_scroll: 0.0,
         clamp: &Clamp::WEB,
         chrome: &chrome,
@@ -280,7 +280,7 @@ fn partial_projectors_match_full_frame_regions() {
             surface: floating_frame.surface,
             focused: floating_panel.focused,
             pointer_dragging: floating_panel.pointer_dragging,
-            tile_dragging: floating_panel.tile_dragging,
+            tile_role: floating_panel.tile_role,
             workspace_scroll: floating_frame.workspace_scroll,
             clamp: &Clamp::WEB,
             chrome: &floating_chrome,
@@ -312,7 +312,7 @@ fn partial_projectors_match_full_frame_regions() {
             surface: tiling_frame.surface,
             focused: tiled_panel.focused,
             pointer_dragging: tiled_panel.pointer_dragging,
-            tile_dragging: tiled_panel.tile_dragging,
+            tile_role: tiled_panel.tile_role,
             workspace_scroll: tiling_frame.workspace_scroll,
             clamp: &Clamp::WEB,
             chrome: &tiling_chrome,

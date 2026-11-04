@@ -23,7 +23,7 @@ mod tests;
 
 pub use column::{natural_cmp, Align, ColumnKind, DataColumnSpec, SortDir, SortSpec};
 pub use data::{RowWriter, TableData, TableDataBuilder, Value};
-pub use export::{csv, tsv, write_csv, write_tsv};
+pub use export::{csv, export_view, tsv, write_csv, write_tsv, ExportFormat};
 pub use scroll::{ScrollMap, MAX_SCROLL};
 pub use state::{
     ActiveFilter, ColumnFilter, Density, FilterKind, Mounted, MoveTarget, OrderKey, PersistedTable,
