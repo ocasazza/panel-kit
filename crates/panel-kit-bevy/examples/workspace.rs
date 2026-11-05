@@ -7,9 +7,10 @@
 //! `canary.*` binding through `panel-kit-bevy` widgets fed by the shared
 //! canary content (`examples/support/canary_content.rs`).
 //!
-//! The spec's floating geometry is authored in cells; the host rescales it
-//! to the window's logical pixels, as the web host does for the browser
-//! viewport. `p` switches between the spec theme and the paper preset; `q`
+//! The spec's geometry is authored in cells; core's
+//! `ResolvedWorkspace::into_logical_px` maps it onto the window's logical
+//! pixels, the same conversion the web host applies to the browser window.
+//! `p` switches between the spec theme and the paper preset; `q`
 //! quits. Set `PANEL_KIT_BEVY_SCREENSHOT=<path.png>` to render the workspace
 //! offscreen at 1440×900 logical pixels and scale factor 2 (independent of the
 //! display the window lands on) with the initial metric samples, save it to
@@ -32,27 +33,27 @@ use bevy::window::{ExitCondition, PrimaryWindow, WindowPlugin};
 
 use panel_kit_bevy::fonts::{install_theme_font, BOLD_FONT};
 use panel_kit_bevy::widgets::scroll::ScrollPlugin;
-use panel_kit_bevy::widgets::data_table::{DataTableExport, DataTablePlugin};
+use panel_kit_bevy::widgets::data_table::DataTableExport;
 use panel_kit_bevy::widgets::time_series::TimeSeriesPlugin;
 use panel_kit_core::widgets::data_table::ExportFormat;
+use panel_kit_bevy::widgets::{styled_text, TextStyle};
 use panel_kit_bevy::{
-    restore_layout, save_layout, BevyPanelKit, BevyTheme, FileLayoutStore, PanelBodyHandles,
-    PanelUiPlugin,
+    restore_layout, save_layout, BevyPanelKit, BevyTheme, DockExtras, FileLayoutStore,
+    PanelBodyHandles, PanelUiPlugin,
 };
-use panel_kit_core::reducer::{ResizePolicy, Viewport, WorkspaceEvent};
+use panel_kit_core::persist::{apply_save_decision, SavePolicy};
+use panel_kit_core::reducer::{ResizePolicy, Snapshot, Viewport, WorkspaceEvent};
 use panel_kit_core::spec::{BackendKind, ResolvedWorkspace, WorkspaceSpec};
 use panel_kit_core::theme::ThemeTokens;
 use panel_kit_core::widgets::ContentSpec;
-use panel_kit_core::{
-    SpecPanelId, SurfaceProfile, Units, WinState, WEB_COMPACT_MAX, WEB_TABLET_MAX,
-};
+use panel_kit_core::{SpecPanelId, SurfaceProfile, Units, WinState};
 
 #[path = "workspace_canary.rs"]
 mod workspace_canary;
 
 use workspace_canary::{CanaryData, WorkspaceFacts, LIVE_BINDINGS};
 
-/// Logical window size the cell-authored canary geometry is scaled into.
+/// Logical window size the cell-authored canary maps onto.
 const WINDOW_PX: (f64, f64) = (1440.0, 900.0);
 
 /// Scale factor of the offscreen capture target.
@@ -65,7 +66,8 @@ fn capture_path() -> Option<String> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let resolved = decode_workspace_spec()?
-        .resolve(&workspace_canary::provider_manifest(BackendKind::Bevy))?;
+        .resolve(&workspace_canary::provider_manifest(BackendKind::Bevy))?
+        .into_logical_px(WINDOW_PX.0, WINDOW_PX.1);
     let ResolvedWorkspace {
         catalog,
         initial,
@@ -105,31 +107,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Scale while the window settles; `fit_to_window` hands over to the
     // spec's policy afterwards.
     kit.resize_policy = ResizePolicy::ScaleFloating;
-    kit.apply_workspace_event(WorkspaceEvent::ViewportChanged {
-        size: Viewport {
-            width: WINDOW_PX.0,
-            height: WINDOW_PX.1,
-            units: Units::CssPx,
-        },
-        policy: ResizePolicy::ScaleFloating,
-    });
     kit.surface = SurfaceProfile::from_logical_width(
         WINDOW_PX.0,
-        WEB_COMPACT_MAX,
-        WEB_TABLET_MAX,
+        surface.compact_max,
+        surface.tablet_max,
         kit.surface.caps,
     );
 
+    // A capture renders the authored layout offscreen only: an OS window would
+    // be resized to fit the display and rescale the workspace away from
+    // `WINDOW_PX`, and the operator's saved layout is neither read nor written.
+    let capturing = capture_path().is_some();
     let store = FileLayoutStore::new(
         std::env::temp_dir().join(format!("{}-bevy.json", persistence.key)),
     );
-    if persistence.enabled && persistence.restore {
+    if persistence.enabled && persistence.restore && !capturing {
         restore_layout(&mut kit, &store)?;
     }
-
-    // A capture renders offscreen only: an OS window would be resized to fit
-    // the display and rescale the workspace away from `WINDOW_PX`.
-    let capturing = capture_path().is_some();
     App::new()
         .add_plugins((
             DefaultPlugins.set(WindowPlugin {
@@ -148,10 +142,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             PanelUiPlugin::<SpecPanelId>::default(),
             ScrollPlugin,
             TimeSeriesPlugin,
-            DataTablePlugin,
         ))
         .insert_resource(BevyTheme::from_tokens(&theme))
         .insert_resource(kit)
+        .insert_resource(CanaryDefaults {
+            initial,
+            save_policy: persistence.save_policy,
+            skip_save: false,
+        })
         .insert_resource(CanaryStore(store))
         .insert_resource(bodies)
         .init_resource::<CanaryData>()
@@ -164,6 +162,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tick_canary,
                 demo_keys,
                 save_on_change,
+                paint_dock_controls,
+                press_dock_controls.before(save_on_change),
                 write_exports,
                 capture_then_exit,
                 dump_ui_nodes,
@@ -190,6 +190,153 @@ fn decode_workspace_spec() -> Result<WorkspaceSpec, Box<dyn std::error::Error>> 
 
 #[derive(Resource)]
 struct CanaryStore(FileLayoutStore);
+
+/// Authored defaults for "reset layout" and the spec's save policy.
+#[derive(Resource)]
+struct CanaryDefaults {
+    initial: Snapshot<SpecPanelId>,
+    save_policy: SavePolicy,
+    /// Set by a reset, whose change must not re-save the defaults.
+    skip_save: bool,
+}
+
+/// The web canary's dock `.snap-toggle` controls.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+enum DockControl {
+    MoveSnap,
+    ResizeSnap,
+    ResetLayout,
+}
+
+/// `.snap-toggle` metrics in rem: button padding, the glyph–label and
+/// button gaps, and the reset button's extra left margin; radius in px.
+const DOCK_BUTTON_PAD_REM: (f32, f32) = (0.35, 0.15);
+const DOCK_GAP_REM: f32 = 0.25;
+const DOCK_FONT_REM: f32 = 0.68;
+const DOCK_BUTTON_RADIUS: f32 = 3.0;
+/// `--hit-min`.
+const HIT_MIN: f32 = 24.0;
+
+/// Paint the snap toggles and layout reset into the dock's host slot, again
+/// whenever the snap policy or theme changes.
+fn paint_dock_controls(
+    mut commands: Commands,
+    slots: Query<Entity, With<DockExtras>>,
+    kit: Res<BevyPanelKit<SpecPanelId>>,
+    theme: Res<BevyTheme>,
+    mut painted: Local<Option<(bool, bool)>>,
+) {
+    let Ok(slot) = slots.single() else {
+        return;
+    };
+    let state = (kit.snap.move_, kit.snap.resize);
+    if *painted == Some(state) && !theme.is_changed() {
+        return;
+    }
+    *painted = Some(state);
+    let theme = theme.into_inner();
+    commands
+        .entity(slot)
+        .despawn_related::<Children>()
+        .with_children(|slot| {
+            slot.spawn(Node {
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(theme.metrics.rem(DOCK_GAP_REM)),
+                ..default()
+            })
+            .with_children(|group| {
+                dock_button(group, theme, DockControl::MoveSnap, Some(state.0), "move");
+                dock_button(group, theme, DockControl::ResizeSnap, Some(state.1), "resize");
+                dock_button(group, theme, DockControl::ResetLayout, None, "reset layout");
+            });
+        });
+}
+
+/// One `.snap-toggle button`: `on` carries the toggle state, `None` is the
+/// reset button.
+fn dock_button(
+    parent: &mut ChildSpawnerCommands,
+    theme: &BevyTheme,
+    control: DockControl,
+    on: Option<bool>,
+    label: &str,
+) {
+    let style = TextStyle::rem(theme, DOCK_FONT_REM);
+    let gap = theme.metrics.rem(DOCK_GAP_REM);
+    let ink = if on == Some(false) {
+        theme.text_muted
+    } else {
+        theme.text
+    };
+    parent
+        .spawn((
+            control,
+            Button,
+            Node {
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(gap),
+                min_height: Val::Px(HIT_MIN),
+                padding: UiRect::axes(
+                    Val::Px(theme.metrics.rem(DOCK_BUTTON_PAD_REM.0)),
+                    Val::Px(theme.metrics.rem(DOCK_BUTTON_PAD_REM.1)),
+                ),
+                margin: UiRect::left(Val::Px(if on.is_none() { gap } else { 0.0 })),
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor(Color::NONE),
+            BorderRadius::all(Val::Px(DOCK_BUTTON_RADIUS)),
+        ))
+        .with_children(|button| {
+            if let Some(on) = on {
+                let glyph = if on { "●" } else { "○" };
+                let tint = if on { theme.highlight } else { theme.text_muted };
+                styled_text(button, glyph, style.color(tint));
+            }
+            styled_text(button, label, style.color(ink));
+        });
+}
+
+/// Dock control presses: flip a snap flag, or reset to the authored layout
+/// and clear the saved record without re-saving it.
+fn press_dock_controls(
+    controls: Query<(&Interaction, &DockControl, &mut BorderColor), Changed<Interaction>>,
+    mut kit: ResMut<BevyPanelKit<SpecPanelId>>,
+    mut defaults: ResMut<CanaryDefaults>,
+    store: Res<CanaryStore>,
+    theme: Res<BevyTheme>,
+) {
+    for (interaction, control, mut edge) in controls {
+        edge.0 = match interaction {
+            Interaction::None => Color::NONE,
+            Interaction::Hovered | Interaction::Pressed => theme.border,
+        };
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        match control {
+            DockControl::MoveSnap => kit.snap.move_ = !kit.snap.move_,
+            DockControl::ResizeSnap => kit.snap.resize = !kit.snap.resize,
+            DockControl::ResetLayout => {
+                let viewport = kit.snapshot.viewport;
+                if let Err(error) = apply_save_decision(
+                    defaults.save_policy.reset_decision(),
+                    &store.0,
+                    &defaults.initial,
+                    &kit.catalog,
+                ) {
+                    eprintln!("clearing the saved layout failed: {error}");
+                }
+                kit.snapshot = defaults.initial.clone();
+                kit.apply_workspace_event(WorkspaceEvent::ViewportChanged {
+                    size: viewport,
+                    policy: ResizePolicy::ScaleFloating,
+                });
+                defaults.skip_save = true;
+            }
+        }
+    }
+}
 
 #[derive(Resource)]
 struct TickTimer(Timer);
@@ -387,8 +534,17 @@ fn paint_bodies(
     bodies.repaint_live = false;
 }
 
-/// Persist the workspace after any frame that changed it.
-fn save_on_change(kit: Res<BevyPanelKit<SpecPanelId>>, store: Res<CanaryStore>) {
+/// Persist the workspace after any frame that changed it, except the frame
+/// a reset cleared the record.
+fn save_on_change(
+    kit: Res<BevyPanelKit<SpecPanelId>>,
+    store: Res<CanaryStore>,
+    capture: Option<Res<CaptureTarget>>,
+    mut defaults: ResMut<CanaryDefaults>,
+) {
+    if std::mem::take(&mut defaults.skip_save) || capture.is_some() {
+        return;
+    }
     if kit.is_changed() {
         let _ = save_layout(&kit, &store.0);
     }

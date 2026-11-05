@@ -142,6 +142,16 @@ and Escape minimize, maximize, toggle mode, and restore; Tab and Shift+Tab
 cycle focus, while Enter raises. Bare shortcuts are ignored while a text input
 owns focus.
 
+### Cell-authored specs on pixel hosts
+
+A `WorkspaceSpec` authored in `Units::Cells` renders natively in the terminal.
+Pixel hosts (web, Bevy) call `ResolvedWorkspace::into_logical_px(width,
+height)` once after `resolve`: the authored viewport maps onto the surface, so
+geometry, clamp, tile metrics, surface thresholds, and keyboard steps scale by
+the cell, while chrome takes the pixel profile
+(`ChromeProjectionInput::full(ChromeMetrics::WEB)`). CSS-px specs pass through
+unchanged.
+
 ### Versioned persistence
 
 Web workspaces write `SavedLayoutV2` with schema version, `Units::CssPx`,
@@ -314,6 +324,33 @@ This example is intentionally comprehensive: workspace chrome, floating and
 tiling interactions, dock restore, badges, action log, spinner, theming,
 scrollable content, time-series chart, and gauges. It is executable
 documentation for the shared core interface.
+
+### Visual parity check (web ↔ Bevy)
+
+The web canary is the pixel reference for the Bevy backend.
+`tools/visual-parity` captures both and fails on any difference it cannot
+explain:
+
+```sh
+nix develop -c cargo run -p visual-parity -- check   # exit 0 = parity holds
+```
+
+It renders the Bevy workspace example offscreen (1440×900 logical, scale 2,
+authored layout, no saved layout read or written), builds the Dioxus
+workspace example to wasm, serves it on a loopback port, and captures it in
+headless Chrome at the same size. It then pairs every panel and compares
+frame geometry, border, surface and grip pixels, traffic lights, every text
+run (position, width, line height, size, weight, colour), and the Nodes
+data-table toolbar. Tolerances: ±1 px geometry, exact sRGB for solid fills,
+ΔE76 < 2 for anti-aliased samples. Exemptions are listed in
+`tools/visual-parity/src/compare.rs` (only the spinner ring, captured at
+different rotation phases). `target/visual-parity/report.md` holds every row
+and per-panel web | Bevy | diff images; `visual-parity compare WEB.png
+BEVY.png OUT` re-compares existing captures.
+
+The comparator's own tests run with the workspace suite. The capture needs a
+GPU and a local Chrome (`PANEL_KIT_CHROME` overrides the lookup), so it is
+not a Nix sandbox check: run it before merging Bevy or web chrome changes.
 
 ### Topos demos (web, terminal, browser terminal)
 

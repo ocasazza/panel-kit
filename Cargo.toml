@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/panel-kit-core", "crates/panel-kit-grammar", "crates/panel-kit-tui", "crates/panel-kit-bevy", "tools/spec-parity"]
+members = ["crates/panel-kit-core", "crates/panel-kit-grammar", "crates/panel-kit-tui", "crates/panel-kit-bevy", "tools/spec-parity", "tools/visual-parity"]
 
 [package]
 name = "panel-kit"

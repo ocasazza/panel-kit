@@ -13,7 +13,8 @@
 //!   survives geometry and state changes,
 //! - one [`PanelChrome`] header per panel (traffic lights + title text) and
 //!   one [`PanelBody`] body slot per panel,
-//! - one [`DockChip`] per minimized panel.
+//! - one [`DockChip`] per minimized panel, and one [`DockExtras`] trailing
+//!   slot the host fills with its own dock controls.
 //!
 //! The system runs only when the [`BevyPanelKit`] or [`BevyTheme`] resources
 //! change; unchanged inputs cost nothing. Geometry is absolute positioning
@@ -43,7 +44,7 @@ use panel_kit_core::{ChromeMetrics, PanelKey, Region, WinState};
 
 use crate::theme::BevyTheme;
 use crate::widgets::{styled_text, TextStyle};
-use crate::{BevyPanelKey, BevyPanelKit, MinimizedDock, PanelBody, PanelChrome};
+use crate::{BevyPanelKey, BevyPanelKit, DockExtras, MinimizedDock, PanelBody, PanelChrome};
 
 /// Marks a panel's root UI node and carries the panel key used to reconcile
 /// the node against the workspace snapshot.
@@ -153,7 +154,10 @@ impl<K: BevyPanelKey> Plugin for PanelUiPlugin<K> {
         );
         app.add_systems(Update, render_workspace::<K>);
         app.add_plugins(crate::input::PanelInputPlugin::<K>::default());
-        app.add_plugins(crate::widgets::data_table::DataTablePlugin);
+        // Table content panels paint through the data table painter.
+        if !app.is_plugin_added::<crate::widgets::data_table::DataTablePlugin>() {
+            app.add_plugins(crate::widgets::data_table::DataTablePlugin);
+        }
     }
 }
 
@@ -580,6 +584,19 @@ pub fn render_workspace<K: BevyPanelKey>(
                     styled_text(dock, "dock:", muted);
                     let empty = styled_text(dock, "— nothing minimized —", muted);
                     dock.commands().entity(empty).insert(DockEmpty);
+                    // `.dock-extras { margin-left: auto }`. Taffy drops the
+                    // dock's `gap` beside an auto margin; growing is equivalent
+                    // because nothing else in the dock grows.
+                    dock.spawn((
+                        DockExtras,
+                        Node {
+                            flex_grow: 1.0,
+                            flex_direction: FlexDirection::Row,
+                            justify_content: JustifyContent::FlexEnd,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                    ));
                 })
                 .id();
             let backdrop_color = match backdrop.as_ref() {

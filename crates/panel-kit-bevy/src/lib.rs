@@ -118,6 +118,12 @@ pub struct PanelChrome;
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct MinimizedDock;
 
+/// Marks the dock's host-owned trailing slot, right-aligned after the chips
+/// (web `dock(.., extras)`). Hosts spawn workspace policy controls such as
+/// snap toggles and layout reset into it; the dock never owns their state.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct DockExtras;
+
 /// Error returned when a [`BevyPanelKit`] cannot be constructed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConstructionError {
