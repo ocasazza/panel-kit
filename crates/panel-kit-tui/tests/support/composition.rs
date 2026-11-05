@@ -4,13 +4,12 @@ use panel_kit_core::frame::{
 };
 use panel_kit_core::reducer::{Snapshot, Viewport};
 use panel_kit_core::{
-    ChromeMetrics, Clamp, LayoutBuilder, Mode, PanelCatalog, PanelKind,
-    SurfaceCapabilities, SurfaceProfile, TileMetrics, Units, WinState, CELLS_COMPACT_MAX,
-    CELLS_TABLET_MAX,
+    ChromeMetrics, Clamp, LayoutBuilder, Mode, PanelCatalog, PanelKind, SurfaceCapabilities,
+    SurfaceProfile, TileMetrics, Units, WinState, CELLS_COMPACT_MAX, CELLS_TABLET_MAX,
 };
-use panel_kit_tui::widgets::{self, TuiHitBuffer};
-use panel_kit_tui::{TerminalCharset, ResolvedTuiTheme};
 pub(crate) use panel_kit_tui::rect_from_region;
+use panel_kit_tui::widgets::{self, TuiHitBuffer};
+use panel_kit_tui::{ResolvedTuiTheme, TerminalCharset};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use serde::{Deserialize, Serialize};
@@ -147,8 +146,21 @@ pub(crate) fn draw_composed_workspace(
                 let meta = catalog
                     .get(panel.key)
                     .expect("projected panel metadata exists");
-                widgets::panel::draw_panel_surface(frame, panel, &theme, TerminalCharset::Ascii, hits);
-                widgets::panel::draw_panel_chrome(frame, panel, meta, &theme, TerminalCharset::Ascii, hits);
+                widgets::panel::draw_panel_surface(
+                    frame,
+                    panel,
+                    &theme,
+                    TerminalCharset::Ascii,
+                    hits,
+                );
+                widgets::panel::draw_panel_chrome(
+                    frame,
+                    panel,
+                    meta,
+                    &theme,
+                    TerminalCharset::Ascii,
+                    hits,
+                );
                 widgets::panel::draw_traffic_lights(
                     frame,
                     panel,

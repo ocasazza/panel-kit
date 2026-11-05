@@ -6,12 +6,21 @@ use crate::diagnostics::DiagnosticReport;
 use crate::panel_compare::compare_panel_ids;
 
 #[allow(dead_code)]
-#[path = "../../../crates/panel-kit-tui/examples/workspace_canary.rs"]
-mod workspace_canary;
+#[path = "../../../examples/support/canary_content.rs"]
+mod canary_content;
 
-/// Extract the live Rust TUI canary provider manifest by compiling its data module.
-pub(crate) fn live_rust_provider_manifest() -> BindingManifest {
-    workspace_canary::provider_manifest(BackendKind::Tui)
+/// Backends whose executable canary renders `workspace-canary` with the
+/// shared content providers.
+const CANARY_BACKENDS: [BackendKind; 3] =
+    [BackendKind::Tui, BackendKind::BrowserTui, BackendKind::Bevy];
+
+/// The live provider manifest of every backend canary, compiled from the
+/// shared content module.
+pub(crate) fn live_rust_provider_manifests() -> Vec<BindingManifest> {
+    CANARY_BACKENDS
+        .into_iter()
+        .map(canary_content::provider_manifest)
+        .collect()
 }
 
 /// Compare Nix-authored provider declarations with Rust provider declarations.
@@ -71,16 +80,3 @@ fn append_provider_field_diffs(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn live_manifest_comes_from_workspace_canary_provider_source() {
-        assert_eq!(
-            live_rust_provider_manifest(),
-            workspace_canary::provider_manifest(BackendKind::Tui),
-            "spec-parity must compare against declarations owned by the executable canary source"
-        );
-    }
-}

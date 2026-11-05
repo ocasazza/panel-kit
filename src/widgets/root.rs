@@ -6,13 +6,13 @@ use panel_kit_core::{PanelKey, SurfaceClass};
 /// Class for a workspace root element rendered from a borrowed projected frame.
 ///
 /// The class contract is one surface tier, optional coarse-pointer target
-/// sizing, and `dragging` while a projected panel has an active pointer or tile
-/// drag marker.
+/// sizing, and `dragging` while a projected panel has an active pointer drag
+/// or is the dragged tile of a tile drag.
 pub fn root_class<K: PanelKey>(frame: &ProjectedFrame<'_, K>) -> &'static str {
     let dragging = frame
         .panels
         .iter()
-        .any(|panel| panel.pointer_dragging || panel.tile_dragging);
+        .any(|panel| panel.pointer_dragging || panel.tile_role.is_dragged());
 
     match (
         frame.surface.class,

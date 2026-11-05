@@ -230,7 +230,7 @@ the cluster uses a printer-CMY scheme instead. The lights are `.light.mode`
 
 ### Highlight — Live State
 
-- **Highlight** `--color-highlight`: the live-system colour. It appears only where something is *happening or selected right now* — the spinner ring and label, the skeleton pulse, the progress fill, the topbar activity indicator, the active badge halo, and the dashed outline on a panel mid-reorder-drag. Default Phosphor Green `#5ef38c` dark / `#0c7a3d` paper. It is the brightest, most saturated value in the system, which is exactly why it must stay rare.
+- **Highlight** `--color-highlight`: the live-system colour. It appears only where something is *happening or selected right now* — the spinner ring and label, the skeleton pulse, the progress fill, the topbar activity indicator, the active badge halo, and a tile drag in flight: the lifted tile's border and the swap target's dashed outline. Default Phosphor Green `#5ef38c` dark / `#0c7a3d` paper. It is the brightest, most saturated value in the system, which is exactly why it must stay rare.
 
 ### Status roles
 
@@ -440,7 +440,7 @@ not.
 ### Shadow Vocabulary
 
 - **Overlay lift** (`box-shadow: 0 10px 30px` at 80% `--shadow-ink`): the fixed tooltip overlay only. It is genuinely detached and viewport-placed. `--shadow-ink` is the one theme-independent literal black, declared outside the colour namespace and mixed with `color-mix`.
-- **Drag lift** (`box-shadow: 0 6px 24px` at 46.67% `--shadow-ink`): a panel genuinely lifted mid-drag (`.ws.floating .panel.dragging`).
+- **Drag lift** (`box-shadow: 0 6px 24px` at 46.67% `--shadow-ink`): a panel genuinely lifted mid-drag — `.ws.floating .panel.dragging`, and a lifted or landing tile (`.ws.tiling .panel.tile-lifted`, `.tile-landing`), whose offset and blur scale with core's projected elevation (`--pk-lift`).
 
 Note that two further `box-shadow` declarations exist but are **rings, not elevation** — `0 0 0 2px` spreads used for badge hover/active halos. They borrow the shadow channel to draw a state ring. That is legitimate output but mis-housed: rings belong to a `--color-focus-ring` / state role, so that removing elevation never removes state feedback.
 
@@ -455,8 +455,10 @@ not a bigger shadow.
 (`box-shadow: 0 6px 24px #0007`) was removed in 1.0.0: it shadowed every panel
 whether floating, tiled, or docked, and the terminal renderer had no
 counterpart for any of it. Z-order legibility now rides the tonal/border
-channel both renderers can draw, and a shadow appears only on
-`.ws.floating .panel.dragging` — a panel genuinely lifted mid-drag.
+channel both renderers can draw, and a shadow appears only on a panel
+genuinely lifted mid-drag (`.ws.floating .panel.dragging`, `.panel.tile-lifted`,
+`.panel.tile-landing`). The terminal draws the same lift as a thick highlight
+border plus a one-cell shaded drop shadow, so the cue survives in cells.
 
 Two `0 0 0 2px` declarations remain in the shadow channel but are **rings,
 not elevation**: badge hover/active. They draw state, so removing elevation
@@ -488,7 +490,7 @@ edge grey, folded.
 - **Character:** an instrument module bolted into a rack.
 - **Shape:** square corners (`--panel-radius`), `1px` `--color-border` border, `--color-surface` fill, `overflow: hidden`, floors at `180x110px`.
 - **Chrome:** controls and title are inset into the top border row, not a header band. The header's content starts on the body's content column (`--space-md` in); its `--space-xs` padding sits outside that column, where the top border stops. The body compensates with a `1.75rem` top inset.
-- **States:** `.tile-dragging` drops to `.55` opacity with a `1px` dashed highlight outline inset `-1px` — the highlight's live-state role applied to drag.
+- **States:** a tile drag is projected by core (`TileRole`, `lift`): a lifted tile follows the pointer above the plane — highlight border, drag-lift shadow, `1.03` scale and `.88` opacity at full lift — while the swap target takes a `1px` dashed highlight outline inset `-1px` and the other tiles slide toward the previewed swap. Release swaps the two tiles and settles the lifted one into its new slot; Escape, pointer cancel, or leaving the window fly it home. All motion is advanced by host ticks, and reduced motion completes it in one.
 - **Cursor:** `grab` on a tiling panel head, `grabbing` while active; `default` on mobile.
 
 ### Traffic Lights

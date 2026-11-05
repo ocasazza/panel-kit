@@ -329,7 +329,7 @@ fn App() -> Element {
             tabindex: "0",
             onpointermove: move |event: DioxusPointerEvent| spec_workspace::handle_pointer_move(&pointer_move_workspace, &event),
             onpointerup: move |event: DioxusPointerEvent| spec_workspace::handle_pointer_up(&pointer_up_workspace, &event),
-            onpointercancel: move |event: DioxusPointerEvent| spec_workspace::handle_pointer_up(&pointer_cancel_workspace, &event),
+            onpointercancel: move |event: DioxusPointerEvent| spec_workspace::handle_pointer_cancel(&pointer_cancel_workspace, &event),
             onkeydown: move |event: KeyboardEvent| on_key(event),
             header { class: "topbar",
                 h1 { "omp auto-loop" }

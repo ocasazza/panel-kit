@@ -1,5 +1,6 @@
 use super::fixtures::{default_snapshot, web_context, TestPanel};
 use crate::reducer::{reduce, ChangePhase, HitTarget, PanelPart, Reduction, WorkspaceEvent};
+use crate::tile_drag::{TileDrag, TileDragPhase};
 use crate::{Mode, PointerButton, PointerEvent, PointerEventKind};
 
 #[test]
@@ -45,7 +46,7 @@ fn reducer_replays_move_resize_reorder_and_settle_phases() {
 
     let mut tiling = default_snapshot();
     tiling.preferred_mode = Mode::Tiling;
-    let start_reorder = reduce(
+    let press = reduce(
         &mut tiling,
         WorkspaceEvent::Pointer {
             target: HitTarget::Panel {
@@ -56,10 +57,13 @@ fn reducer_replays_move_resize_reorder_and_settle_phases() {
         },
         web_context(),
     );
-    assert_eq!(start_reorder.phase, Some(ChangePhase::Continuous));
-    assert_eq!(tiling.tile_drag, Some(TestPanel::First));
+    assert_eq!(press.phase, Some(ChangePhase::Continuous));
+    assert_eq!(
+        tiling.tile_drag.map(|tile| (tile.key, tile.phase)),
+        Some((TestPanel::First, TileDragPhase::Pressed))
+    );
 
-    let hover_reorder = reduce(
+    let hover = reduce(
         &mut tiling,
         WorkspaceEvent::Pointer {
             target: HitTarget::Panel {
@@ -70,17 +74,17 @@ fn reducer_replays_move_resize_reorder_and_settle_phases() {
         },
         web_context(),
     );
-    assert_eq!(hover_reorder.phase, Some(ChangePhase::Continuous));
+    assert_eq!(hover.phase, Some(ChangePhase::Transient));
     assert_eq!(
-        tiling
-            .panels
-            .iter()
-            .map(|panel| panel.kind)
-            .collect::<Vec<_>>(),
-        vec![TestPanel::Second, TestPanel::Third, TestPanel::First]
+        order(&tiling),
+        [TestPanel::First, TestPanel::Second, TestPanel::Third]
+    );
+    assert_eq!(
+        tiling.tile_drag.and_then(|tile| tile.target),
+        Some(TestPanel::Third)
     );
 
-    let reorder_up = reduce(
+    let drop = reduce(
         &mut tiling,
         WorkspaceEvent::Pointer {
             target: HitTarget::Workspace,
@@ -88,8 +92,19 @@ fn reducer_replays_move_resize_reorder_and_settle_phases() {
         },
         web_context(),
     );
-    assert_eq!(reorder_up.phase, Some(ChangePhase::Settled));
-    assert_eq!(tiling.tile_drag, None);
+    assert_eq!(drop.phase, Some(ChangePhase::Settled));
+    assert_eq!(
+        order(&tiling),
+        [TestPanel::Third, TestPanel::Second, TestPanel::First]
+    );
+    assert_eq!(
+        tiling.tile_drag.map(|tile| tile.phase),
+        Some(TileDragPhase::Settling)
+    );
+}
+
+fn order(snapshot: &crate::reducer::Snapshot<TestPanel>) -> Vec<TestPanel> {
+    snapshot.panels.iter().map(|panel| panel.kind).collect()
 }
 
 #[test]
@@ -161,7 +176,9 @@ fn invalid_pointer_targets_are_noops_not_panics() {
 
     let mut snapshot = default_snapshot();
     snapshot.preferred_mode = Mode::Tiling;
-    snapshot.tile_drag = Some(TestPanel::Gone);
+    let mut gone = TileDrag::pressed(TestPanel::Gone, (0.0, 0.0));
+    gone.phase = TileDragPhase::Lifted;
+    snapshot.tile_drag = Some(gone);
     let before = snapshot.clone();
     let reduction = reduce(
         &mut snapshot,

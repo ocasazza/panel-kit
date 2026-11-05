@@ -21,10 +21,11 @@ pub use types::{
     WheelDisposition, WorkspaceEvent,
 };
 
+use crate::tile_drag::{occupies_slot, swap_tiles, TileDrag, TileDragPhase};
 use crate::{
     apply_command, apply_drag, begin_drag, begin_tile_resize, clamp_scroll, command_for,
-    effective_mode, reorder_tile, restore, DragKind, FocusContext, KeyChord, Mode, PanelCommand,
-    PanelKey, PanelWin, PointerButton, PointerEvent, PointerEventKind, Units, WinState,
+    effective_mode, restore, DragKind, FocusContext, Key, KeyChord, Mode, PanelCommand, PanelKey,
+    PanelWin, PointerButton, PointerEvent, PointerEventKind, Units, WinState,
 };
 
 /// Reduce one workspace event against host-owned state, purely.
@@ -59,6 +60,7 @@ pub fn reduce<K: PanelKey>(
         WorkspaceEvent::ViewportChanged { size, policy } => {
             reduce_viewport_changed(snapshot, size, policy)
         }
+        WorkspaceEvent::Tick { dt_ms } => reduce_tick(snapshot, dt_ms),
     }
 }
 
@@ -67,12 +69,18 @@ pub fn reduce<K: PanelKey>(
 /// receives it. Hosts that derive focus from the event origin (the TUI
 /// focuses the panel a key was delivered through) mutate `focused` before
 /// reducing — adoption is host policy, not a core transition.
+///
+/// Escape during a held or lifted tile drag cancels the drag and is not
+/// also a restore command.
 fn reduce_key<K: PanelKey>(
     snapshot: &mut Snapshot<K>,
     context: ReduceContext<'_>,
     chord: KeyChord,
     focus: &FocusContext<K>,
 ) -> Reduction<K> {
+    if chord.key == Key::Escape && snapshot.tile_drag.is_some_and(|tile| tile.tracks_pointer()) {
+        return cancel_tile_drag(snapshot);
+    }
     let Some(command) = command_for(chord, focus) else {
         return Reduction::unchanged();
     };
@@ -83,6 +91,9 @@ fn reduce_key<K: PanelKey>(
 /// handoff does: resolve the target onto `focused`, delegate to
 /// [`apply_command`], write `focused` back, and report what actually
 /// changed.
+///
+/// A command ends any tile drag first, without a swap: commands may
+/// minimize, maximize, or re-mode the dragged panel.
 fn apply_command_to_snapshot<K: PanelKey>(
     snapshot: &mut Snapshot<K>,
     context: ReduceContext<'_>,
@@ -97,7 +108,11 @@ fn apply_command_to_snapshot<K: PanelKey>(
         }
     }
 
+    let dropped_drag = snapshot.tile_drag.take().is_some();
     if !apply_command_with_report(snapshot, context, target, command) {
+        if dropped_drag {
+            return changed(ChangePhase::Transient, None);
+        }
         return Reduction::unchanged();
     }
 
@@ -123,7 +138,8 @@ fn reduce_pointer<K: PanelKey>(
         PointerEventKind::Drag(PointerButton::Primary) | PointerEventKind::Moved => {
             reduce_pointer_motion(snapshot, context, target, event)
         }
-        PointerEventKind::Up(PointerButton::Primary) => reduce_pointer_up(snapshot),
+        PointerEventKind::Up(PointerButton::Primary) => reduce_pointer_up(snapshot, event),
+        PointerEventKind::Cancel => reduce_pointer_cancel(snapshot),
         PointerEventKind::Scroll { delta_y } => reduce_wheel(
             snapshot,
             context,
@@ -135,19 +151,32 @@ fn reduce_pointer<K: PanelKey>(
 
 /// Start drag/reorder/restore gestures from pointer-down without duplicating
 /// the transition math those gestures use.
+///
+/// A press while a tile drag is held or lifted is ignored (a second contact
+/// or button). A press while a tile is landing finishes the landing at once
+/// and is then handled normally.
 fn reduce_pointer_down<K: PanelKey>(
     snapshot: &mut Snapshot<K>,
     context: ReduceContext<'_>,
     target: HitTarget<K>,
     event: PointerEvent,
 ) -> Reduction<K> {
-    match target {
+    let landed = match snapshot.tile_drag {
+        Some(tile) if tile.tracks_pointer() => return Reduction::unchanged(),
+        Some(_) => snapshot.tile_drag.take().is_some(),
+        None => false,
+    };
+    let reduction = match target {
         HitTarget::Workspace => Reduction::unchanged(),
         HitTarget::Dock { key } => reduce_dock_restore(snapshot, key),
         HitTarget::Panel { key, part } => {
             reduce_panel_pointer_down(snapshot, context, key, part, event)
         }
+    };
+    if landed && !reduction.changed {
+        return changed(ChangePhase::Transient, None);
     }
+    reduction
 }
 
 /// Begin a panel gesture for a resolved target panel.
@@ -178,7 +207,10 @@ fn reduce_panel_pointer_down<K: PanelKey>(
     }
 }
 
-/// Start either a floating drag or a tiling drag/reorder marker.
+/// Start either a floating drag, a tiling resize, or a tile drag press.
+///
+/// A tile drag needs the move policy, a surface that offers window
+/// management, and a panel that occupies a tile slot (not maximized).
 fn begin_panel_drag<K: PanelKey>(
     snapshot: &mut Snapshot<K>,
     context: ReduceContext<'_>,
@@ -194,8 +226,11 @@ fn begin_panel_drag<K: PanelKey>(
     let tile_drag_before = snapshot.tile_drag;
 
     if mode == Mode::Tiling && drag_kind == DragKind::Move {
-        if context.snap.move_ {
-            snapshot.tile_drag = Some(key);
+        if context.snap.move_
+            && context.surface.window_management()
+            && snapshot.panels[index].state == WinState::Floating
+        {
+            snapshot.tile_drag = Some(TileDrag::pressed(key, (event.x, event.y)));
         }
         snapshot.focused = Some(key);
     } else if mode == Mode::Tiling {
@@ -263,7 +298,8 @@ fn raise_to_front<K: PanelKey>(panels: &mut [PanelWin<K>], key: K) -> bool {
     true
 }
 
-/// Apply in-flight drag/reorder motion through the core drag/reorder helpers.
+/// Apply in-flight drag motion: floating move/resize through the core drag
+/// helpers, or a tile drag's lift and retarget.
 fn reduce_pointer_motion<K: PanelKey>(
     snapshot: &mut Snapshot<K>,
     context: ReduceContext<'_>,
@@ -274,23 +310,42 @@ fn reduce_pointer_motion<K: PanelKey>(
         return apply_pointer_drag(snapshot, context, drag, event);
     }
 
-    let Some(dragged) = snapshot.tile_drag else {
+    let Some(mut tile) = snapshot.tile_drag else {
         return Reduction::unchanged();
     };
-    let HitTarget::Panel { key: target, .. } = target else {
-        return Reduction::unchanged();
-    };
-    if dragged == target {
+    if !tile.tracks_pointer() || !occupies_slot(&snapshot.panels, &tile.key) {
         return Reduction::unchanged();
     }
-    if panel_index(&snapshot.panels, dragged).is_none()
-        || panel_index(&snapshot.panels, target).is_none()
-    {
+    let before = tile;
+    tile.pointer = (event.x, event.y);
+    if tile.phase == TileDragPhase::Pressed && tile.past_threshold(snapshot.viewport.units) {
+        tile.phase = TileDragPhase::Lifted;
+    }
+    if tile.phase == TileDragPhase::Lifted {
+        tile.retarget(swap_target(&snapshot.panels, &tile, target));
+    }
+    if tile == before {
         return Reduction::unchanged();
     }
+    snapshot.tile_drag = Some(tile);
+    changed(ChangePhase::Transient, None)
+}
 
-    reorder_tile(&mut snapshot.panels, dragged, target);
-    changed(ChangePhase::Continuous, None)
+/// The swap target a motion hit names for `tile`.
+///
+/// A hit on the dragged panel is its own slot (`None`). A hit on another
+/// slotted panel targets it. Anything else keeps the current target, so a
+/// backend that cannot resolve a slot never flickers the preview.
+fn swap_target<K: PanelKey>(
+    panels: &[PanelWin<K>],
+    tile: &TileDrag<K>,
+    hit: HitTarget<K>,
+) -> Option<K> {
+    match hit {
+        HitTarget::Panel { key, .. } if key == tile.key => None,
+        HitTarget::Panel { key, .. } if occupies_slot(panels, &key) => Some(key),
+        _ => tile.target,
+    }
 }
 
 /// Apply a floating or span-snapped tile resize drag through [`apply_drag`].
@@ -326,15 +381,93 @@ fn apply_pointer_drag<K: PanelKey>(
     changed(ChangePhase::Continuous, None)
 }
 
-/// Settle an active pointer gesture by clearing reducer-owned drag markers.
-fn reduce_pointer_up<K: PanelKey>(snapshot: &mut Snapshot<K>) -> Reduction<K> {
-    if snapshot.drag.is_none() && snapshot.tile_drag.is_none() {
+/// Settle an active pointer gesture.
+///
+/// A floating drag or tile resize clears its marker. A held tile was a
+/// click and is dropped. A lifted tile commits the swap with its target to
+/// the panel order — the one persisted change of the gesture — and starts
+/// settling; with no target it flies home and nothing is persisted.
+fn reduce_pointer_up<K: PanelKey>(snapshot: &mut Snapshot<K>, event: PointerEvent) -> Reduction<K> {
+    if snapshot.drag.take().is_some() {
+        return changed(ChangePhase::Settled, None);
+    }
+    let Some(mut tile) = snapshot.tile_drag else {
+        return Reduction::unchanged();
+    };
+    match tile.phase {
+        TileDragPhase::Pressed => {
+            snapshot.tile_drag = None;
+            changed(ChangePhase::Settled, None)
+        }
+        TileDragPhase::Lifted => {
+            tile.pointer = (event.x, event.y);
+            let target = tile
+                .target
+                .filter(|target| occupies_slot(&snapshot.panels, target));
+            tile.retarget(target);
+            tile.phase = TileDragPhase::Settling;
+            tile.land = 0.0;
+            let swapped =
+                target.is_some_and(|target| swap_tiles(&mut snapshot.panels, tile.key, target));
+            snapshot.tile_drag = Some(tile);
+            changed(
+                if swapped {
+                    ChangePhase::Settled
+                } else {
+                    ChangePhase::Transient
+                },
+                None,
+            )
+        }
+        TileDragPhase::Settling | TileDragPhase::Cancelling => Reduction::unchanged(),
+    }
+}
+
+/// Abandon an active pointer gesture. A floating drag or tile resize
+/// settles where it is, exactly like a release.
+fn reduce_pointer_cancel<K: PanelKey>(snapshot: &mut Snapshot<K>) -> Reduction<K> {
+    if snapshot.drag.take().is_some() {
+        return changed(ChangePhase::Settled, None);
+    }
+    cancel_tile_drag(snapshot)
+}
+
+/// Cancel a tile drag: a held tile is dropped, a lifted tile flies home
+/// with the panel order untouched.
+fn cancel_tile_drag<K: PanelKey>(snapshot: &mut Snapshot<K>) -> Reduction<K> {
+    let Some(mut tile) = snapshot.tile_drag else {
+        return Reduction::unchanged();
+    };
+    match tile.phase {
+        TileDragPhase::Pressed => snapshot.tile_drag = None,
+        TileDragPhase::Lifted => {
+            tile.cancel();
+            snapshot.tile_drag = Some(tile);
+        }
+        TileDragPhase::Settling | TileDragPhase::Cancelling => return Reduction::unchanged(),
+    }
+    changed(ChangePhase::Transient, None)
+}
+
+/// Advance tile drag animation by host-supplied time; a finished landing
+/// drops the drag.
+fn reduce_tick<K: PanelKey>(snapshot: &mut Snapshot<K>, dt_ms: f64) -> Reduction<K> {
+    if dt_ms.is_nan() || dt_ms <= 0.0 {
         return Reduction::unchanged();
     }
-
-    snapshot.drag = None;
-    snapshot.tile_drag = None;
-    changed(ChangePhase::Settled, None)
+    let Some(mut tile) = snapshot.tile_drag else {
+        return Reduction::unchanged();
+    };
+    let before = tile;
+    if tile.advance(dt_ms) {
+        snapshot.tile_drag = None;
+        return changed(ChangePhase::Transient, None);
+    }
+    if tile == before {
+        return Reduction::unchanged();
+    }
+    snapshot.tile_drag = Some(tile);
+    changed(ChangePhase::Transient, None)
 }
 
 /// Restore a dock-targeted panel through the existing free function.
@@ -393,7 +526,9 @@ fn reduce_wheel<K: PanelKey>(
 }
 
 /// Apply a viewport measurement change according to the event's explicit
-/// resize policy.
+/// resize policy. A change of units (cells authored, CSS px measured) always
+/// rescales: stored geometry in the old units has no meaning in the new ones,
+/// whatever the policy.
 fn reduce_viewport_changed<K: PanelKey>(
     snapshot: &mut Snapshot<K>,
     size: Viewport,
@@ -406,7 +541,9 @@ fn reduce_viewport_changed<K: PanelKey>(
         return Reduction::unchanged();
     }
 
-    if policy == ResizePolicy::ScaleFloating && valid_viewport(snapshot.viewport) {
+    let converts_units = snapshot.viewport.units != size.units;
+    if (policy == ResizePolicy::ScaleFloating || converts_units) && valid_viewport(snapshot.viewport)
+    {
         scale_floating_geometry(
             &mut snapshot.panels,
             size.width / snapshot.viewport.width,

@@ -1,4 +1,5 @@
 mod assertions;
+mod chrome_paint;
 mod css_gate;
 mod parsing;
 

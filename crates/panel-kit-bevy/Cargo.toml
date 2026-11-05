@@ -1,0 +1,34 @@
+[package]
+name = "panel-kit-bevy"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "First-class Bevy binding for panel-kit: the renderer-agnostic panel-workspace state machine as a Bevy resource"
+repository = "https://github.com/ocasazza/panel-kit"
+keywords = ["bevy", "ui", "panels", "workspace"]
+categories = ["gui", "game-development"]
+# examples/workspace_canary.rs is a painter module shared by the example and
+# tests/canary.rs, not an example target.
+autoexamples = false
+
+[dependencies]
+panel-kit-core = { version = "1.1.1", path = "../panel-kit-core", features = ["spec-json"] }
+# Lean Bevy surface: the ECS/app core plus the UI rendering stack. Rendering
+# (the `render` module) activates `bevy_ui`, which pulls bevy_render (wgpu),
+# bevy_text, bevy_asset, and bevy_core_pipeline transitively; `default_font`
+# embeds the fallback font so panel titles render out of the box. Input event
+# translation uses bevy_window and bevy_input; bevy_winit provides the window
+# event loop for examples and native apps.
+bevy = { version = "0.16", default-features = false, features = ["std", "multi_threaded", "bevy_ui", "bevy_window", "bevy_winit", "default_font"] }
+# Glyph coverage when choosing the theme font; already in Bevy's text stack.
+ttf-parser = "0.21"
+
+[dev-dependencies]
+# The PanelKind test enum needs the trait's serde bounds; the binding itself
+# does not (it accepts PanelKey, which carries no serde bound).
+serde = { version = "1", features = ["derive"] }
+# The workspace example's screenshot path encodes PNG.
+bevy = { version = "0.16", default-features = false, features = ["png"] }
+
+[[example]]
+name = "workspace"

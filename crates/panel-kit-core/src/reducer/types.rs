@@ -1,3 +1,4 @@
+use crate::tile_drag::TileDrag;
 use crate::{
     Clamp, CommandStep, Drag, FocusContext, KeyChord, Mode, PanelCommand, PanelKey, PanelWin,
     PointerEvent, SnapPolicy, SurfaceProfile, TileMetrics, Units,
@@ -40,8 +41,9 @@ pub struct Snapshot<K: PanelKey> {
     pub focused: Option<K>,
     /// In-flight floating-mode drag, if any.
     pub drag: Option<Drag>,
-    /// Tiling-mode reorder drag: the panel being dragged, if any.
-    pub tile_drag: Option<K>,
+    /// Tiling-mode header drag, if any. Gesture state only: persistence
+    /// never records it.
+    pub tile_drag: Option<TileDrag<K>>,
     /// Workspace-level vertical scroll offset in renderer units.
     pub workspace_scroll: f64,
 }
@@ -175,6 +177,14 @@ pub enum WorkspaceEvent<K: PanelKey> {
         /// Policy for applying the measurement change to stored geometry.
         policy: ResizePolicy,
     },
+    /// Host-supplied animation time. Core never reads a clock; hosts send
+    /// the milliseconds elapsed since their previous tick while
+    /// [`TileDrag::animating`] holds. A host honouring a reduced-motion
+    /// preference sends `f64::INFINITY`, which completes every animation.
+    Tick {
+        /// Elapsed milliseconds. Non-positive and NaN values are ignored.
+        dt_ms: f64,
+    },
 }
 
 /// The unit system and surface facts one [`crate::reducer::reduce`] call
@@ -198,14 +208,17 @@ pub struct ReduceContext<'a> {
 ///
 /// Pointer motion is [`ChangePhase::Continuous`] (mid-gesture, hold writes);
 /// commands and gesture ends are [`ChangePhase::Settled`] (one
-/// policy-qualified write). The design's save-policy write-count table is
-/// exact over these phases.
+/// policy-qualified write); gesture-only state (a tile drag's lift, target,
+/// and animation) is [`ChangePhase::Transient`] and never written. The
+/// design's save-policy write-count table is exact over these phases.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChangePhase {
     /// Mid-gesture: more changes are expected imminently.
     Continuous,
     /// The change is complete.
     Settled,
+    /// Only ephemeral gesture state changed: repaint, never persist.
+    Transient,
 }
 
 /// What one [`crate::reducer::reduce`] call did — reported, never performed.

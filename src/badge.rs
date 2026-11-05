@@ -248,7 +248,10 @@ mod tests {
         assert!(html.contains("badge:tag=alpha"), "{html}");
         assert!(html.contains("class=\"badge badge-tag active\""), "{html}");
         assert!(html.contains("--badge-c:rgb(94,243,140);"), "{html}");
-        assert!(html.contains("--badge-fg:var(--color-highlight);"), "{html}");
+        assert!(
+            html.contains("--badge-fg:var(--color-highlight);"),
+            "{html}"
+        );
         assert!(html.contains("Add filter: tag=alpha"), "{html}");
         assert!(html.contains("Toggle filter: tag=alpha"), "{html}");
     }

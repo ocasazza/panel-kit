@@ -81,7 +81,8 @@ as "core owns it".
 - Per-panel controls inset into the top border row: mode toggle, minimize,
   maximize/restore.
 - Floating drag-move, corner resize, z-raise on interaction; tiling
-  drag-header reorder.
+  header drag that lifts a tile, follows the pointer, and swaps it into the
+  slot under the pointer.
 - Minimized panels collapse to a dock strip and restore from it.
 - Viewport clamping on resize, with vertical overflow reachable by
   workspace-level scroll and manual scroll chaining into panel bodies.

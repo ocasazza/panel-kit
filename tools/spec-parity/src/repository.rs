@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::field_coverage::check_workspace_plan_coverage;
 use crate::layout_roundtrip::round_trip_saved_layout;
-use crate::provider_manifest::{compare_provider_manifests, live_rust_provider_manifest};
+use crate::provider_manifest::{compare_provider_manifests, live_rust_provider_manifests};
 use crate::schema::{check_committed_schema, decode_workspace_spec_text};
 
 const SCHEMA_PATH_ENV: &str = "SPEC_PARITY_SCHEMA_PATH";
@@ -45,9 +45,11 @@ fn evaluate_workspace_canary_spec() -> Result<String, Box<dyn Error>> {
 /// Prove the authoritative canary spec matches the Rust provider manifest.
 fn check_workspace_canary_spec() -> Result<(), Box<dyn Error>> {
     let spec_json = evaluate_workspace_canary_spec()?;
-    let rust_manifest = live_rust_provider_manifest();
-
-    check_workspace_spec_against_manifest("workspace-canary", &spec_json, &rust_manifest)
+    for rust_manifest in live_rust_provider_manifests() {
+        let workspace = format!("workspace-canary × {:?}", rust_manifest.backend);
+        check_workspace_spec_against_manifest(&workspace, &spec_json, &rust_manifest)?;
+    }
+    Ok(())
 }
 
 /// Evaluate the full WorkspaceSpec fixture and prove concrete backend plan coverage.

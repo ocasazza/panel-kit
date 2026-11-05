@@ -1366,7 +1366,9 @@ proptest! {
             prop_assert_eq!(&reparsed.filters, &s.filters);
             prop_assert_eq!(reparsed.tree, s.tree);
             prop_assert_eq!(reparsed.range.unwrap_or_else(|| DEFAULT_WINDOW.to_string()), s.window.clone());
-            prop_assert_eq!(s.tones.is_empty(), Tone::ALL.iter().all(|t| s.tone_visible(*t)));
+            let shows_every_tone =
+                s.tones.is_empty() || s.tones.len() == Tone::ALL.len();
+            prop_assert_eq!(shows_every_tone, Tone::ALL.iter().all(|t| s.tone_visible(*t)));
         }
     }
 

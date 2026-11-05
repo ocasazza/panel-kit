@@ -3,7 +3,7 @@
 Generic Dioxus panel-workspace library. Every view is a panel you can
 move/resize/minimize/maximize, with floating (free placement) and tiling
 (auto grid) workspace modes, printer-CMY operation lights, pointer and
-keyboard window management, tiling drag-to-reorder, a minimized-panel dock,
+keyboard window management, tiling drag-to-swap (lift, follow, settle), a minimized-panel dock,
 and versioned layout persistence. Includes reusable badge, spinner, dropdown,
 cascade, and interactive-table widgets; panel-header actions and
 loading-workspace primitives; Grafana and lightweight IDE panels; retained-DOM
@@ -26,7 +26,7 @@ layer:
 
 - **`panel-kit-core`** (`crates/panel-kit-core`) — the renderer-agnostic
   state machine: `PanelWin`, `WinState`, `Mode`, `SurfaceProfile`, keyboard
-  commands, drag/resize/reorder math, viewport clamping, and the versioned
+  commands, drag/resize and tile lift-and-swap math, viewport clamping, and the versioned
   `SavedLayoutV2` persistence shape. Units are abstract (CSS px on the web,
   cells in a terminal).
 - **`panel-kit`** (repo root) — the Dioxus web shell: signals, pointer and
@@ -272,7 +272,7 @@ dx serve --example workspace --platform web
 
 | example | shows |
 | --- | --- |
-| `workspace` | host-owned `Snapshot` + `ProjectionBuffer` + composable web parts; floating pointer and keyboard move/resize/raise; host-owned move/resize snap toggles in the dock trailing slot; layout reset via store clear plus snapshot replacement; tiling reorder and span resize; viewport clamping; wheel chaining; live surface state; and versioned localStorage persistence |
+| `workspace` | host-owned `Snapshot` + `ProjectionBuffer` + composable web parts; floating pointer and keyboard move/resize/raise; host-owned move/resize snap toggles in the dock trailing slot; layout reset via store clear plus snapshot replacement; tiling lift-and-swap drag and span resize; viewport clamping; wheel chaining; live surface state; and versioned localStorage persistence |
 | `views` | host-owned named views over one workspace: core `SavedViews`, per-view `LocalStorageLayoutStore` records (`panel_kit_example_views:view:<name>` + the `:views` registry), explicit `SavePolicy`, a composable parts loop, a switcher bar with create/rename/delete, per-view reset, and the legacy single-layout migration copy |
 | `badge` | all ten `BadgeKind`s, every prop (`active`, `with_x`, `with_plus`, `small`, `override_color`, `accent_color`, both `BadgeClickKind`s, `emit_hover`) behind live toggles, an event log proving every `BadgeAction` variant fires, and a `tag_hue` FNV hue-spread row |
 | `dropdown` | grouped searchable single-select with host-owned popup and selected value |

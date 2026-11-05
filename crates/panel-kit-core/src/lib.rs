@@ -16,8 +16,8 @@
 //! - [`command_for`] / [`apply_command`] for keyboard window management,
 //! - [`begin_drag`] / [`begin_tile_resize`] on pointer-down,
 //! - [`apply_drag`] on pointer-move,
-//! - [`reorder_tile`], [`front_z`], [`restore`] for tiling reorder and
-//!   z-order management,
+//! - [`tile_drag`] for the tiling header drag (lift, follow, swap), and
+//!   [`front_z`] / [`restore`] for z-order management,
 //! - [`effective_rect`] to project stored geometry through the viewport
 //!   clamp at render time,
 //! - [`StoredLayout`], [`migrate_v1`], [`reconcile_units`], and
@@ -41,6 +41,7 @@ pub mod persist;
 pub mod reducer;
 pub mod spec;
 pub mod theme;
+pub mod tile_drag;
 pub mod tokens;
 pub mod views;
 pub mod widgets;
@@ -420,6 +421,10 @@ pub enum PointerEventKind {
     Drag(PointerButton),
     /// Pointer moved without an active drag.
     Moved,
+    /// The platform abandoned the gesture (pointer cancel, pointer left the
+    /// window). A lifted tile drag flies home; a floating drag settles where
+    /// it is.
+    Cancel,
     /// The scroll wheel turned by `delta_y` renderer units (positive scrolls
     /// the workspace content up, i.e. reveals content further down). Shells
     /// route this to the workspace-level vertical scroll.
@@ -953,31 +958,6 @@ pub fn apply_drag<K>(
             p.h = if snap.resize { quantize(h) } else { h };
         }
     }
-}
-
-/// Tiling-mode reorder: move `dragged` into `target`'s slot. Moving down
-/// the flow inserts after the target, moving up inserts before — the
-/// classic sortable-list shuffle, so the dragged panel snaps into whichever
-/// slot the pointer is over. `Vec` order is the tiling order.
-pub fn reorder_tile<K: PartialEq + Copy>(panels: &mut Vec<PanelWin<K>>, dragged: K, target: K) {
-    let Some(from) = panels.iter().position(|p| p.kind == dragged) else {
-        return;
-    };
-    let Some(to) = panels.iter().position(|p| p.kind == target) else {
-        return;
-    };
-    if from == to {
-        return;
-    }
-    let p = panels.remove(from);
-    let after_removal = if from < to { to - 1 } else { to };
-    let insert_at = (if from < to {
-        after_removal + 1
-    } else {
-        after_removal
-    })
-    .min(panels.len());
-    panels.insert(insert_at, p);
 }
 
 /// Restore and raise the panel of `kind`: un-minimizes it and brings it to

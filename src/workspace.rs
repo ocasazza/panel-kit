@@ -39,7 +39,10 @@ use panel_kit_core::{
     PointerButton, PointerEventKind, SnapPolicy, TileMetrics, Units,
 };
 
-use crate::input::{clear_selection, keyboard_event, pointer_event, release_pointer, wheel_event};
+use crate::input::{
+    clear_selection, keyboard_event, pointer_event, release_pointer, tile_drag_pointer_event,
+    use_tile_drag_frames, wheel_event,
+};
 use crate::store::LocalStorageLayoutStore;
 use crate::surface::{observe_viewport, surface_profile, viewport_size};
 
@@ -147,7 +150,8 @@ pub fn use_panel_workspace<K: PanelKind>(
     options: WorkspaceOptions,
 ) -> PanelWorkspace<K> {
     let initial_viewport = current_viewport();
-    let default_snapshot = Snapshot::from_defaults(defaults(), options.default_mode, initial_viewport);
+    let default_snapshot =
+        Snapshot::from_defaults(defaults(), options.default_mode, initial_viewport);
     let catalog = use_hook(catalog);
     let store = use_hook(move || Rc::new(LocalStorageLayoutStore::new(storage_key)));
     let snapshot = use_signal({
@@ -158,10 +162,14 @@ pub fn use_panel_workspace<K: PanelKind>(
     });
     let scratch = use_hook({
         let panel_count = catalog.len();
-        move || Rc::new(RefCell::new(ProjectionBuffer::with_panel_capacity(panel_count)))
+        move || {
+            Rc::new(RefCell::new(ProjectionBuffer::with_panel_capacity(
+                panel_count,
+            )))
+        }
     });
 
-    PanelWorkspace {
+    let workspace = PanelWorkspace {
         storage_key,
         snapshot,
         catalog,
@@ -172,7 +180,13 @@ pub fn use_panel_workspace<K: PanelKind>(
         snap: options.snap,
         defaults,
         default_mode: options.default_mode,
-    }
+    };
+    let animating = snapshot
+        .read()
+        .tile_drag
+        .is_some_and(|tile| tile.animating());
+    use_tile_drag_frames(animating, workspace_event_handler(&workspace));
+    workspace
 }
 
 /// Follow browser viewport changes, scaling floating panels with the window.
@@ -309,30 +323,52 @@ pub fn handle_key<K: PanelKind>(workspace: &PanelWorkspace<K>, event: &KeyboardE
     }
 }
 
-/// Reduce in-flight workspace pointer motion.
+/// Reduce in-flight workspace pointer motion. A held or lifted tile drag
+/// resolves its swap target against the painted frame.
 pub fn handle_pointer_move<K: PanelKind>(
     workspace: &PanelWorkspace<K>,
     event: &DioxusPointerEvent,
 ) {
-    let kind = if workspace.snapshot.read().drag.is_some() {
-        PointerEventKind::Drag(PointerButton::Primary)
-    } else {
-        PointerEventKind::Moved
+    let workspace_event = {
+        let snapshot = workspace.snapshot.read();
+        if snapshot.tile_drag.is_some_and(|tile| tile.tracks_pointer()) {
+            let mut scratch = workspace.scratch.borrow_mut();
+            let frame = project_workspace(workspace, &snapshot, &mut scratch);
+            tile_drag_pointer_event(&frame, event)
+        } else if snapshot.drag.is_some() {
+            pointer_event(
+                HitTarget::Workspace,
+                event,
+                PointerEventKind::Drag(PointerButton::Primary),
+            )
+        } else {
+            pointer_event(HitTarget::Workspace, event, PointerEventKind::Moved)
+        }
     };
-    reduce_workspace_event(workspace, pointer_event(HitTarget::Workspace, event, kind));
+    reduce_workspace_event(workspace, workspace_event);
 }
 
 /// Settle root pointer gestures and persist the settled layout.
 pub fn handle_pointer_up<K: PanelKind>(workspace: &PanelWorkspace<K>, event: &DioxusPointerEvent) {
+    settle_pointer(workspace, event, PointerEventKind::Up(PointerButton::Primary));
+}
+
+/// Abandon a pointer gesture the browser cancelled: a lifted tile flies home.
+pub fn handle_pointer_cancel<K: PanelKind>(
+    workspace: &PanelWorkspace<K>,
+    event: &DioxusPointerEvent,
+) {
+    settle_pointer(workspace, event, PointerEventKind::Cancel);
+}
+
+fn settle_pointer<K: PanelKind>(
+    workspace: &PanelWorkspace<K>,
+    event: &DioxusPointerEvent,
+    kind: PointerEventKind,
+) {
     release_pointer(event);
-    let changed = reduce_workspace_event(
-        workspace,
-        pointer_event(
-            HitTarget::Workspace,
-            event,
-            PointerEventKind::Up(PointerButton::Primary),
-        ),
-    );
+    let changed =
+        reduce_workspace_event(workspace, pointer_event(HitTarget::Workspace, event, kind));
     if changed {
         clear_selection();
     }

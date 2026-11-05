@@ -16,7 +16,8 @@ use panel_kit::{LayoutBuilder, LoadingWorkspace, PanelKind, PanelWin};
 use serde::{Deserialize, Serialize};
 
 use panel_kit::workspace::{
-    handle_key, handle_pointer_move, handle_pointer_up, handle_wheel, mount_viewport_observer,
+    handle_key, handle_pointer_cancel, handle_pointer_move, handle_pointer_up, handle_wheel,
+    mount_viewport_observer,
     project_workspace, use_panel_workspace, workspace_area_class, workspace_event_handler,
     WorkspaceOptions,
 };
@@ -144,7 +145,7 @@ fn App() -> Element {
                 handle_pointer_up(&pointer_up_workspace, &event)
             },
             onpointercancel: move |event: DioxusPointerEvent| {
-                handle_pointer_up(&pointer_cancel_workspace, &event)
+                handle_pointer_cancel(&pointer_cancel_workspace, &event)
             },
             onkeydown: move |event: KeyboardEvent| {
                 handle_key(&key_workspace, &event)

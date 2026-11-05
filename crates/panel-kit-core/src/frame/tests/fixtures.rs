@@ -69,7 +69,10 @@ pub(super) fn semantic_snapshot(mode: Mode) -> Snapshot<TestPanel> {
             start_mx: 130.0,
             start_my: 150.0,
         }),
-        tile_drag: Some(TestPanel::Beta),
+        tile_drag: Some(crate::tile_drag::TileDrag::pressed(
+            TestPanel::Beta,
+            (0.0, 0.0),
+        )),
         workspace_scroll: 25.0,
     }
 }

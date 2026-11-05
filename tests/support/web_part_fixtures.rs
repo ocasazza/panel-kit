@@ -30,12 +30,19 @@ pub fn projected_panel(placement: Placement, focused: bool) -> PanelProjection<P
             w: 320.0,
             h: 180.0,
         },
+        slot: Region {
+            x: 16.0,
+            y: 24.0,
+            w: 320.0,
+            h: 180.0,
+        },
         placement,
         z: 7,
         state: WinState::Floating,
         focused,
         pointer_dragging: false,
-        tile_dragging: false,
+        tile_role: panel_kit_core::tile_drag::TileRole::Resting,
+        lift: 0.0,
         chrome: PanelChromeProjection {
             outer: Region {
                 x: 16.0,

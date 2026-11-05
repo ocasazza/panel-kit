@@ -368,7 +368,11 @@ fn with_on_select_every_row_is_a_disclosure_button() {
         .into_iter()
         .filter(|b| b.contains("aria-expanded"))
         .collect();
-    assert_eq!(expanded.len(), 8, "7 events + the marker are all toggleable");
+    assert_eq!(
+        expanded.len(),
+        8,
+        "7 events + the marker are all toggleable"
+    );
     assert!(expanded.iter().all(|b| b.contains("type=\"button\"")));
     assert!(expanded
         .iter()
@@ -385,7 +389,10 @@ fn with_on_select_every_row_is_a_disclosure_button() {
         .filter(|b| b.contains("pk-btn"))
         .collect();
     assert_eq!(heading.len(), 2, "expand all and collapse all");
-    assert!(html.tags("button").len() == 10, "8 rows + 2 heading actions");
+    assert!(
+        html.tags("button").len() == 10,
+        "8 rows + 2 heading actions"
+    );
 }
 
 #[test]
@@ -535,7 +542,11 @@ fn expand_and_collapse_disable_when_there_is_nothing_to_do() {
     let h = heading_buttons(&none);
     assert_eq!(h.len(), 2);
     assert!(!h[0].contains("disabled"), "something to expand: {:?}", h);
-    assert!(h[1].contains("disabled=true"), "nothing to collapse: {:?}", h);
+    assert!(
+        h[1].contains("disabled=true"),
+        "nothing to collapse: {:?}",
+        h
+    );
 
     let ids = ["e1", "e2", "e3", "e4", "e5", "e6", "e7", "lane:l/feat"];
     let all = render_with(

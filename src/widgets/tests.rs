@@ -83,8 +83,14 @@ fn WideSeriesProbe() -> Element {
 fn time_series_scale_labels_the_value_axis() {
     let html = dioxus_ssr::render_element(rsx! { WideSeriesProbe {} });
 
-    assert!(html.contains(">1450 ms<"), "max label must be the largest value: {html}");
-    assert!(html.contains(">38 ms<"), "min label must be the smallest value: {html}");
+    assert!(
+        html.contains(">1450 ms<"),
+        "max label must be the largest value: {html}"
+    );
+    assert!(
+        html.contains(">38 ms<"),
+        "min label must be the smallest value: {html}"
+    );
 }
 
 #[component]

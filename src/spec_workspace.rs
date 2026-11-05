@@ -11,7 +11,8 @@ use std::rc::Rc;
 use dioxus::events::{KeyboardEvent, PointerEvent as DioxusPointerEvent, WheelEvent};
 use dioxus::prelude::*;
 use crate::input::{
-    clear_selection, keyboard_event, pointer_event, release_pointer, wheel_event,
+    clear_selection, keyboard_event, pointer_event, release_pointer, tile_drag_pointer_event,
+    use_tile_drag_frames, wheel_event,
 };
 use crate::store::LocalStorageLayoutStore;
 use crate::surface::{browser_capabilities, observe_viewport};
@@ -23,7 +24,8 @@ use panel_kit_core::persist::{apply_save_decision, layout_key_for_spec, restore_
 use panel_kit_core::reducer::{reduce, HitTarget, Snapshot, Viewport, WorkspaceEvent};
 use panel_kit_core::spec::{BackendKind, BindingManifest, ResolvedWorkspace, WorkspaceSpec};
 use panel_kit_core::{
-    FocusContext, Mode, PointerButton, PointerEventKind, SnapPolicy, SpecPanelId, SurfaceProfile,
+    ChromeMetrics, FocusContext, Mode, PointerButton, PointerEventKind, SnapPolicy, SpecPanelId,
+    SurfaceProfile, Units,
 };
 
 /// Host-owned state and ports for one spec-resolved web workspace.
@@ -62,13 +64,19 @@ pub fn use_spec_workspace(spec_json: &'static str) -> SpecWorkspaceState {
         }
     });
 
-    SpecWorkspaceState {
+    let workspace = SpecWorkspaceState {
         resolved,
         snapshot,
         snap,
         scratch,
         store,
-    }
+    };
+    let animating = snapshot
+        .read()
+        .tile_drag
+        .is_some_and(|tile| tile.animating());
+    use_tile_drag_frames(animating, workspace_event_handler(&workspace));
+    workspace
 }
 
 /// Subscribe the host-owned workspace to browser viewport changes.
@@ -87,7 +95,7 @@ pub fn project_workspace<'frame>(
     scratch: &'frame mut ProjectionBuffer<SpecPanelId>,
 ) -> ProjectedFrame<'frame, SpecPanelId> {
     let surface = surface_profile_for(workspace, snapshot.viewport.width);
-    let chrome = chrome_projection(&workspace.resolved);
+    let chrome = chrome_projection(&workspace.resolved, snapshot.viewport.units);
     let tile = tile_metrics(&workspace.resolved, surface);
 
     project_into(
@@ -145,27 +153,50 @@ pub fn handle_key(workspace: &SpecWorkspaceState, event: &KeyboardEvent) {
     }
 }
 
-/// Reduce a root pointer-move event for in-flight workspace gestures.
+/// Reduce a root pointer-move event for in-flight workspace gestures. A held
+/// or lifted tile drag resolves its swap target against the painted frame.
 pub fn handle_pointer_move(workspace: &SpecWorkspaceState, event: &DioxusPointerEvent) {
-    let kind = if workspace.snapshot.read().drag.is_some() {
-        PointerEventKind::Drag(PointerButton::Primary)
-    } else {
-        PointerEventKind::Moved
+    let workspace_event = {
+        let snapshot = workspace.snapshot.read();
+        if snapshot.tile_drag.is_some_and(|tile| tile.tracks_pointer()) {
+            let mut scratch = workspace.scratch.borrow_mut();
+            let frame = project_workspace(workspace, &snapshot, &mut scratch);
+            tile_drag_pointer_event(&frame, event)
+        } else if snapshot.drag.is_some() {
+            pointer_event(
+                HitTarget::Workspace,
+                event,
+                PointerEventKind::Drag(PointerButton::Primary),
+            )
+        } else {
+            pointer_event(HitTarget::Workspace, event, PointerEventKind::Moved)
+        }
     };
-    reduce_workspace_event(workspace, pointer_event(HitTarget::Workspace, event, kind));
+    reduce_workspace_event(workspace, workspace_event);
 }
 
 /// Settle a pointer gesture and let the spec save policy persist settled layout.
 pub fn handle_pointer_up(workspace: &SpecWorkspaceState, event: &DioxusPointerEvent) {
-    release_pointer(event);
-    let changed = reduce_workspace_event(
+    settle_pointer(
         workspace,
-        pointer_event(
-            HitTarget::Workspace,
-            event,
-            PointerEventKind::Up(PointerButton::Primary),
-        ),
+        event,
+        PointerEventKind::Up(PointerButton::Primary),
     );
+}
+
+/// Abandon a pointer gesture the browser cancelled: a lifted tile flies home.
+pub fn handle_pointer_cancel(workspace: &SpecWorkspaceState, event: &DioxusPointerEvent) {
+    settle_pointer(workspace, event, PointerEventKind::Cancel);
+}
+
+fn settle_pointer(
+    workspace: &SpecWorkspaceState,
+    event: &DioxusPointerEvent,
+    kind: PointerEventKind,
+) {
+    release_pointer(event);
+    let changed =
+        reduce_workspace_event(workspace, pointer_event(HitTarget::Workspace, event, kind));
     if changed {
         clear_selection();
     }
@@ -277,12 +308,22 @@ fn surface_profile_for(workspace: &SpecWorkspaceState, width: f64) -> SurfacePro
     )
 }
 
-fn chrome_projection(resolved: &ResolvedWorkspace) -> ChromeProjectionInput {
+/// The spec's chrome toggles, sized in the units the viewport is measured in:
+/// the authored sizes when they match, the web chrome sizes (CSS px) when a
+/// cell-authored spec is measured by the browser.
+fn chrome_projection(resolved: &ResolvedWorkspace, units: Units) -> ChromeProjectionInput {
     let chrome = &resolved.chrome;
+    let sized = if units == resolved.initial.viewport.units {
+        ChromeProjectionInput {
+            metrics: chrome.metrics,
+            hit_target_min: chrome.hit_target_min,
+            panel_header_h: chrome.panel_header_h,
+            ..ChromeProjectionInput::full(chrome.metrics)
+        }
+    } else {
+        ChromeProjectionInput::full(ChromeMetrics::WEB)
+    };
     ChromeProjectionInput {
-        metrics: chrome.metrics,
-        hit_target_min: chrome.hit_target_min,
-        panel_header_h: chrome.panel_header_h,
         panel_frame: chrome.panel_frame,
         title_in_border: chrome.title_in_border,
         mode_control: chrome.mode_control,
@@ -290,6 +331,7 @@ fn chrome_projection(resolved: &ResolvedWorkspace) -> ChromeProjectionInput {
         maximize_control: chrome.maximize_control,
         resize_grip: chrome.resize_grip,
         dock: chrome.dock,
+        ..sized
     }
 }
 

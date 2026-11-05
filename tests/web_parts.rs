@@ -4,13 +4,15 @@ mod web_native_fidelity;
 mod web_part_fixtures;
 
 use dioxus::prelude::*;
-use panel_kit_core::frame::{DockProjection, Placement, RowHeights, TileGridProjection, MAX_TILE_ROWS};
+use panel_kit_core::frame::{
+    DockProjection, Placement, RowHeights, TileGridProjection, MAX_TILE_ROWS,
+};
 use panel_kit_core::panel::PanelCatalog;
 use panel_kit_core::reducer::{HitTarget, PanelPart, WheelDisposition, WorkspaceEvent};
+use panel_kit_core::widgets::data_table::ColumnKind;
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableRow, TableView, TextAlign,
 };
-use panel_kit_core::widgets::data_table::ColumnKind;
 use panel_kit_core::{
     FocusContext, Key, KeyChord, PointerButton, PointerEvent, PointerEventKind, Region,
     SurfaceCapabilities, SurfaceClass,
@@ -150,6 +152,34 @@ fn web_and_tui_use_same_tile_grid_projection() {
     );
 }
 
+#[test]
+fn tile_drag_tiles_keep_their_grid_slot_and_move_by_transform() {
+    use panel_kit_core::tile_drag::TileRole;
+    let slot = Placement::Tiled {
+        column: 0,
+        row: 0,
+        column_span: 1,
+        row_span: 1,
+    };
+
+    let mut lifted = projected_panel(slot, false);
+    lifted.tile_role = TileRole::Lifted;
+    lifted.lift = 1.0;
+    lifted.region.x += 37.0;
+    lifted.region.y += 21.0;
+    let style = panel_kit::widgets::panel::panel_style(lifted);
+    assert!(style.starts_with("grid-column:1 / span 1;grid-row:1 / span 1;"), "{style}");
+    assert!(style.contains("transform:translate(37px, 21px) scale(1.03);"), "{style}");
+    assert!(style.contains("opacity:0.88;"), "{style}");
+    assert!(panel_kit::widgets::panel_layout::panel_class(lifted, None).contains("tile-lifted"));
+
+    let mut displaced = projected_panel(slot, false);
+    displaced.region = Region::new(400.0, 24.0, 640.0, 180.0);
+    let style = panel_kit::widgets::panel::panel_style(displaced);
+    assert!(style.contains("width:640px;height:180px;"), "{style}");
+    assert!(style.contains("transform:translate(384px, 0px) scale(1);"), "{style}");
+}
+
 #[component]
 fn DockOnlyProbe() -> Element {
     let catalog = PanelCatalog::try_new(vec![nodes_meta()]).expect("valid catalog");
@@ -244,7 +274,11 @@ fn table_paints_through_the_one_component_with_its_toolbar_and_empty_state() {
 fn tables_over_the_same_columns_get_the_ids_they_are_named_by() {
     let html = dioxus_ssr::render_element(rsx! { InteractiveTableProbe {} });
     for name in ["filled", "empty"] {
-        assert_eq!(html.matches(&format!("id=\"pk-table-{name}\"")).count(), 1, "{name}: {html}");
+        assert_eq!(
+            html.matches(&format!("id=\"pk-table-{name}\"")).count(),
+            1,
+            "{name}: {html}"
+        );
     }
     assert!(html.contains("id=\"pk-table-filled-r1\""), "{html}");
 }
@@ -261,16 +295,25 @@ fn a_columns_declared_alignment_is_painted_whatever_its_kind() {
             align,
             kind,
         }];
-        let rows = [TableRow { id: "r1".into(), tags: Vec::new(), cells: vec![TableCell::Text("1.5".into())] }];
+        let rows = [TableRow {
+            id: "r1".into(),
+            tags: Vec::new(),
+            cells: vec![TableCell::Text("1.5".into())],
+        }];
         let shown: Vec<&TableRow> = rows.iter().collect();
         dioxus_ssr::render_element(rsx! {
             {panel_kit::widgets::table::table("kinds", TableView { columns: &columns, rows: &shown }, None)}
         })
     };
     let declared_left = paint(ColumnKind::Number, TextAlign::Left);
-    assert!(declared_left.contains("pk-dt-align-left") && !declared_left.contains("pk-dt-align-right"));
+    assert!(
+        declared_left.contains("pk-dt-align-left") && !declared_left.contains("pk-dt-align-right")
+    );
     let declared_right = paint(ColumnKind::Number, TextAlign::Right);
-    assert!(declared_right.contains("pk-dt-align-right") && !declared_right.contains("pk-dt-align-left"));
+    assert!(
+        declared_right.contains("pk-dt-align-right")
+            && !declared_right.contains("pk-dt-align-left")
+    );
 }
 
 /// Two panels over the same columns, painted through `content_view`.
@@ -283,12 +326,19 @@ fn OwnedTablesProbe() -> Element {
         align: TextAlign::Left,
         kind: ColumnKind::Text,
     }];
-    let rows = [TableRow { id: "r1".into(), tags: Vec::new(), cells: vec![TableCell::Text("p".into())] }];
+    let rows = [TableRow {
+        id: "r1".into(),
+        tags: Vec::new(),
+        cells: vec![TableCell::Text("p".into())],
+    }];
     let shown: Vec<&TableRow> = rows.iter().collect();
     let noop = EventHandler::new(|_: panel_kit_core::badge::BadgeAction| {});
     let table = |binding| panel_kit_core::widgets::ContentView::Table {
         binding,
-        view: TableView { columns: &columns, rows: &shown },
+        view: TableView {
+            columns: &columns,
+            rows: &shown,
+        },
     };
     rsx! {
         {panel_kit::widgets::content_view(table("panel-a"), 0, noop)}
@@ -300,8 +350,15 @@ fn OwnedTablesProbe() -> Element {
 fn content_view_names_each_table_by_the_panel_that_owns_it() {
     let html = dioxus_ssr::render_element(rsx! { OwnedTablesProbe {} });
     for owner in ["panel-a", "panel-b"] {
-        assert_eq!(html.matches(&format!("id=\"pk-table-{owner}\"")).count(), 1, "{owner}: {html}");
-        assert!(html.contains(&format!("id=\"pk-table-{owner}-r1\"")), "{owner}: {html}");
+        assert_eq!(
+            html.matches(&format!("id=\"pk-table-{owner}\"")).count(),
+            1,
+            "{owner}: {html}"
+        );
+        assert!(
+            html.contains(&format!("id=\"pk-table-{owner}-r1\"")),
+            "{owner}: {html}"
+        );
     }
 }
 
@@ -403,98 +460,6 @@ fn surface_registration_status_reports_failures() {
     };
 
     assert!(!status.is_fully_registered());
-}
-
-#[test]
-fn tiling_drag_to_swap_reorders_panels_via_surface_pointer_motion() {
-    use panel_kit_core::reducer::{reduce, ChangePhase, ReduceContext, Snapshot, Viewport};
-    use panel_kit_core::{Clamp, CommandStep, LayoutBuilder, Mode, SnapPolicy, TileMetrics, Units};
-    let mut layout = LayoutBuilder::new();
-    let panels = vec![
-        layout
-            .at(ProbePanel::Nodes, 16.0, 16.0, 360.0, 360.0)
-            .with_tile(2, 1),
-        layout
-            .at(ProbePanel::Logs, 16.0, 392.0, 360.0, 260.0)
-            .with_tile(2, 1),
-    ];
-    let mut snapshot = Snapshot::from_defaults(
-        panels,
-        Mode::Tiling,
-        Viewport {
-            width: 1400.0,
-            height: 900.0,
-            units: Units::CssPx,
-        },
-    );
-
-    let context = ReduceContext {
-        surface: panel_kit::surface::surface_profile(1400.0),
-        clamp: &Clamp::WEB,
-        command_step: CommandStep::WEB,
-        tile: &TileMetrics::WEB,
-        snap: SnapPolicy::default(),
-    };
-
-    // 1. Pointer down on Nodes header starts tile drag
-    let down = reduce(
-        &mut snapshot,
-        WorkspaceEvent::Pointer {
-            target: HitTarget::Panel {
-                key: ProbePanel::Nodes,
-                part: PanelPart::Header,
-            },
-            event: PointerEvent {
-                kind: PointerEventKind::Down(PointerButton::Primary),
-                x: 100.0,
-                y: 20.0,
-            },
-        },
-        context,
-    );
-    assert_eq!(down.phase, Some(ChangePhase::Continuous));
-    assert_eq!(snapshot.tile_drag, Some(ProbePanel::Nodes));
-
-    // 2. Dragging pointer over Logs surface (via onpointerenter/motion) triggers tile swap
-    let motion = reduce(
-        &mut snapshot,
-        WorkspaceEvent::Pointer {
-            target: HitTarget::Panel {
-                key: ProbePanel::Logs,
-                part: PanelPart::Surface,
-            },
-            event: PointerEvent {
-                kind: PointerEventKind::Moved,
-                x: 100.0,
-                y: 450.0,
-            },
-        },
-        context,
-    );
-    assert_eq!(motion.phase, Some(ChangePhase::Continuous));
-    assert_eq!(
-        snapshot.panels.iter().map(|p| p.kind).collect::<Vec<_>>(),
-        vec![ProbePanel::Logs, ProbePanel::Nodes]
-    );
-
-    // 3. Pointer up settles the gesture
-    let up = reduce(
-        &mut snapshot,
-        WorkspaceEvent::Pointer {
-            target: HitTarget::Panel {
-                key: ProbePanel::Nodes,
-                part: PanelPart::Header,
-            },
-            event: PointerEvent {
-                kind: PointerEventKind::Up(PointerButton::Primary),
-                x: 100.0,
-                y: 450.0,
-            },
-        },
-        context,
-    );
-    assert_eq!(up.phase, Some(ChangePhase::Settled));
-    assert_eq!(snapshot.tile_drag, None);
 }
 
 #[component]

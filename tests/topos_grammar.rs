@@ -20,7 +20,9 @@ use topos_demo::{ToposDemo, GRAMMAR_JSON, GRAMMAR_LINES, TOPOS_AGENTIC, TOPOS_ME
 /// Binding id and declared content kind of every sheaf-backed panel in a
 /// topos's workspace.
 fn panel_bindings(demo: &ToposDemo, topos: &str) -> Vec<(String, &'static str)> {
-    let json = demo.workspace_json(topos).expect("topos has a workspace spec");
+    let json = demo
+        .workspace_json(topos)
+        .expect("topos has a workspace spec");
     let spec = WorkspaceSpec::from_json_str(json).expect("workspace spec parses");
     spec.panels
         .iter()
@@ -107,7 +109,11 @@ fn assembly_lists_the_five_stages_in_increasing_t() {
 
     // The agentic assembly builds its 1-skeleton from continues + shares.
     let selected = sorts(["continues", "shares"]);
-    let components = assembly(demo.site(), &demo.current_topos().morphism_sorting, &selected);
+    let components = assembly(
+        demo.site(),
+        &demo.current_topos().morphism_sorting,
+        &selected,
+    );
 
     let stages: Vec<Stage> = components.iter().map(|component| component.stage).collect();
     assert_eq!(
@@ -224,8 +230,16 @@ fn text_of(demo: &ToposDemo, binding: &str) -> String {
 fn toggling_the_subobject_restricts_every_panel() {
     let mut demo = ToposDemo::new();
     let full_rows = table_rows(&demo, "agentic.status");
-    let planner = demo.site().objects.iter().filter(|object| object.kind == "planner").count();
-    assert!(planner > 0 && planner < full_rows, "{planner} planner of {full_rows} sessions");
+    let planner = demo
+        .site()
+        .objects
+        .iter()
+        .filter(|object| object.kind == "planner")
+        .count();
+    assert!(
+        planner > 0 && planner < full_rows,
+        "{planner} planner of {full_rows} sessions"
+    );
 
     demo.set_active(["planner".to_owned()]);
 
@@ -235,8 +249,15 @@ fn toggling_the_subobject_restricts_every_panel() {
     // The Assembly table lists exactly the subsite's connected components.
     let components = {
         let topos = demo.current_topos();
-        let subsite = demo.site().restrict_objects(&topos.object_sorting, &sorts(["planner"]));
-        assembly(&subsite, &topos.morphism_sorting, &sorts(["continues", "shares"])).len()
+        let subsite = demo
+            .site()
+            .restrict_objects(&topos.object_sorting, &sorts(["planner"]));
+        assembly(
+            &subsite,
+            &topos.morphism_sorting,
+            &sorts(["continues", "shares"]),
+        )
+        .len()
     };
     assert_eq!(table_rows(&demo, "agentic.assembly"), components);
 
@@ -247,11 +268,24 @@ fn toggling_the_subobject_restricts_every_panel() {
 
 /// Sum of the per-sort badge counts ("Label 7") of the active topos's badge control.
 fn badge_total(demo: &ToposDemo) -> usize {
-    let binding = demo.active_binding().expect("the active topos binds a per-sort badge control");
+    let binding = demo
+        .active_binding()
+        .expect("the active topos binds a per-sort badge control");
     let Some(Section::Badges(badges)) = demo.resolve(binding) else {
         panic!("{binding} resolves to badges");
     };
-    badges.iter().map(|badge| badge.value.rsplit(' ').next().unwrap().parse::<usize>().unwrap()).sum()
+    badges
+        .iter()
+        .map(|badge| {
+            badge
+                .value
+                .rsplit(' ')
+                .next()
+                .unwrap()
+                .parse::<usize>()
+                .unwrap()
+        })
+        .sum()
 }
 
 #[test]
@@ -259,13 +293,22 @@ fn the_sort_badges_count_the_whole_site_after_appends_under_any_subobject() {
     for topos in [TOPOS_AGENTIC, TOPOS_MEMBRANE] {
         let mut demo = ToposDemo::new();
         assert!(demo.set_topos(topos));
-        let sort = demo.active_set().iter().next().cloned().expect("a topos starts with active sorts");
+        let sort = demo
+            .active_set()
+            .iter()
+            .next()
+            .cloned()
+            .expect("a topos starts with active sorts");
         demo.set_active([sort]);
         assert_eq!(badge_total(&demo), demo.record_count(), "{topos} before");
         for _ in 0..5 {
             demo.append_valid_line();
         }
-        assert_eq!(badge_total(&demo), demo.record_count(), "{topos} after appends");
+        assert_eq!(
+            badge_total(&demo),
+            demo.record_count(),
+            "{topos} after appends"
+        );
     }
 }
 
@@ -333,7 +376,10 @@ fn compiled(grammar: &str) -> CompiledGrammar {
         GRAMMAR_JSON => include_str!(env!("PANEL_KIT_GRAMMAR_JSON")),
         other => panic!("no grammar {other}"),
     };
-    GrammarPackage::from_json_str(package).unwrap().compile().unwrap()
+    GrammarPackage::from_json_str(package)
+        .unwrap()
+        .compile()
+        .unwrap()
 }
 
 #[test]
@@ -344,11 +390,21 @@ fn the_site_stays_the_parse_of_the_source_through_appends_rejections_and_resets(
         assert!(demo.set_grammar(grammar));
         let records = demo.record_count();
         let check = |demo: &ToposDemo, step: &str| {
-            let parsed = compiled.parse(demo.source()).unwrap_or_else(|error| panic!("{grammar} {step}: {error}"));
+            let parsed = compiled
+                .parse(demo.source())
+                .unwrap_or_else(|error| panic!("{grammar} {step}: {error}"));
             assert_eq!(&parsed, demo.site(), "{grammar} {step}");
         };
         check(&demo, "fresh");
-        for step in ["valid", "valid", "malformed", "valid", "malformed", "malformed", "valid"] {
+        for step in [
+            "valid",
+            "valid",
+            "malformed",
+            "valid",
+            "malformed",
+            "malformed",
+            "valid",
+        ] {
             match step {
                 "valid" => demo.append_valid_line(),
                 _ => demo.append_malformed_line(),
@@ -367,21 +423,41 @@ fn the_site_stays_the_parse_of_the_source_through_appends_rejections_and_resets(
 
 #[test]
 fn appended_lines_count_against_the_limits_of_the_whole_site() {
-    let limits = Limits { grammar_bytes: 8192, input_bytes: 65536, nodes: 50, edges: 5000 };
+    let limits = Limits {
+        grammar_bytes: 8192,
+        input_bytes: 65536,
+        nodes: 50,
+        edges: 5000,
+    };
     let mut demo = ToposDemo::with_limits(limits);
     let room = 50 - demo.record_count();
     for _ in 0..room + 5 {
         demo.append_valid_line();
     }
     assert_eq!(demo.record_count(), 50, "the site stops at the node limit");
-    assert_eq!(demo.diagnostic_count(), 5, "each line over the limit is refused");
-    assert_eq!(compiled(GRAMMAR_LINES).parse(demo.source()).map(|site| site.objects.len()), Ok(50));
+    assert_eq!(
+        demo.diagnostic_count(),
+        5,
+        "each line over the limit is refused"
+    );
+    assert_eq!(
+        compiled(GRAMMAR_LINES)
+            .parse(demo.source())
+            .map(|site| site.objects.len()),
+        Ok(50)
+    );
 }
 
 #[test]
 fn the_line_grammar_declares_line_records_and_the_json_document_does_not() {
-    assert!(compiled(GRAMMAR_LINES).appends_incrementally(), "appended lines are parsed apart");
-    assert!(!compiled(GRAMMAR_JSON).appends_incrementally(), "a JSON document is parsed whole");
+    assert!(
+        compiled(GRAMMAR_LINES).appends_incrementally(),
+        "appended lines are parsed apart"
+    );
+    assert!(
+        !compiled(GRAMMAR_JSON).appends_incrementally(),
+        "a JSON document is parsed whole"
+    );
 }
 
 /// Timing probe, not an assertion: the host's cost of each append as the input
@@ -390,8 +466,16 @@ fn the_line_grammar_declares_line_records_and_the_json_document_does_not() {
 #[test]
 #[ignore = "timing probe"]
 fn append_cost_by_input_size() {
-    let lines: usize = std::env::var("APPEND_LINES").ok().and_then(|text| text.parse().ok()).unwrap_or(10_000);
-    let limits = Limits { grammar_bytes: 8192, input_bytes: 64 << 20, nodes: 100_000, edges: 100_000 };
+    let lines: usize = std::env::var("APPEND_LINES")
+        .ok()
+        .and_then(|text| text.parse().ok())
+        .unwrap_or(10_000);
+    let limits = Limits {
+        grammar_bytes: 8192,
+        input_bytes: 64 << 20,
+        nodes: 100_000,
+        edges: 100_000,
+    };
     let mut demo = ToposDemo::with_limits(limits);
     let step = (lines / 10).max(1);
     let started = std::time::Instant::now();

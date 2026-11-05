@@ -9,7 +9,9 @@ use panel_kit_core::{PanelCommand, PanelKey, PointerButton, PointerEventKind};
 
 use super::panel_layout::panel_class;
 pub use super::panel_layout::panel_style;
-use crate::input::{capture_pointer, core_pointer_event, keyboard_event, release_pointer};
+use crate::input::{
+    capture_pointer, core_pointer_event, focus_panel_head, keyboard_event, release_pointer,
+};
 
 /// Paint the positioned panel container and caller-selected child parts.
 ///
@@ -58,14 +60,6 @@ pub fn panel_shell_with_events<K: PanelKey>(
                     panel.key,
                     PanelPart::Surface,
                     PointerEventKind::Down(PointerButton::Primary),
-                    &event,
-                ));
-            },
-            onpointerenter: move |event: DioxusPointerEvent| {
-                emit.call(pointer_workspace_event(
-                    panel.key,
-                    PanelPart::Surface,
-                    PointerEventKind::Moved,
                     &event,
                 ));
             },
@@ -154,6 +148,11 @@ pub fn panel_chrome_with_controls<K: PanelKey>(
 /// want faithful move/reorder keyboard behavior without the controller. The
 /// plain [`panel_chrome_with_controls`] remains a passive painter for static
 /// snapshots, SSR probes, and hosts that wire input elsewhere.
+///
+/// A header press captures the pointer, so the gesture's motion and release
+/// reach the host's root handlers wherever the pointer goes; motion is
+/// reduced there (see [`crate::input::tile_drag_pointer_event`]). Losing the
+/// capture mid-gesture cancels it.
 pub fn panel_chrome_with_events<K: PanelKey>(
     panel: PanelProjection<K>,
     meta: &PanelMeta<K>,
@@ -180,6 +179,8 @@ pub fn panel_chrome_with_events<K: PanelKey>(
             onpointerdown: move |event: DioxusPointerEvent| {
                 event.stop_propagation();
                 event.prevent_default();
+                capture_pointer(&event);
+                focus_panel_head(&event);
                 emit.call(pointer_workspace_event(
                     panel.key,
                     PanelPart::Header,
@@ -187,19 +188,20 @@ pub fn panel_chrome_with_events<K: PanelKey>(
                     &event,
                 ));
             },
-            onpointermove: move |event: DioxusPointerEvent| {
-                emit.call(pointer_workspace_event(
-                    panel.key,
-                    PanelPart::Header,
-                    PointerEventKind::Moved,
-                    &event,
-                ));
-            },
             onpointerup: move |event: DioxusPointerEvent| {
+                release_pointer(&event);
                 emit.call(pointer_workspace_event(
                     panel.key,
                     PanelPart::Header,
                     PointerEventKind::Up(PointerButton::Primary),
+                    &event,
+                ));
+            },
+            onlostpointercapture: move |event: DioxusPointerEvent| {
+                emit.call(pointer_workspace_event(
+                    panel.key,
+                    PanelPart::Header,
+                    PointerEventKind::Cancel,
                     &event,
                 ));
             },

@@ -267,6 +267,8 @@ pub enum BackendKind {
     Tui,
     /// Browser-hosted terminal backend.
     BrowserTui,
+    /// Native Bevy UI backend.
+    Bevy,
 }
 
 /// Stable content kind names used by provider manifests.
@@ -1062,10 +1064,10 @@ mod tests {
     #[test]
     fn color_codec_accepts_only_canonical_lowercase_rrggbb() {
         let mut spec = valid_spec_json();
-        spec["theme"]["colors"]["accent"] = json!("#5ef38c");
+        spec["theme"]["colors"]["highlight"] = json!("#5ef38c");
         assert!(WorkspaceSpec::from_json_value(spec.clone()).is_ok());
 
-        spec["theme"]["colors"]["accent"] = json!("#5EF38C");
+        spec["theme"]["colors"]["highlight"] = json!("#5EF38C");
         assert_eq!(
             WorkspaceSpec::from_json_value(spec.clone())
                 .unwrap_err()
@@ -1073,10 +1075,10 @@ mod tests {
                 .next()
                 .unwrap()
                 .pointer(),
-            "/theme/colors/accent"
+            "/theme/colors/highlight"
         );
 
-        spec["theme"]["colors"]["accent"] = json!("fff");
+        spec["theme"]["colors"]["highlight"] = json!("fff");
         assert_eq!(
             WorkspaceSpec::from_json_value(spec)
                 .unwrap_err()
@@ -1084,7 +1086,7 @@ mod tests {
                 .next()
                 .unwrap()
                 .pointer(),
-            "/theme/colors/accent"
+            "/theme/colors/highlight"
         );
     }
 

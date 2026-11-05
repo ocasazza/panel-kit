@@ -6,6 +6,7 @@
 //! the frame before mutating state for the next event.
 
 mod chrome;
+mod drag_layout;
 mod hit;
 mod layout;
 mod partial;
@@ -17,7 +18,7 @@ mod tiling;
 #[cfg(test)]
 mod tests;
 
-pub use hit::hit_test;
+pub use hit::{hit_test, nearest_tile_slot};
 pub use layout::{
     FrameStatus, PanelChromeProjection, Placement, TileFillOrder, TileGridProjection, RowHeights, MAX_TILE_ROWS,
     TileLayoutMetrics,

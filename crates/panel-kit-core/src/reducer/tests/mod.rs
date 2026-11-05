@@ -4,4 +4,5 @@ mod input_path;
 mod key_path;
 mod serde;
 mod snapshot;
+mod tile_drag;
 mod wheel_viewport;
