@@ -84,8 +84,13 @@ mod tests {
 
     #[test]
     fn leftover_rows_select_the_unhandled_and_reject_the_rest() {
-        let fm = r#"{"title":"kept out","note":"long text","cfg":{"a":1},"mix":[[1],[2]],"n":null}"#;
-        let rows = leftover_rows(fm).unwrap();
+        // A string <= 120 chars is chip-handled, so "note" needs a value
+        // longer than the chip budget to stay in the leftover grid.
+        let fm = format!(
+            r#"{{"title":"kept out","note":"{pad}","cfg":{{"a":1}},"mix":[[1],[2]],"n":null}}"#,
+            pad = "x".repeat(121)
+        );
+        let rows = leftover_rows(&fm).unwrap();
         assert_eq!(
             rows.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(),
             ["note", "cfg", "mix", "n"]
