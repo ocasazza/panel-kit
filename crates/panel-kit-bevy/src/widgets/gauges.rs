@@ -40,20 +40,28 @@ pub fn spawn(parent: &mut ChildSpawnerCommands, theme: &BevyTheme, items: &[Gaug
                         ..default()
                     })
                     .with_children(|row| {
-                        // Label cell: the grid column `minmax(0, 8rem)`, ellipsis-clipped.
-                        row.spawn((
-                            Text::new(item.label.clone()),
-                            label_style.font(),
-                            TextColor(label_style.color),
-                            TextLayout::new_with_no_wrap(),
-                            Node {
-                                width: Val::Px(theme.metrics.rem(8.0)),
-                                min_width: Val::Px(0.0),
-                                height: Val::Px(label_style.line_box()),
-                                overflow: Overflow::clip(),
-                                ..default()
-                            },
-                        ));
+                        // Label cell: the grid column `minmax(0, 8rem)`, clipped.
+                        // Bevy clips a node's descendants, not its own text.
+                        row.spawn(Node {
+                            width: Val::Px(theme.metrics.rem(8.0)),
+                            min_width: Val::Px(0.0),
+                            height: Val::Px(label_style.line_box()),
+                            overflow: Overflow::clip(),
+                            ..default()
+                        })
+                        .with_children(|cell| {
+                            cell.spawn((
+                                Text::new(item.label.clone()),
+                                label_style.font(),
+                                TextColor(label_style.color),
+                                TextLayout::new_with_no_wrap(),
+                                Node {
+                                    flex_shrink: 0.0,
+                                    height: Val::Px(label_style.line_box()),
+                                    ..default()
+                                },
+                            ));
+                        });
 
                         // Track: flex 1, .55rem tall, recessed background + 1px border.
                         let track_height = theme.metrics.rem(0.55);
@@ -165,13 +173,11 @@ mod tests {
 
         let theme = BevyTheme::default();
         let row_children = children_of(&app, gauge_row);
+        let label = children_of(&app, row_children[0])[0];
         // Label: text colour, .72rem.
+        assert_eq!(app.world().get::<TextColor>(label).unwrap().0, theme.text);
         assert_eq!(
-            app.world().get::<TextColor>(row_children[0]).unwrap().0,
-            theme.text
-        );
-        assert_eq!(
-            app.world().get::<TextFont>(row_children[0]).unwrap().font_size,
+            app.world().get::<TextFont>(label).unwrap().font_size,
             theme.metrics.rem(0.72)
         );
         // Track: background colour and border match theme tokens.
@@ -296,7 +302,8 @@ mod tests {
         assert_eq!(label_node.width, Val::Px(theme.metrics.rem(8.0)));
         let track_node = app.world().get::<Node>(parts[1]).unwrap();
         assert_eq!(track_node.height, Val::Px(theme.metrics.rem(0.55)));
-        for part in [parts[0], parts[2]] {
+        let label = children_of(&app, parts[0])[0];
+        for part in [label, parts[2]] {
             let size = app.world().get::<TextFont>(part).unwrap().font_size;
             assert_eq!(size, theme.metrics.rem(0.72));
         }

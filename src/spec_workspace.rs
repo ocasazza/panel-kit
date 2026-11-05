@@ -15,7 +15,7 @@ use crate::input::{
     use_tile_drag_frames, wheel_event,
 };
 use crate::store::LocalStorageLayoutStore;
-use crate::surface::{browser_capabilities, observe_viewport};
+use crate::surface::{browser_capabilities, observe_viewport, viewport_size};
 use panel_kit_core::frame::{
     project_into, ChromeProjectionInput, Placement, ProjectedFrame, ProjectionBuffer,
     ProjectionInput, TileLayoutMetrics,
@@ -24,8 +24,7 @@ use panel_kit_core::persist::{apply_save_decision, layout_key_for_spec, restore_
 use panel_kit_core::reducer::{reduce, HitTarget, Snapshot, Viewport, WorkspaceEvent};
 use panel_kit_core::spec::{BackendKind, BindingManifest, ResolvedWorkspace, WorkspaceSpec};
 use panel_kit_core::{
-    ChromeMetrics, FocusContext, Mode, PointerButton, PointerEventKind, SnapPolicy, SpecPanelId,
-    SurfaceProfile, Units,
+    FocusContext, Mode, PointerButton, PointerEventKind, SnapPolicy, SpecPanelId, SurfaceProfile,
 };
 
 /// Host-owned state and ports for one spec-resolved web workspace.
@@ -95,7 +94,7 @@ pub fn project_workspace<'frame>(
     scratch: &'frame mut ProjectionBuffer<SpecPanelId>,
 ) -> ProjectedFrame<'frame, SpecPanelId> {
     let surface = surface_profile_for(workspace, snapshot.viewport.width);
-    let chrome = chrome_projection(&workspace.resolved, snapshot.viewport.units);
+    let chrome = chrome_projection(&workspace.resolved);
     let tile = tile_metrics(&workspace.resolved, surface);
 
     project_into(
@@ -224,6 +223,8 @@ pub fn reset_workspace(workspace: &SpecWorkspaceState) {
     snapshot.set(workspace.resolved.initial.clone());
 }
 
+/// Resolve the spec in CSS px: a cell-authored spec maps onto the browser
+/// window through core's [`ResolvedWorkspace::into_logical_px`].
 fn resolve_workspace_spec(spec_json: &str) -> ResolvedWorkspace {
     let spec = WorkspaceSpec::from_json_str(spec_json)
         .expect("PANEL_KIT_WORKSPACE_SPEC must contain strict WorkspaceSpec JSON");
@@ -235,9 +236,11 @@ fn resolve_workspace_spec(spec_json: &str) -> ResolvedWorkspace {
             .map(|panel| panel.provider_declaration())
             .collect(),
     };
+    let (width, height) = viewport_size();
 
     spec.resolve(&providers)
         .expect("web canary providers must match the authored WorkspaceSpec")
+        .into_logical_px(width, height)
 }
 
 fn restore_or_default(
@@ -308,22 +311,12 @@ fn surface_profile_for(workspace: &SpecWorkspaceState, width: f64) -> SurfacePro
     )
 }
 
-/// The spec's chrome toggles, sized in the units the viewport is measured in:
-/// the authored sizes when they match, the web chrome sizes (CSS px) when a
-/// cell-authored spec is measured by the browser.
-fn chrome_projection(resolved: &ResolvedWorkspace, units: Units) -> ChromeProjectionInput {
+fn chrome_projection(resolved: &ResolvedWorkspace) -> ChromeProjectionInput {
     let chrome = &resolved.chrome;
-    let sized = if units == resolved.initial.viewport.units {
-        ChromeProjectionInput {
-            metrics: chrome.metrics,
-            hit_target_min: chrome.hit_target_min,
-            panel_header_h: chrome.panel_header_h,
-            ..ChromeProjectionInput::full(chrome.metrics)
-        }
-    } else {
-        ChromeProjectionInput::full(ChromeMetrics::WEB)
-    };
     ChromeProjectionInput {
+        metrics: chrome.metrics,
+        hit_target_min: chrome.hit_target_min,
+        panel_header_h: chrome.panel_header_h,
         panel_frame: chrome.panel_frame,
         title_in_border: chrome.title_in_border,
         mode_control: chrome.mode_control,
@@ -331,7 +324,6 @@ fn chrome_projection(resolved: &ResolvedWorkspace, units: Units) -> ChromeProjec
         maximize_control: chrome.maximize_control,
         resize_grip: chrome.resize_grip,
         dock: chrome.dock,
-        ..sized
     }
 }
 

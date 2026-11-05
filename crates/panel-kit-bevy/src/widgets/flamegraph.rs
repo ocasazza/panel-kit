@@ -117,18 +117,28 @@ pub fn spawn(parent: &mut ChildSpawnerCommands, theme: &BevyTheme, spans: &[Flam
                             BorderColor(accent),
                         ))
                         .with_children(|frame| {
-                            frame.spawn((
-                                Text::new(span.label.clone()),
-                                label_style.font(),
-                                TextColor(label_style.color),
-                                TextLayout::new_with_no_wrap(),
-                                Node {
+                            // Bevy clips a node's descendants, not its own
+                            // text, so the shrinking box holds the label.
+                            frame
+                                .spawn(Node {
                                     min_width: Val::Px(0.0),
                                     height: Val::Px(label_style.line_box()),
                                     overflow: Overflow::clip(),
                                     ..default()
-                                },
-                            ));
+                                })
+                                .with_children(|clip| {
+                                    clip.spawn((
+                                        Text::new(span.label.clone()),
+                                        label_style.font(),
+                                        TextColor(label_style.color),
+                                        TextLayout::new_with_no_wrap(),
+                                        Node {
+                                            flex_shrink: 0.0,
+                                            height: Val::Px(label_style.line_box()),
+                                            ..default()
+                                        },
+                                    ));
+                                });
                             frame.spawn((
                                 Text::new(format!("{}", span.value)),
                                 value_style.font(),
@@ -243,7 +253,8 @@ mod tests {
             UiRect::axes(Val::Px(theme.metrics.rem(0.35)), Val::Px(theme.metrics.rem(0.05)))
         );
         assert_eq!(frame.border, UiRect::left(Val::Px(2.0)));
-        let label = children_of(world, rows[1].2)[0];
+        let clip = children_of(world, rows[1].2)[0];
+        let label = children_of(world, clip)[0];
         assert_eq!(world.get::<TextFont>(label).unwrap().font_size, size);
     }
 
@@ -270,7 +281,8 @@ mod tests {
         assert_eq!(world.get::<BorderColor>(rows[1].2).unwrap().0, Color::srgb_u8(200, 0, 0));
 
         let parts = children_of(world, rows[0].2);
-        assert_eq!(world.get::<TextColor>(parts[0]).unwrap().0, theme.text);
+        let label = children_of(world, parts[0])[0];
+        assert_eq!(world.get::<TextColor>(label).unwrap().0, theme.text);
         assert_eq!(world.get::<TextColor>(parts[1]).unwrap().0, theme.text_muted);
     }
 

@@ -526,9 +526,7 @@ fn reduce_wheel<K: PanelKey>(
 }
 
 /// Apply a viewport measurement change according to the event's explicit
-/// resize policy. A change of units (cells authored, CSS px measured) always
-/// rescales: stored geometry in the old units has no meaning in the new ones,
-/// whatever the policy.
+/// resize policy.
 fn reduce_viewport_changed<K: PanelKey>(
     snapshot: &mut Snapshot<K>,
     size: Viewport,
@@ -541,9 +539,7 @@ fn reduce_viewport_changed<K: PanelKey>(
         return Reduction::unchanged();
     }
 
-    let converts_units = snapshot.viewport.units != size.units;
-    if (policy == ResizePolicy::ScaleFloating || converts_units) && valid_viewport(snapshot.viewport)
-    {
+    if policy == ResizePolicy::ScaleFloating && valid_viewport(snapshot.viewport) {
         scale_floating_geometry(
             &mut snapshot.panels,
             size.width / snapshot.viewport.width,

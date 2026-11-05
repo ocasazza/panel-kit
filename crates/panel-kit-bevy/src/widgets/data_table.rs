@@ -12,7 +12,7 @@
 //! a main-thread [`NonSend`] map keyed by the [`DataTable`] entity; every
 //! change repaints that table from it.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
@@ -48,6 +48,8 @@ const FILTER_PAD_X: f32 = 4.0;
 /// `.pk-dt-quick`: grows from 12ch, never below 8ch.
 const QUICK_BASIS_CH: f32 = 12.0;
 const QUICK_MIN_CH: f32 = 8.0;
+/// Flex weight of the quick filter against the tally's 1.
+const QUICK_GROW: f32 = 1.0e6;
 /// `.pk-dt-th` header type: 11px, bold, `.06em`, uppercase.
 const HEAD_SIZE: f32 = 11.0;
 /// `.pk-dt-mark` / `.pk-dt-filtered-mark` / `.pk-dt-n`.
@@ -294,6 +296,7 @@ impl Plugin for DataTablePlugin {
         app.insert_non_send_resource(Tables::default())
             .init_resource::<TableFocus>()
             .add_event::<DataTableExport>()
+            .add_systems(Startup, insert_chevron_image)
             .add_systems(
                 Update,
                 (
@@ -306,6 +309,76 @@ impl Plugin for DataTablePlugin {
                     .chain(),
             );
     }
+}
+
+/// Chromium's macOS `<select>` arrow, tinted with the text colour.
+const CHEVRON_IMAGE: Handle<Image> = bevy::asset::weak_handle!("2d6f0b8e-93c4-4a1d-b7e5-6c0a9f3e1d24");
+/// Chevron image box, in CSS px.
+const CHEVRON_BOX: (f32, f32) = (10.0, 7.0);
+/// Round-capped stroke through tip, apex, tip inside [`CHEVRON_BOX`].
+const CHEVRON_POINTS: [(f32, f32); 3] = [(1.3, 1.35), (5.0, 5.05), (8.7, 1.35)];
+const CHEVRON_RADIUS: f32 = 0.875;
+/// [`CHEVRON_BOX`]'s offset from the select's padding box: right, top.
+const CHEVRON_INSET: (f32, f32) = (2.92, 4.59);
+const CHEVRON_TEXELS: u32 = 4;
+/// Chromium's menulist: text starts 4px inside the author padding and a
+/// 16.5px arrow area follows the widest option.
+const SELECT_INSET_START: f32 = 4.0;
+const SELECT_ARROW_W: f32 = 16.5;
+
+fn insert_chevron_image(images: Option<ResMut<Assets<Image>>>) {
+    if let Some(mut images) = images {
+        images.insert(&CHEVRON_IMAGE, chevron_image());
+    }
+}
+
+fn chevron_image() -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::image::ImageSampler;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    const SAMPLES: u32 = 4;
+    let (width, height) = (
+        CHEVRON_BOX.0 as u32 * CHEVRON_TEXELS,
+        CHEVRON_BOX.1 as u32 * CHEVRON_TEXELS,
+    );
+    let segment_distance = |p: Vec2, a: Vec2, b: Vec2| {
+        let ab = b - a;
+        let t = ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
+        p.distance(a + ab * t)
+    };
+    let [a, b, c] = CHEVRON_POINTS.map(|(x, y)| Vec2::new(x, y));
+    let mut data = Vec::with_capacity((width * height * 4) as usize);
+    for y in 0..height {
+        for x in 0..width {
+            let mut covered = 0;
+            for sy in 0..SAMPLES {
+                for sx in 0..SAMPLES {
+                    let p = Vec2::new(
+                        x as f32 + (sx as f32 + 0.5) / SAMPLES as f32,
+                        y as f32 + (sy as f32 + 0.5) / SAMPLES as f32,
+                    ) / CHEVRON_TEXELS as f32;
+                    if segment_distance(p, a, b).min(segment_distance(p, b, c)) <= CHEVRON_RADIUS {
+                        covered += 1;
+                    }
+                }
+            }
+            let alpha = (covered * 255 / (SAMPLES * SAMPLES)) as u8;
+            data.extend_from_slice(&[255, 255, 255, alpha]);
+        }
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = ImageSampler::linear();
+    image
 }
 
 /// Spawn a data table over `model` with the default state. The painter
@@ -708,7 +781,7 @@ impl Paint<'_> {
                 input_style,
                 INPUT_PAD,
                 Node {
-                    flex_grow: 1.0,
+                    flex_grow: QUICK_GROW,
                     flex_shrink: 1.0,
                     flex_basis: Val::Px(QUICK_BASIS_CH * self.ch(table_size)),
                     min_width: Val::Px(QUICK_MIN_CH * self.ch(table_size)),
@@ -757,8 +830,12 @@ impl Paint<'_> {
             self.button(bar, "copy", Some(Action::Export(ExportFormat::Tsv)), false, false);
             self.button(bar, "csv", Some(Action::Export(ExportFormat::Csv)), false, false);
             let label = tally(&self.instance.view, state.selection.len());
+            // `.pk-dt-count { margin-left: auto }`. Taffy drops `gap` on a line
+            // with an auto margin, so the tally grows instead; QUICK_GROW leaves
+            // it ~0px of a line it shares with the quick filter, as in CSS.
             bar.spawn(Node {
-                margin: UiRect::left(Val::Auto),
+                flex_grow: 1.0,
+                justify_content: JustifyContent::FlexEnd,
                 ..default()
             })
             .with_children(|tally| {
@@ -937,12 +1014,25 @@ impl Paint<'_> {
                 .spawn(Node::default())
                 .with_children(|holder| {
                     let open = self.instance.open.as_ref() == Some(&Menu::Group);
+                    // A native select is as wide as its widest option.
+                    let widest = self
+                        .instance
+                        .columns
+                        .iter()
+                        .map(|column| column.title.chars().count())
+                        .chain(std::iter::once("none".len()))
+                        .max()
+                        .unwrap_or_default();
                     holder
                         .spawn((
                             Node {
-                                padding: UiRect::axes(Val::Px(INPUT_PAD.0), Val::Px(INPUT_PAD.1)),
+                                padding: UiRect {
+                                    left: Val::Px(INPUT_PAD.0 + SELECT_INSET_START),
+                                    right: Val::Px(INPUT_PAD.0 + SELECT_ARROW_W),
+                                    top: Val::Px(INPUT_PAD.1),
+                                    bottom: Val::Px(INPUT_PAD.1),
+                                },
                                 border: UiRect::all(Val::Px(1.0)),
-                                column_gap: Val::Px(4.0),
                                 align_items: AlignItems::Center,
                                 ..default()
                             },
@@ -956,8 +1046,25 @@ impl Paint<'_> {
                                 line_height: BTN_LINE,
                                 ..self.body()
                             };
-                            styled_text(select, current, style);
-                            styled_text(select, "▾", style.color(theme.text_muted));
+                            select
+                                .spawn(Node {
+                                    min_width: Val::Px(widest as f32 * self.ch(BTN_SIZE)),
+                                    ..default()
+                                })
+                                .with_children(|value| {
+                                    styled_text(value, current, style);
+                                });
+                            select.spawn((
+                                Node {
+                                    position_type: PositionType::Absolute,
+                                    right: Val::Px(CHEVRON_INSET.0),
+                                    top: Val::Px(CHEVRON_INSET.1),
+                                    width: Val::Px(CHEVRON_BOX.0),
+                                    height: Val::Px(CHEVRON_BOX.1),
+                                    ..default()
+                                },
+                                ImageNode::new(CHEVRON_IMAGE).with_color(theme.text),
+                            ));
                         });
                     if open {
                         self.menu_body(holder, &Menu::Group);

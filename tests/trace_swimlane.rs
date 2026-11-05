@@ -1482,7 +1482,7 @@ fn the_stylesheet_scrolls_the_canvas_and_pins_the_strip_and_the_axis() {
     let canvas = rule(css, ".pk-tr-canvas");
     for declaration in [
         "overflow-y: auto;",
-        "max-height: 100vh;",
+        "max-height: 100%;",
         "scrollbar-gutter: stable;",
         "overflow-anchor: none;",
         "outline: none;",
@@ -1491,7 +1491,7 @@ fn the_stylesheet_scrolls_the_canvas_and_pins_the_strip_and_the_axis() {
     }
     let pinned = rule(css, ".pk-tr-top,\n.pk-tr-foot");
     assert!(pinned.contains("position: sticky;"), "{pinned}");
-    assert!(pinned.contains("background: var(--bg);"), "{pinned}");
+    assert!(pinned.contains("background: var(--color-background);"), "{pinned}");
     assert!(rule(css, ".pk-tr-top").contains("top: 0;"));
     assert!(rule(css, ".pk-tr-foot").contains("bottom: 0;"));
     // In GRAPH only the canvas scrolls: the head stays where it is.

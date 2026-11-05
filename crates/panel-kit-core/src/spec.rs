@@ -21,6 +21,8 @@ use crate::{
     TILE_W_MAX,
 };
 
+mod logical_px;
+
 #[cfg(feature = "spec-json")]
 mod strict;
 
@@ -781,7 +783,7 @@ mod tests {
     use crate::{ChromeMetrics, Clamp, CommandStep, Key, TileMetrics};
     use serde_json::json;
 
-    fn valid_spec_json() -> serde_json::Value {
+    pub(super) fn valid_spec_json() -> serde_json::Value {
         json!({
             "spec_version": WORKSPACE_SPEC_VERSION,
             "id": "workspace-canary",
@@ -1126,6 +1128,16 @@ mod tests {
             errors.iter().next().unwrap().pointer(),
             "/panels/0/content/kind"
         );
+    }
+
+    /// Resolve a spec document against providers declared from its own panels.
+    pub(super) fn resolved_from(doc: serde_json::Value) -> ResolvedWorkspace {
+        let spec = WorkspaceSpec::from_json_value(doc).expect("valid spec decodes");
+        let providers = BindingManifest {
+            backend: BackendKind::Web,
+            panels: spec.panels.iter().map(PanelSpec::provider_declaration).collect(),
+        };
+        spec.resolve(&providers).expect("providers match spec")
     }
 
     #[test]
