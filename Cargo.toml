@@ -1,5 +1,7 @@
 [workspace]
 members = ["crates/panel-kit-core", "crates/panel-kit-grammar", "crates/panel-kit-tui", "crates/panel-kit-bevy", "tools/spec-parity", "tools/visual-parity"]
+# Patched crates.io copy, wired in by [patch]; not a workspace member.
+exclude = ["crates/beamterm-renderer"]
 
 [package]
 name = "panel-kit"
