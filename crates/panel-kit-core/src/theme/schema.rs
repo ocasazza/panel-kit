@@ -76,11 +76,17 @@ impl ColorTokens {
 #[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TypographyTokens {
+    /// Font stack for all text.
     pub family: String,
+    /// Body text size in px.
     pub body_size: f64,
+    /// Body line height (unitless multiplier).
     pub body_line_height: f64,
+    /// Label text size in px.
     pub label_size: f64,
+    /// Label font weight.
     pub label_weight: u16,
+    /// Label letter-spacing in px.
     pub label_tracking: f64,
 }
 
@@ -89,10 +95,15 @@ pub struct TypographyTokens {
 #[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct DensityTokens {
+    /// Corner radius for panels, px.
     pub panel_radius: f64,
+    /// Corner radius for badges, px.
     pub badge_radius: f64,
+    /// Extra-small spacing step, px.
     pub spacing_xs: f64,
+    /// Small spacing step, px.
     pub spacing_sm: f64,
+    /// Medium spacing step, px.
     pub spacing_md: f64,
 }
 
@@ -101,15 +112,20 @@ pub struct DensityTokens {
 #[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ThemeTokens {
+    /// Colour slots.
     pub colors: ColorTokens,
+    /// Type sizes and weights.
     pub typography: TypographyTokens,
+    /// Radii and spacing steps.
     pub density: DensityTokens,
 }
 
 impl ThemeTokens {
+    /// The shipped dark theme.
     pub fn dark() -> Self {
         Self { colors: dark_colors(), typography: typography(), density: density() }
     }
+    /// The shipped paper (light) theme.
     pub fn paper() -> Self {
         Self { colors: paper_colors(), typography: typography(), density: density() }
     }

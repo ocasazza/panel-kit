@@ -15,8 +15,8 @@ use panel_kit_core::frame::{
     TileLayoutMetrics,
 };
 use panel_kit_core::reducer::{
-    reduce, ChangePhase, HitTarget, PanelPart, ReduceContext, ResizePolicy, Viewport,
-    WheelDisposition, WorkspaceEvent,
+    reduce, ChangePhase, HitTarget, PanelPart, ReduceContext, Viewport, WheelDisposition,
+    WorkspaceEvent,
 };
 use panel_kit_core::{
     ChromeMetrics, FocusContext, Key, KeyChord, PanelCommand, PointerButton, PointerEvent,

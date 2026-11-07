@@ -289,7 +289,7 @@ pub fn reset_workspace<K: PanelKind>(workspace: &PanelWorkspace<K>) {
     let fresh = Snapshot::from_defaults((workspace.defaults)(), workspace.default_mode, viewport);
     let mut snapshot_signal = workspace.snapshot;
     snapshot_signal.set(fresh);
-    let mut snapshot = snapshot_signal.write();
+    let snapshot = snapshot_signal.write();
     if let Err(error) = persist_snapshot(&*workspace.store, &snapshot, &workspace.catalog) {
         log_layout_error("save layout", workspace.storage_key, &error);
     }

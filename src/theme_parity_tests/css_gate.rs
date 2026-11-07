@@ -105,12 +105,6 @@ fn strip_comments(css: &str) -> String {
     out
 }
 
-fn slice_at(text: &str, lo: usize, hi: usize) -> &str {
-    let lo = lo.min(text.len());
-    let hi = hi.min(text.len());
-    &text[lo..hi]
-}
-
 /// This (cleaned) line is a `--tag-N:` or `--shadow-ink:` declaration — skip.
 fn is_permitted_declaration(line: &str) -> bool {
     let trimmed = line.trim();
@@ -231,55 +225,6 @@ fn violation(line_no: usize, what: &str, raw_line: &str) -> String {
     let snippet: String = raw_line.trim().chars().take(96).collect();
     format!("assets/panel-kit.css:{line_no}: {what} in `{snippet}`")
 }
-
-// ---------------------------------------------------------------------------
-// Colour-bearing properties (where a named colour is legal)
-// ---------------------------------------------------------------------------
-
-fn is_colour_bearing_decl(trimmed: &str) -> bool {
-    let Some(colon) = trimmed.find(':') else {
-        return false;
-    };
-    let prop = trimmed[..colon].trim().to_lowercase();
-    if prop.is_empty() {
-        return false;
-    }
-    COLOUR_PROPS.iter().any(|&p| p == prop.as_str()) || prop_matches_prefix(&prop)
-}
-
-fn prop_matches_prefix(prop: &str) -> bool {
-    for prefix in &["border-", "outline-", "column-rule-"] {
-        if prop.starts_with(prefix) && prop.ends_with("-color") {
-            return true;
-        }
-    }
-    // `border-top`, `border-right`, etc. are shorthands that include colour.
-    prop.starts_with("border-")
-}
-
-static COLOUR_PROPS: &[&str] = &[
-    "color",
-    "background",
-    "background-color",
-    "border",
-    "border-top",
-    "border-right",
-    "border-bottom",
-    "border-left",
-    "outline",
-    "box-shadow",
-    "text-shadow",
-    "fill",
-    "stroke",
-    "caret-color",
-    "accent-color",
-    "scrollbar-color",
-    "text-decoration-color",
-    "column-rule-color",
-    "text-emphasis-color",
-    "-webkit-text-fill-color",
-    "-webkit-text-stroke-color",
-];
 
 // ---------------------------------------------------------------------------
 // Static data
