@@ -146,7 +146,7 @@ fn host_content(host: Host, positions: Signal<Vec<[f32; 3]>>, id: &str, content:
     if let ContentSpec::Editor { multiline, placeholder, .. } = content {
         return editor_body(state, id, *multiline, placeholder, section);
     }
-    section_view::paint(section, content, None, Some(on_badge(&host)))
+    section_view::paint(id, section, content, None, Some(on_badge(&host)))
 }
 
 /// The editor body for one binding: the active grammar's source under the

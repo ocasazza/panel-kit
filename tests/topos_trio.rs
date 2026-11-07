@@ -477,7 +477,7 @@ fn every_regime_pulls_back_the_same_species() {
 fn the_graph_sorts_and_colours_move_while_the_physics_does_not() {
     let Some(fixture) = Fixture::load() else { return };
     let palette = ThemeTokens::dark().colors;
-    let fallback = (palette.fg.r, palette.fg.g, palette.fg.b);
+    let fallback = (palette.text.r, palette.text.g, palette.text.b);
     let mut host = fixture.host();
 
     let mut per_regime: Vec<(RegimeId, Vec<String>, Vec<Rgb>)> = Vec::new();

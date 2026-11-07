@@ -55,6 +55,7 @@ use panel_kit_core::badge::Rgb;
 use panel_kit_core::spec::{ExternalComponentSpec, WorkspaceSpec};
 use panel_kit_core::theme::{Color, ColorTokens, ThemeTokens};
 use panel_kit_core::widgets::graph::{GraphEdge, GraphLayout, GraphModel, GraphNode, LayoutAlgorithm};
+use panel_kit_core::widgets::data_table::ColumnKind;
 use panel_kit_core::widgets::table::{ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign};
 use panel_kit_core::widgets::{ContentSpec, TextModel};
 use panel_kit_grammar::{
@@ -1630,9 +1631,13 @@ fn image_of(sorts: &BTreeMap<String, String>, sort: &str) -> String {
 }
 
 fn column(key: &str, title: &str, align: TextAlign, width: ColumnWidth) -> TableColumn {
-    TableColumn { key: key.to_owned(), title: title.to_owned(), width, align }
+    TableColumn { key: key.to_owned(), title: title.to_owned(), width, align, kind: ColumnKind::Text }
 }
 
 fn row(cells: Vec<String>) -> TableRow {
-    TableRow { cells: cells.into_iter().map(TableCell::Text).collect() }
+    TableRow {
+        id: format!("row:{}", cells.join("|")),
+        tags: Vec::new(),
+        cells: cells.into_iter().map(TableCell::Text).collect(),
+    }
 }

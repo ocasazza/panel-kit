@@ -47,7 +47,7 @@ use panel_kit_tui::scroll::PanelScroll;
 #[cfg(not(target_arch = "wasm32"))]
 use panel_kit_tui::store::JsonFileLayoutStore;
 use panel_kit_tui::widgets::{self, TuiHitBuffer};
-use panel_kit_tui::{rect_from_region, Charset, ResolvedTuiTheme};
+use panel_kit_tui::{rect_from_region, ResolvedTuiTheme, TerminalCharset};
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -207,7 +207,7 @@ pub struct TrioApp {
     positions: Vec<[f32; 3]>,
     tween: Option<(Tween, f64)>,
     theme: ResolvedTuiTheme,
-    charset: Charset,
+    charset: TerminalCharset,
     scroll: PanelScroll<SpecPanelId>,
     hits: TuiHitBuffer<SpecPanelId>,
     clip: widgets::ClipScratch,
@@ -491,7 +491,7 @@ impl TrioApp {
         widgets::root::draw_root(frame, area, &self.theme, self.charset);
         if projected.status == FrameStatus::TooSmall {
             frame.render_widget(
-                Paragraph::new("resize").style(Style::default().fg(self.theme.dim)),
+                Paragraph::new("resize").style(Style::default().fg(self.theme.text_muted)),
                 area,
             );
             return Ok(());
@@ -747,7 +747,7 @@ impl TrioApp {
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 self.status_line(),
-                Style::default().fg(theme.fg),
+                Style::default().fg(theme.text),
             ))),
             Rect::new(area.x, area.y, area.width, 1),
         );
@@ -766,11 +766,11 @@ impl TrioApp {
             let rect = Rect::new(x.saturating_sub(item.width), row.y, item.width, 1);
             let style = if item.active {
                 Style::default()
-                    .fg(theme.inverse_fg)
-                    .bg(theme.accent)
+                    .fg(theme.inverse_text)
+                    .bg(theme.highlight)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme.dim)
+                Style::default().fg(theme.text_muted)
             };
             frame.render_widget(
                 Paragraph::new(Line::from(Span::styled(item.text.as_str(), style))),
@@ -787,7 +787,7 @@ impl TrioApp {
             frame.render_widget(
                 Paragraph::new(Line::from(Span::styled(
                     "t regime · g grammar · n/p node · l solve · r reset",
-                    Style::default().fg(theme.dim),
+                    Style::default().fg(theme.text_muted),
                 ))),
                 keys,
             );
@@ -912,7 +912,7 @@ fn paint_body(
     let Some(content) = content else {
         let binding = spec.binding_id().unwrap_or("<no binding>");
         frame.render_widget(
-            Paragraph::new(format!("unbound: {binding}")).style(Style::default().fg(theme.red)),
+            Paragraph::new(format!("unbound: {binding}")).style(Style::default().fg(theme.error)),
             body,
         );
         return;
@@ -937,8 +937,9 @@ fn paint_body(
                 scroll,
                 TableView {
                     columns: &model.columns,
-                    rows: &model.rows,
+                    rows: &model.rows.iter().collect::<Vec<_>>(),
                 },
+                &panel_kit_core::widgets::data_table::TableState::default(),
             );
         }
         Section::Badges(specs) => {
@@ -951,11 +952,11 @@ fn paint_body(
         Section::Gauges(models) => gauges(frame, body, theme, models),
         Section::Meter(model) => frame.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled(model.label.as_str(), Style::default().fg(theme.fg)),
+                Span::styled(model.label.as_str(), Style::default().fg(theme.text)),
                 Span::raw(" "),
                 panel_kit_tui::meter::span_model(model, meter_width(body.width)),
                 Span::raw(" "),
-                Span::styled(model.text.as_str(), Style::default().fg(theme.dim)),
+                Span::styled(model.text.as_str(), Style::default().fg(theme.text_muted)),
             ])),
             body,
         ),
@@ -970,7 +971,7 @@ fn meter_width(area_width: u16) -> usize {
 /// Wrap body text to the panel width, keeping the authored indentation.
 fn wrapped_lines(text: &str, width: u16, theme: &ResolvedTuiTheme) -> Vec<Line<'static>> {
     let width = usize::from(width.max(1));
-    let style = Style::default().fg(theme.fg);
+    let style = Style::default().fg(theme.text);
     let mut lines = Vec::new();
     for raw in text.lines() {
         let body = raw.trim_start_matches(' ');
@@ -1135,9 +1136,9 @@ fn chrome_input(chrome: &ChromeSpec) -> ChromeProjectionInput {
     }
 }
 
-fn spec_charset(charset: SpecCharset) -> Charset {
+fn spec_charset(charset: SpecCharset) -> TerminalCharset {
     match charset {
-        SpecCharset::Unicode => Charset::Unicode,
-        SpecCharset::Ascii => Charset::Ascii,
+        SpecCharset::Unicode => TerminalCharset::Unicode,
+        SpecCharset::Ascii => TerminalCharset::Ascii,
     }
 }
