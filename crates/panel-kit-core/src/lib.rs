@@ -35,6 +35,8 @@
 
 pub mod badge;
 pub mod frame;
+pub mod graph_nav;
+pub mod keymap;
 pub mod loading;
 pub mod panel;
 pub mod persist;
@@ -50,7 +52,7 @@ use serde::{Deserialize, Serialize};
 
 pub use panel::{CatalogError, PanelCatalog, PanelKey, PanelMeta, SpecPanelId};
 pub use spec::{
-    BackendKind, BindingManifest, Charset, ChromeSpec, CommandBinding, ContentKind, InputSpec,
+    BackendKind, BindingManifest, Charset, ChromeSpec, ContentKind, InputSpec,
     LayoutSpec, PanelProviderDeclaration, PanelSpec, PersistenceSpec, ResolvedWorkspace,
     SpecDiagnostic, SpecErrors, SurfaceSpec, TileLayoutSpec, WindowSpec, WorkspaceSpec,
     WORKSPACE_SPEC_VERSION,
@@ -248,6 +250,18 @@ pub enum Key {
     Escape,
     /// Tab.
     Tab,
+    /// Backspace.
+    Backspace,
+    /// Forward delete.
+    Delete,
+    /// Home.
+    Home,
+    /// End.
+    End,
+    /// Page up.
+    PageUp,
+    /// Page down.
+    PageDown,
     /// A printable character.
     Char(char),
 }
@@ -389,7 +403,13 @@ pub fn command_for<K>(chord: KeyChord, focus: &FocusContext<K>) -> Option<PanelC
         Key::Tab if chord.shift => Some(PanelCommand::FocusPrev),
         Key::Tab => Some(PanelCommand::FocusNext),
         Key::Enter => Some(PanelCommand::Raise),
-        Key::Char(_) => None,
+        Key::Char(_)
+        | Key::Backspace
+        | Key::Delete
+        | Key::Home
+        | Key::End
+        | Key::PageUp
+        | Key::PageDown => None,
     }
 }
 

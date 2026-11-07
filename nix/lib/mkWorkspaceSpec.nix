@@ -78,9 +78,27 @@ let
     }) value;
 
   normalizeInput = pointer: value:
-    let input = allowed pointer [ "steps" "bindings" ] value; in {
+    let input = allowed pointer [ "steps" "keymaps" ] value; in {
       steps = normalizeByFields (join pointer "steps") [ "coarse" "fine" ] asFloat input.steps;
-      bindings = mapIndex (index: binding: normalizeByShape (join (join pointer "bindings") index) [ "chord" "command" ] binding binding) input.bindings;
+      keymaps = mapIndex (index: normalizeKeymap (join (join pointer "keymaps") index)) (require pointer input "keymaps");
+    };
+
+  normalizeKeymap = pointer: value:
+    let input = allowed pointer [ "spec_version" "id" "modes" "rules" ] value; in {
+      spec_version = require pointer input "spec_version";
+      id = require pointer input "id";
+      modes = require pointer input "modes";
+      rules = mapIndex (index: normalizeKeymapRule (join (join pointer "rules") index)) (require pointer input "rules");
+    };
+
+  normalizeKeymapRule = pointer: value:
+    let input = allowed pointer [ "keys" "intent" "modes" "enter" "label" "group" ] value; in {
+      keys = require pointer input "keys";
+      intent = require pointer input "intent";
+      modes = input.modes or null;
+      enter = input.enter or null;
+      label = input.label or null;
+      group = input.group or null;
     };
 
   normalizePersistence = pointer: value:

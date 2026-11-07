@@ -133,26 +133,29 @@ fn walk_input(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) 
     if let Some(steps) = object.get("steps") {
         walk_object_fields(steps, "/input/steps", COMMAND_STEP_FIELDS, errors);
     }
-    if let Some(bindings) = object.get("bindings") {
-        walk_bindings(bindings, "/input/bindings", errors);
+    if let Some(keymaps) = object.get("keymaps") {
+        walk_keymaps(keymaps, "/input/keymaps", errors);
     }
 }
 
-fn walk_bindings(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
-    let Some(bindings) = array_at(value, pointer, errors) else {
+fn walk_keymaps(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(keymaps) = array_at(value, pointer, errors) else {
         return;
     };
-    let mut seen = HashSet::new();
-    for (index, binding) in bindings.iter().enumerate() {
+    for (index, layer) in keymaps.iter().enumerate() {
         let item = format!("{pointer}/{index}");
-        let Some(object) = object_at(binding, &item, errors) else {
+        let Some(object) = object_at(layer, &item, errors) else {
             continue;
         };
-        check_fields(object, &item, COMMAND_BINDING_FIELDS, errors);
-        if let Some(chord) = object.get("chord") {
-            walk_object_fields(chord, &format!("{item}/chord"), KEY_CHORD_FIELDS, errors);
-            if !seen.insert(chord.to_string()) {
-                errors.push(format!("{item}/chord"), "duplicate key chord");
+        check_fields(object, &item, KEYMAP_FIELDS, errors);
+        let rules_pointer = format!("{item}/rules");
+        let Some(rules) = object.get("rules").and_then(|r| array_at(r, &rules_pointer, errors)) else {
+            continue;
+        };
+        for (rule_index, rule) in rules.iter().enumerate() {
+            let rule_pointer = format!("{rules_pointer}/{rule_index}");
+            if let Some(object) = object_at(rule, &rule_pointer, errors) {
+                check_fields(object, &rule_pointer, KEYMAP_RULE_FIELDS, errors);
             }
         }
     }
@@ -733,8 +736,9 @@ const CHROME_FIELDS: &[&str] = &[
     "dock",
     "dock_label",
 ];
-const INPUT_FIELDS: &[&str] = &["steps", "bindings"];
-const COMMAND_BINDING_FIELDS: &[&str] = &["chord", "command"];
+const INPUT_FIELDS: &[&str] = &["steps", "keymaps"];
+const KEYMAP_FIELDS: &[&str] = &["spec_version", "id", "modes", "rules"];
+const KEYMAP_RULE_FIELDS: &[&str] = &["keys", "intent", "modes", "enter", "label", "group"];
 const PERSISTENCE_FIELDS: &[&str] = &["enabled", "key", "restore", "save_policy"];
 const PANEL_FIELDS: &[&str] = &["id", "title", "slug", "window", "content"];
 const WINDOW_FIELDS: &[&str] = &["x", "y", "w", "h", "state", "z", "tile_w", "tile_h"];
@@ -749,7 +753,6 @@ const TILE_METRIC_OPTIONAL_FIELDS: &[&str] = &["gap", "padding"];
 const SURFACE_CAP_FIELDS: &[&str] = &["coarse_pointer", "hover", "keyboard"];
 const CHROME_METRIC_FIELDS: &[&str] = &["inset", "dock_h"];
 const COMMAND_STEP_FIELDS: &[&str] = &["coarse", "fine"];
-const KEY_CHORD_FIELDS: &[&str] = &["key", "shift", "alt", "ctrl", "meta"];
 const THEME_FIELDS: &[&str] = &["colors", "typography", "density"];
 const COLOR_FIELDS: &[&str] = &[
     "background",

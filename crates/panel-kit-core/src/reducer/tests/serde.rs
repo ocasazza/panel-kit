@@ -64,6 +64,10 @@ fn key_serde_is_external_snake_case_strings_and_char_objects() {
         serde_json::to_value(Key::Char('m')).unwrap(),
         serde_json::json!({ "char": "m" }),
     );
+    assert_eq!(
+        serde_json::to_value(Key::PageUp).unwrap(),
+        serde_json::json!("page_up")
+    );
 
     let every_key = [
         Key::Left,
@@ -73,6 +77,12 @@ fn key_serde_is_external_snake_case_strings_and_char_objects() {
         Key::Enter,
         Key::Escape,
         Key::Tab,
+        Key::Backspace,
+        Key::Delete,
+        Key::Home,
+        Key::End,
+        Key::PageUp,
+        Key::PageDown,
         Key::Char('m'),
         Key::Char('M'),
     ];

@@ -75,6 +75,32 @@ fn reduce_key_matches_command_for_and_apply_command() {
     }
 }
 
+/// Navigation keys carry no window command in any focus or modifier state,
+/// so an application layer can claim them without colliding with the table.
+#[test]
+fn navigation_keys_map_to_no_window_command() {
+    let keys = [
+        Key::Backspace,
+        Key::Delete,
+        Key::Home,
+        Key::End,
+        Key::PageUp,
+        Key::PageDown,
+    ];
+    let focuses = [
+        FocusContext::<TestPanel>::Workspace,
+        FocusContext::Panel(TestPanel::Second),
+        FocusContext::TextInput,
+    ];
+    for key in keys {
+        for focus in focuses {
+            for (shift, alt) in [(false, false), (true, false), (false, true)] {
+                assert_eq!(command_for(chord(key, shift, alt), &focus), None, "{key:?}");
+            }
+        }
+    }
+}
+
 /// The pre-reducer keymap tests pinned two behaviors: bare keys stay with a
 /// text input, and FocusNext skips minimized panels and wraps. Both must replay
 /// identically through `reduce`.

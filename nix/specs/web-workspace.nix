@@ -77,14 +77,15 @@ mkWorkspaceSpec {
 
   input = {
     steps = { coarse = 16.0; fine = 1.0; };
-    bindings = [
+    keymaps = [
       {
-        chord = { key = "left"; shift = false; alt = false; ctrl = false; meta = false; };
-        command = { kind = "move"; dx = -16.0; dy = 0.0; };
-      }
-      {
-        chord = { key = { char = "f"; }; shift = false; alt = false; ctrl = false; meta = false; };
-        command = { kind = "maximize"; };
+        spec_version = 1;
+        id = "web-workspace-vi";
+        modes = [ "normal" ];
+        rules = [
+          { keys = "g g"; intent = "nav.first"; modes = null; enter = null; label = null; group = null; }
+          { keys = "<c-o>"; intent = "nav.jumplist -1"; modes = null; enter = null; label = null; group = null; }
+        ];
       }
     ];
   };

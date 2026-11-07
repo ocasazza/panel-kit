@@ -22,6 +22,7 @@
 
 pub mod error;
 pub mod morphism;
+pub mod nav;
 pub mod site;
 pub mod edit;
 mod emitter;
@@ -42,6 +43,7 @@ pub use package::{
     JsonSpec, Limits, Metadata, ParserSpec, PestEmitter, PestSpec, FORMAT_VERSION, HARD_LIMITS,
 };
 pub use site::{Morphism, Object, Site};
+pub use nav::{sort_map, SiteIndex, UNTYPED_KIND};
 pub use sheaf::{
     assembly, status_table, Agg, AssemblySheaf, BadgeGroup, BadgesSheaf, BoxplotSheaf, CellAlign,
     CellSpec, ColWidth, ColumnSpec, ComponentInvariants, FlamegraphSheaf, GaugesSheaf,

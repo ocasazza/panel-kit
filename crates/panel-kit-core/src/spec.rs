@@ -15,10 +15,10 @@ use crate::persist::SavePolicy;
 use crate::reducer::{ResizePolicy, Snapshot, Viewport};
 use crate::theme::ThemeTokens;
 use crate::widgets::ContentSpec;
+use crate::keymap::{Keymap, KeymapError, KeymapSpec};
 use crate::{
-    ChromeMetrics, Clamp, CommandStep, KeyChord, Mode, PanelCatalog, PanelCommand, PanelMeta,
-    PanelWin, SpecPanelId, SurfaceCapabilities, TileMetrics, Units, WinState, TILE_H_MAX,
-    TILE_W_MAX,
+    ChromeMetrics, Clamp, CommandStep, Mode, PanelCatalog, PanelMeta, PanelWin, SpecPanelId,
+    SurfaceCapabilities, TileMetrics, Units, WinState, TILE_H_MAX, TILE_W_MAX,
 };
 
 mod logical_px;
@@ -55,7 +55,7 @@ pub struct WorkspaceSpec {
     pub surface: SurfaceSpec,
     /// Shared chrome toggles and metrics.
     pub chrome: ChromeSpec,
-    /// Keyboard movement steps and bindings.
+    /// Keyboard movement steps and keymap layers.
     pub input: InputSpec,
     /// Glyph family requested by terminal-like backends.
     pub glyphs: Charset,
@@ -188,19 +188,10 @@ impl ChromeSpec {
 pub struct InputSpec {
     /// Geometry step sizes for keyboard movement/resizing.
     pub steps: CommandStep,
-    /// Explicit key-to-command bindings.
-    pub bindings: Vec<CommandBinding>,
-}
-
-/// One authored keyboard binding.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "spec-schema", derive(schemars::JsonSchema))]
-#[serde(deny_unknown_fields)]
-pub struct CommandBinding {
-    /// Keyboard chord.
-    pub chord: KeyChord,
-    /// Command emitted by that chord.
-    pub command: PanelCommand,
+    /// Keymap layers in precedence order; later layers shadow earlier ones.
+    /// Validated by compiling with the untyped (`String`) vocabulary, so
+    /// token, mode, and prefix errors surface at spec load.
+    pub keymaps: Vec<KeymapSpec>,
 }
 
 /// Authored persistence policy.
@@ -661,14 +652,26 @@ fn validate_surface(surface: &SurfaceSpec, errors: &mut ErrorSink) {
 }
 
 fn validate_input(input: &InputSpec, errors: &mut ErrorSink) {
-    let mut seen = HashSet::new();
-    for (index, binding) in input.bindings.iter().enumerate() {
-        if !seen.insert(binding.chord) {
-            errors.push(
-                format!("/input/bindings/{index}/chord"),
-                "duplicate key chord",
-            );
+    let mut ids = HashSet::new();
+    for (index, layer) in input.keymaps.iter().enumerate() {
+        if !ids.insert(layer.id.as_str()) {
+            errors.push(format!("/input/keymaps/{index}/id"), "duplicate keymap id");
         }
+    }
+    if let Err(error) = Keymap::<String>::compile(&input.keymaps) {
+        let layer = match &error {
+            KeymapError::Version { layer, .. }
+            | KeymapError::NoModes { layer }
+            | KeymapError::Token { layer, .. }
+            | KeymapError::UnknownMode { layer, .. }
+            | KeymapError::Intent { layer, .. } => Some(layer.as_str()),
+            KeymapError::Prefix { .. } => None,
+        };
+        let pointer = match layer.and_then(|id| input.keymaps.iter().position(|l| l.id == id)) {
+            Some(index) => format!("/input/keymaps/{index}"),
+            None => "/input/keymaps".to_owned(),
+        };
+        errors.push(pointer, error.to_string());
     }
 }
 
@@ -777,6 +780,57 @@ fn validate_providers(spec: &WorkspaceSpec, providers: &BindingManifest) -> Resu
 
 #[cfg(all(test, feature = "spec-json"))]
 mod tests {
+    #[test]
+    fn input_keymaps_validate_by_pointer() {
+        use crate::keymap::{KeymapSpec, RuleSpec, KEYMAP_SPEC_VERSION};
+        let rule = |keys: &str, intent: &str| RuleSpec {
+            keys: keys.into(),
+            intent: intent.into(),
+            modes: None,
+            enter: None,
+            label: None,
+            group: None,
+        };
+        let layer = |id: &str, rules: Vec<RuleSpec>| KeymapSpec {
+            spec_version: KEYMAP_SPEC_VERSION,
+            id: id.into(),
+            modes: vec!["normal".into()],
+            rules,
+        };
+        let diagnostics = |keymaps: Vec<KeymapSpec>| {
+            let mut errors = ErrorSink::new();
+            validate_input(
+                &InputSpec {
+                    steps: CommandStep::WEB,
+                    keymaps,
+                },
+                &mut errors,
+            );
+            errors
+                .finish()
+                .err()
+                .map(|e| {
+                    e.iter()
+                        .map(|d| (d.pointer().to_string(), d.message().to_string()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+
+        assert!(diagnostics(vec![layer("a", vec![rule("g g", "first")])]).is_empty());
+
+        let bad_token = diagnostics(vec![layer("a", vec![]), layer("b", vec![rule("<nope>", "x")])]);
+        assert_eq!(bad_token[0].0, "/input/keymaps/1");
+        assert!(bad_token[0].1.contains("bad token `<nope>`"), "{}", bad_token[0].1);
+
+        let prefix = diagnostics(vec![layer("a", vec![rule("g", "x"), rule("g g", "y")])]);
+        assert_eq!(prefix[0].0, "/input/keymaps");
+        assert!(prefix[0].1.contains("`g` is a prefix of `g g`"), "{}", prefix[0].1);
+
+        let dup = diagnostics(vec![layer("a", vec![]), layer("a", vec![])]);
+        assert_eq!(dup[0], ("/input/keymaps/1/id".to_string(), "duplicate keymap id".to_string()));
+    }
+
     use super::*;
     use crate::theme::ThemeTokens;
     use crate::widgets::{DataSource, TextModel};
@@ -815,9 +869,11 @@ mod tests {
             },
             "input": {
                 "steps": CommandStep::CELLS,
-                "bindings": [{
-                    "chord": { "key": "left", "shift": false, "alt": false, "ctrl": false, "meta": true },
-                    "command": { "kind": "move", "dx": -16.0, "dy": 0.0 }
+                "keymaps": [{
+                    "spec_version": 1,
+                    "id": "canary-vi",
+                    "modes": ["normal"],
+                    "rules": [{ "keys": "g g", "intent": "nav.first", "modes": null, "enter": null, "label": null, "group": null }]
                 }]
             },
             "glyphs": "unicode",
@@ -1024,11 +1080,7 @@ mod tests {
         let mut duplicate = doc["panels"][0].clone();
         duplicate["title"] = json!("Notes");
         doc["panels"].as_array_mut().unwrap().push(duplicate);
-        let duplicate_binding = doc["input"]["bindings"][0].clone();
-        doc["input"]["bindings"]
-            .as_array_mut()
-            .unwrap()
-            .push(duplicate_binding);
+        doc["input"]["keymaps"][0]["rules"][0]["count"] = json!(true);
 
         let errors = WorkspaceSpec::from_json_value(doc).expect_err("invalid spec reports errors");
         let diagnostics: Vec<_> = errors
@@ -1040,7 +1092,7 @@ mod tests {
         assert_eq!(diagnostics[1].0, "/surface/tablet_max");
         assert_eq!(diagnostics[2].0, "/chrome/new_field");
         assert!(diagnostics[2].1.contains("unknown field; allowed fields:"));
-        assert_eq!(diagnostics[3].0, "/input/bindings/1/chord");
+        assert_eq!(diagnostics[3].0, "/input/keymaps/0/rules/0/count");
         assert_eq!(diagnostics[4].0, "/panels/0/title");
         assert_eq!(diagnostics[5].0, "/panels/0/window/tile_w");
         assert_eq!(diagnostics[6].0, "/panels/1/id");
