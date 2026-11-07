@@ -450,6 +450,29 @@ fn the_graph_physics_is_identical_across_the_regimes_of_one_site() {
     assert!(read.is_some(), "the one site is read by all three regimes");
 }
 
+/// Every node carries the base species its regime pulls back, and the
+/// species are the same in every regime: the self-assembly a morphism
+/// carries across is one simulation relabelled.
+#[test]
+fn every_regime_pulls_back_the_same_species() {
+    let Some(fixture) = Fixture::load() else { return };
+    let mut host = fixture.host();
+    let mut per_regime = Vec::new();
+    for regime in RegimeId::ALL {
+        host.set_regime(regime);
+        let species: Vec<String> = host.graph().nodes.iter().map(|node| node.species.clone()).collect();
+        assert!(
+            species.iter().all(|s| matches!(s.as_str(), "hydrophilic" | "hydrophobic" | "solvent")),
+            "{regime}: every node is a base particle: {species:?}"
+        );
+        per_regime.push(species);
+    }
+    assert!(per_regime.windows(2).all(|pair| pair[0] == pair[1]), "species differ across regimes");
+    let heads = per_regime[0].iter().filter(|s| *s == "hydrophilic").count();
+    let tails = per_regime[0].iter().filter(|s| *s == "hydrophobic").count();
+    assert!(heads > 0 && tails > heads, "amphiphiles need more tails than heads: {heads} heads, {tails} tails");
+}
+
 #[test]
 fn the_graph_sorts_and_colours_move_while_the_physics_does_not() {
     let Some(fixture) = Fixture::load() else { return };
@@ -915,7 +938,7 @@ fn the_graph_panel_declares_its_component_and_layout() {
         assert!(component.keep_mounted, "an imperative canvas stays mounted");
         assert_eq!(component.events.len(), 2, "select and hover");
         let layout = host.graph_layout();
-        assert_eq!(layout.algorithm, LayoutAlgorithm::Force, "{regime} runs the one pulled-back physics");
+        assert_eq!(layout.algorithm, LayoutAlgorithm::Amphiphile, "{regime} runs the one pulled-back self-assembly");
         assert!(
             text(&host, regime.graph_binding()).contains("TrioHost::graph()"),
             "the external panel's body is named"

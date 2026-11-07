@@ -31,7 +31,7 @@ let
   capabilities = [ "webgpu" ];
   componentEventKinds = [ "select" "hover" ];
   componentFallbacks = [ "cells" "notice" ];
-  layoutAlgorithms = [ "force" "circle" "grid" "concentric" "spectral" "dagre" "fcose" "sphere" ];
+  layoutAlgorithms = [ "force" "amphiphile" "circle" "grid" "concentric" "spectral" "dagre" "fcose" "sphere" ];
 
   defaultTheme = {
     colors = {

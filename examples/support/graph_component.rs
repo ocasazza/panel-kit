@@ -14,7 +14,7 @@
 //! re-tunes the running simulation in place; it never re-seeds it.
 
 use dioxus::prelude::*;
-use graph_layouts::{EdgePhysics, GpuForceOptions, NodePhysics};
+use graph_layouts::{AmphiphileOptions, EdgePhysics, GpuForceOptions, NodePhysics, Species};
 use graph_view::render;
 use panel_kit::widgets::graph::{graph_notice, graph_svg};
 use panel_kit_core::spec::{
@@ -88,7 +88,7 @@ pub fn GraphComponent(
         render::set_after_mount(mounted);
         let graph = model.peek();
         let seed = match layout.peek().algorithm {
-            LayoutAlgorithm::Force => fibonacci_sphere(graph.nodes.len(), FORCE_SEED_RADIUS),
+            LayoutAlgorithm::Force | LayoutAlgorithm::Amphiphile => fibonacci_sphere(graph.nodes.len(), FORCE_SEED_RADIUS),
             _ => live.peek().clone(),
         };
         mount(&graph, &seed);
@@ -292,23 +292,53 @@ fn node_sizes(model: &GraphModel) -> Vec<f32> {
 const SETTLE_REFITS_MS: [i32; 3] = [1500, 5000, 12000];
 
 /// Frame the landed arrangement. A static layout stays as solved; `Force`
-/// hands the engine the model's physics and lets it relax live from here.
+/// hands the spring-electrical engine the model's physics, `Amphiphile`
+/// swaps the engine to self-assembly over the model's species; either way
+/// the simulation relaxes live from here. A model change on the same
+/// algorithm re-tunes the running engine in place.
 fn settle(model: &GraphModel, layout: &GraphLayout) {
     frame();
-    if layout.algorithm != LayoutAlgorithm::Force {
-        render::set_sim_running(false);
-        return;
+    match layout.algorithm {
+        LayoutAlgorithm::Force => {
+            render::with_host(|host| {
+                host.pipes.update_layout_options(force_options());
+                let _ = host.update_node_physics(node_physics(model));
+                let _ = host.update_edge_physics(edge_physics(model));
+                host.pipes.wake_physics_layout();
+            });
+        }
+        LayoutAlgorithm::Amphiphile => {
+            let species = species_of(model);
+            render::with_host(|host| {
+                if host.update_species(species.clone()).is_err() {
+                    host.swap_to_amphiphile(AmphiphileOptions::default(), species);
+                }
+                host.pipes.wake_physics_layout();
+            });
+        }
+        _ => {
+            render::set_sim_running(false);
+            return;
+        }
     }
-    render::with_host(|host| {
-        host.pipes.update_layout_options(force_options());
-        let _ = host.update_node_physics(node_physics(model));
-        let _ = host.update_edge_physics(edge_physics(model));
-        host.pipes.wake_physics_layout();
-    });
     render::set_sim_running(true);
     for delay in SETTLE_REFITS_MS {
         schedule_after(delay, frame);
     }
+}
+
+/// The engine species of every node from the base stalk the regime pulls
+/// back: hydrophilic heads, hydrophobic tails, everything else solvent.
+pub fn species_of(model: &GraphModel) -> Vec<Species> {
+    model
+        .nodes
+        .iter()
+        .map(|node| match node.species.as_str() {
+            "hydrophilic" => Species::Head,
+            "hydrophobic" => Species::Tail,
+            _ => Species::Solvent,
+        })
+        .collect()
 }
 
 /// Per-node inertia and repulsion charge for the engine. Charges are

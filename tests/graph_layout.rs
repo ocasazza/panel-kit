@@ -32,6 +32,7 @@ fn node(id: &str, sort: &str) -> GraphNode {
         size: 2.0,
         mass: 1.0,
         repulsion: 1000.0,
+        species: String::new(),
     }
 }
 
@@ -115,7 +116,7 @@ fn solving_is_deterministic() {
 #[test]
 fn grouping_by_sort_moves_the_arrangement() {
     let model = model();
-    for algorithm in ALGORITHMS.into_iter().filter(|a| *a != LayoutAlgorithm::Force) {
+    for algorithm in ALGORITHMS.into_iter().filter(|a| !a.is_simulation()) {
         let whole = solve(&model, &layout(algorithm, None), None);
         let grouped = solve(&model, &layout(algorithm, Some("sort")), None);
         assert_eq!(grouped.len(), whole.len(), "{algorithm:?}");

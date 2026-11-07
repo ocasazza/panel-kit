@@ -21,16 +21,20 @@ let
   # `agentic.graph` model, so the pulled-back force simulation runs: handoffs
   # pull the sessions into chains, sheets and closed membranes.
   graphContent = externalC "graph" "agentic.graph" {
-    algorithm = "force";
+    algorithm = "amphiphile";
     group_by = "sort";
     params = { };
   };
 
-  # The trio grid: every regime fills the same five shelves (graph; 1+3;
-  # 3+1; assembly 3 + stages 1; physics 2 + grammar 1 + morphism 1), so a
-  # regime switch changes panel bodies and never moves a panel.
+  # The trio grid: every regime fills the same six shelves (graph; grammar 2 +
+  # morphism 2; 1+3; 3+1; assembly 3 + stages 1; physics 4), so a regime
+  # switch changes panel bodies and never moves a panel.
   shelves = [
     (shelf 4 [ (cell "graph" "Graph" "graph" 4 graphContent) ])
+    (shelf 3 [
+      (cell "grammar" "Grammar" "grammar" 2 (editorC "trio.grammar"))
+      (cell "morphism" "Morphism" "morphism" 2 (editorC "agentic.morphism"))
+    ])
     (shelf 3 [
       (cell "stalks" "Stalks" "stalks" 1 (textC "agentic.stalks"))
       (cell "status" "Objects" "status" 3 (tableC "agentic.status"))
@@ -43,11 +47,7 @@ let
       (cell "assembly" "Assembly" "assembly" 3 (tableC "agentic.assembly"))
       (cell "stages" "Stages" "stages" 1 (badgesC "agentic.stages"))
     ])
-    (shelf 3 [
-      (cell "physics" "Physics" "physics" 2 (tableC "agentic.physics"))
-      (cell "grammar" "Grammar" "grammar" 1 (editorC "trio.grammar"))
-      (cell "morphism" "Morphism" "morphism" 1 (editorC "agentic.morphism"))
-    ])
+    (shelf 3 [ (cell "physics" "Physics" "physics" 4 (tableC "agentic.physics")) ])
   ];
 in
 mkTopos {

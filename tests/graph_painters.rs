@@ -16,6 +16,7 @@ fn node(id: &str, color: (u8, u8, u8)) -> GraphNode {
         size: 2.0,
         mass: 1.0,
         repulsion: 1.0,
+        species: String::new(),
     }
 }
 

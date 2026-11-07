@@ -5,8 +5,8 @@ crate's manifest). Used by `examples/autoloop.rs` for its graph panel.
 
 | Here | Upstream path | Upstream revision |
 |---|---|---|
-| `graph-view/src` | `app/graph-view/src` | `feat/per-node-physics` @ `e160dad` |
-| `graph-layouts/src`, `graph-layouts/README.md` | `crates/graph-layouts/` | `feat/per-node-physics` @ `e160dad` |
+| `graph-view/src` | `app/graph-view/src` | `feat/per-node-physics` @ `3fdc0af` |
+| `graph-layouts/src`, `graph-layouts/README.md` | `crates/graph-layouts/` | `feat/per-node-physics` @ `3fdc0af` |
 
 Sources are copied unmodified. Manifest changes, and nothing else:
 

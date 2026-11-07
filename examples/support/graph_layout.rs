@@ -99,7 +99,7 @@ pub fn solve(
         _ => fibonacci_sphere(count, FORCE_SEED_RADIUS),
     };
 
-    if layout.algorithm == LayoutAlgorithm::Force {
+    if layout.algorithm.is_simulation() {
         return force_components(model, layout, &seed_positions);
     }
 
@@ -448,7 +448,7 @@ fn solve_members(
     seed: &[[f32; 3]],
 ) -> Vec<[f32; 3]> {
     let fallback: Vec<[f32; 3]> = members.iter().map(|&index| seed[index]).collect();
-    if layout.algorithm == LayoutAlgorithm::Force {
+    if layout.algorithm.is_simulation() {
         return force_solve(model, members, seed, &layout.params);
     }
 
@@ -828,7 +828,7 @@ fn solver_ids(model: &GraphModel, members: &[usize]) -> Vec<String> {
 fn run_solver(layout: &GraphLayout, graph: &Graph) -> Option<Vec<f32>> {
     let params = &layout.params;
     let solved = match layout.algorithm {
-        LayoutAlgorithm::Force => return None,
+        LayoutAlgorithm::Force | LayoutAlgorithm::Amphiphile => return None,
         LayoutAlgorithm::Circle => CircleLayout::solve(
             &CircleSettings {
                 radius: number(params, "radius", 200.0) as f32,

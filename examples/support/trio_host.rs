@@ -797,6 +797,7 @@ impl TrioHost {
                     sort,
                     mass: tuning.map_or(1.0, |tuning| tuning.mass),
                     repulsion: tuning.map_or(0.0, |tuning| tuning.repulsion),
+                    species: tuning.map_or_else(String::new, |tuning| tuning.engine_type.clone()),
                 }
             })
             .collect();

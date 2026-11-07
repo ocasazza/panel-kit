@@ -26,7 +26,7 @@ let
   # Force, like every regime: the physics is the one base pullback, so the
   # arrangement survives a morphism and only the sorts and colours move.
   graphContent = externalC "graph" "okf.graph" {
-    algorithm = "force";
+    algorithm = "amphiphile";
     group_by = null;
     params = { };
   };
@@ -35,6 +35,10 @@ let
   # regime, so `t` swaps bodies without moving panels.
   shelves = [
     (shelf 4 [ (cell "graph" "Graph" "graph" 4 graphContent) ])
+    (shelf 3 [
+      (cell "grammar" "Grammar" "grammar" 2 (editorC "trio.grammar"))
+      (cell "morphism" "Morphism" "morphism" 2 (editorC "okf.morphism"))
+    ])
     (shelf 3 [
       (cell "selected" "Selected" "selected" 1 (textC "okf.selected"))
       (cell "concepts" "Concepts" "concepts" 3 (tableC "okf.concepts"))
@@ -47,11 +51,7 @@ let
       (cell "assembly" "Assembly" "assembly" 3 (tableC "okf.assembly"))
       (cell "stages" "Stages" "stages" 1 (badgesC "okf.stages"))
     ])
-    (shelf 3 [
-      (cell "physics" "Physics" "physics" 2 (tableC "okf.physics"))
-      (cell "grammar" "Grammar" "grammar" 1 (editorC "trio.grammar"))
-      (cell "morphism" "Morphism" "morphism" 1 (editorC "okf.morphism"))
-    ])
+    (shelf 3 [ (cell "physics" "Physics" "physics" 4 (tableC "okf.physics")) ])
   ];
 in
 mkTopos {

@@ -23,7 +23,7 @@ let
   # `membrane.graph` model, so the pulled-back force simulation assembles the
   # lipids into chains, sheets, tubes and closed membranes.
   graphContent = externalC "graph" "membrane.graph" {
-    algorithm = "force";
+    algorithm = "amphiphile";
     group_by = "sort";
     params = { };
   };
@@ -32,6 +32,10 @@ let
   # regime, so `t` swaps bodies without moving panels.
   shelves = [
     (shelf 4 [ (cell "graph" "Graph" "graph" 4 graphContent) ])
+    (shelf 3 [
+      (cell "grammar" "Grammar" "grammar" 2 (editorC "trio.grammar"))
+      (cell "morphism" "Morphism" "morphism" 2 (editorC "membrane.morphism"))
+    ])
     (shelf 3 [
       (cell "stalks" "Stalks" "stalks" 1 (textC "membrane.stalks"))
       (cell "spread" "Energy spread" "spread" 3 (boxC "membrane.spread"))
@@ -44,11 +48,7 @@ let
       (cell "assembly" "Assembly" "assembly" 3 (tableC "membrane.assembly"))
       (cell "stages" "Stages" "stages" 1 (badgesC "membrane.stages"))
     ])
-    (shelf 3 [
-      (cell "physics" "Physics" "physics" 2 (tableC "membrane.physics"))
-      (cell "grammar" "Grammar" "grammar" 1 (editorC "trio.grammar"))
-      (cell "morphism" "Morphism" "morphism" 1 (editorC "membrane.morphism"))
-    ])
+    (shelf 3 [ (cell "physics" "Physics" "physics" 4 (tableC "membrane.physics")) ])
   ];
 in
 mkTopos {

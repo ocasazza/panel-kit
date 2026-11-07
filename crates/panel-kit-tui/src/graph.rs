@@ -160,6 +160,7 @@ mod tests {
             size: 2.0,
             mass: 1.0,
             repulsion: 1.0,
+            species: String::new(),
         };
         (
             vec![node("a"), node("bb")],

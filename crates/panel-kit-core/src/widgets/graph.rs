@@ -34,6 +34,10 @@ pub struct GraphNode {
     pub mass: f64,
     /// Force-simulation repulsion.
     pub repulsion: f64,
+    /// Particle species in the physics base (`hydrophilic`, `hydrophobic`,
+    /// `solvent`); empty when the regime pulls none back.
+    #[serde(default)]
+    pub species: String,
 }
 
 /// One directed edge between two [`GraphModel::nodes`] indices.
@@ -83,6 +87,9 @@ pub struct GraphView<'a> {
 pub enum LayoutAlgorithm {
     /// Force simulation only.
     Force,
+    /// Amphiphile self-assembly: species-pair potentials over head / tail /
+    /// solvent particles, bonds emergent.
+    Amphiphile,
     /// Circular arrangement.
     Circle,
     /// Grid arrangement.
@@ -97,6 +104,14 @@ pub enum LayoutAlgorithm {
     Fcose,
     /// Sphere packing.
     Sphere,
+}
+
+impl LayoutAlgorithm {
+    /// Whether the arrangement is a running simulation rather than a static
+    /// solve: surfaces without a simulator relax it with their own force solve.
+    pub const fn is_simulation(self) -> bool {
+        matches!(self, LayoutAlgorithm::Force | LayoutAlgorithm::Amphiphile)
+    }
 }
 
 /// Layout request attached to an external graph panel.
@@ -142,6 +157,7 @@ mod tests {
             size: 3.0,
             mass: 1.0,
             repulsion: 40.0,
+            species: String::new(),
         }
     }
 
@@ -184,6 +200,7 @@ mod tests {
     fn layout_algorithm_names_are_snake_case() {
         let names: Vec<_> = [
             LayoutAlgorithm::Force,
+            LayoutAlgorithm::Amphiphile,
             LayoutAlgorithm::Circle,
             LayoutAlgorithm::Grid,
             LayoutAlgorithm::Concentric,
@@ -201,6 +218,7 @@ mod tests {
             names,
             [
                 "force",
+                "amphiphile",
                 "circle",
                 "grid",
                 "concentric",

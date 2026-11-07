@@ -21,6 +21,7 @@ fn node(id: &str, mass: f64, repulsion: f64) -> GraphNode {
         size: 1.0,
         mass,
         repulsion,
+        species: String::new(),
     }
 }
 
