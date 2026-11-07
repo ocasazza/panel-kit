@@ -859,6 +859,33 @@ button { font-family:var(--mono); }
   margin: 0;
 }
 
+/* The group select draws its own chevron instead of the UA arrow, whose
+   size varies by browser and platform; the Bevy painter mirrors this
+   polygon (crates/panel-kit-bevy/src/widgets/data_table.rs CHEVRON_*). */
+.pk-dt-select {
+  position: relative;
+  display: inline-flex;
+}
+
+.pk-dt-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 22px;
+}
+
+.pk-dt-select::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  width: 10px;
+  height: 7px;
+  margin-top: -3.5px;
+  background: var(--color-text);
+  clip-path: polygon(0 1.5px, 1.5px 0, 5px 3.5px, 8.5px 0, 10px 1.5px, 5px 6.5px);
+  pointer-events: none;
+}
+
 /* Active filters: one removable chip per thing narrowing the rows, so the
    query is visible without opening the filter row. */
 .pk-dt-active {

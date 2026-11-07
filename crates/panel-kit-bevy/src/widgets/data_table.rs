@@ -311,20 +311,19 @@ impl Plugin for DataTablePlugin {
     }
 }
 
-/// Chromium's macOS `<select>` arrow, tinted with the text colour.
+/// The group select's chevron (`.pk-dt-select::after`), tinted with the
+/// text colour.
 const CHEVRON_IMAGE: Handle<Image> = bevy::asset::weak_handle!("2d6f0b8e-93c4-4a1d-b7e5-6c0a9f3e1d24");
-/// Chevron image box, in CSS px.
+/// Chevron box, in CSS px.
 const CHEVRON_BOX: (f32, f32) = (10.0, 7.0);
-/// Round-capped stroke through tip, apex, tip inside [`CHEVRON_BOX`].
-const CHEVRON_POINTS: [(f32, f32); 3] = [(1.3, 1.35), (5.0, 5.05), (8.7, 1.35)];
-const CHEVRON_RADIUS: f32 = 0.875;
-/// [`CHEVRON_BOX`]'s offset from the select's padding box: right, top.
-const CHEVRON_INSET: (f32, f32) = (2.92, 4.59);
+/// The CSS `clip-path` polygon inside [`CHEVRON_BOX`].
+const CHEVRON_POLYGON: [(f32, f32); 6] =
+    [(0.0, 1.5), (1.5, 0.0), (5.0, 3.5), (8.5, 0.0), (10.0, 1.5), (5.0, 6.5)];
+/// `right: 9px` from the select's border box.
+const CHEVRON_RIGHT: f32 = 9.0;
 const CHEVRON_TEXELS: u32 = 4;
-/// Chromium's menulist: text starts 4px inside the author padding and a
-/// 16.5px arrow area follows the widest option.
-const SELECT_INSET_START: f32 = 4.0;
-const SELECT_ARROW_W: f32 = 16.5;
+/// `.pk-dt-select select { padding-right: 22px }`: room for the chevron.
+const SELECT_PAD_RIGHT: f32 = 22.0;
 
 fn insert_chevron_image(images: Option<ResMut<Assets<Image>>>) {
     if let Some(mut images) = images {
@@ -341,12 +340,18 @@ fn chevron_image() -> Image {
         CHEVRON_BOX.0 as u32 * CHEVRON_TEXELS,
         CHEVRON_BOX.1 as u32 * CHEVRON_TEXELS,
     );
-    let segment_distance = |p: Vec2, a: Vec2, b: Vec2| {
-        let ab = b - a;
-        let t = ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
-        p.distance(a + ab * t)
+    let polygon = CHEVRON_POLYGON.map(|(x, y)| Vec2::new(x, y));
+    // Even-odd ray cast; the chevron polygon is concave.
+    let covers = |p: Vec2| {
+        let mut inside = false;
+        for (index, a) in polygon.iter().enumerate() {
+            let b = polygon[(index + 1) % polygon.len()];
+            if (a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) * (b.x - a.x) / (b.y - a.y) {
+                inside = !inside;
+            }
+        }
+        inside
     };
-    let [a, b, c] = CHEVRON_POINTS.map(|(x, y)| Vec2::new(x, y));
     let mut data = Vec::with_capacity((width * height * 4) as usize);
     for y in 0..height {
         for x in 0..width {
@@ -357,7 +362,7 @@ fn chevron_image() -> Image {
                         x as f32 + (sx as f32 + 0.5) / SAMPLES as f32,
                         y as f32 + (sy as f32 + 0.5) / SAMPLES as f32,
                     ) / CHEVRON_TEXELS as f32;
-                    if segment_distance(p, a, b).min(segment_distance(p, b, c)) <= CHEVRON_RADIUS {
+                    if covers(p) {
                         covered += 1;
                     }
                 }
@@ -1027,8 +1032,8 @@ impl Paint<'_> {
                         .spawn((
                             Node {
                                 padding: UiRect {
-                                    left: Val::Px(INPUT_PAD.0 + SELECT_INSET_START),
-                                    right: Val::Px(INPUT_PAD.0 + SELECT_ARROW_W),
+                                    left: Val::Px(INPUT_PAD.0),
+                                    right: Val::Px(SELECT_PAD_RIGHT),
                                     top: Val::Px(INPUT_PAD.1),
                                     bottom: Val::Px(INPUT_PAD.1),
                                 },
@@ -1057,8 +1062,11 @@ impl Paint<'_> {
                             select.spawn((
                                 Node {
                                     position_type: PositionType::Absolute,
-                                    right: Val::Px(CHEVRON_INSET.0),
-                                    top: Val::Px(CHEVRON_INSET.1),
+                                    // Insets resolve against the padding box,
+                                    // CSS's against the wrapper's border box.
+                                    right: Val::Px(CHEVRON_RIGHT - 1.0),
+                                    top: Val::Percent(50.0),
+                                    margin: UiRect::top(Val::Px(-CHEVRON_BOX.1 / 2.0)),
                                     width: Val::Px(CHEVRON_BOX.0),
                                     height: Val::Px(CHEVRON_BOX.1),
                                     ..default()
