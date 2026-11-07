@@ -1,6 +1,6 @@
 //! `report.md` and per-panel side-by-side images (web | Bevy | diff × 4).
 
-use std::collections::BTreeMap;
+
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -38,16 +38,11 @@ pub fn write(
     for (panel, pass, fail) in comparison.summary() {
         let _ = writeln!(md, "| {panel} | {pass} | {fail} |");
     }
-    md.push_str("\n| panel | part | property | web | bevy | Δ | ok | cause |\n|---|---|---|---|---|---|---|---|\n");
-    let mut causes: BTreeMap<&str, usize> = BTreeMap::new();
+    md.push_str("\n| panel | part | property | web | bevy | Δ | ok |\n|---|---|---|---|---|---|---|\n");
     for row in &comparison.rows {
-        let cause = if row.ok { "" } else { row.exemption().unwrap_or("UNEXPLAINED") };
-        if !row.ok {
-            *causes.entry(cause).or_default() += 1;
-        }
         let _ = writeln!(
             md,
-            "| {} | {} | {} | {} | {} | {} | {} | {cause} |",
+            "| {} | {} | {} | {} | {} | {} | {} |",
             row.panel,
             row.part.replace('|', "\\|"),
             row.property,
@@ -56,10 +51,6 @@ pub fn write(
             row.delta,
             if row.ok { "✓" } else { "✗" },
         );
-    }
-    md.push_str("\n## Failures by cause\n\n");
-    for (cause, count) in &causes {
-        let _ = writeln!(md, "- {count} × {cause}");
     }
     md.push_str("\n## Side-by-side (web | bevy | diff×4)\n\n");
     for (title, path) in &sides {

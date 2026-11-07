@@ -112,6 +112,11 @@ pub fn capture_web(site: &Path, png: &Path) -> Result<()> {
             "mobile": false,
         }),
     )?;
+    // Animations rest at their reduced-motion frame, as in the Bevy capture.
+    page.call(
+        "Emulation.setEmulatedMedia",
+        json!({ "features": [{ "name": "prefers-reduced-motion", "value": "reduce" }] }),
+    )?;
     page.call("Page.navigate", json!({ "url": format!("http://{address}/index.html") }))?;
 
     let deadline = Instant::now() + Duration::from_secs(60);

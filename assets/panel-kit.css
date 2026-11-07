@@ -281,6 +281,8 @@ button { font-family:var(--mono); }
      would claim completion, and opacity is translucency the terminal cannot
      draw. A static 40% sliver still says "working, extent unknown". */
   .pk-progress-fill.indeterminate { animation:none; width:40%; transform:none; }
+  /* The ring rests at its top-quarter phase; the frame glyph still steps. */
+  .spin-ring { animation:none; }
 }
 
 /* Gauge and meter bars. The painters supply the widths, so the track is a

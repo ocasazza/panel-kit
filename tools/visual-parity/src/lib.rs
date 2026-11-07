@@ -3,7 +3,7 @@
 //! `visual-parity check` captures both backends at 1440×900 logical px,
 //! scale 2, pairs every web panel with its Bevy frame, compares geometry,
 //! sampled pixels, traffic lights, text runs and the data-table toolbar, and
-//! fails on any difference no [`compare::Row::exemption`] explains. See the
+//! fails on any difference outside tolerance. See the
 //! README section "Visual parity check".
 
 pub mod capture;
