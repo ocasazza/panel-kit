@@ -1,6 +1,6 @@
 //! Host-contract test for the trio's morphism diagram, over the real Nix JSON
-//! (the `topos-trio-morphisms-test` check exports the topos env, the OKF env and
-//! the four morphism documents): ψ: okf-catalog → membrane, χ: okf-catalog →
+//! (the `topos-trio-morphisms-test` check exports the trio env, which carries the
+//! three regime specs and the four morphism documents): ψ: okf-catalog → membrane, χ: okf-catalog →
 //! agentic, and ω: agentic → okf-catalog each validate against their domain and
 //! codomain, each commutes over the physics base (`p_membrane ∘ ψ =
 //! p_agentic ∘ χ = p_catalog ∘ ω = p_catalog`), and the diagram commutes —
@@ -34,34 +34,34 @@ fn morphism(var: &str) -> GeometricMorphism {
 
 /// The `okf-catalog` topos: ψ and χ's common domain.
 fn catalog() -> Topos {
-    topos("PANEL_KIT_OKF_CATALOG")
+    topos("PANEL_KIT_TRIO_OKF_CATALOG")
 }
 
 /// ψ: `okf-catalog → membrane`.
 fn psi() -> GeometricMorphism {
-    morphism("PANEL_KIT_TRIO_MORPHISM_MEMBRANE")
+    morphism("PANEL_KIT_TRIO_PSI")
 }
 
 /// χ: `okf-catalog → agentic`.
 fn chi() -> GeometricMorphism {
-    morphism("PANEL_KIT_TRIO_MORPHISM_AGENTIC")
+    morphism("PANEL_KIT_TRIO_CHI")
 }
 
 /// ω: `agentic → okf-catalog`.
 fn omega() -> GeometricMorphism {
-    morphism("PANEL_KIT_TRIO_MORPHISM_OMEGA")
+    morphism("PANEL_KIT_TRIO_OMEGA")
 }
 
 /// f: `agentic → membrane`.
 fn f() -> GeometricMorphism {
-    morphism("PANEL_KIT_MORPHISM")
+    morphism("PANEL_KIT_TRIO_F")
 }
 
 #[test]
 fn every_morphism_validates_on_its_domain_and_codomain() {
     let catalog = catalog();
-    let agentic = topos("PANEL_KIT_TOPOS_A");
-    let membrane = topos("PANEL_KIT_TOPOS_B");
+    let agentic = topos("PANEL_KIT_TRIO_AGENTIC");
+    let membrane = topos("PANEL_KIT_TRIO_MEMBRANE");
 
     psi()
         .validate(&catalog, &membrane)
@@ -76,9 +76,9 @@ fn every_morphism_validates_on_its_domain_and_codomain() {
 
 #[test]
 fn every_morphism_commutes_over_the_physics_base() {
-    let p_catalog = morphism("PANEL_KIT_OKF_CATALOG_PHYSICS");
-    let p_membrane = morphism("PANEL_KIT_MORPHISM_B_PHYSICS");
-    let p_agentic = morphism("PANEL_KIT_MORPHISM_A_PHYSICS");
+    let p_catalog = morphism("PANEL_KIT_TRIO_OKF_CATALOG_PHYSICS");
+    let p_membrane = morphism("PANEL_KIT_TRIO_MEMBRANE_PHYSICS");
+    let p_agentic = morphism("PANEL_KIT_TRIO_AGENTIC_PHYSICS");
 
     psi().validate_over(&p_catalog, &p_membrane)
         .expect("p_membrane . psi = p_catalog on every sort");
@@ -99,7 +99,7 @@ fn every_morphism_commutes_over_the_physics_base() {
     );
 
     let base =
-        BaseTopos::from_json_str(&read("PANEL_KIT_TOPOS_PHYSICS")).expect("the base decodes");
+        BaseTopos::from_json_str(&read("PANEL_KIT_TRIO_BASE")).expect("the base decodes");
     assert_eq!(base.id, p_catalog.codomain, "p_catalog lands in the one base");
     assert_eq!(base.stalks.objects.len(), 3, "the base has three engine particles");
     assert_eq!(base.stalks.morphisms.len(), 3, "the base has three engine bonds");
@@ -143,10 +143,10 @@ fn the_square_commutes_psi_after_omega_is_f() {
     assert_eq!(composed.object_sorts, f.object_sorts, "psi . omega = f on objects");
     assert_eq!(composed.morphism_sorts, f.morphism_sorts, "psi . omega = f on morphisms");
 
-    for sort in topos("PANEL_KIT_TOPOS_A").stalks.objects.keys() {
+    for sort in topos("PANEL_KIT_TRIO_AGENTIC").stalks.objects.keys() {
         assert!(composed.object_sorts.contains_key(sort), "{sort} missing from psi . omega");
     }
-    for sort in topos("PANEL_KIT_TOPOS_A").stalks.morphisms.keys() {
+    for sort in topos("PANEL_KIT_TRIO_AGENTIC").stalks.morphisms.keys() {
         assert!(composed.morphism_sorts.contains_key(sort), "{sort} missing from psi . omega");
     }
 }
@@ -192,8 +192,8 @@ fn omega_is_the_map_the_diagram_pins() {
 
 #[test]
 fn an_omega_that_maps_the_reviewer_to_a_skill_fails_the_square() {
-    let p_catalog = morphism("PANEL_KIT_OKF_CATALOG_PHYSICS");
-    let p_agentic = morphism("PANEL_KIT_MORPHISM_A_PHYSICS");
+    let p_catalog = morphism("PANEL_KIT_TRIO_OKF_CATALOG_PHYSICS");
+    let p_agentic = morphism("PANEL_KIT_TRIO_AGENTIC_PHYSICS");
 
     // The real ω commutes, on both laws.
     let square = omega().compose(&psi()).expect("omega then psi composes");
@@ -224,7 +224,7 @@ fn an_omega_that_maps_the_reviewer_to_a_skill_fails_the_square() {
         "reviewer then psi lands on tail, f lands it on head"
     );
     assert!(
-        broken.validate(&topos("PANEL_KIT_TOPOS_A"), &catalog()).is_err(),
+        broken.validate(&topos("PANEL_KIT_TRIO_AGENTIC"), &catalog()).is_err(),
         "and the catalog's own sorting of reviewer no longer agrees with omega"
     );
     assert!(
@@ -235,8 +235,8 @@ fn an_omega_that_maps_the_reviewer_to_a_skill_fails_the_square() {
 
 #[test]
 fn a_broken_psi_fails_the_commutation_check() {
-    let p_catalog = morphism("PANEL_KIT_OKF_CATALOG_PHYSICS");
-    let p_membrane = morphism("PANEL_KIT_MORPHISM_B_PHYSICS");
+    let p_catalog = morphism("PANEL_KIT_TRIO_OKF_CATALOG_PHYSICS");
+    let p_membrane = morphism("PANEL_KIT_TRIO_MEMBRANE_PHYSICS");
 
     // One object sort remapped: ψ still total into the membrane sorts, but no
     // longer f . chi on that sort nor p_membrane-commuting over the base.
@@ -256,7 +256,7 @@ fn a_broken_psi_fails_the_commutation_check() {
         "one remapped sort also breaks p_membrane . psi = p_catalog"
     );
     assert!(
-        broken.validate_over(&p_catalog, &morphism("PANEL_KIT_MORPHISM_A_PHYSICS")).is_err(),
+        broken.validate_over(&p_catalog, &morphism("PANEL_KIT_TRIO_AGENTIC_PHYSICS")).is_err(),
         "the broken psi is discriminated, not merely different"
     );
 }
@@ -264,9 +264,9 @@ fn a_broken_psi_fails_the_commutation_check() {
 #[test]
 fn the_three_regimes_declare_the_graph_component_and_external_panel() {
     for (var, binding) in [
-        ("PANEL_KIT_TOPOS_A", "agentic.graph"),
-        ("PANEL_KIT_TOPOS_B", "membrane.graph"),
-        ("PANEL_KIT_OKF_CATALOG", "okf.graph"),
+        ("PANEL_KIT_TRIO_AGENTIC", "agentic.graph"),
+        ("PANEL_KIT_TRIO_MEMBRANE", "membrane.graph"),
+        ("PANEL_KIT_TRIO_OKF_CATALOG", "okf.graph"),
     ] {
         // `Topos::validate` above already accepted the host-overlay binding.
         let topos = topos(var);
@@ -296,8 +296,8 @@ fn every_regime_sorts_every_site_kind_of_the_merged_site() {
     // Sessions are native in agentic; knowledge objects are native in
     // okf-catalog; neither is native in membrane, so both are read there by
     // transport along f and psi respectively.
-    let agentic = topos("PANEL_KIT_TOPOS_A");
-    let catalog = topos("PANEL_KIT_OKF_CATALOG");
+    let agentic = topos("PANEL_KIT_TRIO_AGENTIC");
+    let catalog = topos("PANEL_KIT_TRIO_OKF_CATALOG");
     assert_eq!(
         agentic.native_object_kinds(),
         ["coder", "memory", "planner", "reviewer"].into_iter().map(String::from).collect()
@@ -320,7 +320,7 @@ fn every_regime_sorts_every_site_kind_of_the_merged_site() {
         .map(String::from)
         .collect()
     );
-    let membrane = topos("PANEL_KIT_TOPOS_B");
+    let membrane = topos("PANEL_KIT_TRIO_MEMBRANE");
     assert!(membrane.native_object_kinds().is_empty(), "membrane sorts every kind by transport");
 
     // ω is checked against the catalog's own sorting of the kinds the agentic

@@ -208,7 +208,7 @@ impl Topos {
             return Ok(None);
         };
         self.check_site(site)?;
-        let resolver = self.resolver(physics);
+        let resolver = self.resolver(physics, &BTreeMap::new());
         Ok(Some(self.resolve_binding(&resolver, site, sheaf)?.0))
     }
 

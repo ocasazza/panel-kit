@@ -495,8 +495,8 @@ fn panels_overflowing_the_workspace_leave_the_dock_rows_untouched() {
     let buffer = render_to_buffer(80, 24, |frame| {
         frame.render_widget(Paragraph::new("~".repeat(80 * 24)).wrap(ratatui::widgets::Wrap { trim: false }), frame.area());
         widgets::paint_clipped(frame, clip, &mut clip_scratch, |frame| {
-            widgets::panel::draw_panel_surface(frame, panel, &ResolvedTuiTheme::default(), Charset::Ascii, &mut hits);
-            widgets::panel::draw_panel_chrome(frame, panel, meta, &ResolvedTuiTheme::default(), Charset::Ascii, &mut hits);
+            widgets::panel::draw_panel_surface(frame, panel, &ResolvedTuiTheme::default(), TerminalCharset::Ascii, &mut hits);
+            widgets::panel::draw_panel_chrome(frame, panel, meta, &ResolvedTuiTheme::default(), TerminalCharset::Ascii, &mut hits);
         });
     });
     hits.clip_panels(clip);

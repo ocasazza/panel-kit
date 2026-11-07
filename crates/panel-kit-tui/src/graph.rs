@@ -61,9 +61,9 @@ pub fn graph(
         by_color.entry(node.color).or_default().push(point);
     }
 
-    let edges = edges(view.edges, positions, t.line2);
-    let ring_color = t.accent;
-    let label_style = Style::default().fg(t.fg);
+    let edges = edges(view.edges, positions, t.border);
+    let ring_color = t.highlight;
+    let label_style = Style::default().fg(t.text);
 
     f.render_widget(
         Canvas::default()

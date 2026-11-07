@@ -1,7 +1,7 @@
 //! TUI canary: the shared canary content plus its ratatui painters.
 
 #[allow(dead_code)]
-#[path = "../../../examples/support/canary_content.rs"]
+#[path = "canary_content.rs"]
 mod canary_content;
 pub use canary_content::*;
 

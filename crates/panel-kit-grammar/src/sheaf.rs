@@ -1743,11 +1743,13 @@ mod tests {
         let morphism_sorting = BTreeMap::new();
         let stalks = Stalks { objects: BTreeMap::new(), morphisms: BTreeMap::new(), stages: Stages::default() };
         let physics = Physics::empty();
+        let attributes = BTreeMap::new();
         let resolver = Resolver {
             object_sorting: &object_sorting,
             morphism_sorting: &morphism_sorting,
             stalks: &stalks,
             physics: &physics,
+            attributes: &attributes,
         };
         (sheaf.evaluate(&resolver, site), sheaf.evaluate_reference(&resolver, site))
     }

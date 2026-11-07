@@ -296,15 +296,6 @@
         toposWebEnv = toposSpecEnv topos-agentic-subobject-web topos-membrane-subobject-web;
         toposCellsEnv = toposSpecEnv topos-agentic-subobject-cells topos-membrane-subobject-cells;
         toposAsciiEnv = toposSpecEnv topos-agentic-subobject-ascii topos-membrane-subobject-ascii;
-        # The trio's three new morphisms read the OKF catalog against the two
-        # agent-trace regimes of the trio specs, and omega closes the diagram
-        # from agentic into the catalog, so the check gets the trio's topos
-        # specs, the OKF env and all four morphism documents.
-        trioMorphismEnv = toposSpecEnv topos-agentic-web topos-membrane-web // okfEnv // {
-          PANEL_KIT_TRIO_MORPHISM_MEMBRANE = "${morphism-okf-catalog-membrane}";
-          PANEL_KIT_TRIO_MORPHISM_AGENTIC = "${morphism-okf-catalog-agentic}";
-          PANEL_KIT_TRIO_MORPHISM_OMEGA = "${morphism-agentic-okf-catalog}";
-        };
 
         # The trio host reads one site in all three regimes: the three topos
         # specs for one surface, the one physics base, the four morphisms
@@ -486,7 +477,7 @@
         # psi and chi against the real Nix JSON: each validates on its domain
         # and codomain, both commute over the physics base, and the triangle
         # f . chi = psi holds on every sort (a broken psi must fail it).
-        topos-trio-morphisms-test = hostCraneLib.cargoTest (hostArgs // trioMorphismEnv // {
+        topos-trio-morphisms-test = hostCraneLib.cargoTest (hostArgs // trioEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoTestExtraArgs = "-p panel-kit --test topos_trio_morphisms";
         });
@@ -660,7 +651,7 @@
           });
         };
 
-        devShells.default = pkgs.mkShell (autoloopEnv // okfEnv // trioEnv // {
+        devShells.default = pkgs.mkShell (toposWebEnv // autoloopEnv // okfEnv // trioEnv // {
           PANEL_KIT_WORKSPACE_SPEC = "${workspace-canary}";
           packages = [
             rustWasm
