@@ -1563,26 +1563,26 @@ fn stage_label(stalks: &Stalks, stage: Stage) -> &str {
 fn color_of(colors: &ColorTokens, sort: &str) -> Color {
     match sort {
         // topos-agentic: sessions and memories.
-        "planner" => colors.blue,
-        "coder" => colors.green,
-        "reviewer" => colors.yellow,
-        "memory" => colors.dim,
+        "planner" => colors.primary,
+        "coder" => colors.success,
+        "reviewer" => colors.warning,
+        "memory" => colors.text_muted,
         // topos-membrane: the lipids those sessions read as.
-        "head" => colors.accent,
-        "tail" => colors.red,
-        "solvent" => colors.badge_info,
+        "head" => colors.highlight,
+        "tail" => colors.failure,
+        "solvent" => colors.info,
         // topos-okf-catalog: the normalised OKF types.
-        "bundle" => colors.dim,
-        "table" => colors.blue,
-        "dataset" => colors.green,
-        "policy" => colors.yellow,
-        "metric" => colors.pink,
-        "computation" => colors.red,
-        "skill" => colors.accent,
-        "reference" => colors.badge_info,
-        "concept" => colors.line2,
-        "log" => colors.line,
-        _ => colors.fg,
+        "bundle" => colors.text_muted,
+        "table" => colors.primary,
+        "dataset" => colors.success,
+        "policy" => colors.warning,
+        "metric" => colors.tertiary,
+        "computation" => colors.failure,
+        "skill" => colors.highlight,
+        "reference" => colors.info,
+        "concept" => colors.border,
+        "log" => colors.divider,
+        _ => colors.text,
     }
 }
 

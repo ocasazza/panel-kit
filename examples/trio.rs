@@ -36,15 +36,8 @@ use panel_kit_core::widgets::ContentSpec;
 use panel_kit_core::Units;
 use panel_kit_grammar::Section;
 
-#[allow(dead_code, unused_imports)]
-#[path = "support/composable_workspace.rs"]
-mod composable_workspace;
-#[allow(dead_code)]
-#[path = "support/spec_workspace.rs"]
-mod spec_workspace;
-#[allow(dead_code)]
-#[path = "support/section_view.rs"]
-mod section_view;
+use panel_kit::{section_view, spec_workspace};
+
 #[allow(dead_code)]
 #[path = "support/trio_host.rs"]
 mod trio_host;
@@ -168,7 +161,7 @@ fn editor_body(
     section: &Section,
 ) -> Element {
     let Section::Text(text) = section else {
-        return composable_workspace::web_canary::editor_placeholder(id, multiline, placeholder);
+        return panel_kit::canary::editor_placeholder(id, multiline, placeholder);
     };
     let language = if id == trio_host::GRAMMAR { state.grammar_language() } else { "json" };
     let key = format!("{}-{}-{id}", state.regime().label(), state.grammar_id());
@@ -477,7 +470,7 @@ fn App() -> Element {
                 class: "{workspace_class}",
                 style: "{workspace_style}",
                 onwheel: move |event| spec_workspace::handle_wheel(&wheel_workspace, &event),
-                {composable_workspace::web_canary::workspace_contents_kept(
+                {panel_kit::canary::workspace_contents_kept(
                     &frame,
                     &current.resolved,
                     &snapshot,
