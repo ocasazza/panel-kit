@@ -51,9 +51,11 @@ pub(super) fn reference_spec_value() -> Value {
         },
         "input": {
             "steps": { "coarse": 2.0, "fine": 1.0 },
-            "bindings": [{
-                "chord": { "key": "left", "shift": false, "alt": false, "ctrl": false, "meta": false },
-                "command": { "kind": "move", "dx": -16.0, "dy": 0.0 }
+            "keymaps": [{
+                "spec_version": 1,
+                "id": "reference-vi",
+                "modes": ["normal"],
+                "rules": [{ "keys": "g g", "intent": "nav.first", "modes": null, "enter": null, "label": null, "group": null }]
             }]
         },
         "glyphs": "unicode",

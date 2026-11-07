@@ -652,4 +652,4 @@ fn scale_floating_geometry<K: PanelKey>(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -6,7 +6,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub(super) enum TestPanel {
+pub(crate) enum TestPanel {
     First,
     Second,
     Third,

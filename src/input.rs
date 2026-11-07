@@ -18,6 +18,22 @@ pub fn key_event_from_parts<K: PanelKey>(
     WorkspaceEvent::Key { chord, focus }
 }
 
+/// Translate a Dioxus keyboard event into a core key chord.
+///
+/// Returns `None` for browser keys the core has no name for (lone modifiers,
+/// function keys, dead keys), so hosts and the workspace share one translation.
+pub fn key_chord(event: &KeyboardEvent) -> Option<KeyChord> {
+    let key = key_from_dioxus(event.key())?;
+    let modifiers = event.modifiers();
+    Some(KeyChord {
+        key,
+        shift: modifiers.shift(),
+        alt: modifiers.alt(),
+        ctrl: modifiers.ctrl(),
+        meta: modifiers.meta(),
+    })
+}
+
 /// Translate a Dioxus keyboard event into a core workspace event.
 ///
 /// Returns `None` for browser keys panel-kit does not own, leaving the host or
@@ -26,18 +42,7 @@ pub fn keyboard_event<K: PanelKey>(
     event: &KeyboardEvent,
     focus: FocusContext<K>,
 ) -> Option<WorkspaceEvent<K>> {
-    let key = key_from_dioxus(event.key())?;
-    let modifiers = event.modifiers();
-    Some(key_event_from_parts(
-        KeyChord {
-            key,
-            shift: modifiers.shift(),
-            alt: modifiers.alt(),
-            ctrl: modifiers.ctrl(),
-            meta: modifiers.meta(),
-        },
-        focus,
-    ))
+    Some(key_event_from_parts(key_chord(event)?, focus))
 }
 
 /// Give keyboard focus to the `.panel-head` containing the event target, so
@@ -392,6 +397,12 @@ fn key_from_dioxus(key: DioxusKey) -> Option<Key> {
         DioxusKey::Enter => Some(Key::Enter),
         DioxusKey::Escape => Some(Key::Escape),
         DioxusKey::Tab => Some(Key::Tab),
+        DioxusKey::Backspace => Some(Key::Backspace),
+        DioxusKey::Delete => Some(Key::Delete),
+        DioxusKey::Home => Some(Key::Home),
+        DioxusKey::End => Some(Key::End),
+        DioxusKey::PageUp => Some(Key::PageUp),
+        DioxusKey::PageDown => Some(Key::PageDown),
         DioxusKey::Character(value) => one_character(&value).map(Key::Char),
         _ => None,
     }

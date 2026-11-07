@@ -2,7 +2,7 @@
 
 use crate::frame::ChromeProjectionInput;
 use crate::reducer::Viewport;
-use crate::{ChromeMetrics, PanelCommand, Units};
+use crate::{ChromeMetrics, Units};
 
 use super::ResolvedWorkspace;
 
@@ -60,19 +60,6 @@ impl ResolvedWorkspace {
 
         self.input.steps.coarse *= col;
         self.input.steps.fine *= col;
-        for binding in &mut self.input.bindings {
-            match &mut binding.command {
-                PanelCommand::Move { dx, dy } => {
-                    *dx *= col;
-                    *dy *= row;
-                }
-                PanelCommand::Resize { dw, dh } => {
-                    *dw *= col;
-                    *dh *= row;
-                }
-                _ => {}
-            }
-        }
 
         let pixel_chrome = ChromeProjectionInput::full(ChromeMetrics::WEB);
         self.chrome.metrics = pixel_chrome.metrics;
@@ -109,7 +96,7 @@ impl ResolvedWorkspace {
 mod tests {
     use super::super::tests::{resolved_from, valid_spec_json};
     use crate::frame::ChromeProjectionInput;
-    use crate::{ChromeMetrics, PanelCommand, Units};
+    use crate::{ChromeMetrics, Units};
 
     /// The fixture's 120×40-cell viewport onto 1440×800 px: a 12 px column
     /// and a 20 px row.
@@ -141,12 +128,9 @@ mod tests {
         assert_eq!((tile.row_min, tile.gap, tile.padding), (20.0, 12.0, 0.0));
 
         assert_eq!((px.surface.compact_max, px.surface.tablet_max), (720.0, 1320.0));
-        // CommandStep::CELLS 2 / 1; the authored binding moves dx -16 cells.
+        // CommandStep::CELLS 2 / 1; keymaps carry no lengths and pass through.
         assert_eq!((px.input.steps.coarse, px.input.steps.fine), (24.0, 12.0));
-        assert_eq!(
-            px.input.bindings[0].command,
-            PanelCommand::Move { dx: -192.0, dy: 0.0 }
-        );
+        assert_eq!(px.input.keymaps, resolved_from(valid_spec_json()).input.keymaps);
 
         let pixel = ChromeProjectionInput::full(ChromeMetrics::WEB);
         assert_eq!(px.chrome.metrics, ChromeMetrics::WEB);

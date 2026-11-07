@@ -72,18 +72,15 @@ mkWorkspaceSpec {
 
   input = {
     steps = { coarse = 2.0; fine = 1.0; };
-    bindings = [
+    keymaps = [
       {
-        chord = { key = "left"; shift = false; alt = false; ctrl = false; meta = false; };
-        command = { kind = "move"; dx = -16.0; dy = 0.0; };
-      }
-      {
-        chord = { key = "right"; shift = true; alt = false; ctrl = false; meta = false; };
-        command = { kind = "resize"; dw = 16.0; dh = 0.0; };
-      }
-      {
-        chord = { key = { char = "m"; }; shift = false; alt = false; ctrl = false; meta = false; };
-        command = { kind = "toggle_mode"; };
+        spec_version = 1;
+        id = "workspace-canary-vi";
+        modes = [ "normal" ];
+        rules = [
+          { keys = "g g"; intent = "nav.first"; modes = null; enter = null; label = null; group = null; }
+          { keys = "<c-o>"; intent = "nav.jumplist -1"; modes = null; enter = null; label = null; group = null; }
+        ];
       }
     ];
   };

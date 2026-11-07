@@ -127,13 +127,16 @@ rec {
       chrome = ps.chrome;
       input = {
         steps = ps.input_steps;
-        bindings = [
-          { chord = { key = "left"; shift = false; alt = false; ctrl = false; meta = false; };
-            command = { kind = "move"; dx = 0.0 - ps.move_step; dy = 0.0; }; }
-          { chord = { key = "right"; shift = true; alt = false; ctrl = false; meta = false; };
-            command = { kind = "resize"; dw = ps.move_step; dh = 0.0; }; }
-          { chord = { key = { char = "m"; }; shift = false; alt = false; ctrl = false; meta = false; };
-            command = { kind = "toggle_mode"; }; }
+        keymaps = [
+          {
+            spec_version = 1;
+            id = "topos-vi";
+            modes = [ "normal" ];
+            rules = [
+              { keys = "g g"; intent = "nav.first"; modes = null; enter = null; label = null; group = null; }
+              { keys = "<c-o>"; intent = "nav.jumplist -1"; modes = null; enter = null; label = null; group = null; }
+            ];
+          }
         ];
       };
       inherit glyphs theme;

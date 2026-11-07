@@ -1,5 +1,5 @@
 mod command_path;
-mod fixtures;
+pub(crate) mod fixtures;
 mod input_path;
 mod key_path;
 mod serde;
