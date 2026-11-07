@@ -8,9 +8,21 @@
 //! geometry, and translates clicks, wheel and keyboard input into those
 //! events. COPY and CSV emit [`DataTableExport`] for the host.
 //!
+//! Submodules: `ribbon` paints each row's tag segments, `columns` runs the
+//! header's drag-to-reorder and edge resize, `keys` routes the grid's
+//! keyboard navigation, and `window` mounts only the rows a windowed table's
+//! scroller shows.
+//!
 //! Core's table state shares rows through `Rc`, so per-table state lives in
 //! a main-thread [`NonSend`] map keyed by the [`DataTable`] entity; every
 //! change repaints that table from it.
+
+mod columns;
+mod keys;
+mod ribbon;
+#[cfg(test)]
+mod testing;
+mod window;
 
 use std::collections::HashMap;
 
@@ -21,11 +33,13 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 use panel_kit_core::widgets::data_table::{
     empty_sentence, export_view, tally, BuildOptions, ColumnFilter, ColumnKind, DataColumnSpec,
-    Density, Entry, ExportFormat, MoveTarget, QueryMode, SelectMode, Selectable, SortDir,
-    TableData, TableDefaults, TableEvent, TableState, View, ViewMode,
+    Density, Entry, ExportFormat, MoveTarget, QueryMode, RibbonMode, SelectMode, Selectable,
+    SortDir, TableData, TableDefaults, TableEvent, TableState, View, ViewMode,
 };
 use panel_kit_core::widgets::table::{TableCell, TableModel};
 
+use self::columns::Drag;
+pub use self::keys::GridFocus;
 use super::{styled_text, TextStyle};
 use crate::theme::BevyTheme;
 
@@ -99,15 +113,28 @@ pub struct DataTable {
     pub defaults: TableDefaults,
     /// Quick-filter placeholder.
     pub placeholder: String,
+    /// Draw each row's tags as a ribbon in a gutter column.
+    pub ribbon: bool,
+    /// Segments drawn before the `+N` tail.
+    pub tags_limit: usize,
+    /// How much of the ribbon to draw.
+    pub tags_mode: RibbonMode,
+    /// Mount only the window of rows the scroller shows.
+    pub windowed: bool,
 }
 
 impl DataTable {
-    /// A table over `model` with the default state and placeholder.
+    /// A table over `model` with the default state and placeholder, a
+    /// ribbon of up to four segments, and every row mounted.
     pub fn new(model: TableModel) -> Self {
         Self {
             model,
             defaults: TableDefaults::default(),
             placeholder: "filter rows".to_owned(),
+            ribbon: true,
+            tags_limit: 4,
+            tags_mode: RibbonMode::default(),
+            windowed: false,
         }
     }
 }
@@ -153,7 +180,14 @@ enum Menu {
 #[derive(Clone, Debug)]
 enum Action {
     Apply(TableEvent),
-    Sort(String),
+    /// A header: a click sorts, a drag past the threshold moves the column.
+    Header(String),
+    /// A header's edge, with the column's basis width in pixels.
+    Resize(String, f32),
+    /// A ribbon segment: toggles the tag in the filter.
+    Tag(String),
+    /// A ribbon's `+N` tail: spells the row's tags out.
+    Expand(String),
     Row(String),
     Toggle(Menu),
     Focus(Field),
@@ -172,6 +206,13 @@ struct TableControl {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct TableRows;
 
+/// A painted data row, found by id when the cursor must be scrolled to.
+#[derive(Component, Clone, Debug)]
+struct RowMark {
+    table: Entity,
+    id: String,
+}
+
 /// One table's core state and the text being typed into its fields.
 struct Instance {
     columns: Vec<DataColumnSpec>,
@@ -184,6 +225,24 @@ struct Instance {
     inputs: HashMap<Field, String>,
     scroll: Vec2,
     dirty: bool,
+    ribbon: bool,
+    tags_limit: usize,
+    tags_mode: RibbonMode,
+    windowed: bool,
+    /// The scroller's width in pixels; 0 until laid out.
+    measured_width: f32,
+    /// The gesture a pressed header or header edge started.
+    drag: Option<Drag>,
+    /// A column's width while its edge is dragged, in pixels.
+    live: Option<(String, f32)>,
+    /// The header a dragged column would land beside, and whether before it.
+    drop: Option<(String, bool)>,
+    /// Whether the cursor row shows its ring: the keyboard moved it last.
+    ring: bool,
+    /// Whether the grid had keyboard focus when it was last painted.
+    painted_focus: bool,
+    /// The cursor row is to be scrolled into view once it is laid out.
+    reveal: bool,
 }
 
 impl Instance {
@@ -202,22 +261,54 @@ impl Instance {
             inputs: HashMap::new(),
             scroll: Vec2::ZERO,
             dirty: true,
+            ribbon: table.ribbon,
+            tags_limit: table.tags_limit,
+            tags_mode: table.tags_mode,
+            windowed: table.windowed,
+            measured_width: 0.0,
+            drag: None,
+            live: None,
+            drop: None,
+            ring: false,
+            painted_focus: false,
+            reveal: false,
         };
         instance.rebuild();
         instance
     }
 
-    /// Apply one event through core and rebuild the view.
+    /// Whether rows carry tags and the table draws them.
+    fn tagged(&self) -> bool {
+        self.ribbon && self.data.tagged()
+    }
+
+    /// Apply one event through core; the view is rebuilt unless the event
+    /// cannot change what it holds.
     fn apply(&mut self, event: TableEvent) {
         event.apply(&mut self.state, &self.columns, &self.view, &self.data);
-        self.rebuild();
+        if matches!(
+            event,
+            TableEvent::Select { .. }
+                | TableEvent::SelectAll
+                | TableEvent::Cursor(_)
+                | TableEvent::Key { .. }
+                | TableEvent::Window { .. }
+                | TableEvent::Scroll { .. }
+                | TableEvent::Resize(..)
+                | TableEvent::TagFocus(_)
+                | TableEvent::TagsExpand(_)
+        ) {
+            self.dirty = true;
+        } else {
+            self.rebuild();
+        }
     }
 
     fn rebuild(&mut self) {
         self.state.sync(&self.columns);
         let options = BuildOptions {
             mode: QueryMode::Client,
-            tags: false,
+            tags: self.tagged(),
         };
         self.view = View::build(&self.columns, &self.data, &self.state, options);
         self.dirty = true;
@@ -295,15 +386,24 @@ impl Plugin for DataTablePlugin {
     fn build(&self, app: &mut App) {
         app.insert_non_send_resource(Tables::default())
             .init_resource::<TableFocus>()
+            .init_resource::<GridFocus>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .add_event::<KeyboardInput>()
             .add_event::<DataTableExport>()
             .add_systems(Startup, insert_chevron_image)
             .add_systems(
                 Update,
                 (
                     adopt_tables,
+                    keys::focus_grid,
                     press_controls,
+                    columns::drag_columns,
+                    columns::hover_handles,
+                    keys::navigate_rows,
                     type_into_fields,
                     scroll_rows,
+                    window::reveal_cursor,
+                    window::sync_windows,
                     repaint_tables,
                 )
                     .chain(),
@@ -328,6 +428,7 @@ const SELECT_PAD_RIGHT: f32 = 22.0;
 fn insert_chevron_image(images: Option<ResMut<Assets<Image>>>) {
     if let Some(mut images) = images {
         images.insert(&CHEVRON_IMAGE, chevron_image());
+        images.insert(&ribbon::RAKE_IMAGE, ribbon::rake_image());
     }
 }
 
@@ -426,28 +527,40 @@ fn adopt_tables(
 fn press_controls(
     mut tables: NonSendMut<Tables>,
     mut focus: ResMut<TableFocus>,
+    mut grid: ResMut<GridFocus>,
     keys: Res<ButtonInput<KeyCode>>,
-    controls: Query<(&Interaction, &TableControl), Changed<Interaction>>,
+    controls: Query<(Entity, &Interaction, &TableControl), Changed<Interaction>>,
     mut exports: EventWriter<DataTableExport>,
 ) {
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    for (interaction, control) in &controls {
+    for (entity, interaction, control) in &controls {
         if *interaction != Interaction::Pressed {
             continue;
         }
         let Some(instance) = tables.0.get_mut(&control.table) else {
             continue;
         };
+        grid.0 = Some(control.table);
         match &control.action {
             Action::Apply(event) => {
                 instance.open = None;
                 instance.apply(event.clone());
             }
-            Action::Sort(column) => instance.apply(TableEvent::Sort {
-                column: column.clone(),
-                append: shift,
+            Action::Header(column) => instance.drag = Some(Drag::header(column.clone())),
+            Action::Resize(column, basis) => {
+                instance.drag = Some(Drag::resize(column.clone(), *basis, entity));
+            }
+            Action::Tag(tag) => instance.apply(TableEvent::Tag {
+                tag: tag.clone(),
+                all: shift,
             }),
+            Action::Expand(row) => {
+                let expand = !instance.state.tags_expand;
+                instance.apply(TableEvent::Cursor(row.clone()));
+                instance.apply(TableEvent::TagsExpand(expand));
+            }
             Action::Row(id) => {
+                instance.ring = false;
                 instance.apply(TableEvent::Cursor(id.clone()));
                 if instance.state.selectable != Selectable::None {
                     let mode = if shift {
@@ -585,10 +698,16 @@ fn scroll_rows(
 fn repaint_tables(
     mut tables: NonSendMut<Tables>,
     focus: Res<TableFocus>,
+    grid: Res<GridFocus>,
     theme: Res<BevyTheme>,
     mut commands: Commands,
 ) {
     for (entity, instance) in tables.0.iter_mut() {
+        let grid_focused = grid.0 == Some(*entity);
+        if grid_focused != instance.painted_focus {
+            instance.painted_focus = grid_focused;
+            instance.dirty = true;
+        }
         if !instance.dirty {
             continue;
         }
@@ -608,6 +727,7 @@ fn repaint_tables(
             theme: &theme,
             instance,
             focused: focused.as_ref(),
+            grid_focused,
         };
         root.with_children(|parent| paint.table(parent));
     }
@@ -619,6 +739,8 @@ struct Paint<'a> {
     theme: &'a BevyTheme,
     instance: &'a Instance,
     focused: Option<&'a Field>,
+    /// Whether the grid has keyboard focus, which the cursor ring needs.
+    grid_focused: bool,
 }
 
 impl Paint<'_> {
@@ -1157,7 +1279,8 @@ impl Paint<'_> {
     }
 
     /// Visible columns with their CSS widths: a fixed-layout table keeps
-    /// each declared width and shares the slack in proportion.
+    /// each declared width and shares the slack in proportion. A column whose
+    /// edge is being dragged takes the drag's width.
     fn widths(&self) -> Vec<(&DataColumnSpec, f32)> {
         let size = self.theme.metrics.body_size;
         self.instance
@@ -1165,17 +1288,35 @@ impl Paint<'_> {
             .visible(&self.instance.columns)
             .into_iter()
             .map(|column| {
-                let px = self
+                let live = self
                     .instance
-                    .state
-                    .widths
-                    .get(&column.id)
-                    .map(|px| *px as f32)
+                    .live
+                    .as_ref()
+                    .filter(|(id, _)| *id == column.id)
+                    .map(|(_, px)| *px);
+                let px = live
+                    .or_else(|| self.instance.state.widths.get(&column.id).map(|px| *px as f32))
                     .or_else(|| column.width.as_deref().and_then(|width| css_width(width, size, self.theme)))
                     .unwrap_or(0.0);
                 (column, px)
             })
             .collect()
+    }
+
+    /// The tags gutter's width when the table draws a ribbon.
+    fn gutter(&self) -> Option<f32> {
+        self.instance.tagged().then_some(ribbon::GUTTER)
+    }
+
+    /// The `.pk-dt-th-tags` / `.pk-dt-td-tags` first cell, which lets a
+    /// ribbon overhang its edge.
+    fn gutter_bundle(&self, height: Option<f32>, pad_y: f32, ground: Color) -> (Node, BackgroundColor, BorderColor) {
+        let node = Node {
+            overflow: Overflow::visible(),
+            height: height.map_or(Val::Auto, Val::Px),
+            ..self.cell_node(ribbon::GUTTER, (0.0, pad_y), panel_kit_core::widgets::data_table::Align::Left)
+        };
+        (node, BackgroundColor(ground), BorderColor(self.theme.divider))
     }
 
     fn cell_node(&self, basis: f32, pad: (f32, f32), align: panel_kit_core::widgets::data_table::Align) -> Node {
@@ -1202,7 +1343,7 @@ impl Paint<'_> {
     fn grid(&self, dt: &mut ChildSpawnerCommands) {
         let theme = self.theme;
         let widths = self.widths();
-        let total: f32 = widths.iter().map(|(_, px)| px).sum();
+        let total: f32 = widths.iter().map(|(_, px)| px).sum::<f32>() + self.gutter().unwrap_or(0.0);
         dt.spawn((
             Node {
                 width: Val::Percent(100.0),
@@ -1263,9 +1404,24 @@ impl Paint<'_> {
             ..default()
         })
         .with_children(|row| {
-            for (column, basis) in widths {
+            if self.gutter().is_some() {
+                row.spawn(self.gutter_bundle(Some(head + 1.0), 0.0, theme.background));
+            }
+            for (index, (column, basis)) in widths.iter().enumerate() {
                 let sorted = state.direction(&column.id);
-                let ink = if sorted.is_some() || state.filters.contains_key(&column.id) {
+                let dragging = matches!(
+                    &self.instance.drag,
+                    Some(Drag::Header { column: dragged, moved: true, .. }) if *dragged == column.id
+                );
+                let drop = self
+                    .instance
+                    .drop
+                    .as_ref()
+                    .filter(|(target, _)| *target == column.id)
+                    .map(|(_, before)| *before);
+                let ink = if dragging {
+                    theme.text_muted
+                } else if sorted.is_some() || state.filters.contains_key(&column.id) {
                     theme.text
                 } else {
                     theme.text_muted
@@ -1281,14 +1437,14 @@ impl Paint<'_> {
                 let mut cell = row.spawn((
                     Node {
                         height: Val::Px(head + 1.0),
+                        overflow: Overflow::visible(),
                         ..self.cell_node(*basis, (pad.0, 0.0), column.align)
                     },
                     BackgroundColor(theme.background),
                     BorderColor(theme.divider),
+                    ZIndex((widths.len() - index) as i32),
                 ));
-                if column.sortable {
-                    cell.insert(self.control(Action::Sort(column.id.clone())));
-                }
+                cell.insert(self.control(Action::Header(column.id.clone())));
                 cell.with_children(|cell| {
                     cell.spawn(Node {
                         flex_direction: FlexDirection::Row,
@@ -1321,6 +1477,10 @@ impl Paint<'_> {
                             styled_text(label, rank.to_string(), TextStyle { bold: false, ..style }.color(theme.text_muted));
                         }
                     });
+                    if let Some(before) = drop {
+                        self.drop_mark(cell, before);
+                    }
+                    self.resize_handle(cell, &column.id, *basis);
                 });
             }
         });
@@ -1335,6 +1495,9 @@ impl Paint<'_> {
             ..default()
         })
         .with_children(|row| {
+            if self.gutter().is_some() {
+                row.spawn(self.gutter_bundle(None, FILTER_CELL_PAD.1, theme.background));
+            }
             for (column, basis) in widths {
                 row.spawn((
                     self.cell_node(*basis, FILTER_CELL_PAD, column.align),
@@ -1403,7 +1566,9 @@ impl Paint<'_> {
         let view = &self.instance.view;
         let state = &self.instance.state;
         let entry_h = state.view.row_height(state.density) as f32;
-        for entry in &view.entries {
+        let mounted = state.mounted(view.entries.len(), self.instance.windowed);
+        self.spacer(grid, mounted.above_px);
+        for entry in &view.entries[mounted.start..mounted.end] {
             match entry {
                 Entry::Group { value, count, folded } => self.group_row(grid, value, *count, *folded, entry_h),
                 Entry::Row(row) => match state.view {
@@ -1411,6 +1576,22 @@ impl Paint<'_> {
                     mode => self.card_row(grid, *row, widths, mode, entry_h),
                 },
             }
+        }
+        self.spacer(grid, mounted.below_px);
+    }
+
+    /// `.pk-dt-spacer`: the height of the entries a window leaves unmounted.
+    fn spacer(&self, grid: &mut ChildSpawnerCommands, height: f64) {
+        if height > 0.0 {
+            grid.spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(height as f32),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                window::Spacer,
+            ));
         }
     }
 
@@ -1422,6 +1603,7 @@ impl Paint<'_> {
             Node {
                 width: Val::Percent(100.0),
                 min_height: Val::Px(height),
+                height: if self.instance.windowed { Val::Px(height) } else { Val::Auto },
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(6.0),
@@ -1458,27 +1640,50 @@ impl Paint<'_> {
 
     fn data_row(&self, grid: &mut ChildSpawnerCommands, row: usize, widths: &[(&DataColumnSpec, f32)]) {
         let theme = self.theme;
+        let windowed = self.instance.windowed;
+        let state = &self.instance.state;
         let pad = dt_pad(self.density());
+        let pad = if windowed { (pad.0, 0.0) } else { pad };
         let id = self.instance.data.id(row).to_owned();
-        let selected = self.instance.state.selection.contains(&id);
+        let selected = state.selection.contains(&id);
+        let cursor = state.cursor.as_deref() == Some(id.as_str());
+        let ring = cursor && self.grid_focused && self.instance.ring;
+        let ground = if selected { theme.surface } else { theme.background };
         let cells = self.row_cells(row);
         grid.spawn((
             Node {
                 width: Val::Percent(100.0),
+                height: if windowed { Val::Px(state.view.row_height(state.density) as f32) } else { Val::Auto },
                 flex_direction: FlexDirection::Row,
                 flex_shrink: 0.0,
                 ..default()
             },
-            self.control(Action::Row(id)),
+            self.control(Action::Row(id.clone())),
+            RowMark {
+                table: self.table,
+                id: id.clone(),
+            },
         ))
         .with_children(|line| {
-            for ((column, cell, text), (_, basis)) in cells.iter().zip(widths) {
+            if self.gutter().is_some() {
+                let labels: Vec<String> = self.instance.data.tags(row).map(str::to_owned).collect();
+                line.spawn(self.gutter_bundle(None, pad.1, ground))
+                    .with_children(|gutter| {
+                        self.ribbon(gutter, &id, &labels, cursor, ground);
+                        self.bands(gutter, selected, ring, true, false);
+                    });
+            }
+            let last = cells.len().saturating_sub(1);
+            for (at, ((column, cell, text), (_, basis))) in cells.iter().zip(widths).enumerate() {
                 line.spawn((
                     self.cell_node(*basis, pad, column.align),
-                    BackgroundColor(if selected { theme.surface } else { theme.background }),
+                    BackgroundColor(ground),
                     BorderColor(if selected { theme.highlight } else { theme.divider }),
                 ))
-                .with_children(|slot| self.cell(slot, *cell, text));
+                .with_children(|slot| {
+                    self.cell(slot, *cell, text);
+                    self.bands(slot, selected, ring, at == 0 && self.gutter().is_none(), at == last);
+                });
             }
         });
     }
@@ -1552,7 +1757,7 @@ impl Paint<'_> {
             (true, false) => ((6.0, 2.0), 1.0, 16.0),
         };
         let meta_line = if tight { 14.0 } else { 16.0 };
-        let total: f32 = widths.iter().map(|(_, px)| px).sum();
+        let total: f32 = widths.iter().map(|(_, px)| px).sum::<f32>() + self.gutter().unwrap_or(0.0);
         grid.spawn((
             Node {
                 width: Val::Percent(100.0),
@@ -1564,9 +1769,15 @@ impl Paint<'_> {
             },
             BackgroundColor(theme.background),
             BorderColor(theme.divider),
-            self.control(Action::Row(id)),
+            self.control(Action::Row(id.clone())),
         ))
         .with_children(|td| {
+            if self.gutter().is_some() {
+                let labels: Vec<String> = self.instance.data.tags(row).map(str::to_owned).collect();
+                let cursor = self.instance.state.cursor.as_deref() == Some(id.as_str());
+                td.spawn(self.gutter_bundle(Some(height - 1.0), 0.0, theme.background))
+                    .with_children(|gutter| self.ribbon(gutter, &id, &labels, cursor, theme.background));
+            }
             td.spawn((
                 Node {
                     width: Val::Percent(100.0),
@@ -1704,76 +1915,8 @@ pub fn shown_columns(world: &World, table: Entity) -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
+    use super::testing::*;
     use super::*;
-    use bevy::input::keyboard::NativeKey;
-    use panel_kit_core::widgets::data_table::ColumnKind as Kind;
-    use panel_kit_core::widgets::table::{ColumnWidth, TableColumn, TableRow, TextAlign};
-
-    fn model() -> TableModel {
-        let column = |key: &str, value: u16| TableColumn {
-            key: key.into(),
-            title: key.into(),
-            width: ColumnWidth::Fixed { value },
-            align: TextAlign::Left,
-            kind: Kind::Text,
-        };
-        let row = |id: &str, detail: &str| TableRow {
-            id: id.into(),
-            tags: Vec::new(),
-            cells: vec![TableCell::Text(id.into()), TableCell::Text(detail.into())],
-        };
-        TableModel {
-            columns: vec![column("node", 12), column("detail", 10)],
-            rows: vec![row("pdx-01", "leader"), row("pdx-02", "ready"), row("gfr-01", "stale")],
-        }
-    }
-
-    fn app() -> (App, Entity) {
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .add_event::<KeyboardInput>()
-            .add_event::<MouseWheel>()
-            .init_resource::<ButtonInput<KeyCode>>()
-            .insert_resource(BevyTheme::default())
-            .add_plugins(DataTablePlugin);
-        let table = app.world_mut().spawn((DataTable::new(model()), Node::default())).id();
-        app.update();
-        (app, table)
-    }
-
-    /// Press the first control under `table` whose action matches.
-    fn press(app: &mut App, table: Entity, matches: impl Fn(&Action) -> bool) {
-        let world = app.world_mut();
-        let mut query = world.query::<(Entity, &TableControl)>();
-        let target = query
-            .iter(world)
-            .find(|(_, control)| control.table == table && matches(&control.action))
-            .map(|(entity, _)| entity)
-            .expect("a matching control is painted");
-        world.entity_mut(target).insert(Interaction::Pressed);
-        app.update();
-    }
-
-    fn type_text(app: &mut App, text: &str) {
-        for glyph in text.chars() {
-            app.world_mut().send_event(KeyboardInput {
-                key_code: KeyCode::KeyA,
-                logical_key: Key::Character(glyph.to_string().into()),
-                state: ButtonState::Pressed,
-                text: None,
-                repeat: false,
-                window: Entity::PLACEHOLDER,
-            });
-        }
-        let _ = NativeKey::Unidentified;
-        app.update();
-    }
-
-    fn painted_texts(app: &mut App) -> Vec<String> {
-        let world = app.world_mut();
-        let mut query = world.query::<&Text>();
-        query.iter(world).map(|text| text.0.clone()).collect()
-    }
 
     #[test]
     fn typing_in_the_quick_filter_narrows_the_painted_rows() {
@@ -1803,7 +1946,9 @@ mod tests {
     #[test]
     fn a_header_press_sorts_and_marks_the_column() {
         let (mut app, table) = app();
-        press(&mut app, table, |action| matches!(action, Action::Sort(id) if id == "node"));
+        mouse_down(&mut app);
+        press(&mut app, table, |action| matches!(action, Action::Header(id) if id == "node"));
+        mouse_up(&mut app);
         assert_eq!(
             shown_rows(app.world(), table),
             Some(vec!["gfr-01".to_owned(), "pdx-01".to_owned(), "pdx-02".to_owned()])

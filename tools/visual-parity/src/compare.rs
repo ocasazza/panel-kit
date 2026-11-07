@@ -229,6 +229,7 @@ fn compare_panel(
 
     compare_text(out, web.nodes, tree, title, wp, bp);
     compare_toolbar(out, web.nodes, bevy.nodes, title, wp, bp);
+    compare_columns(out, web.nodes, bevy.nodes, tree, title, wp, bp);
 }
 
 /// A text run normalised across backends.
@@ -536,6 +537,75 @@ fn compare_toolbar(
     }
 }
 
+/// The data-table header: each column's cell and its resize zone (a 7px
+/// `col-resize` strip overhanging the cell's right edge by 3px), paired left
+/// to right.
+fn compare_columns(
+    out: &mut Rows,
+    web: &[WebNode],
+    bevy: &[BevyNode],
+    tree: &BevyTree<'_>,
+    title: &str,
+    wp: &WebNode,
+    bp: &BevyNode,
+) {
+    let in_panel = |n: &&WebNode| n.panel.as_deref() == Some(title);
+    let has_class = |n: &WebNode, name: &str| n.cls.split_whitespace().any(|c| c == name);
+    let mut heads: Vec<&WebNode> = web
+        .iter()
+        .filter(in_panel)
+        .filter(|n| n.tag == "th" && has_class(n, "pk-dt-th"))
+        .collect();
+    let Some(top) = heads.iter().map(|n| n.y).min_by(f64::total_cmp) else {
+        return;
+    };
+    heads.retain(|n| (n.y - top).abs() < 0.5);
+    heads.sort_by(|a, b| a.x.total_cmp(&b.x));
+    let mut zones: Vec<&WebNode> = web
+        .iter()
+        .filter(in_panel)
+        .filter(|n| has_class(n, "pk-dt-resize"))
+        .collect();
+    zones.sort_by(|a, b| a.x.total_cmp(&b.x));
+    let bevy_top = bp.y + (top - wp.y);
+    let mut handles: Vec<&BevyNode> = bevy
+        .iter()
+        .filter(|n| {
+            (n.w - 7.0).abs() < 0.1
+                && (n.y - bevy_top).abs() < 0.5
+                && bp.x <= n.x
+                && n.x <= bp.x + bp.w
+                && n.text.is_empty()
+                && n.bg.is_none_or(|bg| bg[3] == 0.0)
+        })
+        .collect();
+    handles.sort_by(|a, b| a.x.total_cmp(&b.x));
+    out.same(
+        "header",
+        "column count",
+        &heads.len().to_string(),
+        &handles.len().to_string(),
+        heads.len() == handles.len() && zones.len() == handles.len(),
+    );
+    for (index, head) in heads.iter().enumerate() {
+        let handle = handles.get(index);
+        let cell = handle
+            .and_then(|h| h.parent)
+            .and_then(|parent| tree.by_id.get(&parent));
+        let part = format!("header column {}", index + 1);
+        out.geo(&part, "x", Some(head.x - wp.x), cell.map(|b| b.x - bp.x));
+        out.geo(&part, "y", Some(head.y - wp.y), cell.map(|b| b.y - bp.y));
+        out.geo(&part, "w", Some(head.w), cell.map(|b| b.w));
+        out.geo(&part, "h", Some(head.h), cell.map(|b| b.h));
+        let zone = zones.get(index);
+        let part = format!("header resize zone {}", index + 1);
+        out.geo(&part, "x", zone.map(|z| z.x - wp.x), handle.map(|b| b.x - bp.x));
+        out.geo(&part, "y", zone.map(|z| z.y - wp.y), handle.map(|b| b.y - bp.y));
+        out.geo(&part, "w", zone.map(|z| z.w), handle.map(|b| b.w));
+        out.geo(&part, "h", zone.map(|z| z.h), handle.map(|b| b.h));
+    }
+}
+
 /// The sRGB sample at logical (`x`, `y`), clamped to the image.
 pub fn pixel(image: &RgbImage, x: f64, y: f64) -> [u8; 3] {
     let clamp = |value: f64, size: u32| {
@@ -769,5 +839,78 @@ mod tests {
         };
         assert!(row("text \"⠋\"").exemption().is_some());
         assert!(row("text \"spinner painter\"").exemption().is_none());
+    }
+
+    /// A two-column header: the web `th` and `.pk-dt-resize` span, and the
+    /// Bevy cell with its handle child.
+    fn header_rows(bevy_cell_w: f64, bevy_handle_x: f64) -> Vec<Row> {
+        let image = canvas(BORDER);
+        let mut web = web_nodes(40.0);
+        let th = |x: f64, w: f64| {
+            format!(
+                r#"{{"x":{x},"y":40,"w":{w},"h":25,"tag":"th","cls":"pk-dt-th","text":"","text_rect":null,"panel":"Notes","font":11,"weight":"700","tt":"uppercase","lh":"24px","color":null,"bg":null,"border":null,"border_w":0}}"#
+            )
+        };
+        let zone = |x: f64| {
+            format!(
+                r#"{{"x":{x},"y":40,"w":7,"h":25,"tag":"span","cls":"pk-dt-resize","text":"","text_rect":null,"panel":"Notes","font":11,"weight":"400","tt":"none","lh":"normal","color":null,"bg":null,"border":null,"border_w":0}}"#
+            )
+        };
+        web.extend(
+            parse_lines::<WebNode>(&[th(20.0, 60.0), zone(76.0), th(80.0, 50.0), zone(126.0)].join("\n"))
+                .expect("header fixture parses"),
+        );
+        let handle = |id: u32, parent: u32, x: f64| {
+            format!(
+                r#"{{"id":{id},"parent":{parent},"x":{x},"y":40,"w":7,"h":25,"tw":null,"text":"","font":null,"bold":false,"color":null,"bg":null,"border":[0,0,0,0],"border_w":0}}"#
+            )
+        };
+        let cell = |id: u32, x: f64, w: f64| {
+            format!(
+                r#"{{"id":{id},"parent":1,"x":{x},"y":40,"w":{w},"h":25,"tw":null,"text":"","font":null,"bold":false,"color":null,"bg":[13,13,13,1],"border":null,"border_w":0}}"#
+            )
+        };
+        let mut bevy = bevy_nodes();
+        bevy.extend(
+            parse_lines::<BevyNode>(
+                &[
+                    cell(3, 20.0, bevy_cell_w),
+                    handle(4, 3, bevy_handle_x),
+                    cell(5, 80.0, 50.0),
+                    handle(6, 5, 126.0),
+                ]
+                .join("\n"),
+            )
+            .expect("bevy header fixture parses"),
+        );
+        compare(Capture { image: &image, nodes: &web }, Capture { image: &image, nodes: &bevy })
+            .0
+            .rows
+            .into_iter()
+            .filter(|row| row.part.starts_with("header"))
+            .collect()
+    }
+
+    #[test]
+    fn header_cells_and_resize_zones_are_compared_per_column() {
+        let rows = header_rows(60.0, 76.0);
+        assert!(rows.iter().any(|r| r.part == "header column 2" && r.property == "w"));
+        assert!(rows.iter().any(|r| r.part == "header resize zone 1" && r.property == "x"));
+        assert!(rows.iter().all(|r| r.ok), "{rows:#?}");
+    }
+
+    #[test]
+    fn a_header_width_or_resize_zone_drift_fails_its_own_row() {
+        let failing = |rows: Vec<Row>| -> Vec<(String, String)> {
+            rows.into_iter().filter(|r| !r.ok).map(|r| (r.part, r.property)).collect()
+        };
+        assert_eq!(
+            failing(header_rows(63.0, 76.0)),
+            [("header column 1".to_owned(), "w".to_owned())]
+        );
+        assert_eq!(
+            failing(header_rows(60.0, 79.0)),
+            [("header resize zone 1".to_owned(), "x".to_owned())]
+        );
     }
 }
