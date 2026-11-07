@@ -786,20 +786,22 @@ pub fn DataTable(
                         div { class: "pk-dt-group",
                             label { class: "pk-dt-field",
                                 "group"
-                                select {
-                                    name: "col",
-                                    aria_label: "group rows by",
-                                    onchange: move |e| {
-                                        let value = e.value();
-                                        act.call(TableEvent::Group((!value.is_empty()).then_some(value)));
-                                    },
-                                    option { value: "", selected: current.group_by.is_none(), "none" }
-                                    for column in ordered.iter() {
-                                        option {
-                                            key: "{column.id}",
-                                            value: "{column.id}",
-                                            selected: current.group_by.as_deref() == Some(column.id.as_str()),
-                                            "{column.title}"
+                                span { class: "pk-dt-select",
+                                    select {
+                                        name: "col",
+                                        aria_label: "group rows by",
+                                        onchange: move |e| {
+                                            let value = e.value();
+                                            act.call(TableEvent::Group((!value.is_empty()).then_some(value)));
+                                        },
+                                        option { value: "", selected: current.group_by.is_none(), "none" }
+                                        for column in ordered.iter() {
+                                            option {
+                                                key: "{column.id}",
+                                                value: "{column.id}",
+                                                selected: current.group_by.as_deref() == Some(column.id.as_str()),
+                                                "{column.title}"
+                                            }
                                         }
                                     }
                                 }
