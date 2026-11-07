@@ -371,7 +371,7 @@ so the active subobject on the per-sort badges transports by the image `∃f` on
 agentic→membrane and the inverse image `f*` on membrane→agentic; the status line
 names the morphism used. Toggle a sort by clicking its badge (web), or `s` to
 move the focus and space to toggle it (terminals). Specs, grammars, and data come
-from Nix (`nix/specs/topos-{agentic,membrane}.nix`, `nix/specs/topos-physics.nix`,
+from Nix (`nix/specs/topos-{agentic,membrane}-subobject.nix`, `nix/specs/topos-physics.nix`,
 `nix/specs/morphism-*.nix`, `nix/grammars/`, `nix/data/`) through
 `PANEL_KIT_TOPOS_A/B`, `PANEL_KIT_TOPOS_PHYSICS`, `PANEL_KIT_MORPHISM`,
 `PANEL_KIT_MORPHISM_A_PHYSICS`, `PANEL_KIT_MORPHISM_B_PHYSICS`,
@@ -398,13 +398,13 @@ because `trace-lines` and `trace-json` present the same site.
 
 ```sh
 dx serve --example topos --platform web                     # web
-nix build .#topos-tui-native && ./result/bin/topos          # terminal
+nix build .#topos-tui-native && ./result/bin/topos_tui        # terminal
 nix build .#topos-browser-tui-wasm                          # browser terminal
 
-# browser terminal dev server, from crates/panel-kit-tui inside `nix develop ..`:
-export PANEL_KIT_TOPOS_A=$(nix build --no-link --print-out-paths ..#topos-agentic-ascii)
-export PANEL_KIT_TOPOS_B=$(nix build --no-link --print-out-paths ..#topos-membrane-ascii)
-trunk serve browser_topos.html --example browser_topos --features spec-plan
+# browser terminal dev server, from the repo root inside `nix develop`:
+export PANEL_KIT_TOPOS_A=$(nix build --no-link --print-out-paths .#topos-agentic-subobject-ascii)
+export PANEL_KIT_TOPOS_B=$(nix build --no-link --print-out-paths .#topos-membrane-subobject-ascii)
+trunk serve examples/topos_browser_tui.html --example topos_browser_tui --features spec-plan
 ```
 
 ### Trio demo (web, terminal, browser terminal)

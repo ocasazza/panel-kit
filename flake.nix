@@ -115,7 +115,7 @@
         webWorkspace = import ./nix/specs/web-workspace.nix {
           inherit (pkgs) lib;
         };
-        # One topos spec pair per surface; the ascii pair is the cells layout
+        # One trio topos spec pair per surface; the ascii pair is the cells layout
         # with the ASCII glyph family, for the ratzilla/WebGL2 backend.
         toposSpecsFor = surface: glyphs: {
           agentic = import ./nix/specs/topos-agentic.nix {
@@ -130,6 +130,22 @@
         toposWebSpecs = toposSpecsFor "web" "unicode";
         toposCellsSpecs = toposSpecsFor "cells" "unicode";
         toposAsciiSpecs = toposSpecsFor "cells" "ascii";
+        # The subobject topos demo reads its own spec pair over the same sorts:
+        # the trio's panel grid is shared by every regime, while the demo's
+        # carries the Morphism and Invariants host overlays.
+        subobjectSpecsFor = surface: glyphs: {
+          agentic = import ./nix/specs/topos-agentic-subobject.nix {
+            inherit (pkgs) lib;
+            inherit surface glyphs;
+          };
+          membrane = import ./nix/specs/topos-membrane-subobject.nix {
+            inherit (pkgs) lib;
+            inherit surface glyphs;
+          };
+        };
+        subobjectWebSpecs = subobjectSpecsFor "web" "unicode";
+        subobjectCellsSpecs = subobjectSpecsFor "cells" "unicode";
+        subobjectAsciiSpecs = subobjectSpecsFor "cells" "ascii";
         # The OKF knowledge catalog is the trio's third regime: one topos per
         # surface, plus its physics morphism.
         okfCatalogSpecFor = surface: glyphs:
@@ -180,6 +196,18 @@
           toposAsciiSpecs.agentic.json;
         topos-membrane-ascii = pkgs.writeText "panel-kit-topos-membrane-ascii.json"
           toposAsciiSpecs.membrane.json;
+        topos-agentic-subobject-web = pkgs.writeText "panel-kit-topos-agentic-subobject-web.json"
+          subobjectWebSpecs.agentic.json;
+        topos-membrane-subobject-web = pkgs.writeText "panel-kit-topos-membrane-subobject-web.json"
+          subobjectWebSpecs.membrane.json;
+        topos-agentic-subobject-cells = pkgs.writeText "panel-kit-topos-agentic-subobject-cells.json"
+          subobjectCellsSpecs.agentic.json;
+        topos-membrane-subobject-cells = pkgs.writeText "panel-kit-topos-membrane-subobject-cells.json"
+          subobjectCellsSpecs.membrane.json;
+        topos-agentic-subobject-ascii = pkgs.writeText "panel-kit-topos-agentic-subobject-ascii.json"
+          subobjectAsciiSpecs.agentic.json;
+        topos-membrane-subobject-ascii = pkgs.writeText "panel-kit-topos-membrane-subobject-ascii.json"
+          subobjectAsciiSpecs.membrane.json;
         topos-okf-catalog-web = pkgs.writeText "panel-kit-topos-okf-catalog-web.json"
           okfWebSpec.json;
         topos-okf-catalog-cells = pkgs.writeText "panel-kit-topos-okf-catalog-cells.json"
@@ -265,14 +293,14 @@
           PANEL_KIT_DATA_LINES = "${./nix/data/trace.lines}";
           PANEL_KIT_DATA_JSON = "${./nix/data/trace.json}";
         };
-        toposWebEnv = toposSpecEnv topos-agentic-web topos-membrane-web;
-        toposCellsEnv = toposSpecEnv topos-agentic-cells topos-membrane-cells;
-        toposAsciiEnv = toposSpecEnv topos-agentic-ascii topos-membrane-ascii;
+        toposWebEnv = toposSpecEnv topos-agentic-subobject-web topos-membrane-subobject-web;
+        toposCellsEnv = toposSpecEnv topos-agentic-subobject-cells topos-membrane-subobject-cells;
+        toposAsciiEnv = toposSpecEnv topos-agentic-subobject-ascii topos-membrane-subobject-ascii;
         # The trio's three new morphisms read the OKF catalog against the two
-        # agent-trace regimes, and omega closes the diagram from agentic into
-        # the catalog, so the check gets the topos env, the OKF env and all
-        # four morphism documents.
-        trioMorphismEnv = toposWebEnv // okfEnv // {
+        # agent-trace regimes of the trio specs, and omega closes the diagram
+        # from agentic into the catalog, so the check gets the trio's topos
+        # specs, the OKF env and all four morphism documents.
+        trioMorphismEnv = toposSpecEnv topos-agentic-web topos-membrane-web // okfEnv // {
           PANEL_KIT_TRIO_MORPHISM_MEMBRANE = "${morphism-okf-catalog-membrane}";
           PANEL_KIT_TRIO_MORPHISM_AGENTIC = "${morphism-okf-catalog-agentic}";
           PANEL_KIT_TRIO_MORPHISM_OMEGA = "${morphism-agentic-okf-catalog}";
@@ -503,6 +531,12 @@
         packages.topos-membrane-cells = topos-membrane-cells;
         packages.topos-agentic-ascii = topos-agentic-ascii;
         packages.topos-membrane-ascii = topos-membrane-ascii;
+        packages.topos-agentic-subobject-web = topos-agentic-subobject-web;
+        packages.topos-membrane-subobject-web = topos-membrane-subobject-web;
+        packages.topos-agentic-subobject-cells = topos-agentic-subobject-cells;
+        packages.topos-membrane-subobject-cells = topos-membrane-subobject-cells;
+        packages.topos-agentic-subobject-ascii = topos-agentic-subobject-ascii;
+        packages.topos-membrane-subobject-ascii = topos-membrane-subobject-ascii;
         packages.topos-okf-catalog-web = topos-okf-catalog-web;
         packages.topos-okf-catalog-cells = topos-okf-catalog-cells;
         packages.topos-okf-catalog-ascii = topos-okf-catalog-ascii;
@@ -615,7 +649,7 @@
             touch "$out"
           '';
           topos-tui-native-offscreen = pkgs.runCommand "panel-kit-topos-tui-native-check" { } ''
-            ${topos-tui-native}/bin/topos --check-offscreen
+            ${topos-tui-native}/bin/topos_tui --check-offscreen
             touch "$out"
           '';
           # Docs must build clean (missing_docs is warn-level in lib.rs;
