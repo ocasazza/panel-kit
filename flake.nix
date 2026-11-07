@@ -235,6 +235,12 @@
           (import ./nix/grammars/trace-lines.nix { inherit (pkgs) lib; }).json;
         grammar-trace-json = pkgs.writeText "panel-kit-grammar-trace-json.json"
           (import ./nix/grammars/trace-json.nix { inherit (pkgs) lib; }).json;
+        # The subobject topos demo parses the original trace site; the trio's
+        # grammars above read the merged site.
+        grammar-topos-trace-lines = pkgs.writeText "panel-kit-grammar-topos-trace-lines.json"
+          (import ./nix/grammars/topos-trace-lines.nix { inherit (pkgs) lib; }).json;
+        grammar-topos-trace-json = pkgs.writeText "panel-kit-grammar-topos-trace-json.json"
+          (import ./nix/grammars/topos-trace-json.nix { inherit (pkgs) lib; }).json;
         # omp auto-loop: two regimes over the trace and control sites glued
         # along `repo`, each with its own physics morphism into the base.
         topos-autoloop-trace-web = pkgs.writeText "panel-kit-topos-autoloop-trace-web.json"
@@ -288,10 +294,10 @@
           PANEL_KIT_MORPHISM = "${morphism-agentic-membrane}";
           PANEL_KIT_MORPHISM_A_PHYSICS = "${morphism-agentic-physics}";
           PANEL_KIT_MORPHISM_B_PHYSICS = "${morphism-membrane-physics}";
-          PANEL_KIT_GRAMMAR_LINES = "${grammar-trace-lines}";
-          PANEL_KIT_GRAMMAR_JSON = "${grammar-trace-json}";
-          PANEL_KIT_DATA_LINES = "${./nix/data/trace.lines}";
-          PANEL_KIT_DATA_JSON = "${./nix/data/trace.json}";
+          PANEL_KIT_GRAMMAR_LINES = "${grammar-topos-trace-lines}";
+          PANEL_KIT_GRAMMAR_JSON = "${grammar-topos-trace-json}";
+          PANEL_KIT_DATA_LINES = "${./nix/data/topos-trace.lines}";
+          PANEL_KIT_DATA_JSON = "${./nix/data/topos-trace.json}";
         };
         toposWebEnv = toposSpecEnv topos-agentic-subobject-web topos-membrane-subobject-web;
         toposCellsEnv = toposSpecEnv topos-agentic-subobject-cells topos-membrane-subobject-cells;
