@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use panel_kit_bevy::widgets::{
-    self, boxplot, content, flamegraph, gauges, scroll, spinner, styled_text, time_series,
+    self, boxplot, content, flamegraph, gauges, graph, scroll, spinner, styled_text, time_series,
     TextStyle,
 };
 use panel_kit_bevy::BevyTheme;
@@ -85,6 +85,12 @@ pub fn paint(
             time_series::spawn(parent, theme, &data.metrics.series(), unit);
         }
         "canary.flame" => flamegraph::spawn(parent, theme, &data.metrics.flame()),
+        "canary.graph" => match content_spec {
+            ContentSpec::External { layout, .. } => {
+                graph::spawn_solved(parent, theme, &canary_graph(), layout, None);
+            }
+            _ => content::spawn(parent, theme, content_spec),
+        },
         "canary.notes" => notes(parent, theme),
         "canary.badges" => widgets::badges(parent, theme, &data.badges),
         "canary.nodes" => {

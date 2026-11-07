@@ -143,7 +143,7 @@ fn committed_schema_path() -> PathBuf {
 /// Read the fixed layout fixture from a store-path override when one is provided.
 fn fixed_layout_json() -> Result<String, Box<dyn Error>> {
     json_text_from_env_or_else(FIXED_LAYOUT_JSON_ENV, || {
-        Ok(include_str!("../fixtures/fixed-nine-layout.json").to_owned())
+        Ok(include_str!("../fixtures/fixed-ten-layout.json").to_owned())
     })
 }
 

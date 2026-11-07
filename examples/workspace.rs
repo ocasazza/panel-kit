@@ -11,7 +11,15 @@ use dioxus::events::PointerEvent as DioxusPointerEvent;
 use dioxus::prelude::*;
 use panel_kit::CSS;
 
+use panel_kit::widgets::graph::{graph_svg, CSS as GRAPH_CSS};
 use panel_kit::{canary as web_canary, spec_workspace};
+use panel_kit_core::widgets::graph::{GraphLayout, GraphModel, GraphView};
+use panel_kit_core::widgets::ContentSpec;
+use panel_kit_graph_layout::solve_2d;
+
+#[path = "support/canary_content.rs"]
+#[allow(dead_code)]
+mod canary_content;
 
 const SPEC_JSON: &str = include_str!(env!("PANEL_KIT_WORKSPACE_SPEC"));
 
@@ -33,6 +41,28 @@ const DEMO_CSS: &str = "
 
 fn main() {
     dioxus::launch(App);
+}
+
+/// The canary graph and its positions under the spec's layout, solved once.
+fn canary_graph(layout: GraphLayout) -> (GraphModel, Vec<[f32; 2]>) {
+    let model = canary_content::canary_graph();
+    let positions = solve_2d(&model, &layout);
+    (model, positions)
+}
+
+/// The host seam: the canary's own graph through the SVG painter, every other
+/// binding through the library's fixed canary content.
+fn bind(graph: &(GraphModel, Vec<[f32; 2]>), id: &str, content: &ContentSpec) -> Element {
+    if id != "canary.graph" {
+        return web_canary::canary_content(id, content);
+    }
+    let (model, positions) = graph;
+    graph_svg(
+        GraphView { nodes: &model.nodes, edges: &model.edges },
+        positions,
+        None,
+        EventHandler::new(|_: String| {}),
+    )
 }
 
 #[component]
@@ -57,6 +87,19 @@ fn App() -> Element {
     let mode = web_canary::mode_label(frame.mode);
     let surface = web_canary::surface_label(frame.surface.class);
     let kinds = web_canary::content_kinds(&workspace.resolved);
+    let graph = use_hook(|| {
+        canary_graph(
+            workspace
+                .resolved
+                .panels
+                .iter()
+                .find_map(|panel| match &panel.content {
+                    ContentSpec::External { layout, .. } => Some(layout.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default(),
+        )
+    });
 
     let pointer_move_workspace = workspace.clone();
     let pointer_up_workspace = workspace.clone();
@@ -69,6 +112,7 @@ fn App() -> Element {
     rsx! {
         style { {CSS} }
         style { {DEMO_CSS} }
+        style { {GRAPH_CSS} }
         div {
             class: "{root_class}",
             tabindex: "0",
@@ -97,7 +141,7 @@ fn App() -> Element {
                 class: "{workspace_class}",
                 style: "{workspace_style}",
                 onwheel: move |event| spec_workspace::handle_wheel(&wheel_workspace, &event),
-                {web_canary::workspace_contents(&frame, &workspace.resolved, emit, header_clicks, &web_canary::canary_content)}
+                {web_canary::workspace_contents(&frame, &workspace.resolved, emit, header_clicks, &|id: &str, content: &ContentSpec| bind(&graph, id, content))}
             }
             if workspace.resolved.chrome.dock {
                 {panel_kit::widgets::dock::dock(

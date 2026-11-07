@@ -20,9 +20,7 @@
 #[path = "../examples/support/trio_host.rs"]
 mod trio_host;
 
-#[allow(dead_code)]
-#[path = "../examples/support/graph_layout.rs"]
-mod graph_layout;
+use panel_kit_graph_layout as graph_layout;
 
 use std::collections::{BTreeMap, BTreeSet};
 

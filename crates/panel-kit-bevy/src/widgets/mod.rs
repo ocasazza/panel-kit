@@ -14,6 +14,8 @@ pub mod data_table;
 pub mod dropdown;
 pub mod flamegraph;
 pub mod gauges;
+pub mod graph;
+mod raster;
 pub mod scroll;
 pub mod spinner;
 pub mod text;

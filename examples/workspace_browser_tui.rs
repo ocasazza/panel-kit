@@ -30,7 +30,9 @@ mod browser {
     mod body {
         use panel_kit_core::badge::BadgeSpec;
         use panel_kit_core::{Mode, SpecPanelId, SurfaceProfile};
+        use panel_kit_core::widgets::graph::{GraphModel, GraphView};
         use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
+        use panel_kit_tui::graph::graph;
         use panel_kit_tui::scroll::{self, PanelScroll};
         use panel_kit_tui::spinner::spinner;
         use panel_kit_tui::{badge, ResolvedTuiTheme};
@@ -54,6 +56,8 @@ mod browser {
             pub(crate) actions: &'a [String],
             pub(crate) panels: &'a mut PanelScroll<SpecPanelId>,
             pub(crate) theme_zone: &'a mut Rect,
+            /// The Graph panel's model and its solved unit-square positions.
+            pub(crate) graph: &'a (GraphModel, Vec<[f32; 2]>),
         }
 
         /// Draws the body content for a resolved canary panel id.
@@ -72,6 +76,11 @@ mod browser {
                 }
                 "Capacity" => gauges(frame, rect, &context.theme, &capacity_items()),
                 "Flame" => flame(frame, rect, &context.theme, &context.metrics.flame()),
+                "Graph" => {
+                    let (model, positions) = context.graph;
+                    let view = GraphView { nodes: &model.nodes, edges: &model.edges };
+                    graph(frame, rect, &context.theme, view, positions, None);
+                }
                 "Distribution" => boxplot(frame, rect, &context.theme, &context.metrics.boxes()),
                 "Nodes" => draw_nodes_body(frame, rect, key, context),
                 "Notes" => draw_notes_body(frame, rect, key, context),
@@ -368,7 +377,10 @@ mod browser {
 
     use self::body::{draw_panel_body, BodyDrawContext};
     use self::storage::BrowserLocalStorage;
-    use crate::workspace_canary::{demo_badges, Metrics};
+    use crate::workspace_canary::{canary_graph, demo_badges, Metrics};
+    use panel_kit_core::widgets::graph::{GraphLayout, GraphModel};
+    use panel_kit_core::widgets::ContentSpec;
+    use panel_kit_graph_layout::solve_2d;
 
     const WORKSPACE_SPEC_JSON: &str = include_str!(env!("PANEL_KIT_WORKSPACE_SPEC"));
     const RESTORE_IDS: [&str; 9] = [
@@ -407,6 +419,7 @@ mod browser {
         paper: bool,
         tick: u64,
         metrics: Metrics,
+        graph: (GraphModel, Vec<[f32; 2]>),
         layout_ready: bool,
         hover: Option<Position>,
         /// Clock reading at the previous animated frame, in milliseconds.
@@ -426,6 +439,16 @@ mod browser {
                 .enabled
                 .then(|| BrowserLocalStorage::new(resolved.persistence.key.clone()));
             let theme = ResolvedTuiTheme::from(&resolved.theme);
+            let graph_layout = resolved
+                .panels
+                .iter()
+                .find_map(|panel| match &panel.content {
+                    ContentSpec::External { layout, .. } => Some(layout.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(GraphLayout::default);
+            let graph_model = canary_graph();
+            let graph_positions = solve_2d(&graph_model, &graph_layout);
 
             Ok(Self {
                 catalog: resolved.catalog,
@@ -451,6 +474,7 @@ mod browser {
                 paper: false,
                 tick: 0,
                 metrics: Metrics::new(),
+                graph: (graph_model, graph_positions),
                 layout_ready: false,
                 hover: None,
                 last_frame_ms: None,
@@ -591,6 +615,7 @@ mod browser {
                 actions: &self.actions,
                 panels: &mut self.panels,
                 theme_zone: &mut self.theme_zone,
+                graph: &self.graph,
             };
 
             for panel in projected.panels.iter().copied() {

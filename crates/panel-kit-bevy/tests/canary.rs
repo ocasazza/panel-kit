@@ -7,6 +7,7 @@
 mod workspace_canary;
 
 use bevy::prelude::*;
+use panel_kit_bevy::widgets::graph::GraphNodeDot;
 use panel_kit_bevy::BevyTheme;
 use panel_kit_core::badge::display_label;
 use panel_kit_core::spec::{BackendKind, ResolvedWorkspace, WorkspaceSpec};
@@ -121,11 +122,21 @@ fn every_canary_panel_paints_its_provider_content() {
     let theme = BevyTheme::default();
     for panel in resolved().panels {
         let binding = panel.content.binding_id().expect("canary panels are bound");
-        let (texts, _app) = paint(&theme, binding, &panel.content);
+        let (texts, mut _app) = paint(&theme, binding, &panel.content);
         assert!(
             !texts.iter().any(|text| text.starts_with("binding:")),
             "{binding} painted the unbound placeholder: {texts:?}"
         );
+        if binding == "canary.graph" {
+            // A graph has no text to read: every model node is a painted disc.
+            let mut dots = _app.world_mut().query::<&GraphNodeDot>();
+            assert_eq!(
+                dots.iter(_app.world()).count(),
+                workspace_canary::canary_graph().nodes.len(),
+                "canary.graph must paint one disc per node"
+            );
+            continue;
+        }
         let marker = expected_marker(binding);
         assert!(
             texts

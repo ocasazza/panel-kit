@@ -14,12 +14,14 @@ pub mod content {
     use panel_kit_core::widgets::charts::{
         five_num, BoxItemModel, BoxItemView, SeriesModel, SeriesView,
     };
+    use panel_kit_core::widgets::graph::{GraphLayout, GraphModel, GraphView};
     use panel_kit_core::widgets::meter::MeterModel;
     use panel_kit_core::widgets::status::StatusModel;
     use panel_kit_core::widgets::table::{TableModel, TableView};
     use panel_kit_core::widgets::{ContentSpec, DataSource, ScrollPolicy, TextModel};
     use panel_kit_core::{ResolvedWorkspace, SpecPanelId};
     use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
+    use panel_kit_tui::graph::graph;
     use panel_kit_tui::scroll::PanelScroll;
     use panel_kit_tui::spinner::spinner;
     use panel_kit_tui::ResolvedTuiTheme;
@@ -28,7 +30,9 @@ pub mod content {
     use ratatui::text::{Line, Span};
     use ratatui::widgets::Paragraph;
 
-    use crate::workspace_canary::{capacity_items, demo_badges, node_rows, Metrics};
+    use panel_kit_graph_layout::solve_2d;
+
+    use crate::workspace_canary::{canary_graph, capacity_items, demo_badges, node_rows, Metrics};
 
     /// Mutable demo-provider state used by the executable native canary.
     pub struct DemoData {
@@ -40,6 +44,8 @@ pub mod content {
         pub paper: bool,
         pub tick: u64,
         metrics: Metrics,
+        /// The Graph panel's model and its solved unit-square positions.
+        graph: Option<(GraphModel, Vec<[f32; 2]>)>,
     }
 
     /// Borrowed workspace state required to paint one authored content panel.
@@ -58,10 +64,11 @@ pub mod content {
                 badge_zones: Vec::new(),
                 theme_zone: Rect::default(),
                 actions: Vec::new(),
-                panels: PanelScroll::with_capacity(9),
+                panels: PanelScroll::with_capacity(10),
                 paper: false,
                 tick: 0,
                 metrics: Metrics::new(),
+                graph: None,
             }
         }
 
@@ -124,6 +131,11 @@ pub mod content {
             ContentSpec::Spinner { label } => {
                 render_spinner(frame, area, context.theme, label, demo.tick)
             }
+            ContentSpec::External { source, layout, .. }
+                if source.binding_id() == Some("canary.graph") =>
+            {
+                render_graph(frame, area, context.theme, layout, demo)
+            }
             ContentSpec::External { component, source, .. } => render_binding_placeholder(
                 frame,
                 area,
@@ -164,6 +176,23 @@ pub mod content {
             .style(Style::default().fg(context.theme.text_muted)),
             area,
         );
+    }
+
+    /// Paint the canary graph, solving it under `layout` on first use.
+    fn render_graph(
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        theme: &ResolvedTuiTheme,
+        layout: &GraphLayout,
+        demo: &mut DemoData,
+    ) {
+        let (model, positions) = demo.graph.get_or_insert_with(|| {
+            let model = canary_graph();
+            let positions = solve_2d(&model, layout);
+            (model, positions)
+        });
+        let view = GraphView { nodes: &model.nodes, edges: &model.edges };
+        graph(frame, area, theme, view, positions, None);
     }
 
     fn render_binding_placeholder(

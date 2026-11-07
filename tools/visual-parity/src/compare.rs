@@ -207,6 +207,7 @@ fn compare_panel(
     compare_text(out, web.nodes, tree, title, wp, bp);
     compare_toolbar(out, web.nodes, bevy.nodes, title, wp, bp);
     compare_columns(out, web.nodes, bevy.nodes, tree, title, wp, bp);
+    compare_graph(out, web, bevy, title, wp, bp);
 }
 
 /// A text run normalised across backends.
@@ -512,6 +513,131 @@ fn compare_toolbar(
             .max_by(f64::total_cmp);
         out.geo("toolbar row count", "right edge", Some(tally.x + tally.w - wp.x), bevy_edge);
     }
+}
+
+/// The `--color-border` edge ink of the dark theme both backends draw graph
+/// edges in.
+const EDGE_INK: [u8; 3] = [95, 95, 95];
+/// Largest ΔE from [`EDGE_INK`] at which the closest pixel still counts as
+/// edge ink: a 1-unit stroke is only a pixel or two wide, so its centre pixel
+/// is blended with the host fill.
+const EDGE_INK_TOLERANCE: f64 = 20.0;
+
+/// The graph painter: the host box, each node's disc (geometry and fill), and
+/// ink at each edge's midpoint. Skipped when the panel has no web graph.
+fn compare_graph(
+    out: &mut Rows,
+    web: &Capture<'_, WebNode>,
+    bevy: &Capture<'_, BevyNode>,
+    title: &str,
+    wp: &WebNode,
+    bp: &BevyNode,
+) {
+    let in_panel = |n: &&WebNode| n.panel.as_deref() == Some(title);
+    let has = |n: &&WebNode, class: &str| n.cls.split_whitespace().any(|c| c == class);
+    let Some(host) = web.nodes.iter().filter(in_panel).find(|n| has(n, "pk-graph")) else {
+        return;
+    };
+    let rel = |n: &WebNode| (n.x - wp.x, n.y - wp.y);
+    let in_bevy = |logical: (f64, f64)| (bp.x + logical.0, bp.y + logical.1);
+
+    // Host: the box filled with the theme background.
+    let (hx, hy) = rel(host);
+    let bevy_host = bevy
+        .nodes
+        .iter()
+        .filter(|n| inside(*n, bp, 0.5) && n.bg.is_some_and(|bg| bg[3] > 0.99))
+        .filter(|n| (n.w - host.w).abs() <= GEOMETRY_TOLERANCE && (n.h - host.h).abs() <= GEOMETRY_TOLERANCE)
+        .min_by(|a, b| {
+            let near = |n: &&BevyNode| (n.x - bp.x - hx).abs() + (n.y - bp.y - hy).abs();
+            near(a).total_cmp(&near(b))
+        });
+    out.geo("graph host", "x", Some(hx), bevy_host.map(|b| b.x - bp.x));
+    out.geo("graph host", "y", Some(hy), bevy_host.map(|b| b.y - bp.y));
+    out.geo("graph host", "w", Some(host.w), bevy_host.map(|b| b.w));
+    out.geo("graph host", "h", Some(host.h), bevy_host.map(|b| b.h));
+    let corner = (hx + 1.0, hy + 1.0);
+    out.colour(
+        "graph host",
+        "fill (top-left corner)",
+        Some(pixel(web.image, wp.x + corner.0, wp.y + corner.1)),
+        Some(pixel(bevy.image, in_bevy(corner).0, in_bevy(corner).1)),
+        true,
+    );
+
+    let mut nodes: Vec<&WebNode> = web
+        .nodes
+        .iter()
+        .filter(in_panel)
+        .filter(|n| has(n, "pk-graph-node"))
+        .collect();
+    nodes.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
+    for (index, w) in nodes.iter().enumerate() {
+        let part = format!("graph node {index}");
+        let centre = (w.x + w.w / 2.0, w.y + w.h / 2.0);
+        // The Bevy disc: a filled square of the same size, nearest the web centre.
+        let disc = bevy
+            .nodes
+            .iter()
+            .filter(|n| {
+                (n.w - n.h).abs() <= GEOMETRY_TOLERANCE
+                    && (n.w - w.w).abs() <= GEOMETRY_TOLERANCE
+                    && n.bg.is_some_and(|bg| bg[3] > 0.99)
+            })
+            .min_by(|a, b| {
+                let far = |n: &&BevyNode| {
+                    (n.x + n.w / 2.0 - bp.x - (centre.0 - wp.x)).hypot(n.y + n.h / 2.0 - bp.y - (centre.1 - wp.y))
+                };
+                far(a).total_cmp(&far(b))
+            });
+        out.geo(&part, "x", Some(w.x - wp.x), disc.map(|b| b.x - bp.x));
+        out.geo(&part, "y", Some(w.y - wp.y), disc.map(|b| b.y - bp.y));
+        out.geo(&part, "w", Some(w.w), disc.map(|b| b.w));
+        out.geo(&part, "h", Some(w.h), disc.map(|b| b.h));
+        // A node centred on the plot edge is half clipped by the host, so its
+        // centre is sampled a pixel inside the host box.
+        let sample = (
+            centre.0.clamp(host.x + 1.0, host.x + host.w - 1.0),
+            centre.1.clamp(host.y + 1.0, host.y + host.h - 1.0),
+        );
+        let bevy_sample = in_bevy((sample.0 - wp.x, sample.1 - wp.y));
+        out.colour(
+            &part,
+            "fill (sample inside host)",
+            Some(pixel(web.image, sample.0, sample.1)),
+            Some(pixel(bevy.image, bevy_sample.0, bevy_sample.1)),
+            true,
+        );
+    }
+
+    let edges = web.nodes.iter().filter(in_panel).filter(|n| has(n, "pk-graph-edge"));
+    for (index, w) in edges.enumerate() {
+        let part = format!("graph edge {index}");
+        let middle = (w.x + w.w / 2.0, w.y + w.h / 2.0);
+        let web_ink = closest_to(web.image, middle, EDGE_INK);
+        let bevy_middle = in_bevy((middle.0 - wp.x, middle.1 - wp.y));
+        let bevy_ink = closest_to(bevy.image, bevy_middle, EDGE_INK);
+        let present = |ink: [u8; 3]| delta_e(ink, EDGE_INK) < EDGE_INK_TOLERANCE;
+        out.same(
+            &part,
+            "ink at midpoint",
+            &hex(web_ink),
+            &hex(bevy_ink),
+            present(web_ink) && present(bevy_ink),
+        );
+    }
+}
+
+/// The pixel within a logical pixel of `at` closest to `target`.
+fn closest_to(image: &RgbImage, at: (f64, f64), target: [u8; 3]) -> [u8; 3] {
+    let (cx, cy) = ((at.0 * SCALE).round() as i64, (at.1 * SCALE).round() as i64);
+    let reach = SCALE as i64;
+    (cy - reach..=cy + reach)
+        .flat_map(|y| (cx - reach..=cx + reach).map(move |x| (x, y)))
+        .filter(|&(x, y)| x >= 0 && y >= 0 && (x as u32) < image.width() && (y as u32) < image.height())
+        .map(|(x, y)| image.get_pixel(x as u32, y as u32).0)
+        .min_by(|a, b| delta_e(*a, target).total_cmp(&delta_e(*b, target)))
+        .unwrap_or([0, 0, 0])
 }
 
 /// The data-table header: each column's cell and its resize zone (a 7px
@@ -874,5 +1000,92 @@ mod tests {
             failing(header_rows(60.0, 79.0)),
             [("header resize zone 1".to_owned(), "x".to_owned())]
         );
+    }
+
+    /// Both canvases with a graph host, one node disc and one horizontal edge
+    /// painted at the same place; `bevy_edge` and `bevy_disc` say whether the
+    /// Bevy side draws them.
+    fn graph_run(bevy_disc: bool, bevy_edge: bool) -> Comparison {
+        let paint = |disc: bool, edge: bool| {
+            let mut image = canvas(BORDER);
+            for y in 80..180 {
+                for x in 40..240 {
+                    image.put_pixel(x, y, image::Rgb([10, 10, 10]));
+                }
+            }
+            if disc {
+                for y in 110..130 {
+                    for x in 100..120 {
+                        image.put_pixel(x, y, image::Rgb([40, 50, 60]));
+                    }
+                }
+            }
+            if edge {
+                for x in 120..200 {
+                    image.put_pixel(x, 120, image::Rgb(EDGE_INK));
+                }
+            }
+            image
+        };
+        let host = |class: &str, x: f64, y: f64, w: f64, h: f64| {
+            format!(
+                r#"{{"x":{x},"y":{y},"w":{w},"h":{h},"tag":"div","cls":"{class}","text":"","text_rect":null,"panel":"Notes","font":13,"weight":"400","tt":"none","lh":"normal","color":null,"bg":null,"border":null,"border_w":0}}"#
+            )
+        };
+        let mut web = web_nodes(40.0);
+        web.extend(
+            parse_lines::<WebNode>(&[
+                host("pk-graph", 20.0, 40.0, 100.0, 50.0),
+                host("pk-graph-node", 50.0, 55.0, 10.0, 10.0),
+                host("pk-graph-edge", 60.0, 60.0, 40.0, 0.0),
+            ]
+            .join("\n"))
+            .expect("web graph fixture parses"),
+        );
+        let bevy_node = |x: f64, y: f64, w: f64, h: f64, bg: &str| {
+            format!(
+                r#"{{"id":9,"parent":1,"x":{x},"y":{y},"w":{w},"h":{h},"tw":null,"text":"","font":null,"bold":false,"color":null,"bg":{bg},"border":null,"border_w":0}}"#
+            )
+        };
+        let mut extra = vec![bevy_node(20.0, 40.0, 100.0, 50.0, "[10,10,10,1]")];
+        if bevy_disc {
+            extra.push(bevy_node(50.0, 55.0, 10.0, 10.0, "[40,50,60,1]"));
+        }
+        let mut nodes = bevy_nodes();
+        nodes.extend(parse_lines::<BevyNode>(&extra.join("\n")).expect("bevy graph fixture parses"));
+        let (web_image, bevy_image) = (paint(true, true), paint(bevy_disc, bevy_edge));
+        compare(
+            Capture { image: &web_image, nodes: &web },
+            Capture { image: &bevy_image, nodes: &nodes },
+        )
+        .0
+    }
+
+    #[test]
+    fn a_matching_graph_has_host_node_and_edge_rows_and_no_failures() {
+        let comparison = graph_run(true, true);
+        let parts: Vec<&str> = comparison.rows.iter().map(|row| row.part.as_str()).collect();
+        for part in ["graph host", "graph node 0", "graph edge 0"] {
+            assert!(parts.contains(&part), "{part} missing from {parts:?}");
+        }
+        assert_eq!(comparison.failures().count(), 0, "{:#?}", comparison.failures().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_node_disc_the_bevy_side_does_not_draw_fails() {
+        let comparison = graph_run(false, true);
+        let failing: Vec<&str> = comparison.failures().map(|row| row.part.as_str()).collect();
+        assert!(failing.iter().all(|part| *part == "graph node 0"), "{failing:?}");
+        assert!(failing.contains(&"graph node 0"));
+    }
+
+    #[test]
+    fn edge_ink_the_bevy_side_does_not_draw_fails() {
+        let comparison = graph_run(true, false);
+        let failing: Vec<(&str, &str)> = comparison
+            .failures()
+            .map(|row| (row.part.as_str(), row.property.as_str()))
+            .collect();
+        assert_eq!(failing, [("graph edge 0", "ink at midpoint")]);
     }
 }

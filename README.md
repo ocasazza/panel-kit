@@ -345,12 +345,13 @@ workspace example to wasm, serves it on a loopback port, and captures it in
 headless Chrome at the same size with `prefers-reduced-motion: reduce`, so
 animations rest at a fixed frame on both sides. It then pairs every panel and
 compares frame geometry, border, surface and grip pixels, traffic lights,
-every text run (position, width, line height, size, weight, colour), and the
-Nodes data-table toolbar. Tolerances: ±1 px geometry, exact sRGB for solid
-fills, ΔE76 < 2 for anti-aliased samples; there are no exemptions.
-`target/visual-parity/report.md` holds every row and per-panel web | Bevy |
-diff images; `visual-parity compare WEB.png BEVY.png OUT` re-compares
-existing captures.
+every text run (position, width, line height, size, weight, colour), the
+Nodes data-table toolbar and header, and the Graph panel (host box, each
+node's disc, ink at each edge's midpoint). Tolerances: ±1 px geometry, exact
+sRGB for solid fills, ΔE76 < 2 for anti-aliased samples; there are no
+exemptions. `target/visual-parity/report.md` holds every row and per-panel
+web | Bevy | diff images; `visual-parity compare WEB.png BEVY.png OUT`
+re-compares existing captures.
 
 The comparator's own tests run with the workspace suite. The capture needs a
 GPU and a local Chrome (`PANEL_KIT_CHROME` overrides the lookup), so it is

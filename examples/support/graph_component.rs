@@ -24,8 +24,7 @@ use panel_kit_core::widgets::graph::{GraphLayout, GraphModel, GraphView, LayoutA
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
-#[path = "graph_layout.rs"]
-pub mod graph_layout;
+pub use panel_kit_graph_layout as graph_layout;
 
 use graph_layout::{FORCE_LENGTH, FORCE_MIN_MASS, FORCE_SEED_RADIUS, Tween, fibonacci_sphere, project_2d};
 

@@ -1,6 +1,6 @@
-//! Host-side layout solving for the `graph` external component contract.
+//! Layout solving for the `graph` external component contract.
 //!
-//! One seam for both backends: a [`GraphLayout`] request plus a [`GraphModel`]
+//! One seam for every backend: a [`GraphLayout`] request plus a [`GraphModel`]
 //! body in, one position per node out, in node declaration order. Every static
 //! [`LayoutAlgorithm`] maps 1:1 onto a vendored `graph-layouts` solver;
 //! [`LayoutAlgorithm::Force`] has no static solver, so it runs the
@@ -342,6 +342,12 @@ pub fn project_2d(positions: &[[f32; 3]]) -> Vec<[f32; 2]> {
         .zip(project(order[1]))
         .map(|(x, y)| [x, y])
         .collect()
+}
+
+/// `model` solved under `layout` and projected to the unit square: the
+/// positions every 2-D painter draws, one per node in declaration order.
+pub fn solve_2d(model: &GraphModel, layout: &GraphLayout) -> Vec<[f32; 2]> {
+    project_2d(&solve(model, layout, None))
 }
 
 /// Positions interpolated from `from` to `to` over `duration_ms` on a smooth

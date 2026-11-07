@@ -12,6 +12,7 @@ use panel_kit_core::theme::{ERROR, SUCCESS};
 use panel_kit_core::widgets::badge::hue_color;
 use panel_kit_core::widgets::charts::{five_num, BoxItemView, FlameSpanModel, GaugeModel, SeriesView};
 use panel_kit_core::widgets::data_table::ColumnKind;
+use panel_kit_core::widgets::graph::{GraphEdge, GraphModel, GraphNode};
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
 };
@@ -39,10 +40,11 @@ fn provider_declaration(
 }
 
 /// `(panel id, content kind, binding id)` for every canary panel.
-pub const CANARY_PROVIDERS: [(&str, ContentKind, &str); 9] = [
+pub const CANARY_PROVIDERS: [(&str, ContentKind, &str); 10] = [
     ("Workspace", ContentKind::Custom, "canary.workspace"),
     ("Activity", ContentKind::TimeSeries, "canary.activity"),
     ("Flame", ContentKind::Flamegraph, "canary.flame"),
+    ("Graph", ContentKind::External, "canary.graph"),
     ("Notes", ContentKind::Text, "canary.notes"),
     ("Badges", ContentKind::Badges, "canary.badges"),
     ("Nodes", ContentKind::Table, "canary.nodes"),
@@ -50,6 +52,40 @@ pub const CANARY_PROVIDERS: [(&str, ContentKind, &str); 9] = [
     ("Distribution", ContentKind::Boxplot, "canary.distribution"),
     ("Theme", ContentKind::Custom, "canary.theme"),
 ];
+
+/// The Graph panel's model: six services with one oversized node (past the
+/// radius clamp) and a chord across the ring. The spec's layout (`circle`)
+/// positions it identically on every backend.
+pub fn canary_graph() -> GraphModel {
+    let node = |id: &str, sort: &str, color: (u8, u8, u8), size: f32| GraphNode {
+        id: id.into(),
+        label: id.into(),
+        sort: sort.into(),
+        color,
+        size,
+        mass: 1.0,
+        repulsion: 1.0,
+        species: String::new(),
+    };
+    let edge = |source: u32, target: u32| GraphEdge {
+        source,
+        target,
+        kind: "feeds".into(),
+        weight: 1.0,
+        rest_length: 60.0,
+    };
+    GraphModel {
+        nodes: vec![
+            node("ingest", "source", (59, 155, 255), 4.0),
+            node("parse", "stage", (94, 243, 140), 3.0),
+            node("index", "stage", (94, 243, 140), 12.0),
+            node("search", "stage", (255, 189, 46), 5.0),
+            node("cache", "store", (255, 95, 195), 2.0),
+            node("api", "sink", (131, 183, 204), 6.0),
+        ],
+        edges: vec![edge(0, 1), edge(1, 2), edge(2, 3), edge(3, 4), edge(4, 5), edge(5, 0), edge(2, 5)],
+    }
+}
 
 /// Rows for the Nodes table: status, load meter, and detail cells.
 pub fn node_rows() -> TableModel {
