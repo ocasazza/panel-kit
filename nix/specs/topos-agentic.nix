@@ -1,9 +1,13 @@
-# Agentic-trace regime over the session site: objects are planner/coder/reviewer
-# sessions plus memory stores; morphisms are handoffs. Identity sorting (every
-# site kind maps to its own regime sort). Sheaves: Stalks text, sessions Status
-# table, handoff Flamegraph over `continues`, Roles badges (per sort), Assembly
-# table + stage badges, Physics table, Morphism + Invariants host overlays. `surface`/`glyphs`
-# select units/chrome/glyphs; the stalks, sheaves, and binding ids do not vary.
+# Agentic-trace regime over the merged site: sessions (planner/coder/reviewer
+# plus memory stores) beside the OKF objects they produce, verify, and read.
+# Sessions sort natively; the OKF kinds are pushed along χ. Sheaves: Stalks
+# text, an Objects table, a session handoff Flamegraph over `continues`, Roles
+# badges (per sort), Assembly table + stage badges over the session handoff
+# kinds, Physics table, the Grammar and Morphism editors (the site's grammar
+# and the active route's morphism document), and the host-mounted Graph panel
+# (external `graph` component, force layout grouped by sort).
+# `surface`/`glyphs` select units/chrome/glyphs; stalks, sheaves and binding
+# ids do not vary.
 
 { lib ? (import <nixpkgs> { }).lib, surface, glyphs ? "unicode" }:
 
@@ -11,12 +15,29 @@ let
   topos = import ../lib/mkToposSpec.nix { inherit lib; };
   L = import ../lib/mkToposLayout.nix { inherit lib; };
   inherit (topos) mkTopos defaultTheme;
-  inherit (L) cell shelf textC tableC badgesC flameC textCell flex fixed;
+  inherit (L) cell shelf textC tableC badgesC flameC editorC textCell flex fixed externalC;
 
+  # The graph panel is an external `graph` component over the host-mounted
+  # `agentic.graph` model, so the pulled-back force simulation runs: handoffs
+  # pull the sessions into chains, sheets and closed membranes.
+  graphContent = externalC "graph" "agentic.graph" {
+    algorithm = "amphiphile";
+    group_by = "sort";
+    params = { };
+  };
+
+  # The trio grid: every regime fills the same six shelves (graph; grammar 2 +
+  # morphism 2; 1+3; 3+1; assembly 3 + stages 1; physics 4), so a regime
+  # switch changes panel bodies and never moves a panel.
   shelves = [
+    (shelf 4 [ (cell "graph" "Graph" "graph" 4 graphContent) ])
+    (shelf 3 [
+      (cell "grammar" "Grammar" "grammar" 2 (editorC "trio.grammar"))
+      (cell "morphism" "Morphism" "morphism" 2 (editorC "agentic.morphism"))
+    ])
     (shelf 3 [
       (cell "stalks" "Stalks" "stalks" 1 (textC "agentic.stalks"))
-      (cell "status" "Sessions" "status" 3 (tableC "agentic.status"))
+      (cell "status" "Objects" "status" 3 (tableC "agentic.status"))
     ])
     (shelf 3 [
       (cell "flame" "Handoffs" "flame" 3 (flameC "agentic.flame"))
@@ -26,11 +47,7 @@ let
       (cell "assembly" "Assembly" "assembly" 3 (tableC "agentic.assembly"))
       (cell "stages" "Stages" "stages" 1 (badgesC "agentic.stages"))
     ])
-    (shelf 3 [
-      (cell "physics" "Physics" "physics" 2 (tableC "agentic.physics"))
-      (cell "morphism" "Morphism" "morphism" 1 (textC "agentic.morphism"))
-      (cell "invariants" "Invariants" "invariants" 1 (tableC "agentic.invariants"))
-    ])
+    (shelf 3 [ (cell "physics" "Physics" "physics" 4 (tableC "agentic.physics")) ])
   ];
 in
 mkTopos {
@@ -38,8 +55,22 @@ mkTopos {
   id = "topos-agentic";
   regime = "Agentic traces";
 
-  object_sorting = { planner = "planner"; coder = "coder"; reviewer = "reviewer"; memory = "memory"; };
-  morphism_sorting = { continues = "continues"; shares = "shares"; consolidates = "consolidates"; };
+  # The native identity on the merged site (sessions), plus the OKF catalog
+  # kinds pushed along chi (the composite sorting functor: sort natively, then
+  # transport). Both maps are what makes chi validate against this topos.
+  object_sorting = {
+    planner = "planner"; coder = "coder"; reviewer = "reviewer"; memory = "memory";
+    table = "planner"; dataset = "planner"; policy = "planner";
+    metric = "coder"; computation = "coder"; skill = "coder";
+    bundle = "memory"; reference = "memory"; concept = "memory"; log = "memory";
+  };
+  morphism_sorting = {
+    continues = "continues"; shares = "shares"; consolidates = "consolidates";
+    derived_from = "continues"; computes = "continues";
+    executed_by = "shares"; attested_by = "shares";
+    references = "consolidates"; contains = "consolidates";
+    produces = "shares"; verifies = "shares";
+  };
 
   stalks = {
     objects = {
@@ -66,10 +97,12 @@ mkTopos {
   sheaves = {
     "agentic.stalks" = {
       kind = "text";
-      heading = "Agentic-trace regime";
+      heading = "Agentic-trace regime over one merged site";
       preface = [
-        "Objects are planner/coder/reviewer sessions and memory stores; morphisms are handoffs."
-        "Components self-assemble over continues+shares: chain, ring, sheet, tube, membrane."
+        "One site: planner/coder/reviewer sessions and memory stores beside the OKF objects"
+        "they produce, verify, and read; morphisms are handoffs and the bonds around them."
+        "A session is native here; a knowledge object is sorted along chi."
+        "Components self-assemble over the session handoffs continues+shares: chain, ring, sheet, tube, membrane."
         "Stalks: object sort -> label [badge]; morphism sort -> label."
       ];
       include_stalks = true;
@@ -78,7 +111,7 @@ mkTopos {
       kind = "table";
       scope = "objects";
       columns = [
-        { key = "session"; title = "Session"; width = flex 3; align = "left"; cell = textCell "title"; }
+        { key = "session"; title = "Object"; width = flex 3; align = "left"; cell = textCell "title"; }
         { key = "sort"; title = "Sort"; width = flex 2; align = "left"; cell = textCell "kind"; }
         {
           key = "latency";
@@ -100,13 +133,13 @@ mkTopos {
       kind = "flamegraph";
       morphism_kind = "continues";
       value = "field:latency_ms";
+      restrict = [ "planner" "coder" "reviewer" ];
     };
     "agentic.roles" = { kind = "badges"; group = "kinds"; };
-    "agentic.assembly" = { kind = "assembly"; morphism_sorts = [ "continues" "shares" ]; };
-    "agentic.stages" = { kind = "assembly_badges"; morphism_sorts = [ "continues" "shares" ]; };
+    "agentic.assembly" = { kind = "assembly"; morphism_sorts = [ "continues" "shares" ]; kinds = [ "continues" "shares" ]; };
+    "agentic.stages" = { kind = "assembly_badges"; morphism_sorts = [ "continues" "shares" ]; kinds = [ "continues" "shares" ]; };
     "agentic.physics" = { kind = "physics"; scope = "objects"; };
-    "agentic.morphism" = { kind = "morphism"; };
-    "agentic.invariants" = { kind = "invariants"; };
+
   };
 
   workspace = L.mkWorkspace {
@@ -114,5 +147,16 @@ mkTopos {
     id = "topos-agentic-ws";
     persistKey = "panel_kit_topos_agentic_${surface}";
     theme = defaultTheme;
+    components = [
+      {
+        id = "graph";
+        contract = "graph";
+        requires = [ "webgpu" ];
+        keep_mounted = true;
+        min_size = if surface == "web" then [ 320.0 240.0 ] else [ 24.0 8.0 ];
+        events = [ "select" "hover" ];
+        fallback = "cells";
+      }
+    ];
   };
 }

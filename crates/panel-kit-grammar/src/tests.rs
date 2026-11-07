@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use panel_kit_core::spec::ComponentContract;
 use panel_kit_core::widgets::data_table::{
     natural_cmp, BuildOptions, ColumnKind, SortDir, SortSpec, TableDefaults, TableState, View,
 };
@@ -28,6 +29,9 @@ const GRAMMAR_JSON: &str = include_str!("../testdata/trace-json.grammar.json");
 const GRAMMAR_RECORDS: &str = include_str!("../testdata/grammar-records.json");
 /// Minimal two-panel workspace (text `legend`, gauges `load`) for inline topoi.
 const WS_MIN: &str = include_str!("../testdata/inline-workspace.json");
+/// The same workspace plus a host-mounted external panel bound to an overlay
+/// binding the host owns, with the `graph` component it names.
+const WS_EXTERNAL: &str = include_str!("../testdata/external-workspace.json");
 
 /// The same site authored two ways, parsed by the two engines in tests.
 const DATA_LINES: &str = include_str!("../testdata/trace.lines");
@@ -74,6 +78,18 @@ fn site_from_lines() -> Site {
 }
 
 fn topos_json(id: &str, regime: &str, osort: &str, msort: &str, stalks: &str, sheaves: &str) -> String {
+    topos_json_over_ws(id, regime, osort, msort, stalks, sheaves, WS_MIN)
+}
+
+fn topos_json_over_ws(
+    id: &str,
+    regime: &str,
+    osort: &str,
+    msort: &str,
+    stalks: &str,
+    sheaves: &str,
+    ws: &str,
+) -> String {
     format!(
         r##"{{"spec_version":1,"id":"{id}","regime":"{regime}","object_sorting":{osort},"morphism_sorting":{msort},"stalks":{stalks},"sheaves":{sheaves},"workspace":{ws}}}"##,
         id = id,
@@ -82,7 +98,7 @@ fn topos_json(id: &str, regime: &str, osort: &str, msort: &str, stalks: &str, sh
         msort = msort,
         stalks = stalks,
         sheaves = sheaves,
-        ws = WS_MIN,
+        ws = ws,
     )
 }
 
@@ -335,6 +351,28 @@ fn validate_rejects_missing_sheaf() {
     ));
 }
 
+/// An external body is the host's, not a sheaf: like `Custom`, its binding
+/// needs no sheaf, and the workspace's own contract validation still applies.
+#[test]
+fn validate_accepts_an_external_panel_bound_to_a_host_overlay() {
+    let sheaves = r##"{"legend":{"kind":"text","heading":"Legend"},"load":{"kind":"gauges","scope":"kinds","value":"field:energy","scale":1000.0}}"##;
+    let topos = Topos::from_json_str(&topos_json_over_ws(
+        "topos-external",
+        "Knowledge base",
+        AGENTIC_OSORT,
+        AGENTIC_MSORT,
+        AGENTIC_STALKS,
+        sheaves,
+        WS_EXTERNAL,
+    ))
+    .expect("a topos with an external panel decodes");
+
+    topos.validate().expect("an external panel needs no sheaf");
+
+    assert_eq!(topos.workspace.panels[2].external_component(), Some("graph"));
+    assert_eq!(topos.workspace.components[0].contract, ComponentContract::Graph);
+}
+
 #[test]
 fn validate_rejects_unreferenced_sheaf() {
     let sheaves = r##"{"legend":{"kind":"text","heading":"Legend"},"load":{"kind":"gauges","scope":"kinds","value":"field:energy","scale":1000.0},"extra":{"kind":"text","heading":"Extra"}}"##;
@@ -481,6 +519,7 @@ fn validate_rejects_bad_sort_maps() {
             ("shares", "lateral"),
             ("consolidates", "solvation"),
         ]),
+        attributes: BTreeMap::new(),
     };
     assert!(matches!(
         non_total.validate(&agentic, &membrane),
@@ -502,6 +541,7 @@ fn validate_rejects_bad_sort_maps() {
             ("shares", "lateral"),
             ("consolidates", "solvation"),
         ]),
+        attributes: BTreeMap::new(),
     };
     assert!(matches!(
         outside.validate(&agentic, &membrane),
@@ -524,6 +564,7 @@ fn validate_rejects_bad_sort_maps() {
             ("shares", "lateral"),
             ("consolidates", "solvation"),
         ]),
+        attributes: BTreeMap::new(),
     };
     assert!(matches!(
         non_commuting.validate(&agentic, &membrane),
@@ -579,16 +620,25 @@ fn physics_section_is_regime_invariant() {
 
     let section_a = agentic.physics_section(&site, &physics_a());
     let section_m = membrane.physics_section(&site, &physics_b());
-    assert_eq!(section_a, section_m);
+    // The engine parameters agree; only each regime's own sort differs.
+    let engine = |s: &crate::topos::PhysicsSection| {
+        (
+            s.objects.iter().map(|(id, _, e, r, m)| (id.clone(), e.clone(), *r, *m)).collect::<Vec<_>>(),
+            s.morphisms.iter().map(|(a, b, _, e, k, l)| (a.clone(), b.clone(), e.clone(), *k, *l)).collect::<Vec<_>>(),
+        )
+    };
+    assert_eq!(engine(&section_a), engine(&section_m));
+    assert_eq!(section_a.objects[0].1, "planner");
+    assert_eq!(section_m.objects[0].1, "head");
 
     // Spot-check the shared engine parameters.
-    assert_eq!(section_a.objects[0], ("p1".to_owned(), "hydrophilic".to_owned(), 9.0, 1.0));
-    assert_eq!(section_a.objects[1], ("c1".to_owned(), "hydrophobic".to_owned(), 3.0, 2.0));
+    assert_eq!(section_a.objects[0], ("p1".to_owned(), "planner".to_owned(), "hydrophilic".to_owned(), 9.0, 1.0));
+    assert_eq!(section_a.objects[1], ("c1".to_owned(), "coder".to_owned(), "hydrophobic".to_owned(), 3.0, 2.0));
 
     // Altering p_membrane breaks the invariance.
     let physics_altered = Physics::new(&base(), &morphism(PM_ALT_JSON), &membrane).unwrap();
     let section_altered = membrane.physics_section(&site, &physics_altered);
-    assert_ne!(section_a, section_altered);
+    assert_ne!(engine(&section_m), engine(&section_altered));
 }
 
 // --- Sheaf rendering through a physics base ---------------------------------
@@ -621,8 +671,8 @@ fn assembly_and_physics_sheaves_render() {
         Section::Table(table) => {
             assert_eq!(table.rows.len(), 4);
             let first = &table.rows[0].cells;
-            assert_eq!(cell_text(&first[0]), "p1");
-            assert_eq!(cell_text(&first[1]), "hydrophilic");
+            assert_eq!(cell_text(&first[0]), "P1");
+            assert_eq!(cell_text(&first[1]), "Planner");
             assert_eq!(cell_text(&first[2]), "9");
             assert_eq!(cell_text(&first[3]), "1");
         }
@@ -872,6 +922,57 @@ fn restricted_badges_count_only_their_sorts() {
         panic!("not badges");
     };
     assert_eq!(badges.len(), 1);
+}
+
+#[test]
+fn object_badges_carry_their_value_expression_or_the_title() {
+    let valued = agentic_topos(r##"{"tags":{"kind":"badges","group":"objects","value":"field:energy"}}"##);
+    let Section::Badges(badges) = valued.global_sections(&demo_site(), &physics_a()).unwrap().get("tags").unwrap().clone()
+    else {
+        panic!("not badges");
+    };
+    assert_eq!(badges.iter().map(|badge| badge.value.as_str()).collect::<Vec<_>>(), ["30", "90", "40", "5"]);
+
+    let plain = agentic_topos(r##"{"tags":{"kind":"badges","group":"objects"}}"##);
+    let Section::Badges(titles) = plain.global_sections(&demo_site(), &physics_a()).unwrap().get("tags").unwrap().clone()
+    else {
+        panic!("not badges");
+    };
+    assert_eq!(titles[0].value, "P1");
+}
+
+#[test]
+fn a_meter_filter_reads_only_the_objects_whose_field_equals() {
+    let counted = agentic_topos(
+        r##"{"load":{"kind":"meter","label":"Loud","value":"field:energy","agg":"count","filter":{"field":"energy","equals":"90"},"scale":4.0}}"##,
+    );
+    let Section::Meter(meter) = counted.global_sections(&demo_site(), &physics_a()).unwrap().get("load").unwrap().clone()
+    else {
+        panic!("not a meter");
+    };
+    assert_eq!(meter.text, "1");
+    assert_eq!(meter.ratio, 0.25);
+
+    let summed = agentic_topos(
+        r##"{"load":{"kind":"meter","label":"Loud energy","value":"field:energy","agg":"sum","filter":{"field":"energy","equals":"90"},"scale":1000.0}}"##,
+    );
+    let Section::Meter(total) = summed.global_sections(&demo_site(), &physics_a()).unwrap().get("load").unwrap().clone()
+    else {
+        panic!("not a meter");
+    };
+    assert_eq!(total.text, "90");
+    assert_eq!(total.ratio, 0.09);
+
+    // An absent field never matches, so an unfiltered meter and a filtered one
+    // over a value no object carries differ.
+    let unmatched = agentic_topos(
+        r##"{"load":{"kind":"meter","label":"None","value":"field:energy","agg":"count","filter":{"field":"energy","equals":"7"},"scale":4.0}}"##,
+    );
+    let Section::Meter(none) = unmatched.global_sections(&demo_site(), &physics_a()).unwrap().get("load").unwrap().clone()
+    else {
+        panic!("not a meter");
+    };
+    assert_eq!(none.text, "0");
 }
 
 // --- Gluing ----------------------------------------------------------------

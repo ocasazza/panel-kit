@@ -124,8 +124,8 @@ the design calls for it, provided the notify-and-pin path is followed.
   panel-kit as a git dependency).
 - Four web examples: `workspace`, `badge`, `spinner`, `theming`
   (`examples/`).
-- Three terminal examples: `workspace`, `workspace_canary`, `browser_tui`
-  (`crates/panel-kit-tui/examples/`).
+- Three terminal examples: `workspace_tui`, `trio_tui`, `workspace_browser_tui`
+  (`examples/`).
 - Incumbent visual system: `assets/panel-kit.css` (186 lines; 15 `:root`
   declarations — 14 colors plus the `--mono` stack — and the panel /
   light / dock / badge / spinner / tooltip / mobile rules) and

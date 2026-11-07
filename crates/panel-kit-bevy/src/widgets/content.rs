@@ -65,6 +65,9 @@ pub fn spawn(parent: &mut ChildSpawnerCommands, theme: &BevyTheme, content: &Con
             }
             DataSource::Binding { id } => binding_placeholder(parent, theme, id),
         },
+        ContentSpec::External { component, .. } => {
+            super::label_text(parent, format!("external: {component}"), 11.0, theme.text_muted);
+        }
     }
 }
 

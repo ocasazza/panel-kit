@@ -56,6 +56,7 @@
             ./assets # panel-kit.css + panel-kit-boot.css.in, include_str!'d/generated
             ./tools # workspace member manifest only; wasm builds still target panel-kit
             ./examples # one browser demo per component, clippy'd by checks
+            ./vendor # vendored third-party crates (vendor/*/VENDORED.md), incl. their WGSL
           ];
         };
         hostSrc = pkgs.lib.fileset.toSource {
@@ -72,6 +73,7 @@
             ./tools
             ./tests # integration tests run by the native test lanes
             ./nix # schema, producer, and repository specs used by native parity/tool tests
+            ./vendor
           ];
         };
         commonArgs = {
@@ -113,7 +115,7 @@
         webWorkspace = import ./nix/specs/web-workspace.nix {
           inherit (pkgs) lib;
         };
-        # One topos spec pair per surface; the ascii pair is the cells layout
+        # One trio topos spec pair per surface; the ascii pair is the cells layout
         # with the ASCII glyph family, for the ratzilla/WebGL2 backend.
         toposSpecsFor = surface: glyphs: {
           agentic = import ./nix/specs/topos-agentic.nix {
@@ -128,6 +130,32 @@
         toposWebSpecs = toposSpecsFor "web" "unicode";
         toposCellsSpecs = toposSpecsFor "cells" "unicode";
         toposAsciiSpecs = toposSpecsFor "cells" "ascii";
+        # The subobject topos demo reads its own spec pair over the same sorts:
+        # the trio's panel grid is shared by every regime, while the demo's
+        # carries the Morphism and Invariants host overlays.
+        subobjectSpecsFor = surface: glyphs: {
+          agentic = import ./nix/specs/topos-agentic-subobject.nix {
+            inherit (pkgs) lib;
+            inherit surface glyphs;
+          };
+          membrane = import ./nix/specs/topos-membrane-subobject.nix {
+            inherit (pkgs) lib;
+            inherit surface glyphs;
+          };
+        };
+        subobjectWebSpecs = subobjectSpecsFor "web" "unicode";
+        subobjectCellsSpecs = subobjectSpecsFor "cells" "unicode";
+        subobjectAsciiSpecs = subobjectSpecsFor "cells" "ascii";
+        # The OKF knowledge catalog is the trio's third regime: one topos per
+        # surface, plus its physics morphism.
+        okfCatalogSpecFor = surface: glyphs:
+          import ./nix/specs/topos-okf-catalog.nix {
+            inherit (pkgs) lib;
+            inherit surface glyphs;
+          };
+        okfWebSpec = okfCatalogSpecFor "web" "unicode";
+        okfCellsSpec = okfCatalogSpecFor "cells" "unicode";
+        okfAsciiSpec = okfCatalogSpecFor "cells" "ascii";
         web-workspace = pkgs.writeText "panel-kit-web-workspace.json"
           webWorkspace.json;
         web-workspace-provider-manifest = pkgs.writeText
@@ -168,6 +196,24 @@
           toposAsciiSpecs.agentic.json;
         topos-membrane-ascii = pkgs.writeText "panel-kit-topos-membrane-ascii.json"
           toposAsciiSpecs.membrane.json;
+        topos-agentic-subobject-web = pkgs.writeText "panel-kit-topos-agentic-subobject-web.json"
+          subobjectWebSpecs.agentic.json;
+        topos-membrane-subobject-web = pkgs.writeText "panel-kit-topos-membrane-subobject-web.json"
+          subobjectWebSpecs.membrane.json;
+        topos-agentic-subobject-cells = pkgs.writeText "panel-kit-topos-agentic-subobject-cells.json"
+          subobjectCellsSpecs.agentic.json;
+        topos-membrane-subobject-cells = pkgs.writeText "panel-kit-topos-membrane-subobject-cells.json"
+          subobjectCellsSpecs.membrane.json;
+        topos-agentic-subobject-ascii = pkgs.writeText "panel-kit-topos-agentic-subobject-ascii.json"
+          subobjectAsciiSpecs.agentic.json;
+        topos-membrane-subobject-ascii = pkgs.writeText "panel-kit-topos-membrane-subobject-ascii.json"
+          subobjectAsciiSpecs.membrane.json;
+        topos-okf-catalog-web = pkgs.writeText "panel-kit-topos-okf-catalog-web.json"
+          okfWebSpec.json;
+        topos-okf-catalog-cells = pkgs.writeText "panel-kit-topos-okf-catalog-cells.json"
+          okfCellsSpec.json;
+        topos-okf-catalog-ascii = pkgs.writeText "panel-kit-topos-okf-catalog-ascii.json"
+          okfAsciiSpec.json;
         # Base physics topos and the three geometric morphisms are surface-neutral.
         topos-physics = pkgs.writeText "panel-kit-topos-physics.json"
           (import ./nix/specs/topos-physics.nix { inherit (pkgs) lib; }).json;
@@ -177,10 +223,24 @@
           (import ./nix/specs/morphism-agentic-physics.nix { inherit (pkgs) lib; }).json;
         morphism-membrane-physics = pkgs.writeText "panel-kit-morphism-membrane-physics.json"
           (import ./nix/specs/morphism-membrane-physics.nix { inherit (pkgs) lib; }).json;
+        morphism-okf-catalog-physics = pkgs.writeText "panel-kit-morphism-okf-catalog-physics.json"
+          (import ./nix/specs/morphism-okf-catalog-physics.nix { inherit (pkgs) lib; }).json;
+        morphism-okf-catalog-membrane = pkgs.writeText "panel-kit-morphism-okf-catalog-membrane.json"
+          (import ./nix/specs/morphism-okf-catalog-membrane.nix { inherit (pkgs) lib; }).json;
+        morphism-okf-catalog-agentic = pkgs.writeText "panel-kit-morphism-okf-catalog-agentic.json"
+          (import ./nix/specs/morphism-okf-catalog-agentic.nix { inherit (pkgs) lib; }).json;
+        morphism-agentic-okf-catalog = pkgs.writeText "panel-kit-morphism-agentic-okf-catalog.json"
+          (import ./nix/specs/morphism-agentic-okf-catalog.nix { inherit (pkgs) lib; }).json;
         grammar-trace-lines = pkgs.writeText "panel-kit-grammar-trace-lines.json"
           (import ./nix/grammars/trace-lines.nix { inherit (pkgs) lib; }).json;
         grammar-trace-json = pkgs.writeText "panel-kit-grammar-trace-json.json"
           (import ./nix/grammars/trace-json.nix { inherit (pkgs) lib; }).json;
+        # The subobject topos demo parses the original trace site; the trio's
+        # grammars above read the merged site.
+        grammar-topos-trace-lines = pkgs.writeText "panel-kit-grammar-topos-trace-lines.json"
+          (import ./nix/grammars/topos-trace-lines.nix { inherit (pkgs) lib; }).json;
+        grammar-topos-trace-json = pkgs.writeText "panel-kit-grammar-topos-trace-json.json"
+          (import ./nix/grammars/topos-trace-json.nix { inherit (pkgs) lib; }).json;
         # omp auto-loop: two regimes over the trace and control sites glued
         # along `repo`, each with its own physics morphism into the base.
         topos-autoloop-trace-web = pkgs.writeText "panel-kit-topos-autoloop-trace-web.json"
@@ -195,6 +255,23 @@
           (import ./nix/grammars/autoloop-trace.nix { inherit (pkgs) lib; }).json;
         grammar-autoloop-control = pkgs.writeText "panel-kit-grammar-autoloop-control.json"
           (import ./nix/grammars/autoloop-control.nix { inherit (pkgs) lib; }).json;
+        # The pinned OKF corpus as one JSON envelope, plus the grammar
+        # package whose rules are data over it. The grammar crate's tests
+        # read both from the environment, so the snapshot is canaried by
+        # `cargo test -p panel-kit-grammar` rather than by a Rust fixture.
+        okf-knowledge-catalog = pkgs.writeText "panel-kit-okf-knowledge-catalog.json"
+          (import ./nix/data/okf-knowledge-catalog.nix { inherit (pkgs) lib; });
+        grammar-okf = pkgs.writeText "panel-kit-grammar-okf.json"
+          (import ./nix/grammars/okf.nix { inherit (pkgs) lib; }).json;
+        # The pinned OKF corpus and its grammar package, plus the catalog
+        # topos the trio reads as its third regime.
+        okfEnv = {
+          PANEL_KIT_OKF_GRAMMAR = "${grammar-okf}";
+          PANEL_KIT_OKF_DATA = "${okf-knowledge-catalog}";
+          PANEL_KIT_OKF_CATALOG = "${topos-okf-catalog-web}";
+          PANEL_KIT_OKF_BASE = "${topos-physics}";
+          PANEL_KIT_OKF_CATALOG_PHYSICS = "${morphism-okf-catalog-physics}";
+        };
         autoloopEnv = {
           PANEL_KIT_TOPOS_PHYSICS = "${topos-physics}";
           PANEL_KIT_AUTOLOOP_TOPOS_TRACE = "${topos-autoloop-trace-web}";
@@ -217,14 +294,41 @@
           PANEL_KIT_MORPHISM = "${morphism-agentic-membrane}";
           PANEL_KIT_MORPHISM_A_PHYSICS = "${morphism-agentic-physics}";
           PANEL_KIT_MORPHISM_B_PHYSICS = "${morphism-membrane-physics}";
-          PANEL_KIT_GRAMMAR_LINES = "${grammar-trace-lines}";
-          PANEL_KIT_GRAMMAR_JSON = "${grammar-trace-json}";
-          PANEL_KIT_DATA_LINES = "${./nix/data/trace.lines}";
-          PANEL_KIT_DATA_JSON = "${./nix/data/trace.json}";
+          PANEL_KIT_GRAMMAR_LINES = "${grammar-topos-trace-lines}";
+          PANEL_KIT_GRAMMAR_JSON = "${grammar-topos-trace-json}";
+          PANEL_KIT_DATA_LINES = "${./nix/data/topos-trace.lines}";
+          PANEL_KIT_DATA_JSON = "${./nix/data/topos-trace.json}";
         };
-        toposWebEnv = toposSpecEnv topos-agentic-web topos-membrane-web;
-        toposCellsEnv = toposSpecEnv topos-agentic-cells topos-membrane-cells;
-        toposAsciiEnv = toposSpecEnv topos-agentic-ascii topos-membrane-ascii;
+        toposWebEnv = toposSpecEnv topos-agentic-subobject-web topos-membrane-subobject-web;
+        toposCellsEnv = toposSpecEnv topos-agentic-subobject-cells topos-membrane-subobject-cells;
+        toposAsciiEnv = toposSpecEnv topos-agentic-subobject-ascii topos-membrane-subobject-ascii;
+
+        # The trio host reads one site in all three regimes: the three topos
+        # specs for one surface, the one physics base, the four morphisms
+        # between the regimes, the three morphisms from a regime into the base,
+        # and the merged site's two grammars with their one data pair. One env
+        # carries the lot, so a trio host and its contract test never have to
+        # merge three others.
+        trioSpecEnv = agentic: membrane: okfCatalog: {
+          PANEL_KIT_TRIO_AGENTIC = "${agentic}";
+          PANEL_KIT_TRIO_MEMBRANE = "${membrane}";
+          PANEL_KIT_TRIO_OKF_CATALOG = "${okfCatalog}";
+          PANEL_KIT_TRIO_BASE = "${topos-physics}";
+          PANEL_KIT_TRIO_F = "${morphism-agentic-membrane}";
+          PANEL_KIT_TRIO_PSI = "${morphism-okf-catalog-membrane}";
+          PANEL_KIT_TRIO_CHI = "${morphism-okf-catalog-agentic}";
+          PANEL_KIT_TRIO_OMEGA = "${morphism-agentic-okf-catalog}";
+          PANEL_KIT_TRIO_AGENTIC_PHYSICS = "${morphism-agentic-physics}";
+          PANEL_KIT_TRIO_MEMBRANE_PHYSICS = "${morphism-membrane-physics}";
+          PANEL_KIT_TRIO_OKF_CATALOG_PHYSICS = "${morphism-okf-catalog-physics}";
+          PANEL_KIT_TRIO_GRAMMAR_LINES = "${grammar-trace-lines}";
+          PANEL_KIT_TRIO_GRAMMAR_JSON = "${grammar-trace-json}";
+          PANEL_KIT_TRIO_DATA_LINES = "${./nix/data/trace.lines}";
+          PANEL_KIT_TRIO_DATA_JSON = "${./nix/data/trace.json}";
+        };
+        trioEnv = trioSpecEnv topos-agentic-web topos-membrane-web topos-okf-catalog-web;
+        trioCellsEnv = trioSpecEnv topos-agentic-cells topos-membrane-cells topos-okf-catalog-cells;
+        trioAsciiEnv = trioSpecEnv topos-agentic-ascii topos-membrane-ascii topos-okf-catalog-ascii;
 
         workspaceSpecReference = import ./nix/tests/workspace-spec.nix {
           inherit (pkgs) lib;
@@ -236,8 +340,9 @@
           cargoExtraArgs = "-p spec-parity";
           doCheck = false;
         });
-        # --all-targets compiles the topos example, which embeds the cells specs.
-        hostClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // {
+        # --all-targets compiles the TUI crate's tests, which include the shared
+        # canary providers the moved examples also include.
+        hostClippy = hostCraneLib.cargoClippy (hostArgs // trioCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit-tui -p spec-parity --features panel-kit-tui/spec-plan --all-targets -- -D warnings";
         });
@@ -245,35 +350,57 @@
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example workspace --target wasm32-unknown-unknown -- -D warnings";
         });
-        toposWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // toposWebEnv // {
+        trioWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // trioEnv // {
           inherit cargoArtifacts;
-          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example topos --target wasm32-unknown-unknown -- -D warnings";
+          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example trio --target wasm32-unknown-unknown -- -D warnings";
         });
         autoloopWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // autoloopEnv // {
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example autoloop --target wasm32-unknown-unknown -- -D warnings";
         });
+        toposWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // toposWebEnv // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example topos --target wasm32-unknown-unknown -- -D warnings";
+        });
         vendoredWebExampleClippy = wasmCraneLib.cargoClippy (commonArgs // {
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "-p panel-kit --features web-runtime --example vendored --target wasm32-unknown-unknown -- -D warnings";
         });
+        # The TUI demos are examples of the root crate, which forwards
+        # `spec-plan` to this crate.
         toposTuiNativeClippy = hostCraneLib.cargoClippy (hostArgs // toposCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
-          cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example topos -- -D warnings";
+          cargoClippyExtraArgs = "-p panel-kit --features spec-plan --example topos_tui -- -D warnings";
         });
         toposBrowserTuiClippy = wasmCraneLib.cargoClippy (commonArgs // toposAsciiEnv // {
           inherit cargoArtifacts;
-          cargoClippyExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_topos --target wasm32-unknown-unknown -- -D warnings";
+          cargoClippyExtraArgs = "-p panel-kit --features spec-plan --example topos_browser_tui --target wasm32-unknown-unknown -- -D warnings";
+        });
+        trioTuiNativeClippy = hostCraneLib.cargoClippy (hostArgs // trioCellsEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit --features spec-plan --example trio_tui -- -D warnings";
+        });
+        trioBrowserTuiClippy = wasmCraneLib.cargoClippy (commonArgs // trioAsciiEnv // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit --features spec-plan --example trio_browser_tui --target wasm32-unknown-unknown -- -D warnings";
+        });
+        standalonePanelClippy = hostCraneLib.cargoClippy (hostArgs // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoClippyExtraArgs = "-p panel-kit --features spec-plan --example standalone_panel -- -D warnings";
         });
         clippy = pkgs.runCommand "panel-kit-clippy" { } ''
           mkdir -p "$out"
           ln -s ${hostClippy} "$out/host"
           ln -s ${webExampleClippy} "$out/web-example"
+          ln -s ${trioWebExampleClippy} "$out/trio-web"
           ln -s ${toposWebExampleClippy} "$out/topos-web"
           ln -s ${autoloopWebExampleClippy} "$out/autoloop-web"
           ln -s ${vendoredWebExampleClippy} "$out/vendored-web"
           ln -s ${toposTuiNativeClippy} "$out/topos-tui-native"
           ln -s ${toposBrowserTuiClippy} "$out/topos-browser-tui"
+          ln -s ${trioTuiNativeClippy} "$out/trio-tui-native"
+          ln -s ${trioBrowserTuiClippy} "$out/trio-browser-tui"
+          ln -s ${standalonePanelClippy} "$out/standalone-panel"
         '';
         workspaceSpecEnv = spec: {
           PANEL_KIT_WORKSPACE_SPEC = "${spec}";
@@ -298,9 +425,23 @@
           ln -s ${workspace-spec-web-remainder-wasm} "$out/web-workspace"
           ln -s ${workspace-spec-web-one-panel-wasm} "$out/one-panel"
         '';
+        trio-web-wasm = wasmCraneLib.buildPackage (commonArgs // trioEnv // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p panel-kit --features web-runtime --example trio";
+        });
         topos-web-wasm = wasmCraneLib.buildPackage (commonArgs // toposWebEnv // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit --features web-runtime --example topos";
+        });
+        # The trio as a static site under https://ocasazza.github.io/panel-kit/:
+        # trunk bundles the Dioxus example from examples/trio.html with the
+        # project path as public URL. Deployed by .github/workflows/pages.yml.
+        trio-web-pages = wasmCraneLib.buildTrunkPackage (commonArgs // trioEnv // {
+          pname = "panel-kit-trio-pages";
+          inherit cargoArtifacts;
+          trunkIndexPath = "examples/trio.html";
+          trunkExtraBuildArgs = "--example trio --features web-runtime --public-url /panel-kit/ --dist examples/dist";
+          wasm-bindgen-cli = pkgs.wasm-bindgen-cli;
         });
         autoloop-web-wasm = wasmCraneLib.buildPackage (commonArgs // autoloopEnv // {
           inherit cargoArtifacts;
@@ -310,17 +451,26 @@
           inherit cargoArtifacts;
           cargoExtraArgs = "-p panel-kit --features web-runtime --example vendored";
         });
+        trio-tui-native = hostCraneLib.buildPackage (hostArgs // trioCellsEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoExtraArgs = "-p panel-kit --features spec-plan --example trio_tui";
+          doCheck = false;
+        });
+        trio-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // trioAsciiEnv // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p panel-kit --features spec-plan --example trio_browser_tui";
+        });
         topos-tui-native = hostCraneLib.buildPackage (hostArgs // toposCellsEnv // {
           cargoArtifacts = hostCargoArtifacts;
-          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example topos";
+          cargoExtraArgs = "-p panel-kit --features spec-plan --example topos_tui";
           doCheck = false;
         });
         topos-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // toposAsciiEnv // {
           inherit cargoArtifacts;
-          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_topos";
+          cargoExtraArgs = "-p panel-kit --features spec-plan --example topos_browser_tui";
         });
-        # The demo model is renderer-neutral, so its behaviour test runs on the
-        # host with the web specs in the environment: the same assertions then
+        # The topos demo model is renderer-neutral, so its behaviour test runs on
+        # the host with the web specs in the environment: the same assertions then
         # cover the shared model and the authored binding tables.
         topos-grammar-test = hostCraneLib.cargoTest (hostArgs // toposWebEnv // {
           cargoArtifacts = hostCargoArtifacts;
@@ -330,14 +480,38 @@
           cargoArtifacts = hostCargoArtifacts;
           cargoTestExtraArgs = "-p panel-kit --test topos_autoloop";
         });
+        # psi and chi against the real Nix JSON: each validates on its domain
+        # and codomain, both commute over the physics base, and the triangle
+        # f . chi = psi holds on every sort (a broken psi must fail it).
+        topos-trio-morphisms-test = hostCraneLib.cargoTest (hostArgs // trioEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit --test topos_trio_morphisms";
+        });
+        # The trio host over the real Nix JSON: every workspace binding of every
+        # available (site, regime) pair resolves, the trace site is refused in
+        # okf-catalog by name, the graph's tuning is invariant across a site's
+        # regimes while its sorts and colours move, the trace site assembles
+        # into every stage, a selection survives the trip along psi, and a
+        # broken psi fails the load with the triangle named.
+        topos-trio-test = hostCraneLib.cargoTest (hostArgs // trioEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit --test topos_trio";
+        });
         workspace-spec-browser-tui-wasm = wasmCraneLib.buildPackage (commonArgs // workspaceSpecAsciiBuildEnv // {
           inherit cargoArtifacts;
-          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example browser_tui";
+          cargoExtraArgs = "-p panel-kit --features spec-plan --example workspace_browser_tui";
         });
         workspace-spec-tui-native = hostCraneLib.buildPackage (hostArgs // workspaceSpecBuildEnv // {
           cargoArtifacts = hostCargoArtifacts;
-          cargoExtraArgs = "-p panel-kit-tui --features spec-plan --example workspace";
+          cargoExtraArgs = "-p panel-kit --features spec-plan --example workspace_tui";
           doCheck = false;
+        });
+        # The OKF engine is canaried against the pinned corpus itself: the
+        # snapshot is only ever read through these two environment
+        # variables, so the test asserts real counts, not a fixture.
+        okf-grammar-test = hostCraneLib.cargoTest (hostArgs // okfEnv // {
+          cargoArtifacts = hostCargoArtifacts;
+          cargoTestExtraArgs = "-p panel-kit-grammar";
         });
       in {
         packages.default = panel-kit;
@@ -354,6 +528,18 @@
         packages.topos-membrane-cells = topos-membrane-cells;
         packages.topos-agentic-ascii = topos-agentic-ascii;
         packages.topos-membrane-ascii = topos-membrane-ascii;
+        packages.topos-agentic-subobject-web = topos-agentic-subobject-web;
+        packages.topos-membrane-subobject-web = topos-membrane-subobject-web;
+        packages.topos-agentic-subobject-cells = topos-agentic-subobject-cells;
+        packages.topos-membrane-subobject-cells = topos-membrane-subobject-cells;
+        packages.topos-agentic-subobject-ascii = topos-agentic-subobject-ascii;
+        packages.topos-membrane-subobject-ascii = topos-membrane-subobject-ascii;
+        packages.topos-okf-catalog-web = topos-okf-catalog-web;
+        packages.topos-okf-catalog-cells = topos-okf-catalog-cells;
+        packages.topos-okf-catalog-ascii = topos-okf-catalog-ascii;
+        packages.morphism-okf-catalog-physics = morphism-okf-catalog-physics;
+        packages.morphism-okf-catalog-membrane = morphism-okf-catalog-membrane;
+        packages.morphism-okf-catalog-agentic = morphism-okf-catalog-agentic;
         packages.topos-physics = topos-physics;
         packages.morphism-agentic-membrane = morphism-agentic-membrane;
         packages.morphism-agentic-physics = morphism-agentic-physics;
@@ -366,8 +552,14 @@
         packages.morphism-autoloop-control-physics = morphism-autoloop-control-physics;
         packages.grammar-autoloop-trace = grammar-autoloop-trace;
         packages.grammar-autoloop-control = grammar-autoloop-control;
+        packages.grammar-okf = grammar-okf;
+        packages.okf-knowledge-catalog = okf-knowledge-catalog;
+        packages.trio-web-wasm = trio-web-wasm;
         packages.topos-web-wasm = topos-web-wasm;
+        packages.trio-web-pages = trio-web-pages;
         packages.autoloop-web-wasm = autoloop-web-wasm;
+        packages.trio-tui-native = trio-tui-native;
+        packages.trio-browser-tui-wasm = trio-browser-tui-wasm;
         packages.topos-tui-native = topos-tui-native;
         packages.topos-browser-tui-wasm = topos-browser-tui-wasm;
         packages.workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
@@ -423,26 +615,38 @@
             touch "$out"
           '';
           # Filtering by test name still compiles every test target and example,
-          # including topos_grammar and the topos and autoloop hosts.
-          theme-parity = hostCraneLib.cargoTest (hostArgs // toposWebEnv // autoloopEnv // {
+          # including topos_grammar and the topos, trio and autoloop hosts.
+          theme-parity = hostCraneLib.cargoTest (hostArgs // toposWebEnv // trioEnv // autoloopEnv // {
             cargoArtifacts = hostCargoArtifacts;
             cargoTestExtraArgs = "-p panel-kit --features web-runtime theme_parity";
           });
           workspace-spec-web-wasm = workspace-spec-web-wasm;
+          trio-web-wasm = trio-web-wasm;
           topos-web-wasm = topos-web-wasm;
           autoloop-web-wasm = autoloop-web-wasm;
           vendored-web-wasm = vendored-web-wasm;
+          # The trio demo's laws are only visible once rendered, so the native
+          # build runs its offscreen canary: braille graph, resolved bodies,
+          # in-place regime switch, site switch, and the refused pair.
+          trio-tui-native = pkgs.runCommand "panel-kit-trio-tui-native-check" { } ''
+            ${trio-tui-native}/bin/trio_tui --check-offscreen
+            touch "$out"
+          '';
+          trio-browser-tui-wasm = trio-browser-tui-wasm;
           topos-tui-native = topos-tui-native;
           topos-browser-tui-wasm = topos-browser-tui-wasm;
-          topos-grammar-test = topos-grammar-test;
           topos-autoloop-test = topos-autoloop-test;
+          topos-grammar-test = topos-grammar-test;
+          topos-trio-morphisms-test = topos-trio-morphisms-test;
+          topos-trio-test = topos-trio-test;
+          okf-grammar-test = okf-grammar-test;
           workspace-spec-browser-tui-wasm = workspace-spec-browser-tui-wasm;
           workspace-spec-tui-native = pkgs.runCommand "panel-kit-workspace-spec-tui-native-check" { } ''
-            ${workspace-spec-tui-native}/bin/workspace --check-offscreen
+            ${workspace-spec-tui-native}/bin/workspace_tui --check-offscreen
             touch "$out"
           '';
           topos-tui-native-offscreen = pkgs.runCommand "panel-kit-topos-tui-native-check" { } ''
-            ${topos-tui-native}/bin/topos --check-offscreen
+            ${topos-tui-native}/bin/topos_tui --check-offscreen
             touch "$out"
           '';
           # Docs must build clean (missing_docs is warn-level in lib.rs;
@@ -453,7 +657,7 @@
           });
         };
 
-        devShells.default = pkgs.mkShell (toposWebEnv // autoloopEnv // {
+        devShells.default = pkgs.mkShell (toposWebEnv // autoloopEnv // okfEnv // trioEnv // {
           PANEL_KIT_WORKSPACE_SPEC = "${workspace-canary}";
           packages = [
             rustWasm

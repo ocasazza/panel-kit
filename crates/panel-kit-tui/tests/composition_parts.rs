@@ -472,3 +472,39 @@ fn fractional_tracks_snap_to_shared_cell_edges() {
     assert_eq!(cell(3, 0).right(), workspace.right(), "last column reaches the edge");
     assert_eq!(cell(0, 2).bottom(), workspace.bottom(), "last row reaches the edge");
 }
+
+#[test]
+fn panels_overflowing_the_workspace_leave_the_dock_rows_untouched() {
+    let (snapshot, catalog) = fixed_snapshot(Mode::Floating);
+    let mut scratch = ProjectionBuffer::with_panel_capacity(snapshot.panels.len());
+    let projected = project_cells(&snapshot, &mut scratch);
+    let panel = projected
+        .panels
+        .iter()
+        .find(|panel| panel.key == TestPanel::Alpha)
+        .copied()
+        .expect("alpha projects");
+    let meta = catalog.get(panel.key).expect("alpha metadata exists");
+    let outer = rect_from_region(panel.chrome.outer);
+    // A workspace that ends halfway down the panel, with a dock row below it.
+    let clip = Rect::new(0, 0, 80, outer.y + outer.height / 2);
+    let dock_row = clip.bottom();
+    let mut hits = TuiHitBuffer::with_capacity(1, 0);
+    let mut clip_scratch = widgets::ClipScratch::default();
+
+    let buffer = render_to_buffer(80, 24, |frame| {
+        frame.render_widget(Paragraph::new("~".repeat(80 * 24)).wrap(ratatui::widgets::Wrap { trim: false }), frame.area());
+        widgets::paint_clipped(frame, clip, &mut clip_scratch, |frame| {
+            widgets::panel::draw_panel_surface(frame, panel, &ResolvedTuiTheme::default(), TerminalCharset::Ascii, &mut hits);
+            widgets::panel::draw_panel_chrome(frame, panel, meta, &ResolvedTuiTheme::default(), TerminalCharset::Ascii, &mut hits);
+        });
+    });
+    hits.clip_panels(clip);
+
+    for x in outer.x..outer.right() {
+        assert_eq!(buffer[(x, dock_row)].symbol(), "~", "panel painted over row {dock_row} at column {x}");
+        assert_ne!(buffer[(x, outer.y)].symbol(), "~", "panel top edge must still paint at column {x}");
+    }
+    let below = (f64::from(outer.x + 1), f64::from(dock_row));
+    assert_eq!(hits.hit_test(below), None, "a clipped-away panel part must not answer hits");
+}

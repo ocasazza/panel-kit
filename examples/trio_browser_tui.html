@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <link data-trunk rel="rust" href="../Cargo.toml" />
+    <title>panel-kit TUI browser trio canary</title>
+    <style>
+      :root {
+        --color-background: #0a0a0a;
+        --color-text: #ededed;
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+        background: var(--color-background);
+        color: var(--color-text);
+        font-family: var(--mono);
+        font-size: 13px;
+        cursor: default;
+      }
+      * {
+        box-sizing: border-box;
+        user-select: none;
+        scrollbar-width: thin;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--color-background);
+      }
+      #panel-kit-trio {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        cursor: default;
+        user-select: none;
+      }
+      #panel-kit-trio canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+        outline: none;
+        cursor: default;
+        user-select: none;
+        background: var(--color-background);
+      }
+    </style>
+  </head>
+  <body>
+    <main id="panel-kit-trio" aria-label="panel-kit TUI browser trio canary"></main>
+  </body>
+</html>

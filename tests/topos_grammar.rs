@@ -14,11 +14,14 @@ use std::collections::BTreeSet;
 
 use panel_kit_core::spec::WorkspaceSpec;
 use panel_kit_core::widgets::table::TableCell;
+use panel_kit_core::widgets::ContentSpec;
 use panel_kit_grammar::{assembly, CompiledGrammar, GrammarPackage, Limits, Section, Stage};
 use topos_demo::{ToposDemo, GRAMMAR_JSON, GRAMMAR_LINES, TOPOS_AGENTIC, TOPOS_MEMBRANE};
 
 /// Binding id and declared content kind of every sheaf-backed panel in a
-/// topos's workspace.
+/// topos's workspace. An external body is the host's, not a sheaf's (the
+/// graph panel's binding is a host-mounted model), so it is not a panel
+/// binding here.
 fn panel_bindings(demo: &ToposDemo, topos: &str) -> Vec<(String, &'static str)> {
     let json = demo
         .workspace_json(topos)
@@ -26,11 +29,9 @@ fn panel_bindings(demo: &ToposDemo, topos: &str) -> Vec<(String, &'static str)> 
     let spec = WorkspaceSpec::from_json_str(json).expect("workspace spec parses");
     spec.panels
         .iter()
-        .filter_map(|panel| {
-            panel
-                .content
-                .binding_id()
-                .map(|id| (id.to_owned(), panel.content.kind()))
+        .filter_map(|panel| match &panel.content {
+            ContentSpec::External { .. } => None,
+            content => content.binding_id().map(|id| (id.to_owned(), content.kind())),
         })
         .collect()
 }

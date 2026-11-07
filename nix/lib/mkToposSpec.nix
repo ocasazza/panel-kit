@@ -46,7 +46,10 @@ in
     in { inherit value; json = builtins.toJSON value; };
 
   # Geometric morphism document (regime->regime or regime->base share the type).
-  mkMorphism = { id, domain, codomain, object_sorts, morphism_sorts }:
-    let value = { inherit id domain codomain object_sorts morphism_sorts; };
+  # `attributes` is the data the morphism transports: field -> field in the
+  # domain the codomain regime reads it from, identity where the map is silent.
+  mkMorphism = { id, domain, codomain, object_sorts, morphism_sorts, attributes ? { } }:
+    let
+      value = { inherit id domain codomain object_sorts morphism_sorts attributes; };
     in { inherit value; json = builtins.toJSON value; };
 }

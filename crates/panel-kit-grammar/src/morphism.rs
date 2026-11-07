@@ -88,6 +88,11 @@ pub struct GeometricMorphism {
     pub object_sorts: BTreeMap<String, String>,
     /// φ on morphism sorts: sorts(E) → sorts(F).
     pub morphism_sorts: BTreeMap<String, String>,
+    /// The data the morphism transports: the codomain field read from the
+    /// domain field it names. A field the map does not name is the trivial
+    /// identity, so [`attribute`](Self::attribute) is total.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub attributes: BTreeMap<String, String>,
 }
 
 /// Which topos the active subobject `u` lives in when rendering a morphism
@@ -106,8 +111,24 @@ impl GeometricMorphism {
         serde_json::from_str(text).map_err(|error| MorphismError::Json(error.to_string()))
     }
 
-    /// Validate φ is total on sorts(E), lands in sorts(F), and commutes with the
-    /// sortings (`φ ∘ sorting_E == sorting_F` on every site kind).
+    /// The morphism as the indented JSON document it was authored as, for a
+    /// host that shows the morphism itself rather than a reading of it.
+    pub fn to_json_pretty(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
+    }
+
+    /// The domain field the codomain reads `field` from; `field` itself when
+    /// the attribute map is silent about it.
+    pub fn attribute<'a>(&'a self, field: &'a str) -> &'a str {
+        self.attributes.get(field).map_or(field, String::as_str)
+    }
+
+    /// Validate φ is total on sorts(E), lands in sorts(F), and agrees with the
+    /// codomain's sorting on every kind E sorts **natively**
+    /// (`φ ∘ sorting_E == sorting_F`). A kind E sorts by transport is one F
+    /// sorts on its own, so it does not constrain φ: the composite sorting
+    /// reads a kind natively where the regime has it and pushes it along the
+    /// morphism from the regime that does.
     pub fn validate(&self, e: &Topos, f: &Topos) -> Result<(), MorphismError> {
         validate_sort_map(
             "object",
@@ -115,6 +136,7 @@ impl GeometricMorphism {
             &e.object_sort_set(),
             &f.object_sort_set(),
             &e.object_sorting,
+            &e.native_object_kinds(),
             &f.object_sorting,
         )?;
         validate_sort_map(
@@ -123,10 +145,14 @@ impl GeometricMorphism {
             &e.morphism_sort_set(),
             &f.morphism_sort_set(),
             &e.morphism_sorting,
+            &e.native_morphism_kinds(),
             &f.morphism_sorting,
         )?;
         Ok(())
     }
+}
+
+impl GeometricMorphism {
 
     /// `(f* G)(s) = G(φ s)` over object sorts.
     pub fn inverse_image<T: Clone>(&self, g: &BTreeMap<String, T>) -> BTreeMap<String, T> {
@@ -295,7 +321,8 @@ impl GeometricMorphism {
         parts.join("; ")
     }
 
-    /// Compose `self: E → F` with `other: F → G` into `E → G`.
+    /// Compose `self: E → F` with `other: F → G` into `E → G`, the attribute
+    /// maps composed in the same order as the sorts.
     pub fn compose(&self, other: &GeometricMorphism) -> Result<GeometricMorphism, MorphismError> {
         if self.codomain != other.domain {
             return Err(MorphismError::ComposeMismatch {
@@ -303,12 +330,18 @@ impl GeometricMorphism {
                 domain: other.domain.clone(),
             });
         }
+        let attributes = self
+            .attributes
+            .keys()
+            .map(|field| (field.clone(), other.attribute(self.attribute(field)).to_owned()))
+            .collect();
         Ok(GeometricMorphism {
             id: format!("{}∘{}", other.id, self.id),
             domain: self.domain.clone(),
             codomain: other.codomain.clone(),
             object_sorts: compose_map("object", &self.object_sorts, &other.object_sorts)?,
             morphism_sorts: compose_map("morphism", &self.morphism_sorts, &other.morphism_sorts)?,
+            attributes,
         })
     }
 
@@ -381,6 +414,7 @@ fn validate_sort_map(
     e_sorts: &BTreeSet<String>,
     f_sorts: &BTreeSet<String>,
     sorting_e: &BTreeMap<String, String>,
+    native: &BTreeSet<String>,
     sorting_f: &BTreeMap<String, String>,
 ) -> Result<(), MorphismError> {
     for s in e_sorts {
@@ -395,7 +429,7 @@ fn validate_sort_map(
             });
         }
     }
-    for (kind, e_sort) in sorting_e {
+    for (kind, e_sort) in sorting_e.iter().filter(|(kind, _)| native.contains(*kind)) {
         let via = phi
             .get(e_sort)
             .ok_or_else(|| MorphismError::NotTotal { part, sort: e_sort.clone() })?;

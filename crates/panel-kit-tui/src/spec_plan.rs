@@ -5,8 +5,8 @@
 //! approximations in [`ResolvedTuiTheme`], matching terminal host limits.
 
 use panel_kit_core::spec::{
-    Charset as TerminalCharset, ChromeSpec, InputSpec, LayoutSpec, PanelSpec, PersistenceSpec, ResolvedWorkspace,
-    SurfaceSpec,
+    Charset as TerminalCharset, ChromeSpec, ExternalComponentSpec, InputSpec, LayoutSpec, PanelSpec,
+    PersistenceSpec, ResolvedWorkspace, SurfaceSpec,
 };
 use panel_kit_core::theme::ThemeTokens;
 
@@ -37,6 +37,8 @@ pub struct TuiSpecPlan {
     pub persistence: PersistenceSpec,
     /// Authored panels in declaration order.
     pub panels: Vec<PanelSpec>,
+    /// Declared external components the terminal backend falls back from.
+    pub components: Vec<ExternalComponentSpec>,
 }
 
 /// Lower a resolved strict workspace into the owned TUI production plan.
@@ -53,5 +55,6 @@ pub fn lower_spec(workspace: &ResolvedWorkspace) -> TuiSpecPlan {
         resolved_theme: ResolvedTuiTheme::from(&workspace.theme),
         persistence: workspace.persistence.clone(),
         panels: workspace.panels.clone(),
+        components: workspace.components.clone(),
     }
 }

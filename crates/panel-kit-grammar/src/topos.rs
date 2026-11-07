@@ -99,15 +99,17 @@ pub struct Stages {
     pub membrane: String,
 }
 
-/// Per-object `(id, engine_type, repulsion, mass)` and per-morphism
-/// `(domain, codomain, engine_type, weight, rest_length)` over the whole site.
-/// Identical under any two regimes related by a base-commuting morphism.
+/// Per-object `(id, sort, engine_type, repulsion, mass)` and per-morphism
+/// `(domain, codomain, sort, engine_type, weight, rest_length)` over the whole
+/// site, `sort` being this regime's sort and `engine_type` the base stalk it
+/// pulls back from. The numbers are identical under any two regimes related
+/// by a base-commuting morphism; the sorts are each regime's own.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PhysicsSection {
-    /// `(id, engine_type, repulsion, mass)` in site object order.
-    pub objects: Vec<(String, String, f64, f64)>,
-    /// `(domain, codomain, engine_type, weight, rest_length)` in site morphism order.
-    pub morphisms: Vec<(String, String, String, f64, f64)>,
+    /// `(id, sort, engine_type, repulsion, mass)` in site object order.
+    pub objects: Vec<(String, String, String, f64, f64)>,
+    /// `(domain, codomain, sort, engine_type, weight, rest_length)` in site morphism order.
+    pub morphisms: Vec<(String, String, String, String, f64, f64)>,
 }
 
 impl Topos {
@@ -131,6 +133,17 @@ impl Topos {
         self.stalks.morphisms.keys().cloned().collect()
     }
 
+    /// The site object kinds this regime sorts **natively**: the ones its
+    /// sorting is the identity on. Every other kind is foreign and is read
+    /// through a morphism from the regime that does sort it natively.
+    pub fn native_object_kinds(&self) -> BTreeSet<String> {
+        native_kinds(&self.object_sorting)
+    }
+
+    /// The site morphism kinds this regime sorts natively, by the same rule.
+    pub fn native_morphism_kinds(&self) -> BTreeSet<String> {
+        native_kinds(&self.morphism_sorting)
+    }
     /// Every object/morphism kind present in the site is sorted, and every sort
     /// it maps to has a stalk.
     pub fn check_site(&self, site: &Site) -> Result<(), SheafError> {
@@ -159,8 +172,22 @@ impl Topos {
 
     /// Γ of every sheaf: resolve each against the site through `physics`.
     pub fn global_sections(&self, site: &Site, physics: &Physics) -> Result<GlobalSections, SheafError> {
+        self.global_sections_over(site, physics, &BTreeMap::new())
+    }
+
+    /// Γ of every sheaf over one site, reading each foreign kind's fields
+    /// through `attributes`: site object kind → (regime field → the field of
+    /// the object's native regime it is read from). The morphism attribute maps
+    /// composed along each route make that table; a regime reading a kind
+    /// natively passes no entry for it and reads its fields directly.
+    pub fn global_sections_over(
+        &self,
+        site: &Site,
+        physics: &Physics,
+        attributes: &BTreeMap<String, BTreeMap<String, String>>,
+    ) -> Result<GlobalSections, SheafError> {
         self.check_site(site)?;
-        let resolver = self.resolver(physics);
+        let resolver = self.resolver(physics, attributes);
         let mut map = BTreeMap::new();
         let mut rows = BTreeMap::new();
         for (id, sheaf) in &self.sheaves {
@@ -181,7 +208,8 @@ impl Topos {
             return Ok(None);
         };
         self.check_site(site)?;
-        let resolver = self.resolver(physics);
+        let attributes = BTreeMap::new();
+        let resolver = self.resolver(physics, &attributes);
         Ok(Some(self.resolve_binding(&resolver, site, sheaf)?.0))
     }
 
@@ -304,15 +332,16 @@ impl Topos {
 
     /// The per-object/per-morphism engine parameters over the whole site.
     pub fn physics_section(&self, site: &Site, physics: &Physics) -> PhysicsSection {
-        self.resolver(physics).physics_section(site)
+        self.resolver(physics, &BTreeMap::new()).physics_section(site)
     }
 
-    fn resolver<'a>(&'a self, physics: &'a Physics) -> Resolver<'a> {
+    fn resolver<'a>(&'a self, physics: &'a Physics, attributes: &'a AttributeMaps) -> Resolver<'a> {
         Resolver {
             object_sorting: &self.object_sorting,
             morphism_sorting: &self.morphism_sorting,
             stalks: &self.stalks,
             physics,
+            attributes,
         }
     }
 
@@ -419,13 +448,29 @@ impl Topos {
     }
 }
 
-/// Resolution context: the sortings, stalks, and physics a sheaf reads to turn
-/// a site into content.
+/// Site object kind to (regime field → the field of that kind's native regime
+/// the regime reads it from), composed from a morphism's attribute map along
+/// the route from the kind's native regime.
+pub type AttributeMaps = BTreeMap<String, BTreeMap<String, String>>;
+
+/// The kinds of `sorting` the sorting is the identity on: the regime's native
+/// kinds, as opposed to the ones it reads by transport.
+fn native_kinds(sorting: &BTreeMap<String, String>) -> BTreeSet<String> {
+    sorting
+        .iter()
+        .filter(|(kind, sort)| *kind == *sort)
+        .map(|(kind, _)| kind.clone())
+        .collect()
+}
+
+/// Resolution context: the sortings, stalks, physics, and transported
+/// attributes a sheaf reads to turn a site into content.
 pub(crate) struct Resolver<'a> {
     pub(crate) object_sorting: &'a BTreeMap<String, String>,
     pub(crate) morphism_sorting: &'a BTreeMap<String, String>,
     pub(crate) stalks: &'a Stalks,
     pub(crate) physics: &'a Physics,
+    pub(crate) attributes: &'a AttributeMaps,
 }
 
 impl Resolver<'_> {
@@ -434,10 +479,29 @@ impl Resolver<'_> {
         self.object_sorting.get(kind).map(String::as_str)
     }
 
+    /// The domain field `kind`'s `field` is read from in this regime: the
+    /// transported name when `kind` is foreign here, `field` itself when the
+    /// regime sorts it natively or no morphism names it.
+    pub(crate) fn field_of<'a>(&'a self, kind: &str, field: &'a str) -> &'a str {
+        self.attributes
+            .get(kind)
+            .and_then(|map| map.get(field))
+            .map_or(field, String::as_str)
+    }
+
     /// Label for an object sort, falling back to the raw sort.
     pub(crate) fn sort_object_label(&self, sort: &str) -> String {
         self.stalks
             .objects
+            .get(sort)
+            .map(|stalk| stalk.label.clone())
+            .unwrap_or_else(|| sort.to_owned())
+    }
+
+    /// Regime label for a morphism sort, the sort itself when it has no stalk.
+    pub(crate) fn sort_morphism_label(&self, sort: &str) -> String {
+        self.stalks
+            .morphisms
             .get(sort)
             .map(|stalk| stalk.label.clone())
             .unwrap_or_else(|| sort.to_owned())
@@ -546,23 +610,18 @@ impl Resolver<'_> {
     pub(crate) fn physics_section(&self, site: &Site) -> PhysicsSection {
         let mut objects = Vec::with_capacity(site.objects.len());
         for object in &site.objects {
-            let tuning = self
-                .object_sorting
-                .get(&object.kind)
-                .and_then(|sort| self.physics.object(sort));
+            let sort = self.object_sorting.get(&object.kind);
+            let tuning = sort.and_then(|sort| self.physics.object(sort));
             let (engine_type, repulsion, mass) = match tuning {
                 Some(tuning) => (tuning.engine_type.clone(), tuning.repulsion, tuning.mass),
                 None => (String::new(), 0.0, 0.0),
             };
-            objects.push((object.id.clone(), engine_type, repulsion, mass));
+            objects.push((object.id.clone(), sort.cloned().unwrap_or_default(), engine_type, repulsion, mass));
         }
         let mut morphisms = Vec::with_capacity(site.morphisms.len());
         for morphism in &site.morphisms {
-            let tuning = morphism
-                .kind
-                .as_deref()
-                .and_then(|kind| self.morphism_sorting.get(kind))
-                .and_then(|sort| self.physics.morphism(sort));
+            let sort = morphism.kind.as_deref().and_then(|kind| self.morphism_sorting.get(kind));
+            let tuning = sort.and_then(|sort| self.physics.morphism(sort));
             let (engine_type, weight, rest_length) = match tuning {
                 Some(tuning) => (tuning.engine_type.clone(), tuning.weight, tuning.rest_length),
                 None => (String::new(), 0.0, 0.0),
@@ -570,6 +629,7 @@ impl Resolver<'_> {
             morphisms.push((
                 morphism.domain.clone(),
                 morphism.codomain.clone(),
+                sort.cloned().unwrap_or_default(),
                 engine_type,
                 weight,
                 rest_length,
@@ -592,6 +652,9 @@ fn sheaf_binding(content: &ContentSpec) -> Option<(&str, &'static str)> {
         ContentSpec::Boxplot { source } => source.binding_id().map(|id| (id, "boxplot")),
         ContentSpec::Meter { source } => source.binding_id().map(|id| (id, "meter")),
         ContentSpec::Status { source } => source.binding_id().map(|id| (id, "status")),
-        ContentSpec::Custom { .. } | ContentSpec::Editor { .. } | ContentSpec::Spinner { .. } => None,
+        ContentSpec::Custom { .. }
+        | ContentSpec::Editor { .. }
+        | ContentSpec::Spinner { .. }
+        | ContentSpec::External { .. } => None,
     }
 }

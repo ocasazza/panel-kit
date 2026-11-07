@@ -18,7 +18,7 @@ pub(super) fn walk_workspace(value: &serde_json::Value, pointer: &str, errors: &
     let Some(object) = object_at(value, pointer, errors) else {
         return;
     };
-    check_fields(object, pointer, WORKSPACE_FIELDS, errors);
+    check_fields_with_optional(object, pointer, WORKSPACE_FIELDS, WORKSPACE_OPTIONAL_FIELDS, errors);
     walk_number_field(object, pointer, "spec_version", errors);
     walk_string_field(object, pointer, "id", errors);
     if let Some(value) = object.get("layout") {
@@ -41,6 +41,9 @@ pub(super) fn walk_workspace(value: &serde_json::Value, pointer: &str, errors: &
     }
     if let Some(value) = object.get("panels") {
         walk_panels(value, "/panels", errors);
+    }
+    if let Some(value) = object.get("components") {
+        walk_components(value, "/components", errors);
     }
 }
 
@@ -368,10 +371,212 @@ fn walk_content(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink
                 walk_data_source(label, &join(pointer, "label"), errors, walk_string_value);
             }
         }
+        "external" => {
+            check_fields(object, pointer, CONTENT_EXTERNAL_FIELDS, errors);
+            walk_string_field(object, pointer, "component", errors);
+            if let Some(source) = object.get("source") {
+                walk_data_source(source, &join(pointer, "source"), errors, walk_graph_model);
+            }
+            if let Some(layout) = object.get("layout") {
+                walk_graph_layout(layout, &join(pointer, "layout"), errors);
+            }
+        }
         _ => errors.push(
             format!("{pointer}/kind"),
             format!("unsupported content kind {kind}"),
         ),
+    }
+}
+
+fn walk_components(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(components) = array_at(value, pointer, errors) else {
+        return;
+    };
+    let mut ids = HashSet::new();
+    for (index, component) in components.iter().enumerate() {
+        let item = format!("{pointer}/{index}");
+        let Some(object) = object_at(component, &item, errors) else {
+            continue;
+        };
+        check_fields(object, &item, COMPONENT_FIELDS, errors);
+        if let Some(id) = string_value(object, "id") {
+            if id.is_empty() {
+                errors.push(format!("{item}/id"), "component id must not be empty");
+            }
+            if !ids.insert(id.to_string()) {
+                errors.push(format!("{item}/id"), "duplicate component id");
+            }
+        }
+        check_enum_field(object, &item, "contract", COMPONENT_CONTRACTS, errors);
+        check_enum_array(object, &item, "requires", CAPABILITIES, errors);
+        check_enum_array(object, &item, "events", COMPONENT_EVENT_KINDS, errors);
+        check_enum_field(object, &item, "fallback", COMPONENT_FALLBACKS, errors);
+        if let Some(min_size) = object.get("min_size") {
+            walk_positive_pair(min_size, &format!("{item}/min_size"), errors);
+        }
+    }
+}
+
+fn walk_graph_layout(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(object) = object_at(value, pointer, errors) else {
+        return;
+    };
+    check_fields(object, pointer, GRAPH_LAYOUT_FIELDS, errors);
+    check_enum_field(object, pointer, "algorithm", LAYOUT_ALGORITHMS, errors);
+    if let Some(group_by) = object.get("group_by") {
+        if !group_by.is_null() && !group_by.is_string() {
+            errors.push(format!("{pointer}/group_by"), "expected string or null");
+        }
+    }
+    if let Some(params) = object.get("params") {
+        walk_finite_numbers(params, &join(pointer, "params"), errors);
+    }
+}
+
+fn walk_graph_model(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(object) = object_at(value, pointer, errors) else {
+        return;
+    };
+    check_fields(object, pointer, GRAPH_MODEL_FIELDS, errors);
+    if let Some(nodes) = object.get("nodes") {
+        walk_array_items(nodes, &join(pointer, "nodes"), errors, walk_graph_node);
+    }
+    if let Some(edges) = object.get("edges") {
+        walk_array_items(edges, &join(pointer, "edges"), errors, walk_graph_edge);
+    }
+}
+
+fn walk_graph_node(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(object) = object_at(value, pointer, errors) else {
+        return;
+    };
+    check_fields(object, pointer, GRAPH_NODE_FIELDS, errors);
+    walk_string_field(object, pointer, "id", errors);
+    walk_string_field(object, pointer, "label", errors);
+    walk_string_field(object, pointer, "sort", errors);
+    if let Some(color) = object.get("color") {
+        walk_channel_triple(color, &join(pointer, "color"), errors);
+    }
+    for field in ["size", "mass", "repulsion"] {
+        walk_finite_field(object, pointer, field, errors);
+    }
+}
+
+fn walk_graph_edge(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(object) = object_at(value, pointer, errors) else {
+        return;
+    };
+    check_fields(object, pointer, GRAPH_EDGE_FIELDS, errors);
+    for field in ["source", "target"] {
+        match object.get(field).and_then(serde_json::Value::as_u64) {
+            Some(_) => {}
+            None => errors.push(format!("{pointer}/{field}"), "expected node index"),
+        }
+    }
+    walk_string_field(object, pointer, "kind", errors);
+    for field in ["weight", "rest_length"] {
+        walk_finite_field(object, pointer, field, errors);
+    }
+}
+
+fn walk_positive_pair(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(values) = array_at(value, pointer, errors) else {
+        return;
+    };
+    for index in 0..2 {
+        match values.get(index).and_then(serde_json::Value::as_f64) {
+            Some(number) if number.is_finite() && number > 0.0 => {}
+            Some(_) => errors.push(
+                format!("{pointer}/{index}"),
+                "extent must be finite and positive",
+            ),
+            None => errors.push(format!("{pointer}/{index}"), "missing extent"),
+        }
+    }
+}
+
+fn walk_channel_triple(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(values) = array_at(value, pointer, errors) else {
+        return;
+    };
+    if values.len() != 3 {
+        errors.push(pointer, "expected three sRGB channels");
+        return;
+    }
+    for (index, channel) in values.iter().enumerate() {
+        if !channel.is_u64() || channel.as_u64().is_some_and(|value| value > 255) {
+            errors.push(format!("{pointer}/{index}"), "expected a u8 channel");
+        }
+    }
+}
+
+fn walk_finite_numbers(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(object) = object_at(value, pointer, errors) else {
+        return;
+    };
+    for (name, param) in object {
+        match param.as_f64() {
+            Some(number) if number.is_finite() => {}
+            Some(_) => errors.push(
+                format!("{pointer}/{name}"),
+                "layout parameter must be finite",
+            ),
+            None => errors.push(format!("{pointer}/{name}"), "expected number"),
+        }
+    }
+}
+
+fn walk_finite_field(
+    object: &JsonMap,
+    pointer: &str,
+    field: &str,
+    errors: &mut ErrorSink,
+) {
+    match object.get(field) {
+        Some(value) if value.as_f64().is_some_and(f64::is_finite) => {}
+        Some(_) => errors.push(format!("{pointer}/{field}"), "expected finite number"),
+        None => {}
+    }
+}
+
+fn check_enum_field(
+    object: &JsonMap,
+    pointer: &str,
+    field: &str,
+    allowed: &[&str],
+    errors: &mut ErrorSink,
+) {
+    let Some(value) = object.get(field) else {
+        return;
+    };
+    match value.as_str() {
+        Some(name) if allowed.contains(&name) => {}
+        Some(name) => errors.push(
+            format!("{pointer}/{field}"),
+            format!("unsupported {field} {name}"),
+        ),
+        None => errors.push(format!("{pointer}/{field}"), "expected string"),
+    }
+}
+
+fn check_enum_array(
+    object: &JsonMap,
+    pointer: &str,
+    field: &str,
+    allowed: &[&str],
+    errors: &mut ErrorSink,
+) {
+    let item = join(pointer, field);
+    let Some(values) = object.get(field).and_then(|value| array_at(value, &item, errors)) else {
+        return;
+    };
+    for (index, value) in values.iter().enumerate() {
+        let item = format!("{pointer}/{field}/{index}");
+        match value.as_str() {
+            Some(name) if allowed.contains(&name) => {}
+            Some(name) => errors.push(&item, format!("unsupported {field} {name}")),
+            None => errors.push(&item, "expected string"),
+        }
     }
 }
 
@@ -715,6 +920,8 @@ const WORKSPACE_FIELDS: &[&str] = &[
     "persistence",
     "panels",
 ];
+/// `#[serde(default)]` fields of `WorkspaceSpec`: accepted, never required.
+const WORKSPACE_OPTIONAL_FIELDS: &[&str] = &["components"];
 const LAYOUT_FIELDS: &[&str] = &["units", "viewport", "preferred_mode", "clamp", "tile"];
 const TILE_LAYOUT_FIELDS: &[&str] = &["resize", "row_min", "gap", "padding", "fill_viewport"];
 const SURFACE_FIELDS: &[&str] = &[
@@ -796,6 +1003,48 @@ const CONTENT_EDITOR_FIELDS: &[&str] = &["kind", "binding", "multiline", "placeh
 const CONTENT_SOURCE_FIELDS: &[&str] = &["kind", "source"];
 const CONTENT_TIME_SERIES_FIELDS: &[&str] = &["kind", "source", "unit"];
 const CONTENT_SPINNER_FIELDS: &[&str] = &["kind", "label"];
+const CONTENT_EXTERNAL_FIELDS: &[&str] = &["kind", "component", "source", "layout"];
+const COMPONENT_FIELDS: &[&str] = &[
+    "id",
+    "contract",
+    "requires",
+    "keep_mounted",
+    "min_size",
+    "events",
+    "fallback",
+];
+const GRAPH_MODEL_FIELDS: &[&str] = &["nodes", "edges"];
+const GRAPH_NODE_FIELDS: &[&str] = &[
+    "id",
+    "label",
+    "sort",
+    "color",
+    "size",
+    "mass",
+    "repulsion",
+];
+const GRAPH_EDGE_FIELDS: &[&str] = &[
+    "source",
+    "target",
+    "kind",
+    "weight",
+    "rest_length",
+];
+const GRAPH_LAYOUT_FIELDS: &[&str] = &["algorithm", "group_by", "params"];
+const COMPONENT_CONTRACTS: &[&str] = &["graph"];
+const CAPABILITIES: &[&str] = &["webgpu"];
+const COMPONENT_EVENT_KINDS: &[&str] = &["select", "hover"];
+const COMPONENT_FALLBACKS: &[&str] = &["cells", "notice"];
+const LAYOUT_ALGORITHMS: &[&str] = &[
+    "force",
+    "circle",
+    "grid",
+    "concentric",
+    "spectral",
+    "dagre",
+    "fcose",
+    "sphere",
+];
 const DATA_SOURCE_INLINE_FIELDS: &[&str] = &["source", "value"];
 const DATA_SOURCE_BINDING_FIELDS: &[&str] = &["source", "id"];
 const TEXT_MODEL_FIELDS: &[&str] = &["text"];

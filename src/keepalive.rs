@@ -16,6 +16,7 @@ use dioxus::prelude::*;
 use panel_kit_core::frame::{PanelChromeProjection, PanelProjection, Placement, ProjectedFrame};
 use panel_kit_core::panel::{PanelCatalog, PanelMeta};
 use panel_kit_core::reducer::Snapshot;
+use panel_kit_core::spec::ResolvedWorkspace;
 use panel_kit_core::tile_drag::TileRole;
 use panel_kit_core::{PanelKey, PanelWin, Region};
 
@@ -176,6 +177,42 @@ fn keepalive_slots<'a, K: PanelKey, KeepMounted: Fn(K) -> bool>(
         .filter_map(|(panel, hidden)| catalog.get(panel.key).map(|meta| (panel, meta, hidden)))
         .collect();
     panels
+}
+
+/// Keep-mounted predicate driven by the workspace's component declarations:
+/// a panel whose [`ExternalComponentSpec::keep_mounted`] is set stays mounted
+/// while it is minimized or a sibling is maximized, and every other panel does
+/// not. Hosts pass the result straight to [`render_keepalive`].
+///
+/// [`ExternalComponentSpec::keep_mounted`]: panel_kit_core::spec::ExternalComponentSpec::keep_mounted
+///
+/// ```no_run
+/// use panel_kit::keepalive::spec_keep_mounted;
+/// use panel_kit_core::panel::{PanelCatalog, PanelKey};
+/// use panel_kit_core::spec::ResolvedWorkspace;
+///
+/// #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+/// enum Panel {
+///     Graph,
+///     Notes,
+/// }
+/// impl PanelKey for Panel {}
+///
+/// fn keeps_the_graph_mounted(workspace: &ResolvedWorkspace, catalog: &PanelCatalog<Panel>) -> bool {
+///     spec_keep_mounted(workspace, catalog)(Panel::Graph)
+/// }
+/// ```
+pub fn spec_keep_mounted<'a, K: PanelKey>(
+    workspace: &'a ResolvedWorkspace,
+    catalog: &'a PanelCatalog<K>,
+) -> impl Fn(K) -> bool + 'a {
+    move |key| {
+        catalog
+            .stable_id(key)
+            .and_then(|id| workspace.panels.iter().find(|panel| panel.id == id))
+            .and_then(|panel| workspace.panel_component(panel))
+            .is_some_and(|component| component.keep_mounted)
+    }
 }
 
 fn hidden_projection<K: PanelKey>(

@@ -15,6 +15,7 @@ pub mod dropdown;
 pub mod frontmatter;
 pub mod forms;
 pub mod frame_ring;
+pub mod graph;
 pub mod hints;
 pub mod trace;
 pub mod meter;
@@ -28,6 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::badge::BadgeSpec;
 use charts::{BoxItemModel, BoxItemView, FlameSpanModel, GaugeModel, SeriesModel, SeriesView};
+use graph::{GraphLayout, GraphModel, GraphView};
 use meter::MeterModel;
 use status::StatusModel;
 use table::{TableModel, TableView};
@@ -159,6 +161,15 @@ pub enum ContentSpec {
         /// Authored or bound spinner label.
         label: DataSource<String>,
     },
+    /// External component body: a contract-declared renderer the host mounts.
+    External {
+        /// Declared external component ID from the workspace's components.
+        component: String,
+        /// Authored or bound graph model handed to the component.
+        source: DataSource<GraphModel>,
+        /// Layout solver request for the component.
+        layout: GraphLayout,
+    },
 }
 
 impl ContentSpec {
@@ -177,6 +188,7 @@ impl ContentSpec {
             Self::Meter { .. } => "meter",
             Self::Status { .. } => "status",
             Self::Spinner { .. } => "spinner",
+            Self::External { .. } => "external",
         }
     }
 }
@@ -232,6 +244,17 @@ pub enum ContentView<'a> {
         /// Borrowed spinner label.
         label: &'a str,
     },
+    /// External component body: its binding, layout, and borrowed graph.
+    External {
+        /// Declared external component ID.
+        component: &'a str,
+        /// Host binding identifier, empty for inline bodies.
+        binding: &'a str,
+        /// Layout solver request for the component.
+        layout: &'a GraphLayout,
+        /// Borrowed graph body.
+        graph: GraphView<'a>,
+    },
 }
 
 impl ContentView<'_> {
@@ -250,6 +273,7 @@ impl ContentView<'_> {
             Self::Meter(_) => "meter",
             Self::Status(_) => "status",
             Self::Spinner { .. } => "spinner",
+            Self::External { .. } => "external",
         }
     }
 
@@ -262,6 +286,7 @@ impl ContentView<'_> {
             Self::Flamegraph(items) => Some(items.len()),
             Self::Boxplot(items) => Some(items.len()),
             Self::Table { view, .. } => Some(view.rows.len()),
+            Self::External { graph, .. } => Some(graph.nodes.len()),
             _ => None,
         }
     }

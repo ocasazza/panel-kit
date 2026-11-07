@@ -59,4 +59,103 @@ rec {
       object_sorts = all "solvent" [ "claim" "proposal" "queued_goal" "repo" "repo_policy" "term" "param" "prompt" "elsewhere" ];
       morphism_sorts = all "weak" [ "targets" "governs" "revises" "elsewhere" ];
     };
+
+  # p_catalog: topos-okf-catalog -> topos-physics. Provenance tables and
+  # datasets anchor the graph (hydrophilic), computed artifacts sit between
+  # them (hydrophobic), and bundles, references and untyped concepts drift as
+  # solvent; derivation is stiff, execution lateral, citation and
+  # containment weak.
+  okfCatalogToPhysics = {
+    object_sorts = {
+      table = "hydrophilic"; dataset = "hydrophilic"; policy = "hydrophilic";
+      metric = "hydrophobic"; computation = "hydrophobic"; skill = "hydrophobic";
+      bundle = "solvent"; reference = "solvent"; concept = "solvent"; log = "solvent";
+    };
+    morphism_sorts = {
+      derived_from = "stiff"; computes = "stiff";
+      executed_by = "lateral"; attested_by = "lateral";
+      references = "weak"; contains = "weak";
+    };
+  };
+
+  # psi: topos-okf-catalog -> topos-membrane. Tables, datasets and policies are
+  # the head; metrics, computations and skills the tail; the rest solvent. The
+  # session handoff kinds sort here too, along omega then f, and land on the
+  # same lipids as the handoffs that transport them. p_membrane . psi =
+  # p_catalog, and f . chi = psi on every sort.
+  okfCatalogToMembrane = {
+    object_sorts = {
+      table = "head"; dataset = "head"; policy = "head";
+      metric = "tail"; computation = "tail"; skill = "tail";
+      bundle = "solvent"; reference = "solvent"; concept = "solvent"; log = "solvent";
+    };
+    morphism_sorts = {
+      derived_from = "tail_bond"; computes = "tail_bond";
+      executed_by = "lateral"; attested_by = "lateral";
+      references = "solvation"; contains = "solvation";
+    };
+    attributes = okfAttributes;
+  };
+
+  # chi: topos-okf-catalog -> topos-agentic. Tables, datasets and policies are
+  # planners; metrics, computations and skills coders; the rest memory. The
+  # session handoff kinds `continues`, `shares`, `consolidates`, `produces`,
+  # and `verifies` sort here natively, so this map only carries the catalog's
+  # own kinds.
+  # p_agentic . chi = p_catalog, and f . chi = psi on every sort.
+  okfCatalogToAgentic = {
+    object_sorts = {
+      table = "planner"; dataset = "planner"; policy = "planner";
+      metric = "coder"; computation = "coder"; skill = "coder";
+      bundle = "memory"; reference = "memory"; concept = "memory"; log = "memory";
+    };
+    morphism_sorts = {
+      derived_from = "continues"; computes = "continues";
+      executed_by = "shares"; attested_by = "shares";
+      references = "consolidates"; contains = "consolidates";
+    };
+    attributes = okfAttributes;
+  };
+
+  # omega: topos-agentic -> topos-okf-catalog, the fourth leg that closes the
+  # diagram: a session is the catalog's policy when it plans, its computation
+  # when it codes, a policy again when it reviews, and a concept when it
+  # remembers. Non-injective on objects (planner, reviewer |-> policy) and on
+  # morphisms (consolidates, shares |-> references, executed_by). Every site
+  # kind the agentic regime sorts as one sort lands on that one catalog sort, so
+  # `produces` and `verifies`, which are both handoffs, are the catalog's
+  # `executed_by`. p_catalog . omega = p_agentic, and psi . omega = f on every
+  # sort.
+  agenticToOkfCatalog = {
+    object_sorts = {
+      planner = "policy"; reviewer = "policy"; coder = "computation"; memory = "concept";
+    };
+    morphism_sorts = {
+      continues = "computes"; shares = "executed_by"; consolidates = "references";
+    };
+    attributes = sessionAttributes;
+  };
+
+  # Attribute maps. A morphism carries the data as well as the sorts: these are
+  # the fields a foreign object is read through in the codomain regime. A field
+  # the map does not name is the trivial identity, so `status` and `t` cross
+  # every morphism unchanged.
+  #
+  # chi and psi: an OKF object carries no session fields, so the agentic
+  # `latency_ms` and the membrane `energy` read its `stale_after` — the one
+  # numeric horizon OKF objects publish — and `status` is the same word on both
+  # sides. ψ is χ then f, so the composite carries the same map.
+  okfAttributes = {
+    latency_ms = "stale_after";
+    energy = "stale_after";
+  };
+
+  # omega: a session carries no OKF fields, so the catalog's `trust` reads the
+  # session's `energy` (how much the run is trusted, in joules) and its
+  # `stale_after` reads the session's `latency_ms` (how long the result stays
+  # fresh).
+  sessionAttributes = {
+    trust = "energy";
+    stale_after = "latency_ms";
+  };
 }

@@ -81,6 +81,71 @@ fn backend_ignored_field_is_rejected() {
     );
 }
 
+/// Leaves the external-component contract adds to a workspace spec.
+const EXPECTED_EXTERNAL_LEAVES: &[&str] = &[
+    "/components/0/contract",
+    "/components/0/events/0",
+    "/components/0/fallback",
+    "/components/0/id",
+    "/components/0/keep_mounted",
+    "/components/0/min_size/0",
+    "/components/0/min_size/1",
+    "/components/0/requires/0",
+    "/panels/1/content/component",
+    "/panels/1/content/layout/algorithm",
+    "/panels/1/content/layout/group_by",
+    "/panels/1/content/layout/params/rank_sep",
+    "/panels/1/content/source/id",
+];
+
+/// Every leaf the external-component contract adds reaches both concrete
+/// backend plans, and a plan that ignored the declaration is caught.
+#[test]
+fn external_component_leaves_are_lowered_by_both_backends() {
+    let spec = WorkspaceSpec::from_json_value(reference_spec_value())
+        .expect("reference spec with an external panel decodes");
+    let providers = binding_manifest_for(&spec, BackendKind::Web);
+    let resolved = spec
+        .resolve(&providers)
+        .expect("providers match fixture spec");
+
+    let fixture_leaves = schema_leaf_pointers(&reference_spec_value());
+    let leaf_refs = pointer_refs(&fixture_leaves);
+
+    for (backend, plan) in [
+        (
+            "web-wasm",
+            web_field_dispositions(&panel_kit::spec_plan::lower_spec(&resolved)),
+        ),
+        (
+            "tui-native",
+            tui_field_dispositions(&panel_kit_tui::spec_plan::lower_spec(&resolved)),
+        ),
+    ] {
+        for leaf in EXPECTED_EXTERNAL_LEAVES {
+            assert!(leaf_refs.contains(leaf), "{leaf} is not a fixture leaf");
+            assert!(plan.contains_key(*leaf), "{backend} did not lower {leaf}");
+        }
+
+        let mut without_declarations = plan.clone();
+        without_declarations.retain(|pointer, _| !pointer.starts_with("/components/"));
+        let report = require_backend_field_dispositions(
+            "workspace-spec-reference",
+            backend,
+            &leaf_refs,
+            &pointer_refs_from_map(&without_declarations),
+        )
+        .expect_err("dropping the component declaration must fail coverage");
+
+        assert!(
+            report
+                .to_string()
+                .contains("backend did not lower /components/0/id"),
+            "{backend}: {report}"
+        );
+    }
+}
+
 #[test]
 fn tui_typography_and_density_are_explicit_approximations() {
     let spec = WorkspaceSpec::from_json_value(reference_spec_value())

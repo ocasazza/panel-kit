@@ -15,13 +15,15 @@ mod fixtures;
 use dioxus::prelude::*;
 use crate::PanelHeaderButton;
 use panel_kit_core::badge::{BadgeAction, BadgeClickKind, BadgeKind, BadgeSpec};
-use panel_kit_core::frame::{FrameStatus, Placement, ProjectedFrame};
-use panel_kit_core::reducer::WorkspaceEvent;
+use panel_kit_core::frame::{FrameStatus, PanelProjection, Placement, ProjectedFrame};
+use panel_kit_core::reducer::{HitTarget, PanelPart, Snapshot, WorkspaceEvent};
+use panel_kit_core::{PointerButton, PointerEventKind};
 use panel_kit_core::spec::{PanelSpec, ResolvedWorkspace};
 use panel_kit_core::widgets::charts::{
     five_num, BoxItemModel, BoxItemView, FlameSpanModel, GaugeModel, SeriesModel, SeriesView,
 };
 use panel_kit_core::widgets::data_table::ColumnKind;
+use panel_kit_core::widgets::graph::{GraphLayout, GraphModel, GraphView};
 use panel_kit_core::widgets::meter::MeterModel;
 use panel_kit_core::widgets::status::{StatusModel, StatusState};
 use panel_kit_core::widgets::table::{
@@ -58,74 +60,123 @@ pub fn workspace_contents(
 
     rsx! {
         for panel in frame.panels.iter().copied() {
-            if let Some(meta) = resolved.catalog.get(panel.key) {
-                if let Some(spec) = panel_spec(resolved, panel.key) {
-                    {
-                        let panel_class = format!("panel-{}", meta.slug);
-                        let maximized = matches!(panel.placement, Placement::Maximized);
-                        {
-                        let class = crate::widgets::panel_layout::panel_class(panel, Some(&panel_class));
-                        let style = crate::widgets::panel_layout::panel_style(panel);
-                        let key = panel.key;
-                        let emit_down = emit;
-                        let emit_up = emit;
-                        rsx! {
-                            section {
-                                class: "{class}",
-                                style: "{style}",
-                                onpointerdown: move |event: dioxus::events::PointerEvent| {
-                                    let coords = event.client_coordinates();
-                                    emit_down.call(WorkspaceEvent::Pointer {
-                                        target: panel_kit_core::reducer::HitTarget::Panel {
-                                            key,
-                                            part: panel_kit_core::reducer::PanelPart::Surface,
-                                        },
-                                        event: panel_kit_core::PointerEvent {
-                                            kind: panel_kit_core::PointerEventKind::Down(panel_kit_core::PointerButton::Primary),
-                                            x: coords.x,
-                                            y: coords.y,
-                                        },
-                                    });
-                                },
-                                onpointerup: move |event: dioxus::events::PointerEvent| {
-                                    let coords = event.client_coordinates();
-                                    emit_up.call(WorkspaceEvent::Pointer {
-                                        target: panel_kit_core::reducer::HitTarget::Panel {
-                                            key,
-                                            part: panel_kit_core::reducer::PanelPart::Surface,
-                                        },
-                                        event: panel_kit_core::PointerEvent {
-                                            kind: panel_kit_core::PointerEventKind::Up(panel_kit_core::PointerButton::Primary),
-                                            x: coords.x,
-                                            y: coords.y,
-                                        },
-                                    });
-                                },
-                                if show_header {
-                                    {crate::widgets::panel::panel_chrome_with_events(
-                                        panel,
-                                        meta,
-                                        emit,
-                                        show_lights.then(|| crate::widgets::panel::traffic_lights(panel, emit)),
-                                        header_actions(spec, maximized, header_clicks),
-                                    )}
-                                }
-                                {crate::widgets::panel::panel_body(render_content(
-                                    spec,
-                                    binding,
-                                    maximized,
-                                    *header_clicks.read(),
-                                ))}
-                                if resolved.chrome.resize_grip {
-                                    {crate::widgets::panel::resize_grip(panel, emit)}
-                                }
-                            }
-                        }
-                    }
-                    }
-                }
+            {panel_section(panel, resolved, emit, header_clicks, binding, show_header, show_lights)}
+        }
+    }
+}
+
+/// Render projected panels, keeping every `keep_mounted` panel mounted.
+///
+/// A panel whose declared external component sets `keep_mounted` stays in
+/// the DOM under a keyed wrapper while it is minimized or a sibling is
+/// maximized, so an imperative descendant — a WebGPU canvas — is not torn
+/// down and rebuilt. The wrapper is present in both states, so the panel
+/// keeps one DOM identity across the transition.
+pub fn workspace_contents_kept(
+    frame: &ProjectedFrame<'_, SpecPanelId>,
+    resolved: &ResolvedWorkspace,
+    snapshot: &Snapshot<SpecPanelId>,
+    emit: EventHandler<WorkspaceEvent<SpecPanelId>>,
+    header_clicks: Signal<u32>,
+    binding: BindingContent<'_>,
+) -> Element {
+    if frame.status == FrameStatus::TooSmall {
+        return rsx! {
+            div { class: "too-small", "WorkspaceSpec viewport is too small for panel projection." }
+        };
+    }
+
+    let show_header = has_header_chrome(resolved);
+    let show_lights = has_traffic_lights(resolved);
+
+    crate::keepalive::render_keepalive_with(
+        snapshot,
+        &resolved.catalog,
+        frame,
+        crate::keepalive::spec_keep_mounted(resolved, &resolved.catalog),
+        |panel, _meta, _hidden| {
+            panel_section(panel, resolved, emit, header_clicks, binding, show_header, show_lights)
+        },
+    )
+}
+
+/// One projected panel: positioned section, chrome, body, resize grip.
+///
+/// Shared by both workspace renders so a kept-alive panel and a projected
+/// one compose identically and only differ in the wrapper's visibility.
+fn panel_section(
+    panel: PanelProjection<SpecPanelId>,
+    resolved: &ResolvedWorkspace,
+    emit: EventHandler<WorkspaceEvent<SpecPanelId>>,
+    header_clicks: Signal<u32>,
+    binding: BindingContent<'_>,
+    show_header: bool,
+    show_lights: bool,
+) -> Element {
+    let Some(meta) = resolved.catalog.get(panel.key) else {
+        return rsx! {};
+    };
+    let Some(spec) = panel_spec(resolved, panel.key) else {
+        return rsx! {};
+    };
+    let panel_class = format!("panel-{}", meta.slug);
+    let maximized = matches!(panel.placement, Placement::Maximized);
+    let class = crate::widgets::panel_layout::panel_class(panel, Some(&panel_class));
+    let style = crate::widgets::panel_layout::panel_style(panel);
+    let key = panel.key;
+    let emit_down = emit;
+    let emit_up = emit;
+
+    rsx! {
+        section {
+            class: "{class}",
+            style: "{style}",
+            onpointerdown: move |event: dioxus::events::PointerEvent| {
+                emit_down.call(panel_pointer_event(
+                    key,
+                    PointerEventKind::Down(PointerButton::Primary),
+                    &event,
+                ));
+            },
+            onpointerup: move |event: dioxus::events::PointerEvent| {
+                emit_up.call(panel_pointer_event(
+                    key,
+                    PointerEventKind::Up(PointerButton::Primary),
+                    &event,
+                ));
+            },
+            if show_header {
+                {crate::widgets::panel::panel_chrome_with_events(
+                    panel,
+                    meta,
+                    emit,
+                    show_lights.then(|| crate::widgets::panel::traffic_lights(panel, emit)),
+                    header_actions(spec, maximized, header_clicks),
+                )}
+            }
+            {crate::widgets::panel::panel_body(render_content(
+                spec,
+                binding,
+                maximized,
+                *header_clicks.read(),
+            ))}
+            if resolved.chrome.resize_grip {
+                {crate::widgets::panel::resize_grip(panel, emit)}
             }
         }
+    }
+}
+
+/// One reducer pointer event aimed at a panel's surface.
+fn panel_pointer_event(
+    key: SpecPanelId,
+    kind: PointerEventKind,
+    event: &dioxus::events::PointerEvent,
+) -> WorkspaceEvent<SpecPanelId> {
+    let coords = event.client_coordinates();
+    WorkspaceEvent::Pointer {
+        target: HitTarget::Panel { key, part: PanelPart::Surface },
+        event: panel_kit_core::PointerEvent { kind, x: coords.x, y: coords.y },
     }
 }
 
@@ -203,14 +254,11 @@ fn render_content(
 ) -> Element {
     let content = &spec.content;
     match content {
-        ContentSpec::Custom { binding } => {
-            render_custom(binding, spec, maximized, header_clicks)
+        ContentSpec::Custom { binding: id } => {
+            render_custom(id, spec, maximized, header_clicks)
+                .unwrap_or_else(|| binding(id, content))
         }
-        ContentSpec::Editor {
-            binding,
-            multiline,
-            placeholder,
-        } => paint_editor(binding, *multiline, placeholder),
+        ContentSpec::Editor { binding: id, .. } => binding(id, content),
         ContentSpec::Text { source, scroll } => match source {
             DataSource::Inline { value } => paint_text(&value.text, *scroll),
             DataSource::Binding { id } => binding(id, content),
@@ -251,6 +299,10 @@ fn render_content(
             DataSource::Inline { value } => paint_spinner(value),
             DataSource::Binding { id } => binding(id, content),
         },
+        ContentSpec::External { component, source, layout } => match source {
+            DataSource::Inline { value } => paint_external(component, "", layout, value),
+            DataSource::Binding { id } => binding(id, content),
+        },
     }
 }
 
@@ -275,29 +327,33 @@ pub fn canary_content(id: &str, content: &ContentSpec) -> Element {
             binding,
             multiline,
             placeholder,
-        } => paint_editor(binding, *multiline, placeholder),
+        } => editor_placeholder(binding, *multiline, placeholder),
+        ContentSpec::External { component, layout, .. } => {
+            paint_external(component, id, layout, &GraphModel::default())
+        }
     }
 }
 
+/// The canary's own custom bodies; any other custom binding is the host's.
 fn render_custom(
     binding: &str,
     spec: &PanelSpec,
     maximized: bool,
     header_clicks: u32,
-) -> Element {
+) -> Option<Element> {
     match binding {
         "canary.workspace" => {
             let [declared, state] =
                 fixtures::workspace_card_lines(&spec.title, maximized, header_clicks);
-            rsx! {
+            Some(rsx! {
                 section { class: "pk-custom-card", role: "group", aria_label: "workspace summary",
                     h2 { "{fixtures::WORKSPACE_CARD_HEADING}" }
                     p { "{declared}" }
                     p { "{state}" }
                 }
-            }
+            })
         }
-        "canary.theme" => rsx! {
+        "canary.theme" => Some(rsx! {
             section { class: "pk-custom-card", role: "group", aria_label: "theme summary",
                 h2 { "{fixtures::theme_preset_label(false)}" }
                 ul { class: "spec-list",
@@ -310,8 +366,8 @@ fn render_custom(
                 }
                 {paint_spinner("spinner painter")}
             }
-        },
-        _ => paint_custom(binding),
+        }),
+        _ => None,
     }
 }
 
@@ -319,7 +375,9 @@ fn paint_text(text: &str, scroll: ScrollPolicy) -> Element {
     crate::widgets::content_view(ContentView::Text { text, scroll }, 0, noop_badge_action())
 }
 
-fn paint_editor(binding: &str, multiline: bool, placeholder: &str) -> Element {
+/// The editor body for a host that does not bind editors: the authored
+/// prompt in a plain textarea, so an editor panel is never a blank body.
+pub fn editor_placeholder(binding: &str, multiline: bool, placeholder: &str) -> Element {
     rsx! {
         textarea {
             class: "pk-editor",
@@ -332,6 +390,26 @@ fn paint_editor(binding: &str, multiline: bool, placeholder: &str) -> Element {
 
 fn paint_custom(binding: &str) -> Element {
     crate::widgets::content_view(ContentView::Custom { binding }, 0, noop_badge_action())
+}
+
+/// Paint the seam a host overlays for an external body: the same
+/// `data-binding` hook `Custom` uses, named by its declared component.
+fn paint_external(
+    component: &str,
+    binding: &str,
+    layout: &GraphLayout,
+    graph: &GraphModel,
+) -> Element {
+    crate::widgets::content_view(
+        ContentView::External {
+            component,
+            binding,
+            layout,
+            graph: GraphView { nodes: &graph.nodes, edges: &graph.edges },
+        },
+        0,
+        noop_badge_action(),
+    )
 }
 
 fn paint_badges(specs: &[BadgeSpec]) -> Element {

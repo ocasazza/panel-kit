@@ -1,11 +1,13 @@
 //! Renderer-neutral grammars and topos sheaves for panel-kit.
 //!
 //! A **grammar** is a data-import package: it turns input bytes into a
-//! renderer-neutral [`Site`]. Two engines share one envelope — [`pest`](crate::package::ParserSpec::Pest)
-//! (a runtime `.pest` grammar with a semantic capture map, mirroring
-//! jump-cannon's importer) and [`json`](crate::package::ParserSpec::Json)
-//! (JSON pointers plus a field map). Different grammars over equivalent input
-//! produce equal sites.
+//! renderer-neutral [`Site`]. Three engines share one envelope —
+//! [`pest`](crate::package::ParserSpec::Pest) (a runtime `.pest` grammar with
+//! a semantic capture map, mirroring jump-cannon's importer),
+//! [`json`](crate::package::ParserSpec::Json) (JSON pointers plus a field map),
+//! and [`okf`](crate::package::ParserSpec::Okf) (Open Knowledge Format bundles,
+//! whose rules are package data rather than grammar text). Different grammars
+//! over equivalent input produce equal sites.
 //!
 //! A **topos** is one UI/UX regime over a site: a [`Topos`] mapping site kinds
 //! to regime sorts, pairing a workspace with [`Stalks`] (what each sort means)
@@ -27,6 +29,7 @@ pub mod site;
 pub mod edit;
 mod emitter;
 mod json_engine;
+mod okf;
 pub mod package;
 mod pest_engine;
 pub mod sheaf;
@@ -40,17 +43,22 @@ pub use morphism::{
 };
 pub use package::{
     CaptureRules, CompiledGrammar, EmitterSpec, GrammarPackage, JsonEdgeMap, JsonEmitter, JsonNodeMap,
-    JsonSpec, Limits, Metadata, ParserSpec, PestEmitter, PestSpec, FORMAT_VERSION, HARD_LIMITS,
+    JsonSpec, Limits, Metadata, OkfSpec, ParseReport, ParserSpec, PestEmitter, PestSpec,
+    FORMAT_VERSION, HARD_LIMITS,
 };
 pub use site::{Morphism, Object, Site};
 pub use nav::{sort_map, SiteIndex, UNTYPED_KIND};
 pub use sheaf::{
     assembly, status_table, Agg, AssemblySheaf, BadgeGroup, BadgesSheaf, BoxplotSheaf, CellAlign,
-    CellSpec, ColWidth, ColumnSpec, ComponentInvariants, FlamegraphSheaf, GaugesSheaf,
+    CellSpec, ColWidth, ColumnSpec, ComponentInvariants, FieldFilter, FlamegraphSheaf, GaugesSheaf,
     GlobalSections, GroupScope, MeterSheaf, PhysicsScope, PhysicsSheaf, RowScope, Section, Sheaf,
     Stage, StatusSheaf, TableSheaf, TextSheaf, TimeSeriesSheaf,
 };
-pub use topos::{MorphismStalk, ObjectStalk, PhysicsSection, Stages, Stalks, Topos, SPEC_VERSION};
+pub use topos::{
+    AttributeMaps, MorphismStalk, ObjectStalk, PhysicsSection, Stages, Stalks, Topos, SPEC_VERSION,
+};
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod okf_tests;

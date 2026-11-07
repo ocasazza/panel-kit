@@ -6,8 +6,8 @@
 //! `default-features = false`.
 
 use panel_kit_core::spec::{
-    Charset, ChromeSpec, InputSpec, LayoutSpec, PanelSpec, PersistenceSpec, ResolvedWorkspace,
-    SurfaceSpec,
+    Charset, ChromeSpec, ExternalComponentSpec, InputSpec, LayoutSpec, PanelSpec, PersistenceSpec,
+    ResolvedWorkspace, SurfaceSpec,
 };
 use panel_kit_core::theme::ThemeTokens;
 use serde::Serialize;
@@ -35,6 +35,8 @@ pub struct WebSpecPlan {
     pub persistence: PersistenceSpec,
     /// Authored panels in declaration order.
     pub panels: Vec<PanelSpec>,
+    /// Declared external components the web backend mounts or falls back from.
+    pub components: Vec<ExternalComponentSpec>,
 }
 
 /// Lower a resolved strict workspace into the owned web production plan.
@@ -50,5 +52,6 @@ pub fn lower_spec(workspace: &ResolvedWorkspace) -> WebSpecPlan {
         theme: workspace.theme.clone(),
         persistence: workspace.persistence.clone(),
         panels: workspace.panels.clone(),
+        components: workspace.components.clone(),
     }
 }

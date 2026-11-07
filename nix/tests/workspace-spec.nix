@@ -64,5 +64,17 @@ mkWorkspaceSpec {
     (panel 9 "meter" "Meter" { kind = "meter"; source = { source = "inline"; value = { label = "memory"; ratio = 0.5; text = "50%"; color = null; }; }; })
     (panel 10 "status" "Status" { kind = "status"; source = { source = "inline"; value = { label = "build"; state = "ok"; color = [ 39 201 63 ]; }; }; })
     (panel 11 "spinner" "Spinner" { kind = "spinner"; label = { source = "inline"; value = "Loading"; }; })
+    (panel 12 "graph" "Graph" {
+      kind = "external"; component = "graph";
+      source = { source = "binding"; id = "reference.graph"; };
+      layout = { algorithm = "dagre"; group_by = "sort"; params = { rank_sep = 2.0; }; };
+    })
+  ];
+  components = [
+    {
+      id = "graph"; contract = "graph"; requires = [ "webgpu" ];
+      keep_mounted = true; min_size = [ 320.0 240.0 ];
+      events = [ "select" "hover" ]; fallback = "cells";
+    }
   ];
 }

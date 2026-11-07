@@ -7,10 +7,6 @@ description = "Ratatui shell for panel-kit-core: floating/tiling panel workspace
 repository = "https://github.com/ocasazza/panel-kit"
 keywords = ["tui", "ratatui", "panels", "workspace"]
 categories = ["command-line-interface"]
-# workspace_canary.rs is a shared module included by the examples (via
-# `mod workspace_canary;`), not an example target of its own — disable
-# autodiscovery and declare the real examples explicitly.
-autoexamples = false
 
 
 [features]
@@ -29,27 +25,10 @@ crossterm = "0.29"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 ratzilla = "0.3.1"
 
+# The demos that drive this crate live in the workspace root's examples/; the
+# canary providers they share (examples/support/workspace_canary.rs) are
+# included here by the painter tests too.
 [dev-dependencies]
-console_error_panic_hook = "0.1"
-critical-section = { version = "1.2", features = ["std"] }
-ratzilla = "0.3.1"
-# Topos/grammar demo façade included by the topos examples.
-panel-kit-grammar = { version = "1.2.0", path = "../panel-kit-grammar" }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 crossterm = "0.29"
 ratatui = { version = "0.30.1", features = ["crossterm"] }
-
-[[example]]
-name = "workspace"
-
-[[example]]
-name = "browser_tui"
-
-[[example]]
-name = "topos"
-required-features = ["spec-plan"]
-
-[[example]]
-name = "browser_topos"
-required-features = ["spec-plan"]

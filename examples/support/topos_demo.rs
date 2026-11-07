@@ -359,11 +359,12 @@ impl ToposDemo {
         &self.topoi[self.topos].spec
     }
 
-    /// The physics section over the current site under the active regime. Equal
-    /// under both regimes: the base tuning pulled back along `p_R`.
+    /// The engine tuning over the current site under the active regime. Equal
+    /// under both regimes: the base tuning pulled back along `p_R`, with the
+    /// regime's own sort cleared.
     pub fn physics_section(&self) -> PhysicsSection {
         let entry = &self.topoi[self.topos];
-        entry.spec.physics_section(&self.site, &entry.physics)
+        engine_tuning(entry.spec.physics_section(&self.site, &entry.physics))
     }
 
     /// Binding id of the active topos's per-sort badges sheaf, if it has one.
@@ -592,8 +593,8 @@ impl ToposDemo {
         let membrane = self.topoi.iter().find(|entry| entry.id == TOPOS_MEMBRANE);
         let physics_regime_invariant = match (agentic, membrane) {
             (Some(a), Some(m)) => {
-                a.spec.physics_section(&self.site, &a.physics)
-                    == m.spec.physics_section(&self.site, &m.physics)
+                engine_tuning(a.spec.physics_section(&self.site, &a.physics))
+                    == engine_tuning(m.spec.physics_section(&self.site, &m.physics))
             }
             _ => false,
         };
@@ -722,3 +723,15 @@ fn push_line(source: &mut String, suffix: &str) {
     }
     source.push_str(suffix);
 }
+/// A physics section with each row's regime sort cleared: the engine tuning,
+/// which is the part the base pullback fixes in every regime.
+fn engine_tuning(mut section: PhysicsSection) -> PhysicsSection {
+    for object in &mut section.objects {
+        object.1.clear();
+    }
+    for morphism in &mut section.morphisms {
+        morphism.2.clear();
+    }
+    section
+}
+

@@ -15,10 +15,15 @@ rec {
   textC = id: { kind = "text"; source = bindingSource id; scroll = "auto"; };
   tableC = id: { kind = "table"; source = bindingSource id; };
   badgesC = id: { kind = "badges"; source = bindingSource id; };
+  # A code editor over a host binding's document: the host supplies the text
+  # (a grammar, a morphism spec), the surface supplies the widget.
+  editorC = id: { kind = "editor"; binding = id; multiline = true; placeholder = ""; };
   flameC = id: { kind = "flamegraph"; source = bindingSource id; };
   boxC = id: { kind = "boxplot"; source = bindingSource id; };
   gaugesC = id: { kind = "gauges"; source = bindingSource id; };
   meterC = id: { kind = "meter"; source = bindingSource id; };
+  # Host-mounted body: a declared component contract over a bound graph model.
+  externalC = component: id: layout: { kind = "external"; inherit component; source = bindingSource id; inherit layout; };
 
   cell = id: title: slug: tile_w: content: { inherit id title slug tile_w content; };
   shelf = tile_h: cells: { inherit tile_h cells; };
@@ -118,7 +123,7 @@ rec {
       })
       flat;
 
-  mkWorkspace = { surface, glyphs, id, persistKey, theme, shelves }:
+  mkWorkspace = { surface, glyphs, id, persistKey, theme, shelves, components ? [ ] }:
     let ps = perSurface surface; in {
       spec_version = 1;
       inherit id;
@@ -142,5 +147,6 @@ rec {
       inherit glyphs theme;
       persistence = { enabled = true; key = persistKey; restore = true; save_policy = "on_settle"; };
       panels = mkPanels surface shelves;
+      inherit components;
     };
 }

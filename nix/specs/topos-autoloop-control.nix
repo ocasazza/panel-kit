@@ -25,17 +25,21 @@ let
   vocab = key: title: weight: expr: col key title weight expr // { kind = "enum"; };
   table = sort: columns: edits: { kind = "table"; scope = "objects"; restrict = [ sort ]; inherit columns edits; };
 
+  # The graph is the host's jump-cannon graph view over the glued site.
+  graphC = { kind = "custom"; binding = "autoloop.graph"; };
+
   shelves = [
     (shelf 3 [
-      (cell "claims" "Claims" "claims" 3 (tableC "autoloop.claims"))
+      (cell "graph" "Graph" "graph" 3 graphC)
       (cell "kinds" "Control state" "kinds" 1 (badgesC "autoloop.kinds"))
     ])
     (shelf 3 [
-      (cell "queue" "Queue" "queue" 2 (tableC "autoloop.queue"))
-      (cell "proposals" "Proposals" "proposals" 2 (tableC "autoloop.proposals"))
+      (cell "claims" "Claims" "claims" 2 (tableC "autoloop.claims"))
+      (cell "repos" "Repositories" "repos" 2 (tableC "autoloop.repos"))
     ])
     (shelf 3 [
-      (cell "repos" "Repositories" "repos" 2 (tableC "autoloop.repos"))
+      (cell "queue" "Queue" "queue" 1 (tableC "autoloop.queue"))
+      (cell "proposals" "Proposals" "proposals" 1 (tableC "autoloop.proposals"))
       (cell "limits" "Limits" "limits" 2 (tableC "autoloop.limits"))
     ])
     (shelf 3 [

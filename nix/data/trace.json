@@ -5,9 +5,9 @@
       "title": "Session c0",
       "kind": "planner",
       "tags": [
-        "chain"
+        "triage"
       ],
-      "latency_ms": 30.0,
+      "latency_ms": 30,
       "energy": 240,
       "t": 0,
       "status": "error"
@@ -17,7 +17,7 @@
       "title": "Session c1",
       "kind": "coder",
       "tags": [
-        "chain"
+        "triage"
       ],
       "latency_ms": 15.5,
       "energy": 139,
@@ -29,9 +29,9 @@
       "title": "Session c2",
       "kind": "coder",
       "tags": [
-        "chain"
+        "triage"
       ],
-      "latency_ms": 16.0,
+      "latency_ms": 16,
       "energy": 148,
       "t": 2,
       "status": "ok"
@@ -41,7 +41,7 @@
       "title": "Session c3",
       "kind": "reviewer",
       "tags": [
-        "chain"
+        "triage"
       ],
       "latency_ms": 46.5,
       "energy": 327,
@@ -53,9 +53,9 @@
       "title": "Session c4",
       "kind": "coder",
       "tags": [
-        "chain"
+        "triage"
       ],
-      "latency_ms": 17.0,
+      "latency_ms": 17,
       "energy": 166,
       "t": 4,
       "status": "ok"
@@ -65,7 +65,7 @@
       "title": "Session r0",
       "kind": "planner",
       "tags": [
-        "ring"
+        "review"
       ],
       "latency_ms": 32.5,
       "energy": 285,
@@ -77,9 +77,9 @@
       "title": "Session r1",
       "kind": "coder",
       "tags": [
-        "ring"
+        "review"
       ],
-      "latency_ms": 18.0,
+      "latency_ms": 18,
       "energy": 184,
       "t": 6,
       "status": "ok"
@@ -89,7 +89,7 @@
       "title": "Session r2",
       "kind": "coder",
       "tags": [
-        "ring"
+        "review"
       ],
       "latency_ms": 18.5,
       "energy": 193,
@@ -101,9 +101,9 @@
       "title": "Session r3",
       "kind": "reviewer",
       "tags": [
-        "ring"
+        "review"
       ],
-      "latency_ms": 49.0,
+      "latency_ms": 49,
       "energy": 372,
       "t": 8,
       "status": "ok"
@@ -113,9 +113,9 @@
       "title": "Session r4",
       "kind": "coder",
       "tags": [
-        "ring"
+        "review"
       ],
-      "latency_ms": 15.0,
+      "latency_ms": 15,
       "energy": 211,
       "t": 9,
       "status": "ok"
@@ -125,7 +125,7 @@
       "title": "Session r5",
       "kind": "coder",
       "tags": [
-        "ring"
+        "review"
       ],
       "latency_ms": 15.5,
       "energy": 220,
@@ -137,9 +137,9 @@
       "title": "Session sc",
       "kind": "planner",
       "tags": [
-        "sheet"
+        "platform"
       ],
-      "latency_ms": 31.0,
+      "latency_ms": 31,
       "energy": 240,
       "t": 11,
       "status": "info"
@@ -149,7 +149,7 @@
       "title": "Session s0",
       "kind": "coder",
       "tags": [
-        "sheet"
+        "platform"
       ],
       "latency_ms": 16.5,
       "energy": 139,
@@ -161,9 +161,9 @@
       "title": "Session s1",
       "kind": "coder",
       "tags": [
-        "sheet"
+        "platform"
       ],
-      "latency_ms": 17.0,
+      "latency_ms": 17,
       "energy": 148,
       "t": 13,
       "status": "error"
@@ -173,7 +173,7 @@
       "title": "Session s2",
       "kind": "reviewer",
       "tags": [
-        "sheet"
+        "platform"
       ],
       "latency_ms": 47.5,
       "energy": 327,
@@ -185,9 +185,9 @@
       "title": "Session s3",
       "kind": "coder",
       "tags": [
-        "sheet"
+        "platform"
       ],
-      "latency_ms": 18.0,
+      "latency_ms": 18,
       "energy": 166,
       "t": 15,
       "status": "ok"
@@ -197,7 +197,7 @@
       "title": "Session s4",
       "kind": "coder",
       "tags": [
-        "sheet"
+        "platform"
       ],
       "latency_ms": 18.5,
       "energy": 175,
@@ -209,9 +209,9 @@
       "title": "Session s5",
       "kind": "reviewer",
       "tags": [
-        "sheet"
+        "platform"
       ],
-      "latency_ms": 49.0,
+      "latency_ms": 49,
       "energy": 354,
       "t": 17,
       "status": "ok"
@@ -221,9 +221,9 @@
       "title": "Session t0",
       "kind": "planner",
       "tags": [
-        "tube"
+        "pipeline"
       ],
-      "latency_ms": 30.0,
+      "latency_ms": 30,
       "energy": 303,
       "t": 18,
       "status": "ok"
@@ -233,7 +233,7 @@
       "title": "Session t1",
       "kind": "coder",
       "tags": [
-        "tube"
+        "pipeline"
       ],
       "latency_ms": 15.5,
       "energy": 202,
@@ -245,9 +245,9 @@
       "title": "Session t2",
       "kind": "reviewer",
       "tags": [
-        "tube"
+        "pipeline"
       ],
-      "latency_ms": 46.0,
+      "latency_ms": 46,
       "energy": 381,
       "t": 20,
       "status": "ok"
@@ -257,7 +257,7 @@
       "title": "Session t3",
       "kind": "coder",
       "tags": [
-        "tube"
+        "pipeline"
       ],
       "latency_ms": 16.5,
       "energy": 220,
@@ -269,9 +269,9 @@
       "title": "Session b0",
       "kind": "coder",
       "tags": [
-        "tube"
+        "pipeline"
       ],
-      "latency_ms": 17.0,
+      "latency_ms": 17,
       "energy": 130,
       "t": 22,
       "status": "info"
@@ -281,7 +281,7 @@
       "title": "Session b1",
       "kind": "coder",
       "tags": [
-        "tube"
+        "pipeline"
       ],
       "latency_ms": 17.5,
       "energy": 139,
@@ -293,9 +293,9 @@
       "title": "Session b2",
       "kind": "reviewer",
       "tags": [
-        "tube"
+        "pipeline"
       ],
-      "latency_ms": 48.0,
+      "latency_ms": 48,
       "energy": 318,
       "t": 24,
       "status": "ok"
@@ -305,7 +305,7 @@
       "title": "Session b3",
       "kind": "coder",
       "tags": [
-        "tube"
+        "pipeline"
       ],
       "latency_ms": 18.5,
       "energy": 157,
@@ -317,9 +317,9 @@
       "title": "Session mN",
       "kind": "planner",
       "tags": [
-        "membrane"
+        "org"
       ],
-      "latency_ms": 34.0,
+      "latency_ms": 34,
       "energy": 276,
       "t": 26,
       "status": "error"
@@ -329,9 +329,9 @@
       "title": "Session ma0",
       "kind": "coder",
       "tags": [
-        "membrane"
+        "org"
       ],
-      "latency_ms": 15.0,
+      "latency_ms": 15,
       "energy": 175,
       "t": 27,
       "status": "ok"
@@ -341,7 +341,7 @@
       "title": "Session ma1",
       "kind": "coder",
       "tags": [
-        "membrane"
+        "org"
       ],
       "latency_ms": 15.5,
       "energy": 184,
@@ -353,9 +353,9 @@
       "title": "Session ma2",
       "kind": "coder",
       "tags": [
-        "membrane"
+        "org"
       ],
-      "latency_ms": 16.0,
+      "latency_ms": 16,
       "energy": 193,
       "t": 29,
       "status": "ok"
@@ -365,7 +365,7 @@
       "title": "Session ma3",
       "kind": "coder",
       "tags": [
-        "membrane"
+        "org"
       ],
       "latency_ms": 16.5,
       "energy": 202,
@@ -377,9 +377,9 @@
       "title": "Session ma4",
       "kind": "coder",
       "tags": [
-        "membrane"
+        "org"
       ],
-      "latency_ms": 17.0,
+      "latency_ms": 17,
       "energy": 211,
       "t": 31,
       "status": "ok"
@@ -389,7 +389,7 @@
       "title": "Session ml0",
       "kind": "coder",
       "tags": [
-        "membrane"
+        "org"
       ],
       "latency_ms": 17.5,
       "energy": 220,
@@ -401,9 +401,9 @@
       "title": "Session ml1",
       "kind": "reviewer",
       "tags": [
-        "membrane"
+        "org"
       ],
-      "latency_ms": 48.0,
+      "latency_ms": 48,
       "energy": 300,
       "t": 33,
       "status": "info"
@@ -413,7 +413,7 @@
       "title": "Session ml2",
       "kind": "coder",
       "tags": [
-        "membrane"
+        "org"
       ],
       "latency_ms": 18.5,
       "energy": 139,
@@ -425,9 +425,9 @@
       "title": "Session ml3",
       "kind": "reviewer",
       "tags": [
-        "membrane"
+        "org"
       ],
-      "latency_ms": 49.0,
+      "latency_ms": 49,
       "energy": 318,
       "t": 35,
       "status": "warn"
@@ -437,9 +437,9 @@
       "title": "Session ml4",
       "kind": "coder",
       "tags": [
-        "membrane"
+        "org"
       ],
-      "latency_ms": 15.0,
+      "latency_ms": 15,
       "energy": 157,
       "t": 36,
       "status": "ok"
@@ -449,7 +449,7 @@
       "title": "Session mS",
       "kind": "reviewer",
       "tags": [
-        "membrane"
+        "org"
       ],
       "latency_ms": 45.5,
       "energy": 336,
@@ -463,7 +463,7 @@
       "tags": [
         "memory"
       ],
-      "latency_ms": 6.0,
+      "latency_ms": 6,
       "energy": 65,
       "t": 38,
       "status": "ok"
@@ -487,7 +487,7 @@
       "tags": [
         "memory"
       ],
-      "latency_ms": 7.0,
+      "latency_ms": 7,
       "energy": 83,
       "t": 40,
       "status": "ok"
@@ -511,10 +511,334 @@
       "tags": [
         "memory"
       ],
-      "latency_ms": 8.0,
+      "latency_ms": 8,
       "energy": 101,
       "t": 42,
       "status": "warn"
+    },
+    {
+      "id": "acme_retail",
+      "title": "Acme retail bundle",
+      "kind": "bundle",
+      "tags": [
+        "okf",
+        "bundle"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 30
+    },
+    {
+      "id": "ga4",
+      "title": "GA4 analytics bundle",
+      "kind": "bundle",
+      "tags": [
+        "okf",
+        "bundle"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 14
+    },
+    {
+      "id": "acme_retail/orders",
+      "title": "Orders table",
+      "kind": "table",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 7
+    },
+    {
+      "id": "acme_retail/returns",
+      "title": "Returns table",
+      "kind": "table",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "draft",
+      "trust": "machine-generated",
+      "stale_after": 30
+    },
+    {
+      "id": "ga4/events_daily",
+      "title": "Daily events table",
+      "kind": "table",
+      "tags": [
+        "okf",
+        "analytics"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 3
+    },
+    {
+      "id": "ga4/web_events",
+      "title": "Web events dataset",
+      "kind": "dataset",
+      "tags": [
+        "okf",
+        "analytics"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 2
+    },
+    {
+      "id": "acme_retail/order_lines",
+      "title": "Order lines dataset",
+      "kind": "dataset",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "stable",
+      "trust": "machine-generated",
+      "stale_after": 14
+    },
+    {
+      "id": "acme_retail/customers",
+      "title": "Customer master dataset",
+      "kind": "dataset",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 60
+    },
+    {
+      "id": "acme_retail/gross-margin",
+      "title": "Gross margin",
+      "kind": "metric",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 7
+    },
+    {
+      "id": "acme_retail/return-rate",
+      "title": "Return rate",
+      "kind": "metric",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "draft",
+      "trust": "machine-generated",
+      "stale_after": 30
+    },
+    {
+      "id": "acme_retail/ltv",
+      "title": "Lifetime value",
+      "kind": "metric",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "draft",
+      "trust": "unattested",
+      "stale_after": 90
+    },
+    {
+      "id": "ga4/conversion-rate",
+      "title": "Conversion rate",
+      "kind": "metric",
+      "tags": [
+        "okf",
+        "analytics"
+      ],
+      "status": "stable",
+      "trust": "machine-generated",
+      "stale_after": 3
+    },
+    {
+      "id": "acme_retail/margin-rollup",
+      "title": "Margin rollup",
+      "kind": "computation",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 7
+    },
+    {
+      "id": "ga4/sessionise",
+      "title": "Sessionise",
+      "kind": "computation",
+      "tags": [
+        "okf",
+        "analytics"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 3
+    },
+    {
+      "id": "acme_retail/backfill",
+      "title": "Order lines backfill",
+      "kind": "computation",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "deprecated",
+      "trust": "machine-generated",
+      "stale_after": 90
+    },
+    {
+      "id": "acme_retail/retention-policy",
+      "title": "Data retention policy",
+      "kind": "policy",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 90
+    },
+    {
+      "id": "ga4/consent-policy",
+      "title": "Consent mode policy",
+      "kind": "policy",
+      "tags": [
+        "okf",
+        "analytics"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 60
+    },
+    {
+      "id": "acme_retail/reconciliation",
+      "title": "Reconciliation skill",
+      "kind": "skill",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 30
+    },
+    {
+      "id": "ga4/funnel-audit",
+      "title": "Funnel audit skill",
+      "kind": "skill",
+      "tags": [
+        "okf",
+        "analytics"
+      ],
+      "status": "draft",
+      "trust": "machine-generated",
+      "stale_after": 14
+    },
+    {
+      "id": "acme_retail/rfc3339",
+      "title": "RFC 3339 timestamps",
+      "kind": "reference",
+      "tags": [
+        "okf",
+        "spec"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 90
+    },
+    {
+      "id": "acme_retail/ga4-schema",
+      "title": "GA4 event schema",
+      "kind": "reference",
+      "tags": [
+        "okf",
+        "spec"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 30
+    },
+    {
+      "id": "acme_retail/sql-style",
+      "title": "SQL style guide",
+      "kind": "reference",
+      "tags": [
+        "okf",
+        "spec"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 90
+    },
+    {
+      "id": "acme_retail/active-customer",
+      "title": "Active customer",
+      "kind": "concept",
+      "tags": [
+        "okf",
+        "retail"
+      ],
+      "status": "draft",
+      "trust": "unattested",
+      "stale_after": 30
+    },
+    {
+      "id": "ga4/session",
+      "title": "GA4 session",
+      "kind": "concept",
+      "tags": [
+        "okf",
+        "analytics"
+      ],
+      "status": "stable",
+      "trust": "machine-generated",
+      "stale_after": 7
+    },
+    {
+      "id": "acme_retail/knowledge-catalog",
+      "title": "Knowledge catalog convention",
+      "kind": "concept",
+      "tags": [
+        "okf",
+        "meta"
+      ],
+      "status": "stable",
+      "trust": "human-reviewed",
+      "stale_after": 90
+    },
+    {
+      "id": "acme_retail/backfill-2026-09",
+      "title": "September backfill run",
+      "kind": "log",
+      "tags": [
+        "okf",
+        "run"
+      ],
+      "status": "stable",
+      "trust": "machine-generated",
+      "stale_after": 90
+    },
+    {
+      "id": "ga4/export-2026-10",
+      "title": "October analytics export",
+      "kind": "log",
+      "tags": [
+        "okf",
+        "run"
+      ],
+      "status": "stable",
+      "trust": "machine-generated",
+      "stale_after": 30
     }
   ],
   "edges": [
@@ -892,6 +1216,276 @@
       "source": "mem2",
       "target": "t0",
       "kind": "consolidates"
+    },
+    {
+      "source": "acme_retail",
+      "target": "acme_retail/orders",
+      "kind": "contains"
+    },
+    {
+      "source": "acme_retail",
+      "target": "acme_retail/order_lines",
+      "kind": "contains"
+    },
+    {
+      "source": "acme_retail",
+      "target": "acme_retail/gross-margin",
+      "kind": "contains"
+    },
+    {
+      "source": "acme_retail",
+      "target": "acme_retail/margin-rollup",
+      "kind": "contains"
+    },
+    {
+      "source": "acme_retail",
+      "target": "acme_retail/retention-policy",
+      "kind": "contains"
+    },
+    {
+      "source": "acme_retail",
+      "target": "acme_retail/reconciliation",
+      "kind": "contains"
+    },
+    {
+      "source": "acme_retail",
+      "target": "acme_retail/active-customer",
+      "kind": "contains"
+    },
+    {
+      "source": "acme_retail",
+      "target": "acme_retail/rfc3339",
+      "kind": "contains"
+    },
+    {
+      "source": "ga4",
+      "target": "ga4/events_daily",
+      "kind": "contains"
+    },
+    {
+      "source": "ga4",
+      "target": "ga4/web_events",
+      "kind": "contains"
+    },
+    {
+      "source": "ga4",
+      "target": "ga4/conversion-rate",
+      "kind": "contains"
+    },
+    {
+      "source": "ga4",
+      "target": "ga4/sessionise",
+      "kind": "contains"
+    },
+    {
+      "source": "ga4",
+      "target": "ga4/consent-policy",
+      "kind": "contains"
+    },
+    {
+      "source": "ga4",
+      "target": "ga4/session",
+      "kind": "contains"
+    },
+    {
+      "source": "ga4",
+      "target": "ga4/export-2026-10",
+      "kind": "contains"
+    },
+    {
+      "source": "acme_retail/gross-margin",
+      "target": "acme_retail/orders",
+      "kind": "derived_from"
+    },
+    {
+      "source": "acme_retail/return-rate",
+      "target": "acme_retail/returns",
+      "kind": "derived_from"
+    },
+    {
+      "source": "acme_retail/ltv",
+      "target": "acme_retail/customers",
+      "kind": "derived_from"
+    },
+    {
+      "source": "acme_retail/margin-rollup",
+      "target": "acme_retail/order_lines",
+      "kind": "derived_from"
+    },
+    {
+      "source": "ga4/sessionise",
+      "target": "ga4/web_events",
+      "kind": "derived_from"
+    },
+    {
+      "source": "ga4/conversion-rate",
+      "target": "ga4/events_daily",
+      "kind": "derived_from"
+    },
+    {
+      "source": "acme_retail/active-customer",
+      "target": "acme_retail/gross-margin",
+      "kind": "derived_from"
+    },
+    {
+      "source": "acme_retail/margin-rollup",
+      "target": "acme_retail/gross-margin",
+      "kind": "computes"
+    },
+    {
+      "source": "ga4/sessionise",
+      "target": "ga4/session",
+      "kind": "computes"
+    },
+    {
+      "source": "ga4/sessionise",
+      "target": "ga4/conversion-rate",
+      "kind": "computes"
+    },
+    {
+      "source": "acme_retail/backfill",
+      "target": "acme_retail/order_lines",
+      "kind": "computes"
+    },
+    {
+      "source": "acme_retail/gross-margin",
+      "target": "acme_retail/margin-rollup",
+      "kind": "executed_by"
+    },
+    {
+      "source": "ga4/conversion-rate",
+      "target": "ga4/sessionise",
+      "kind": "executed_by"
+    },
+    {
+      "source": "acme_retail/return-rate",
+      "target": "acme_retail/reconciliation",
+      "kind": "executed_by"
+    },
+    {
+      "source": "acme_retail/backfill-2026-09",
+      "target": "acme_retail/backfill",
+      "kind": "executed_by"
+    },
+    {
+      "source": "acme_retail/gross-margin",
+      "target": "acme_retail/reconciliation",
+      "kind": "attested_by"
+    },
+    {
+      "source": "ga4/sessionise",
+      "target": "ga4/funnel-audit",
+      "kind": "attested_by"
+    },
+    {
+      "source": "acme_retail/backfill",
+      "target": "acme_retail/reconciliation",
+      "kind": "attested_by"
+    },
+    {
+      "source": "acme_retail/active-customer",
+      "target": "acme_retail/rfc3339",
+      "kind": "references"
+    },
+    {
+      "source": "ga4/session",
+      "target": "acme_retail/ga4-schema",
+      "kind": "references"
+    },
+    {
+      "source": "acme_retail/margin-rollup",
+      "target": "acme_retail/sql-style",
+      "kind": "references"
+    },
+    {
+      "source": "acme_retail/knowledge-catalog",
+      "target": "acme_retail/rfc3339",
+      "kind": "references"
+    },
+    {
+      "source": "acme_retail/retention-policy",
+      "target": "acme_retail/sql-style",
+      "kind": "references"
+    },
+    {
+      "source": "c4",
+      "target": "acme_retail/orders",
+      "kind": "produces"
+    },
+    {
+      "source": "c2",
+      "target": "ga4/web_events",
+      "kind": "produces"
+    },
+    {
+      "source": "c3",
+      "target": "acme_retail/gross-margin",
+      "kind": "verifies"
+    },
+    {
+      "source": "r2",
+      "target": "acme_retail/return-rate",
+      "kind": "produces"
+    },
+    {
+      "source": "r3",
+      "target": "acme_retail/retention-policy",
+      "kind": "verifies"
+    },
+    {
+      "source": "sc",
+      "target": "acme_retail",
+      "kind": "produces"
+    },
+    {
+      "source": "s1",
+      "target": "ga4/events_daily",
+      "kind": "produces"
+    },
+    {
+      "source": "s2",
+      "target": "acme_retail/margin-rollup",
+      "kind": "verifies"
+    },
+    {
+      "source": "t2",
+      "target": "ga4/sessionise",
+      "kind": "verifies"
+    },
+    {
+      "source": "b2",
+      "target": "ga4/consent-policy",
+      "kind": "verifies"
+    },
+    {
+      "source": "ma1",
+      "target": "acme_retail/order_lines",
+      "kind": "produces"
+    },
+    {
+      "source": "ma2",
+      "target": "ga4/export-2026-10",
+      "kind": "produces"
+    },
+    {
+      "source": "ml1",
+      "target": "acme_retail/reconciliation",
+      "kind": "verifies"
+    },
+    {
+      "source": "ml3",
+      "target": "acme_retail/rfc3339",
+      "kind": "verifies"
+    },
+    {
+      "source": "mS",
+      "target": "acme_retail/active-customer",
+      "kind": "verifies"
+    },
+    {
+      "source": "mem0",
+      "target": "ga4/conversion-rate",
+      "kind": "produces"
     }
   ]
 }

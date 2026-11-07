@@ -10,7 +10,7 @@
 //! Specs are passed in as JSON text, so this file has no build-time inputs: the
 //! web example embeds them, the host-contract test reads them at run time.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use panel_kit_grammar::{
     BaseTopos, CompiledGrammar, EditInput, GeometricMorphism, GlobalSections, GrammarPackage, Object,
@@ -152,6 +152,42 @@ impl AutoloopHost {
         self.loaded.as_ref()?.site.objects.iter().find(|o| o.id == id)
     }
 
+    /// The editable table row behind `object` under the active regime: its
+    /// binding and offered edits, when some table offers any.
+    pub fn offered(&self, object: &str) -> Option<(&str, &[String])> {
+        let sections = &self.loaded.as_ref()?.sections[self.active];
+        sections.iter().find_map(|(binding, _)| {
+            let row = sections.row_edits(binding)?.iter().find(|row| row.object == object && !row.edits.is_empty())?;
+            Some((binding.as_str(), row.edits.as_slice()))
+        })
+    }
+
+    /// What the graph view draws for the active regime, in site object order.
+    pub fn graph(&self) -> Option<GraphInputs> {
+        let loaded = self.loaded.as_ref()?;
+        let regime = &self.regimes[self.active];
+        let site = &loaded.site;
+        let index: HashMap<&str, u32> = site.objects.iter().enumerate().map(|(i, o)| (o.id.as_str(), i as u32)).collect();
+        let sorts: Vec<&String> = regime.topos.stalks.objects.keys().collect();
+        let sort_index = site
+            .objects
+            .iter()
+            .map(|o| {
+                let sort = regime.topos.object_sorting.get(&o.kind);
+                sort.and_then(|s| sorts.iter().position(|k| *k == s)).unwrap_or(sorts.len()) as u32
+            })
+            .collect();
+        let edges = site
+            .morphisms
+            .iter()
+            .filter_map(|m| Some([*index.get(m.domain.as_str())?, *index.get(m.codomain.as_str())?]))
+            .flatten()
+            .collect();
+        let mass = regime.topos.physics_section(site, &regime.physics).objects.iter().map(|(_, _, _, _, mass)| *mass as f32).collect();
+        let sort_labels = regime.topos.stalks.objects.values().map(|stalk| stalk.label.clone()).collect();
+        Some(GraphInputs { ids: site.objects.iter().map(|o| o.id.clone()).collect(), edges, sort_index, sort_labels, mass })
+    }
+
     /// The bytes to write for setting `values` on `object` with the active
     /// regime's edit `edit`: the revised object as its grammar emits it.
     pub fn write(&self, edit: &str, object: &str, values: BTreeMap<String, String>) -> Result<Vec<u8>, String> {
@@ -170,4 +206,20 @@ impl AutoloopHost {
         let intent = topos.write_intent(grammar, &revised, &revision).map_err(|e| e.to_string())?;
         Ok(intent.bytes)
     }
+}
+
+/// The active regime's graph: per-object id, regime sort (index into the
+/// regime's object stalks; one past the end when unsorted) and mass, and the
+/// morphisms as `[domain, codomain, …]` object indices.
+pub struct GraphInputs {
+    /// Object ids, in site order.
+    pub ids: Vec<String>,
+    /// `[domain, codomain, …]` index pairs.
+    pub edges: Vec<u32>,
+    /// Regime sort index per object.
+    pub sort_index: Vec<u32>,
+    /// The regime's object sort labels, indexed by `sort_index`.
+    pub sort_labels: Vec<String>,
+    /// Mass per object, pulled back from the physics base.
+    pub mass: Vec<f32>,
 }

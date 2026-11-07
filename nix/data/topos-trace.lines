@@ -1,0 +1,118 @@
+N|c0|Session c0|planner|chain|latency_ms=30.0;energy=240;t=0;status=error
+N|c1|Session c1|coder|chain|latency_ms=15.5;energy=139;t=1;status=ok
+N|c2|Session c2|coder|chain|latency_ms=16.0;energy=148;t=2;status=ok
+N|c3|Session c3|reviewer|chain|latency_ms=46.5;energy=327;t=3;status=ok
+N|c4|Session c4|coder|chain|latency_ms=17.0;energy=166;t=4;status=ok
+N|r0|Session r0|planner|ring|latency_ms=32.5;energy=285;t=5;status=ok
+N|r1|Session r1|coder|ring|latency_ms=18.0;energy=184;t=6;status=ok
+N|r2|Session r2|coder|ring|latency_ms=18.5;energy=193;t=7;status=warn
+N|r3|Session r3|reviewer|ring|latency_ms=49.0;energy=372;t=8;status=ok
+N|r4|Session r4|coder|ring|latency_ms=15.0;energy=211;t=9;status=ok
+N|r5|Session r5|coder|ring|latency_ms=15.5;energy=220;t=10;status=ok
+N|sc|Session sc|planner|sheet|latency_ms=31.0;energy=240;t=11;status=info
+N|s0|Session s0|coder|sheet|latency_ms=16.5;energy=139;t=12;status=ok
+N|s1|Session s1|coder|sheet|latency_ms=17.0;energy=148;t=13;status=error
+N|s2|Session s2|reviewer|sheet|latency_ms=47.5;energy=327;t=14;status=warn
+N|s3|Session s3|coder|sheet|latency_ms=18.0;energy=166;t=15;status=ok
+N|s4|Session s4|coder|sheet|latency_ms=18.5;energy=175;t=16;status=ok
+N|s5|Session s5|reviewer|sheet|latency_ms=49.0;energy=354;t=17;status=ok
+N|t0|Session t0|planner|tube|latency_ms=30.0;energy=303;t=18;status=ok
+N|t1|Session t1|coder|tube|latency_ms=15.5;energy=202;t=19;status=ok
+N|t2|Session t2|reviewer|tube|latency_ms=46.0;energy=381;t=20;status=ok
+N|t3|Session t3|coder|tube|latency_ms=16.5;energy=220;t=21;status=warn
+N|b0|Session b0|coder|tube|latency_ms=17.0;energy=130;t=22;status=info
+N|b1|Session b1|coder|tube|latency_ms=17.5;energy=139;t=23;status=ok
+N|b2|Session b2|reviewer|tube|latency_ms=48.0;energy=318;t=24;status=ok
+N|b3|Session b3|coder|tube|latency_ms=18.5;energy=157;t=25;status=ok
+N|mN|Session mN|planner|membrane|latency_ms=34.0;energy=276;t=26;status=error
+N|ma0|Session ma0|coder|membrane|latency_ms=15.0;energy=175;t=27;status=ok
+N|ma1|Session ma1|coder|membrane|latency_ms=15.5;energy=184;t=28;status=warn
+N|ma2|Session ma2|coder|membrane|latency_ms=16.0;energy=193;t=29;status=ok
+N|ma3|Session ma3|coder|membrane|latency_ms=16.5;energy=202;t=30;status=ok
+N|ma4|Session ma4|coder|membrane|latency_ms=17.0;energy=211;t=31;status=ok
+N|ml0|Session ml0|coder|membrane|latency_ms=17.5;energy=220;t=32;status=ok
+N|ml1|Session ml1|reviewer|membrane|latency_ms=48.0;energy=300;t=33;status=info
+N|ml2|Session ml2|coder|membrane|latency_ms=18.5;energy=139;t=34;status=ok
+N|ml3|Session ml3|reviewer|membrane|latency_ms=49.0;energy=318;t=35;status=warn
+N|ml4|Session ml4|coder|membrane|latency_ms=15.0;energy=157;t=36;status=ok
+N|mS|Session mS|reviewer|membrane|latency_ms=45.5;energy=336;t=37;status=ok
+N|mem0|Episodic log|memory|memory|latency_ms=6.0;energy=65;t=38;status=ok
+N|mem1|Task board|memory|memory|latency_ms=6.5;energy=74;t=39;status=error
+N|mem2|Code index|memory|memory|latency_ms=7.0;energy=83;t=40;status=ok
+N|mem3|Note store|memory|memory|latency_ms=7.5;energy=92;t=41;status=ok
+N|mem4|Spec mirror|memory|memory|latency_ms=8.0;energy=101;t=42;status=warn
+E|c0|c1|continues
+E|c1|c2|continues
+E|c2|c3|continues
+E|c3|c4|continues
+E|r0|r1|continues
+E|r1|r2|continues
+E|r2|r3|continues
+E|r3|r4|continues
+E|r4|r5|continues
+E|r5|r0|shares
+E|sc|s0|continues
+E|sc|s1|continues
+E|sc|s2|continues
+E|sc|s3|continues
+E|sc|s4|continues
+E|sc|s5|continues
+E|s0|s1|shares
+E|s1|s2|shares
+E|s2|s3|shares
+E|s3|s4|shares
+E|s4|s5|shares
+E|s5|s0|shares
+E|t0|t1|continues
+E|t1|t2|continues
+E|t2|t3|continues
+E|t3|t0|shares
+E|b0|b1|continues
+E|b1|b2|continues
+E|b2|b3|continues
+E|b3|b0|shares
+E|t0|b0|continues
+E|t1|b1|shares
+E|t2|b2|shares
+E|t3|b3|shares
+E|t1|b0|shares
+E|t2|b1|shares
+E|t3|b2|shares
+E|t0|b3|shares
+E|ma0|ma1|shares
+E|ma1|ma2|shares
+E|ma2|ma3|shares
+E|ma3|ma4|shares
+E|ma4|ma0|shares
+E|ml0|ml1|shares
+E|ml1|ml2|shares
+E|ml2|ml3|shares
+E|ml3|ml4|shares
+E|ml4|ml0|shares
+E|mN|ma0|continues
+E|mN|ma1|continues
+E|mN|ma2|continues
+E|mN|ma3|continues
+E|mN|ma4|continues
+E|mS|ml0|shares
+E|mS|ml1|shares
+E|mS|ml2|shares
+E|mS|ml3|shares
+E|mS|ml4|shares
+E|ma0|ml0|continues
+E|ma1|ml1|continues
+E|ma2|ml2|continues
+E|ma3|ml3|continues
+E|ma4|ml4|continues
+E|ma1|ml0|shares
+E|ma2|ml1|shares
+E|ma3|ml2|shares
+E|ma4|ml3|shares
+E|ma0|ml4|shares
+E|c4|mem0|consolidates
+E|r3|mem1|consolidates
+E|sc|mem2|consolidates
+E|t2|mem3|consolidates
+E|mN|mem4|consolidates
+E|mem0|r0|consolidates
+E|mem2|t0|consolidates

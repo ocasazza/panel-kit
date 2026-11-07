@@ -357,11 +357,17 @@ impl TextSheaf {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BadgesSheaf {
-    /// Whether one badge is emitted per sort or per object.
+    /// Whether one badge is emitted per sort, per object, or per distinct
+    /// value of `value` across the objects.
     pub group: BadgeGroup,
     /// Regime object sorts to restrict to; absent means every object.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restrict: Option<BTreeSet<String>>,
+    /// Per-object text expression drawn on each badge (`group = "objects"`)
+    /// or tallied into one badge per distinct value (`group = "values"`);
+    /// absent means the object's title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
 }
 
 /// Badge grouping.
@@ -372,6 +378,8 @@ pub enum BadgeGroup {
     Kinds,
     /// One badge per object.
     Objects,
+    /// One badge per distinct `value`, labelled `value count`.
+    Values,
 }
 
 impl BadgesSheaf {
@@ -393,7 +401,33 @@ impl BadgesSheaf {
             BadgeGroup::Objects => {
                 for object in &site.objects {
                     let badge = parse_badge(resolver.object_badge(&object.kind))?;
-                    badges.push(BadgeSpec::new("object", object.title.clone(), badge));
+                    let value = match &self.value {
+                        Some(expr) => object_value(expr, object, site, resolver)?.into_text(),
+                        None => object.title.clone(),
+                    };
+                    badges.push(BadgeSpec::new("object", value, badge));
+                }
+            }
+            BadgeGroup::Values => {
+                let mut order: Vec<String> = Vec::new();
+                let mut tally: BTreeMap<String, (usize, String)> = BTreeMap::new();
+                for object in &site.objects {
+                    let value = match &self.value {
+                        Some(expr) => object_value(expr, object, site, resolver)?.into_text(),
+                        None => object.title.clone(),
+                    };
+                    if value.is_empty() {
+                        continue;
+                    }
+                    let entry = tally.entry(value.clone()).or_insert_with(|| {
+                        order.push(value.clone());
+                        (0, resolver.object_badge(&object.kind).to_owned())
+                    });
+                    entry.0 += 1;
+                }
+                for value in order {
+                    let (count, badge) = &tally[&value];
+                    badges.push(BadgeSpec::new("value", format!("{value} {count}"), parse_badge(badge)?));
                 }
             }
         }
@@ -984,6 +1018,29 @@ pub struct MeterSheaf {
     /// Unit appended to the display text.
     #[serde(default)]
     pub unit: String,
+    /// Restricts the aggregate to objects whose projected `field` equals
+    /// `equals`; an absent field never matches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<FieldFilter>,
+}
+
+/// A predicate over an object's projected fields.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FieldFilter {
+    /// Projected field name compared against `equals`.
+    pub field: String,
+    /// The value the field must hold.
+    pub equals: String,
+}
+
+impl FieldFilter {
+    /// Whether `object`'s projected `field` equals `equals`, read through the
+    /// attribute map when the regime reads the object's kind by transport.
+    fn matches(&self, object: &Object, resolver: &Resolver) -> bool {
+        let field = resolver.field_of(&object.kind, &self.field);
+        object.fields.get(field).is_some_and(|value| value == &self.equals)
+    }
 }
 
 /// Aggregation function.
@@ -1005,10 +1062,20 @@ pub enum Agg {
 impl MeterSheaf {
     fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
         let aggregate = match self.agg {
-            Agg::Count => site.objects.len() as f64,
+            Agg::Count => {
+                site.objects
+                    .iter()
+                    .filter(|object| {
+                        self.filter.as_ref().is_none_or(|filter| filter.matches(object, resolver))
+                    })
+                    .count() as f64
+            }
             _ => {
                 let mut values = Vec::new();
                 for object in &site.objects {
+                    if self.filter.as_ref().is_some_and(|filter| !filter.matches(object, resolver)) {
+                        continue;
+                    }
                     values.push(object_value(&self.value, object, site, resolver)?.into_number(&self.value)?);
                 }
                 match self.agg {
@@ -1081,6 +1148,11 @@ impl StatusSheaf {
 pub struct AssemblySheaf {
     /// Regime morphism sorts whose morphisms build the 1-skeleton.
     pub morphism_sorts: Vec<String>,
+    /// Site morphism kinds to build the 1-skeleton from; absent means every
+    /// morphism of a chosen sort. Several site kinds share a regime sort, so
+    /// this is how a regime assembles over its own kinds alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kinds: Option<BTreeSet<String>>,
 }
 
 impl AssemblySheaf {
@@ -1088,7 +1160,14 @@ impl AssemblySheaf {
         self.morphism_sorts.iter().cloned().collect()
     }
 
+    /// The site whose bonds are the declared kinds, else the site as it is.
+    fn bonded(&self, site: &Site) -> Option<Site> {
+        self.kinds.as_ref().map(|kinds| site.restrict_morphism_kinds(kinds))
+    }
+
     fn evaluate_table(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
+        let bonded = self.bonded(site);
+        let site = bonded.as_ref().unwrap_or(site);
         let components = assembly(site, resolver.morphism_sorting, &self.selected());
         let columns = assembly_columns();
         let mut rows = Vec::new();
@@ -1114,6 +1193,8 @@ impl AssemblySheaf {
     }
 
     fn evaluate_badges(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
+        let bonded = self.bonded(site);
+        let site = bonded.as_ref().unwrap_or(site);
         let components = assembly(site, resolver.morphism_sorting, &self.selected());
         let mut badges = Vec::new();
         for stage in STAGE_ORDER {
@@ -1149,23 +1230,31 @@ pub enum PhysicsScope {
 impl PhysicsSheaf {
     fn evaluate(&self, resolver: &Resolver, site: &Site) -> Result<Section, SheafError> {
         let section = resolver.physics_section(site);
+        // Rows name objects as every other panel does: by title, with the
+        // regime's own label for the sort.
+        let title = |id: &str| {
+            site.objects.iter().find(|object| object.id == id).map_or_else(|| id.to_owned(), |o| o.title.clone())
+        };
+        let sort_label = |sort: &str| {
+            if sort.is_empty() { "—".to_owned() } else { resolver.sort_object_label(sort) }
+        };
         let (columns, rows) = match self.scope {
             PhysicsScope::Objects => {
                 let columns = vec![
                     physics_column("object", "Object", TextAlign::Left, ColumnKind::Text),
-                    physics_column("type", "Type", TextAlign::Left, ColumnKind::Enum),
+                    physics_column("sort", "Sort", TextAlign::Left, ColumnKind::Enum),
                     physics_column("repulsion", "Repulsion", TextAlign::Right, ColumnKind::Number),
                     physics_column("mass", "Mass", TextAlign::Right, ColumnKind::Number),
                 ];
                 let rows = section
                     .objects
                     .iter()
-                    .map(|(id, engine_type, repulsion, mass)| TableRow {
+                    .map(|(id, sort, _, repulsion, mass)| TableRow {
                         id: format!("physics:{id}"),
                         tags: Vec::new(),
                         cells: vec![
-                            TableCell::Text(id.clone()),
-                            TableCell::Text(engine_type.clone()),
+                            TableCell::Text(title(id)),
+                            TableCell::Text(sort_label(sort)),
                             TableCell::Text(fmt_num(*repulsion)),
                             TableCell::Text(fmt_num(*mass)),
                         ],
@@ -1177,7 +1266,7 @@ impl PhysicsSheaf {
                 let columns = vec![
                     physics_column("from", "From", TextAlign::Left, ColumnKind::Text),
                     physics_column("to", "To", TextAlign::Left, ColumnKind::Text),
-                    physics_column("type", "Type", TextAlign::Left, ColumnKind::Enum),
+                    physics_column("sort", "Sort", TextAlign::Left, ColumnKind::Enum),
                     physics_column("k", "k", TextAlign::Right, ColumnKind::Number),
                     physics_column("rest", "Rest", TextAlign::Right, ColumnKind::Number),
                 ];
@@ -1186,13 +1275,13 @@ impl PhysicsSheaf {
                     .morphisms
                     .iter()
                     .zip(ids)
-                    .map(|((from, to, engine_type, weight, rest_length), id)| TableRow {
+                    .map(|((from, to, sort, _, weight, rest_length), id)| TableRow {
                         id,
                         tags: Vec::new(),
                         cells: vec![
-                            TableCell::Text(from.clone()),
-                            TableCell::Text(to.clone()),
-                            TableCell::Text(engine_type.clone()),
+                            TableCell::Text(title(from)),
+                            TableCell::Text(title(to)),
+                            TableCell::Text(if sort.is_empty() { "—".to_owned() } else { resolver.sort_morphism_label(sort) }),
                             TableCell::Text(fmt_num(*weight)),
                             TableCell::Text(fmt_num(*rest_length)),
                         ],
@@ -1495,17 +1584,23 @@ fn object_value(expr: &str, object: &Object, site: &Site, resolver: &Resolver) -
                     .map_err(|_| SheafError::BadExpression(expr.to_owned()))?;
                 Ok(Value::Str(object.tags.get(index).cloned().unwrap_or_default()))
             } else if let Some(name) = expr.strip_prefix("field?:") {
+                let name = resolver.field_of(&object.kind, name);
                 Ok(Value::Str(object.fields.get(name).cloned().unwrap_or_default()))
             } else if let Some(name) = expr.strip_prefix("field:") {
-                let value = object.fields.get(name).ok_or_else(|| SheafError::MissingField {
-                    object: object.id.clone(),
-                    field: name.to_owned(),
-                })?;
+                let value = object
+                    .fields
+                    .get(resolver.field_of(&object.kind, name))
+                    .ok_or_else(|| SheafError::MissingField {
+                        object: object.id.clone(),
+                        field: name.to_owned(),
+                    })?;
                 Ok(Value::Str(value.clone()))
             } else if let Some(name) = expr.strip_prefix("weighted:") {
-                let base = object.number(name).ok_or_else(|| SheafError::MissingField {
-                    object: object.id.clone(),
-                    field: name.to_owned(),
+                let base = object.number(resolver.field_of(&object.kind, name)).ok_or_else(|| {
+                    SheafError::MissingField {
+                        object: object.id.clone(),
+                        field: name.to_owned(),
+                    }
                 })?;
                 Ok(Value::Num(base * resolver.object_repulsion(&object.kind)?))
             } else {
@@ -1625,6 +1720,7 @@ mod tests {
             morphism_sorting: &morphism_sorting,
             stalks: &stalks,
             physics: &physics,
+            attributes: &BTreeMap::new(),
         };
         let sheaf = FlamegraphSheaf {
             morphism_kind: "continues".to_owned(),
@@ -1647,11 +1743,13 @@ mod tests {
         let morphism_sorting = BTreeMap::new();
         let stalks = Stalks { objects: BTreeMap::new(), morphisms: BTreeMap::new(), stages: Stages::default() };
         let physics = Physics::empty();
+        let attributes = BTreeMap::new();
         let resolver = Resolver {
             object_sorting: &object_sorting,
             morphism_sorting: &morphism_sorting,
             stalks: &stalks,
             physics: &physics,
+            attributes: &attributes,
         };
         (sheaf.evaluate(&resolver, site), sheaf.evaluate_reference(&resolver, site))
     }
