@@ -231,7 +231,11 @@ async fn load_monaco() -> Result<(), EditorError> {
 /// mount, so calling it directly is only needed outside the component.
 pub async fn register_pest_language() -> Result<(), EditorError> {
     load_monaco().await?;
-    register_languages();
+    if let Err(error) = register_languages() {
+        web_sys::console::error_1(
+            &wasm_bindgen::JsValue::from_str(&format!("register languages: {error}")),
+        );
+    }
     Ok(())
 }
 

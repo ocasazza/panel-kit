@@ -6,28 +6,47 @@ use super::Color;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeColor {
+    /// Page background.
     Background,
+    /// Raised surfaces.
     Surface,
+    /// Body and title text.
     Text,
+    /// De-emphasized text.
     TextMuted,
+    /// Structural hairline dividing regions.
     Divider,
+    /// Object outline.
     Border,
+    /// Inverted background, used by selection.
     InverseBackground,
+    /// Inverted foreground, used by selection.
     InverseText,
+    /// Keyboard-focus indicator.
     FocusRing,
+    /// Floating/tiling mode light.
     Primary,
+    /// Maximize/restore light.
     Secondary,
+    /// Minimize light.
     Tertiary,
+    /// Live-system signal.
     Highlight,
+    /// Verdict: resolved, valid, reachable.
     Success,
+    /// Failed checks and verdicts.
     Failure,
+    /// Errors and unresolved references.
     Error,
+    /// Warnings and thresholds.
     Warning,
+    /// Informational metadata badges.
     Info,
 }
 
 impl ThemeColor {
-    pub const ALL: &'static [ThemeColor] = &[
+    /// Every colour slot, in declaration order.
+pub const ALL: &'static [ThemeColor] = &[
         ThemeColor::Background,
         ThemeColor::Surface,
         ThemeColor::Text,
@@ -48,6 +67,7 @@ impl ThemeColor {
         ThemeColor::Info,
     ];
 
+    /// The CSS custom property for this slot, e.g. `"--color-background"`.
     pub const fn css_var(self) -> &'static str {
         match self {
             ThemeColor::Background => "--color-background",
@@ -71,6 +91,7 @@ impl ThemeColor {
         }
     }
 
+    /// The token key for this slot, e.g. `"color-background"`.
     pub const fn key(self) -> &'static str {
         match self {
             ThemeColor::Background => "color-background",
@@ -95,9 +116,12 @@ impl ThemeColor {
     }
 }
 
+/// A colour resolved either as a literal or through a [`ThemeColor`] slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "source", content = "value", rename_all = "snake_case")]
 pub enum ColorRef {
+    /// An explicit colour value.
     Literal(Color),
+    /// A lookup into the active theme.
     Theme(ThemeColor),
 }

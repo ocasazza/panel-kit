@@ -245,6 +245,7 @@ pub fn key_value(parent: &mut ChildSpawnerCommands, theme: &BevyTheme, key: &str
     });
 }
 
+/// Spawns a full-width row with children spaced between the edges.
 pub fn row(parent: &mut ChildSpawnerCommands, build: impl FnOnce(&mut ChildSpawnerCommands)) {
     parent
         .spawn(Node {
@@ -271,6 +272,7 @@ pub fn inline_row(parent: &mut ChildSpawnerCommands, build: impl FnOnce(&mut Chi
         .with_children(build);
 }
 
+/// Spawns a text label at the given px size and tint.
 pub fn label_text(
     parent: &mut ChildSpawnerCommands,
     value: impl Into<String>,

@@ -3,18 +3,23 @@ use super::Color;
 /// One palette entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Token {
+    /// CSS custom-property name, e.g. `"color-background"`.
     pub name: &'static str,
+    /// Hex string, kept in sync with `rgb`.
     pub hex: &'static str,
+    /// Parsed RGB triple.
     pub rgb: (u8, u8, u8),
 }
 
 impl Token {
+    /// True when `hex` parses and matches `rgb`.
     pub fn check(&self) -> bool {
         match Color::parse(self.hex) {
             Ok(color) => color == self.color(),
             Err(_) => false,
         }
     }
+    /// The colour as a `Color`.
     pub const fn color(self) -> Color {
         Color::new(self.rgb.0, self.rgb.1, self.rgb.2)
     }
@@ -50,14 +55,17 @@ token!(ERROR, "color-error", "#ff5f56", 0xff, 0x5f, 0x56, "Errors and unresolved
 token!(WARNING, "color-warning", "#ffbd2e", 0xff, 0xbd, 0x2e, "Warnings and thresholds.");
 token!(INFO, "color-info", "#83b7cc", 0x83, 0xb7, 0xcc, "Informational metadata badges.");
 
+/// The monospace font stack used by code and labels.
 pub const MONO: &str =
     "ui-monospace, \"SF Mono\", \"JetBrains Mono\", \"Menlo\", \"Consolas\", monospace";
 
+/// The default dark palette, in [`ThemeColor`] slot order.
 pub const DARK: &[Token] = &[
     BACKGROUND, SURFACE, TEXT, TEXT_MUTED, DIVIDER, BORDER, INVERSE_BACKGROUND, INVERSE_TEXT,
     FOCUS_RING, PRIMARY, SECONDARY, TERTIARY, HIGHLIGHT, SUCCESS, FAILURE, ERROR, WARNING, INFO,
 ];
 
+/// Finds a token by full CSS var name or bare role name.
 pub fn by_name(name: &str) -> Option<Token> {
     // Boot CSS placeholders use role names ("background"); token names use the
     // full CSS var name ("color-background"). Match either form.
