@@ -6,7 +6,7 @@ use visual_parity::compare::Comparison;
 use visual_parity::compare_files;
 
 const USAGE: &str = "usage:
-  visual-parity check [OUT_DIR]               capture web + Bevy, compare, fail on unexplained differences
+  visual-parity check [OUT_DIR]               capture web + Bevy, compare, fail on any difference
   visual-parity compare WEB.png BEVY.png OUT  compare existing captures
 
 OUT_DIR defaults to target/visual-parity. Run inside `nix develop`.";
@@ -47,7 +47,7 @@ fn check(out: &Path) -> Result<bool, String> {
     Ok(verdict(&comparison, &out))
 }
 
-/// Print the summary; `true` when nothing unexplained differs.
+/// Print the summary; `true` when every row is within tolerance.
 fn verdict(comparison: &Comparison, out: &Path) -> bool {
     let (mut pass, mut fail) = (0, 0);
     for (panel, p, f) in comparison.summary() {
@@ -55,17 +55,12 @@ fn verdict(comparison: &Comparison, out: &Path) -> bool {
         pass += p;
         fail += f;
     }
-    let unexplained: Vec<_> = comparison.unexplained().collect();
-    println!(
-        "pass {pass} fail {fail} ({} unexplained) -> {}",
-        unexplained.len(),
-        out.join("report.md").display()
-    );
-    for row in &unexplained {
+    println!("pass {pass} fail {fail} -> {}", out.join("report.md").display());
+    for row in comparison.failures() {
         println!(
-            "  UNEXPLAINED {} | {} | {}: web {} bevy {} ({})",
+            "  FAIL {} | {} | {}: web {} bevy {} ({})",
             row.panel, row.part, row.property, row.web, row.bevy, row.delta
         );
     }
-    unexplained.is_empty()
+    fail == 0
 }

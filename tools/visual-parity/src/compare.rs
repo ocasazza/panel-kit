@@ -29,27 +29,6 @@ pub struct Row {
     pub ok: bool,
 }
 
-/// A difference that is known and accepted, with why.
-struct Exemption {
-    applies: fn(&Row) -> bool,
-    reason: &'static str,
-}
-
-const EXEMPTIONS: &[Exemption] = &[Exemption {
-    applies: |row| row.part.contains('⠋'),
-    reason: "animated spinner ring: the captures sample different rotation phases",
-}];
-
-impl Row {
-    /// Why a failing row is accepted, or `None` when it is unexplained.
-    pub fn exemption(&self) -> Option<&'static str> {
-        EXEMPTIONS
-            .iter()
-            .find(|exemption| (exemption.applies)(self))
-            .map(|exemption| exemption.reason)
-    }
-}
-
 /// Every row of one comparison, in panel order.
 #[derive(Debug, Default)]
 pub struct Comparison {
@@ -59,11 +38,9 @@ pub struct Comparison {
 }
 
 impl Comparison {
-    /// Failing rows no exemption explains.
-    pub fn unexplained(&self) -> impl Iterator<Item = &Row> {
-        self.rows
-            .iter()
-            .filter(|row| !row.ok && row.exemption().is_none())
+    /// Rows outside tolerance.
+    pub fn failures(&self) -> impl Iterator<Item = &Row> {
+        self.rows.iter().filter(|row| !row.ok)
     }
 
     /// Pass and fail counts per panel, in comparison order.
@@ -766,26 +743,26 @@ mod tests {
     }
 
     #[test]
-    fn identical_captures_have_no_unexplained_rows() {
+    fn identical_captures_have_no_failures() {
         let comparison = run(40.0, BORDER);
         assert_eq!(comparison.panels, ["Notes"]);
         assert!(comparison.rows.iter().any(|row| row.part.starts_with("text")));
-        assert_eq!(comparison.unexplained().count(), 0, "{:#?}", comparison.rows);
+        assert_eq!(comparison.failures().count(), 0, "{:#?}", comparison.rows);
     }
 
     #[test]
     fn a_shift_past_the_tolerance_fails_and_within_it_passes() {
         let shifted = run(41.5, BORDER);
-        let failing: Vec<_> = shifted.unexplained().collect();
+        let failing: Vec<_> = shifted.failures().collect();
         assert_eq!(failing.len(), 1, "{failing:#?}");
         assert_eq!((failing[0].part.as_str(), failing[0].property.as_str()), ("text \"NOTES\"", "x"));
-        assert_eq!(run(40.9, BORDER).unexplained().count(), 0);
+        assert_eq!(run(40.9, BORDER).failures().count(), 0);
     }
 
     #[test]
     fn a_border_colour_change_fails_exactly() {
         let failing: Vec<String> = run(40.0, [96, 95, 95])
-            .unexplained()
+            .failures()
             .map(|row| row.property.clone())
             .collect();
         assert!(failing.contains(&"border colour (left edge, mid)".to_owned()), "{failing:?}");
@@ -821,24 +798,9 @@ mod tests {
             Capture { image: &image, nodes: &[] },
         )
         .0;
-        let failing: Vec<_> = comparison.unexplained().collect();
+        let failing: Vec<_> = comparison.failures().collect();
         assert_eq!(failing.len(), 1);
         assert_eq!(failing[0].bevy, "missing");
-    }
-
-    #[test]
-    fn only_the_spinner_ring_is_exempt() {
-        let row = |part: &str| Row {
-            panel: "Theme".into(),
-            part: part.into(),
-            property: "x".into(),
-            web: "1".into(),
-            bevy: "9".into(),
-            delta: "8".into(),
-            ok: false,
-        };
-        assert!(row("text \"⠋\"").exemption().is_some());
-        assert!(row("text \"spinner painter\"").exemption().is_none());
     }
 
     /// A two-column header: the web `th` and `.pk-dt-resize` span, and the
