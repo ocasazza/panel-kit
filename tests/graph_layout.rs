@@ -1,12 +1,9 @@
 //! Layout solver contract: every algorithm positions every node, twice the
 //! same, and grouping by sort moves the arrangement.
 
-#[path = "../examples/support/graph_layout.rs"]
-mod graph_layout;
-
 use std::collections::BTreeMap;
 
-use graph_layout::{Tween, fibonacci_sphere, project_2d, solve};
+use panel_kit_graph_layout::{Tween, fibonacci_sphere, project_2d, solve};
 
 use panel_kit_core::widgets::graph::{
     GraphEdge, GraphLayout, GraphModel, GraphNode, LayoutAlgorithm,

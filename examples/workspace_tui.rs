@@ -605,7 +605,7 @@ mod evidence {
             &mut diff,
             "workspace body",
             body_rect(&app.evidence, catalog, "Workspace"),
-            Rect::new(3, 2, 60, 9),
+            Rect::new(3, 2, 60, 6),
         );
         expect_rect(
             &mut diff,
@@ -613,6 +613,11 @@ mod evidence {
             body_rect(&app.evidence, catalog, "Badges"),
             Rect::new(65, 2, 61, 9),
         );
+        let graph = body_rect(&app.evidence, catalog, "Graph");
+        expect_rect(&mut diff, "graph body", graph, Rect::new(3, 35, 60, 8));
+        if !has_braille(&buffer, graph) {
+            diff.push(format!("graph body {graph:?} holds no braille dots"));
+        }
         expect_rect(
             &mut diff,
             "dock",
@@ -666,6 +671,16 @@ mod evidence {
         if got != expected {
             diff.push(format!("{label}: got {got:?}, expected {expected:?}"));
         }
+    }
+
+    /// Whether any cell of `area` holds a braille dot pattern.
+    fn has_braille(buffer: &ratatui::buffer::Buffer, area: Rect) -> bool {
+        area.positions().any(|position| {
+            buffer[position]
+                .symbol()
+                .chars()
+                .any(|ch| ('\u{2801}'..='\u{28ff}').contains(&ch))
+        })
     }
 
     fn expect_text(diff: &mut Vec<String>, buffer: &ratatui::buffer::Buffer, needle: &str) {

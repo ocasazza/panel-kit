@@ -1,0 +1,19 @@
+[package]
+name = "panel-kit-graph-layout"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Layout solving for panel-kit's `graph` external component: one position per node for every backend"
+repository = "https://github.com/ocasazza/panel-kit"
+# Depends on the vendored graph-layouts (vendor/jump-cannon/VENDORED.md), which
+# is not on crates.io.
+publish = false
+
+[dependencies]
+panel-kit-core = { version = "1.2.0", path = "../panel-kit-core" }
+graph-layouts = { path = "../../vendor/jump-cannon/graph-layouts" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# graph-layouts solves through wgpu, whose API types are neither `Send` nor
+# `Sync` on wasm without atomics unless this feature is on.
+wgpu = { version = "23", default-features = false, features = ["fragile-send-sync-non-atomic-wasm"] }

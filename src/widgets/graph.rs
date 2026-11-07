@@ -9,31 +9,23 @@
 //! the hit target — comes from the panel-kit theme variables so a retheme
 //! restyles the graph without a repaint.
 
-use std::collections::BTreeMap;
-
 use dioxus::prelude::*;
-use panel_kit_core::widgets::graph::GraphView;
-/// Internal SVG coordinate space; the `viewBox` stretches it to the panel box.
-const PLOT: f64 = 100.0;
-
-/// Smallest drawn radius, so a node stays clickable at any model size.
-const MIN_RADIUS: f64 = 2.5;
-
-/// Largest drawn radius, so a hub in a dense graph does not swallow its panel.
-const MAX_RADIUS: f64 = 9.0;
+use panel_kit_core::widgets::graph::{
+    node_radius, placed_nodes, plotted_edges, GraphView, PLOT, SELECTION_RING_GAP,
+};
 
 /// Styles for [`graph_svg`]. Hosts embed this with their own stylesheet; the
 /// graph view's `CSS` sits alongside it for the WebGPU body.
 pub const CSS: &str = "
 .pk-graph { position:relative; width:100%; height:100%; min-height:4rem;
-  background:var(--bg); }
+  background:var(--color-background); }
 .pk-graph-svg { display:block; width:100%; height:100%; }
-.pk-graph-edge { stroke:var(--line2); stroke-width:1; }
+.pk-graph-edge { stroke:var(--color-border); stroke-width:1; }
 .pk-graph-node { stroke:none; cursor:pointer; }
-.pk-graph-node:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.pk-graph-ring { fill:none; stroke:var(--accent); stroke-width:1.5; }
-.pk-graph-label { fill:var(--fg); font:0.62rem/1 var(--font-mono, monospace); }
-.pk-graph-notice { color:var(--dim); font-size:0.78rem; padding:0.5rem; }
+.pk-graph-node:focus-visible { outline:2px solid var(--color-highlight); outline-offset:2px; }
+.pk-graph-ring { fill:none; stroke:var(--color-highlight); stroke-width:1.5; }
+.pk-graph-label { fill:var(--color-text); font:0.62rem/1 var(--mono, monospace); }
+.pk-graph-notice { color:var(--color-text-muted); font-size:0.78rem; padding:0.5rem; }
 @media (prefers-reduced-motion: reduce) {
   .pk-graph-node, .pk-graph-ring { transition:none; }
 }
@@ -52,29 +44,20 @@ pub fn graph_svg(
     selected: Option<&str>,
     on_select: EventHandler<String>,
 ) -> Element {
-    let placed: Vec<(usize, [f64; 2])> = view
-        .nodes
-        .iter()
-        .enumerate()
-        .filter_map(|(index, _)| positions.get(index).map(|p| (index, point(p))))
-        .collect();
-    let by_index: BTreeMap<usize, [f64; 2]> = placed.iter().map(|&(i, p)| (i, p)).collect();
-
-    let edges = view.edges.iter().filter_map(|edge| {
-        let from = by_index.get(&(edge.source as usize))?;
-        let to = by_index.get(&(edge.target as usize))?;
-        Some(rsx! {
+    let placed = placed_nodes(view.nodes, positions);
+    let edges = plotted_edges(view.edges, &placed).into_iter().map(|(from, to)| {
+        rsx! {
             line {
                 class: "pk-graph-edge",
                 x1: "{from[0]:.2}", y1: "{from[1]:.2}",
                 x2: "{to[0]:.2}", y2: "{to[1]:.2}"
             }
-        })
+        }
     });
 
     let nodes = placed.iter().map(|&(index, point)| {
         let node = &view.nodes[index];
-        let radius = f64::from(node.size).clamp(MIN_RADIUS, MAX_RADIUS);
+        let radius = node_radius(node.size);
         let is_selected = selected == Some(node.id.as_str());
         let label = node.label.clone();
         let id = node.id.clone();
@@ -90,7 +73,7 @@ pub fn graph_svg(
             if is_selected {
                 circle {
                     class: "pk-graph-ring",
-                    cx: "{point[0]:.2}", cy: "{point[1]:.2}", r: "{(radius + 2.0):.2}"
+                    cx: "{point[0]:.2}", cy: "{point[1]:.2}", r: "{(radius + SELECTION_RING_GAP):.2}"
                 }
             }
             circle {
@@ -144,10 +127,6 @@ pub fn graph_notice(title: &str, detail: &str) -> Element {
             p { "{detail}" }
         }
     }
-}
-
-fn point(position: &[f32; 2]) -> [f64; 2] {
-    [f64::from(position[0]) * PLOT, f64::from(position[1]) * PLOT]
 }
 
 fn fill(color: panel_kit_core::badge::Rgb) -> String {

@@ -13,6 +13,8 @@ autoexamples = false
 
 [dependencies]
 panel-kit-core = { version = "1.1.1", path = "../panel-kit-core", features = ["spec-json"] }
+# Solves positions for inline graph bodies (`widgets::graph`).
+panel-kit-graph-layout = { version = "0.1.0", path = "../panel-kit-graph-layout" }
 # Lean Bevy surface: the ECS/app core plus the UI rendering stack. Rendering
 # (the `render` module) activates `bevy_ui`, which pulls bevy_render (wgpu),
 # bevy_text, bevy_asset, and bevy_core_pipeline transitively; `default_font`

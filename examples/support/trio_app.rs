@@ -14,12 +14,11 @@
 //! re-solves seeded from the positions on screen.
 #![allow(dead_code)]
 
-mod graph_layout;
 mod trio_host;
 
 use std::fmt;
 
-use graph_layout::{project_2d, solve, Tween};
+use panel_kit_graph_layout::{project_2d, solve, Tween};
 use panel_kit_core::frame::{
     project_into, ChromeProjectionInput, FrameStatus, ProjectionBuffer, ProjectionInput,
     TileLayoutMetrics,

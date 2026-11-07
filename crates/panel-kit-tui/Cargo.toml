@@ -29,6 +29,6 @@ ratzilla = "0.3.1"
 # canary providers they share (examples/support/workspace_canary.rs) are
 # included here by the painter tests too.
 [dev-dependencies]
-
+panel-kit-graph-layout = { version = "0.1.0", path = "../panel-kit-graph-layout" }
 crossterm = "0.29"
 ratatui = { version = "0.30.1", features = ["crossterm"] }

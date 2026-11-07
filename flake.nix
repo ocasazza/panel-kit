@@ -609,7 +609,7 @@
             SPEC_PARITY_WORKSPACE_REFERENCE_JSON = "${workspace-spec-reference}";
             SPEC_PARITY_WEB_WORKSPACE_JSON = "${web-workspace}";
             SPEC_PARITY_WEB_WORKSPACE_PROVIDER_MANIFEST_JSON = "${web-workspace-provider-manifest}";
-            SPEC_PARITY_FIXED_LAYOUT_JSON = "${./tools/spec-parity/fixtures/fixed-nine-layout.json}";
+            SPEC_PARITY_FIXED_LAYOUT_JSON = "${./tools/spec-parity/fixtures/fixed-ten-layout.json}";
           } ''
             spec-parity check
             touch "$out"

@@ -32,6 +32,7 @@ use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{ExitCondition, PrimaryWindow, WindowPlugin};
 
 use panel_kit_bevy::fonts::{install_theme_font, BOLD_FONT};
+use panel_kit_bevy::widgets::graph::GraphPlugin;
 use panel_kit_bevy::widgets::scroll::ScrollPlugin;
 use panel_kit_bevy::widgets::data_table::DataTableExport;
 use panel_kit_bevy::widgets::time_series::TimeSeriesPlugin;
@@ -143,6 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             PanelUiPlugin::<SpecPanelId>::default(),
             ScrollPlugin,
             TimeSeriesPlugin,
+            GraphPlugin,
         ))
         .insert_resource(BevyTheme::from_tokens(&theme))
         .insert_resource(kit)

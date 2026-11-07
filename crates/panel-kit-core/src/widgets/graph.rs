@@ -144,6 +144,74 @@ impl GraphLayout {
     }
 }
 
+/// Side of the square plot space painters draw in; positions in the unit
+/// square map onto it, and a surface scales it to the panel box (the shorter
+/// side, centred).
+pub const PLOT: f64 = 100.0;
+
+/// Smallest drawn node radius in plot units, so a node stays clickable at any
+/// model size.
+pub const MIN_NODE_RADIUS: f64 = 2.5;
+
+/// Largest drawn node radius in plot units, so a hub in a dense graph does not
+/// swallow its panel.
+pub const MAX_NODE_RADIUS: f64 = 9.0;
+
+/// Gap in plot units between a selected node and its ring.
+pub const SELECTION_RING_GAP: f64 = 2.0;
+
+/// Edge stroke width in plot units.
+pub const EDGE_STROKE: f64 = 1.0;
+
+/// Selection-ring stroke width in plot units.
+pub const RING_STROKE: f64 = 1.5;
+
+/// The drawn radius, in plot units, of a node whose model size is `size`.
+pub fn node_radius(size: f32) -> f64 {
+    f64::from(size).clamp(MIN_NODE_RADIUS, MAX_NODE_RADIUS)
+}
+
+/// A unit-square position in plot units, or `None` when it is not finite.
+pub fn plot_point(position: &[f32; 2]) -> Option<[f64; 2]> {
+    position
+        .iter()
+        .all(|value| value.is_finite())
+        .then(|| [f64::from(position[0]) * PLOT, f64::from(position[1]) * PLOT])
+}
+
+/// Every node of `nodes` that has a usable position, as `(index, plot point)`
+/// in declaration order. A node without one is skipped rather than drawn at
+/// the origin.
+pub fn placed_nodes(nodes: &[GraphNode], positions: &[[f32; 2]]) -> Vec<(usize, [f64; 2])> {
+    positions
+        .iter()
+        .take(nodes.len())
+        .enumerate()
+        .filter_map(|(index, position)| plot_point(position).map(|point| (index, point)))
+        .collect()
+}
+
+/// Every edge whose two ends are both placed, as `(from, to)` plot points. An
+/// edge needs both ends, so one reaching an unplaced node is dropped.
+pub fn plotted_edges(edges: &[GraphEdge], placed: &[(usize, [f64; 2])]) -> Vec<([f64; 2], [f64; 2])> {
+    let at = |index: u32| {
+        placed
+            .binary_search_by_key(&(index as usize), |&(node, _)| node)
+            .ok()
+            .map(|found| placed[found].1)
+    };
+    edges
+        .iter()
+        .filter_map(|edge| Some((at(edge.source)?, at(edge.target)?)))
+        .collect()
+}
+
+/// The node `selected` names, if any.
+pub fn selected_node<'a>(nodes: &'a [GraphNode], selected: Option<&str>) -> Option<(usize, &'a GraphNode)> {
+    let id = selected?;
+    nodes.iter().enumerate().find(|(_, node)| node.id == id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,5 +312,49 @@ mod tests {
         assert_eq!(encoded["algorithm"], serde_json::json!("force"));
         assert_eq!(encoded["params"]["rank_sep"], serde_json::json!(2.0));
         assert_eq!(encoded["group_by"], serde_json::json!("sort"));
+    }
+
+    fn edge(source: u32, target: u32) -> GraphEdge {
+        GraphEdge { source, target, kind: String::new(), weight: 1.0, rest_length: 1.0 }
+    }
+
+    #[test]
+    fn node_radius_clamps_to_the_plot_bounds() {
+        assert_eq!(node_radius(0.5), MIN_NODE_RADIUS);
+        assert_eq!(node_radius(4.0), 4.0);
+        assert_eq!(node_radius(50.0), MAX_NODE_RADIUS);
+    }
+
+    #[test]
+    fn placed_nodes_scale_to_the_plot_and_skip_unusable_positions() {
+        let nodes = [node("a", "x"), node("b", "x"), node("c", "x"), node("d", "x")];
+        let positions = [[0.25, 0.5], [f32::NAN, 0.1], [1.0, 0.0]];
+
+        assert_eq!(
+            placed_nodes(&nodes, &positions),
+            vec![(0, [25.0, 50.0]), (2, [100.0, 0.0])],
+            "node 1 is not finite and node 3 has no position"
+        );
+    }
+
+    #[test]
+    fn plotted_edges_need_both_ends_placed() {
+        let nodes = [node("a", "x"), node("b", "x"), node("c", "x")];
+        let positions = [[0.0, 0.0], [f32::INFINITY, 0.0], [0.5, 0.5]];
+        let placed = placed_nodes(&nodes, &positions);
+
+        assert_eq!(
+            plotted_edges(&[edge(0, 2), edge(0, 1), edge(2, 9)], &placed),
+            vec![([0.0, 0.0], [50.0, 50.0])]
+        );
+    }
+
+    #[test]
+    fn selected_node_names_the_node_by_id() {
+        let nodes = [node("a", "x"), node("b", "x")];
+
+        assert_eq!(selected_node(&nodes, Some("b")).map(|(index, _)| index), Some(1));
+        assert!(selected_node(&nodes, Some("zz")).is_none());
+        assert!(selected_node(&nodes, None).is_none());
     }
 }

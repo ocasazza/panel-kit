@@ -4593,6 +4593,7 @@ dependencies = [
  "jump-cannon-graph-view",
  "panel-kit-core",
  "panel-kit-grammar",
+ "panel-kit-graph-layout",
  "panel-kit-tui",
  "parking_lot",
  "ratatui",
@@ -4612,6 +4613,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "panel-kit-core",
+ "panel-kit-graph-layout",
  "serde",
  "ttf-parser 0.21.1",
 ]
@@ -4644,11 +4646,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "panel-kit-graph-layout"
+version = "0.1.0"
+dependencies = [
+ "graph-layouts",
+ "panel-kit-core",
+ "wgpu 23.0.1",
+]
+
+[[package]]
 name = "panel-kit-tui"
 version = "1.2.0"
 dependencies = [
  "crossterm",
  "panel-kit-core",
+ "panel-kit-graph-layout",
  "ratatui",
  "ratzilla",
  "serde",
