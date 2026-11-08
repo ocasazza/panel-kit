@@ -89,7 +89,7 @@ pub(super) fn look(mode: RibbonMode, width: f32, rem: f32) -> Look {
 
 /// `--tag-N` and its ink: slot 0 is set in `--color-text`, the rest in
 /// `--color-inverse-text`.
-fn slot_colors(slot: u32, text: Color, inverse: Color) -> (Color, Color) {
+pub(super) fn slot_colors(slot: u32, text: Color, inverse: Color) -> (Color, Color) {
     let [r, g, b] = FILLS[slot as usize % FILLS.len()];
     (
         Color::srgb_u8(r, g, b),

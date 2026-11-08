@@ -6,7 +6,8 @@
 //! [`TableEvent::apply`]. This module paints the `.pk-dt` toolbar, active
 //! filter chips, filter row, header and body to the web stylesheet's
 //! geometry, and translates clicks, wheel and keyboard input into those
-//! events. COPY and CSV emit [`DataTableExport`] for the host.
+//! events. COPY, Ctrl/Cmd-C and CSV emit [`DataTableExport`] for the host;
+//! detail cards paint each tag as a [`TagChip`].
 //!
 //! Submodules: `ribbon` paints each row's tag segments, `columns` runs the
 //! header's drag-to-reorder and edge resize, `keys` routes the grid's
@@ -32,9 +33,9 @@ use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 use panel_kit_core::widgets::data_table::{
-    empty_sentence, export_view, tally, BuildOptions, ColumnFilter, ColumnKind, DataColumnSpec,
-    Density, Entry, ExportFormat, MoveTarget, QueryMode, RibbonMode, SelectMode, Selectable,
-    SortDir, TableData, TableDefaults, TableEvent, TableState, View, ViewMode,
+    empty_sentence, export_view, tag_slot, tally, BuildOptions, ColumnFilter, ColumnKind,
+    DataColumnSpec, Density, Entry, ExportFormat, MoveTarget, QueryMode, RibbonMode, SelectMode,
+    Selectable, SortDir, TableData, TableDefaults, TableEvent, TableState, View, ViewMode,
 };
 use panel_kit_core::widgets::table::{TableCell, TableModel};
 
@@ -85,6 +86,10 @@ const CHIP_GAP: f32 = 4.0;
 const CARD_RADIUS: f32 = 4.0;
 const CARD_META_GAP: f32 = 12.0;
 const CARD_FIELD_GAP: f32 = 4.0;
+/// `.pk-dt-tag-chip`: `0 4px` padding on a 14px line (12px compact density).
+const TAG_CHIP_PAD_X: f32 = 4.0;
+const TAG_CHIP_LINE: f32 = 14.0;
+const TAG_CHIP_LINE_COMPACT: f32 = 12.0;
 /// `.pk-dt-empty .pk-btn` margin.
 const EMPTY_BUTTON_GAP: f32 = 8.0;
 
@@ -211,6 +216,18 @@ pub struct TableRows;
 struct RowMark {
     table: Entity,
     id: String,
+}
+
+/// A `.pk-dt-tag-chip` on a detail card: the tag and its colour slot.
+/// Not a control: a press falls through to the row's own click.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct TagChip {
+    /// The row the chip sits on.
+    pub row: String,
+    /// The tag.
+    pub tag: String,
+    /// The `--tag-N` slot.
+    pub slot: u32,
 }
 
 /// One table's core state and the text being typed into its fields.
@@ -1845,6 +1862,42 @@ impl Paint<'_> {
                         });
                     }
                 });
+                let labels: Vec<String> = self.instance.data.tags(row).map(str::to_owned).collect();
+                if !labels.is_empty() {
+                    let line = if tight { TAG_CHIP_LINE_COMPACT } else { TAG_CHIP_LINE };
+                    card.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(CHIP_GAP),
+                        height: Val::Px(line),
+                        flex_shrink: 0.0,
+                        overflow: Overflow::clip(),
+                        ..default()
+                    })
+                    .with_children(|tags| {
+                        for tag in &labels {
+                            let slot = tag_slot(tag);
+                            let (fill, ink) = ribbon::slot_colors(slot, theme.text, theme.inverse_text);
+                            let style = TextStyle {
+                                size: BTN_SIZE,
+                                line_height: line / BTN_SIZE,
+                                ..self.body()
+                            }
+                            .color(ink);
+                            tags.spawn((
+                                Node {
+                                    flex_shrink: 0.0,
+                                    padding: UiRect::axes(Val::Px(TAG_CHIP_PAD_X), Val::Px(0.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(fill),
+                                TagChip { row: id.clone(), tag: tag.clone(), slot },
+                            ))
+                            .with_children(|chip| {
+                                styled_text(chip, tag.clone(), style);
+                            });
+                        }
+                    });
+                }
             });
         });
     }
@@ -2001,5 +2054,83 @@ mod tests {
         let cell = world.get::<Node>(parent.0).expect("cell node");
         assert_eq!(cell.padding.left, Val::Px(dt_pad(Density::Normal).0));
         assert_eq!(cell.padding.top, Val::Px(dt_pad(Density::Normal).1));
+    }
+
+    fn cards(view: ViewMode, density: Density, rows: &[(&str, &[&str])]) -> (App, Entity) {
+        let mut table = DataTable::new(tagged(rows));
+        table.defaults.view = view;
+        table.defaults.density = density;
+        table.defaults.selectable = Selectable::Multi;
+        app_with(table)
+    }
+
+    fn chips(app: &mut App) -> Vec<(TagChip, Color)> {
+        let world = app.world_mut();
+        let mut query = world.query::<(&TagChip, &BackgroundColor)>();
+        let mut found: Vec<_> = query.iter(world).map(|(chip, fill)| (chip.clone(), fill.0)).collect();
+        found.sort_by(|a, b| (&a.0.row, &a.0.tag).cmp(&(&b.0.row, &b.0.tag)));
+        found
+    }
+
+    #[test]
+    fn detail_cards_paint_a_chip_per_tag_in_its_slot_colour() {
+        let (mut app, _) = cards(
+            ViewMode::DetailCards,
+            Density::Normal,
+            &[("a", &["alpha", "beta"]), ("b", &[]), ("c", &["gamma"])],
+        );
+        let theme = BevyTheme::default();
+        let found = chips(&mut app);
+        let seen: Vec<_> = found.iter().map(|(chip, _)| (chip.row.as_str(), chip.tag.as_str())).collect();
+        assert_eq!(seen, [("a", "alpha"), ("a", "beta"), ("c", "gamma")], "an untagged row has no chips");
+        for (chip, fill) in &found {
+            assert_eq!(chip.slot, tag_slot(&chip.tag));
+            assert_eq!(*fill, ribbon::slot_colors(chip.slot, theme.text, theme.inverse_text).0, "{}", chip.tag);
+        }
+        let world = app.world_mut();
+        let mut texts = world.query::<(&Text, &TextColor, &TextFont)>();
+        for (chip, _) in &found {
+            let (_, color, font) = texts
+                .iter(world)
+                .find(|(text, ..)| text.0 == chip.tag)
+                .expect("the tag is painted");
+            assert_eq!(color.0, ribbon::slot_colors(chip.slot, theme.text, theme.inverse_text).1, "{}", chip.tag);
+            assert_eq!(font.font_size, BTN_SIZE);
+        }
+    }
+
+    #[test]
+    fn a_chip_is_a_padded_box_in_a_14px_strip_and_12px_when_compact() {
+        for (density, strip) in [(Density::Normal, 14.0), (Density::Compact, 12.0)] {
+            let (mut app, _) = cards(ViewMode::DetailCards, density, &[("a", &["alpha"])]);
+            let world = app.world_mut();
+            let mut query = world.query::<(&TagChip, &Node, &ChildOf)>();
+            let (_, node, parent) = query.iter(world).next().expect("a chip");
+            assert_eq!(node.padding, UiRect::axes(Val::Px(4.0), Val::Px(0.0)));
+            let tags = world.get::<Node>(parent.0).expect("the tag strip");
+            assert_eq!(tags.height, Val::Px(strip), "{density:?}");
+            assert_eq!(tags.column_gap, Val::Px(4.0));
+        }
+    }
+
+    #[test]
+    fn only_detail_cards_carry_chips() {
+        for view in [ViewMode::Rows, ViewMode::CompactCards] {
+            let (mut app, _) = cards(view, Density::Normal, &[("a", &["alpha"])]);
+            assert_eq!(chips(&mut app), Vec::new(), "{view:?}");
+        }
+    }
+
+    #[test]
+    fn a_chip_is_not_a_control_and_the_card_press_selects_the_row() {
+        let (mut app, table) = cards(ViewMode::DetailCards, Density::Normal, &[("a", &["alpha"]), ("b", &["beta"])]);
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<Entity, (With<TagChip>, With<TableControl>)>();
+        assert_eq!(query.iter(world).count(), 0, "a chip has no click of its own");
+        press(&mut app, table, |action| matches!(action, Action::Row(id) if id == "b"));
+        with_instance(&app, table, |instance| {
+            assert_eq!(instance.state.cursor.as_deref(), Some("b"));
+            assert!(instance.state.selection.contains("b"));
+        });
     }
 }

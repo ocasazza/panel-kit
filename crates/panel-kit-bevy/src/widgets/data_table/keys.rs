@@ -4,14 +4,18 @@
 //! move core's cursor, space and Enter select it, ctrl-A selects every row,
 //! escape clears, and `t` walks the cursor row's tag segments. Every one ends
 //! in a `TableEvent`; core moves the cursor, the selection and the window.
+//! Ctrl/Cmd-C emits the TSV of the selected rows (every shown row when none
+//! is selected) as a `DataTableExport`, as the COPY button does.
 
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
-use panel_kit_core::widgets::data_table::{SelectMode, TableEvent, TableKey, TableState, DEFAULT_PAGE};
+use panel_kit_core::widgets::data_table::{
+    ExportFormat, SelectMode, TableEvent, TableKey, TableState, DEFAULT_PAGE,
+};
 
-use super::{Paint, TableControl, TableFocus, TableRows, Tables};
+use super::{DataTableExport, Paint, TableControl, TableFocus, TableRows, Tables};
 
 /// The table keys go to: the one last pressed, or none after a press away
 /// from every table.
@@ -130,6 +134,7 @@ pub(super) fn navigate_rows(
     typing: Res<TableFocus>,
     buttons: Res<ButtonInput<KeyCode>>,
     mut input: EventReader<KeyboardInput>,
+    mut exports: EventWriter<DataTableExport>,
     rows: Query<(&ComputedNode, &TableControl), With<TableRows>>,
 ) {
     let Some(table) = grid.0 else {
@@ -170,6 +175,14 @@ pub(super) fn navigate_rows(
                 .map(|at| instance.data.tags(at).map(str::to_owned).collect())
                 .unwrap_or_default()
         };
+        if mods.ctrl && matches!(&key.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("c")) {
+            exports.write(DataTableExport {
+                table,
+                format: ExportFormat::Tsv,
+                text: instance.export(ExportFormat::Tsv),
+            });
+            continue;
+        }
         let page = page_rows(visible, row_height);
         let Some(event) = translate(&key.logical_key, mods, &instance.state, labels_of, page) else {
             continue;
@@ -488,6 +501,70 @@ mod navigation {
         hold_key(&mut app, KeyCode::ControlLeft);
         key(&mut app, Key::Character("a".into()));
         assert_eq!(selection(&app, table).len(), 4);
+    }
+
+    fn exports(app: &App) -> Vec<DataTableExport> {
+        app.world()
+            .resource::<Events<DataTableExport>>()
+            .iter_current_update_events()
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn ctrl_c_exports_the_selected_rows_as_tsv() {
+        let (mut app, table) = app_with(table(10, Selectable::Multi));
+        focus_row(&mut app, table, "r001");
+        hold_key(&mut app, KeyCode::ShiftLeft);
+        key(&mut app, Key::ArrowDown);
+        release_key(&mut app, KeyCode::ShiftLeft);
+        hold_key(&mut app, KeyCode::ControlLeft);
+        key(&mut app, Key::Character("c".into()));
+        let sent = exports(&app);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].table, table);
+        assert_eq!(sent[0].format, ExportFormat::Tsv);
+        assert_eq!(sent[0].text, "node\tdetail\nr001\tx\nr002\tx");
+    }
+
+    #[test]
+    fn cmd_c_and_a_capital_c_copy_too() {
+        let (mut app, table) = app_with(table(3, Selectable::Multi));
+        focus_row(&mut app, table, "r000");
+        hold_key(&mut app, KeyCode::SuperLeft);
+        key(&mut app, Key::Character("C".into()));
+        assert_eq!(exports(&app).len(), 1);
+    }
+
+    #[test]
+    fn ctrl_c_without_a_selection_exports_every_shown_row() {
+        let (mut app, table) = app_with(table(3, Selectable::Multi));
+        focus_row(&mut app, table, "r000");
+        key(&mut app, Key::Escape);
+        assert_eq!(selection(&app, table), Vec::<String>::new());
+        hold_key(&mut app, KeyCode::ControlLeft);
+        key(&mut app, Key::Character("c".into()));
+        let sent = exports(&app);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].text, "node\tdetail\nr000\tx\nr001\tx\nr002\tx");
+    }
+
+    #[test]
+    fn a_plain_c_does_not_copy() {
+        let (mut app, table) = app_with(table(3, Selectable::Multi));
+        focus_row(&mut app, table, "r000");
+        key(&mut app, Key::Character("c".into()));
+        assert!(exports(&app).is_empty());
+    }
+
+    #[test]
+    fn ctrl_c_while_typing_in_a_field_copies_nothing() {
+        let (mut app, table) = app_with(table(3, Selectable::Multi));
+        focus_row(&mut app, table, "r000");
+        press(&mut app, table, |a| matches!(a, Action::Focus(Field::Quick)));
+        hold_key(&mut app, KeyCode::ControlLeft);
+        key(&mut app, Key::Character("c".into()));
+        assert!(exports(&app).is_empty());
     }
 
     #[test]
