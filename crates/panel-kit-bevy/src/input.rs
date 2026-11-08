@@ -8,7 +8,8 @@ use bevy::input::keyboard::{Key as BevyKey, KeyCode, KeyboardInput};
 use bevy::input::mouse::{MouseButton, MouseButtonInput, MouseScrollUnit, MouseWheel};
 use bevy::input::ButtonState;
 use bevy::prelude::*;
-use bevy::window::{CursorLeft, CursorMoved, WindowResized};
+use bevy::render::camera::{Camera, RenderTarget};
+use bevy::window::{CursorLeft, CursorMoved, PrimaryWindow, WindowRef, WindowResized};
 
 use panel_kit_core::frame::{
     hit_test, project_into, ChromeProjectionInput, FrameStatus, ProjectionBuffer, ProjectionInput,
@@ -23,6 +24,7 @@ use panel_kit_core::{
     PointerEventKind, SurfaceProfile,
 };
 
+use crate::render::PanelUiTargetCamera;
 use crate::{BevyPanelKey, BevyPanelKit};
 
 /// Projection scratch wrapped for Bevy's `Local` system parameter.
@@ -199,6 +201,32 @@ fn hit_target<K: BevyPanelKey>(
     (frame.status == FrameStatus::Ready).then(|| hit_test(&frame, point))?
 }
 
+/// The window whose events the workspace accepts: `None` accepts every window
+/// (the single-window behaviour); with a [`PanelUiTargetCamera`] only that
+/// camera's window. A named camera that does not render to a window (not
+/// spawned yet, or rendering to an image) matches no window at all, which
+/// pairs with the renderer drawing such a workspace nowhere.
+fn target_window(
+    target: Option<&PanelUiTargetCamera>,
+    cameras: &Query<&Camera>,
+    primary: &Query<Entity, With<PrimaryWindow>>,
+) -> Option<Entity> {
+    let target = target?;
+    let window = cameras
+        .get(target.0)
+        .ok()
+        .and_then(|camera| match camera.target {
+            RenderTarget::Window(WindowRef::Entity(window)) => Some(window),
+            RenderTarget::Window(WindowRef::Primary) => primary.single().ok(),
+            _ => None,
+        });
+    Some(window.unwrap_or(Entity::PLACEHOLDER))
+}
+
+fn accepts(target: Option<Entity>, window: Entity) -> bool {
+    target.is_none_or(|target| target == window)
+}
+
 /// Reduce one event while keeping all unit metrics in core's context shape.
 fn reduce_event<K: BevyPanelKey>(
     kit: &mut BevyPanelKit<K>,
@@ -232,6 +260,9 @@ fn reduce_event<K: BevyPanelKey>(
 pub fn pointer_input_system<K: BevyPanelKey>(
     mut kit: ResMut<BevyPanelKit<K>>,
     windows: Query<&Window>,
+    target: Option<Res<PanelUiTargetCamera>>,
+    cameras: Query<&Camera>,
+    primary: Query<Entity, With<PrimaryWindow>>,
     mut cursors: EventReader<CursorMoved>,
     mut left: EventReader<CursorLeft>,
     mut buttons: EventReader<MouseButtonInput>,
@@ -239,7 +270,11 @@ pub fn pointer_input_system<K: BevyPanelKey>(
     mut scratch: Local<InputScratch<K>>,
     mut dragging: Local<bool>,
 ) {
+    let accepted = target_window(target.as_deref(), &cameras, &primary);
     for event in buttons.read() {
+        if !accepts(accepted, event.window) {
+            continue;
+        }
         let Ok(window) = windows.get(event.window) else {
             continue;
         };
@@ -312,7 +347,7 @@ pub fn pointer_input_system<K: BevyPanelKey>(
     }
 
     for event in cursors.read() {
-        if !*dragging {
+        if !*dragging || !accepts(accepted, event.window) {
             continue;
         }
         let point = (event.position.x as f64, event.position.y as f64);
@@ -333,7 +368,7 @@ pub fn pointer_input_system<K: BevyPanelKey>(
         );
     }
 
-    if left.read().count() > 0 && *dragging {
+    if left.read().any(|event| accepts(accepted, event.window)) && *dragging {
         reduce_event(
             &mut kit,
             WorkspaceEvent::Pointer {
@@ -348,6 +383,9 @@ pub fn pointer_input_system<K: BevyPanelKey>(
     }
 
     for event in wheels.read() {
+        if !accepts(accepted, event.window) {
+            continue;
+        }
         let Ok(window) = windows.get(event.window) else {
             continue;
         };
@@ -383,10 +421,17 @@ pub fn pointer_input_system<K: BevyPanelKey>(
 /// commands through [`reduce`].
 pub fn keyboard_input_system<K: BevyPanelKey>(
     mut kit: ResMut<BevyPanelKit<K>>,
+    target: Option<Res<PanelUiTargetCamera>>,
+    cameras: Query<&Camera>,
+    primary: Query<Entity, With<PrimaryWindow>>,
     mut keys: EventReader<KeyboardInput>,
     mut modifiers: Local<ModifierState>,
 ) {
+    let accepted = target_window(target.as_deref(), &cameras, &primary);
     for event in keys.read() {
+        if !accepts(accepted, event.window) {
+            continue;
+        }
         modifiers.observe(event);
         if event.repeat {
             continue;
@@ -410,9 +455,16 @@ pub fn keyboard_input_system<K: BevyPanelKey>(
 /// against the new viewport.
 pub fn resize_input_system<K: BevyPanelKey>(
     mut kit: ResMut<BevyPanelKit<K>>,
+    target: Option<Res<PanelUiTargetCamera>>,
+    cameras: Query<&Camera>,
+    primary: Query<Entity, With<PrimaryWindow>>,
     mut resized: EventReader<WindowResized>,
 ) {
+    let accepted = target_window(target.as_deref(), &cameras, &primary);
     for event in resized.read() {
+        if !accepts(accepted, event.window) {
+            continue;
+        }
         if !event.width.is_finite()
             || !event.height.is_finite()
             || event.width <= 0.0
@@ -535,6 +587,93 @@ mod tests {
 
         let kit = app.world().resource::<BevyPanelKit<TestPanel>>();
         assert_eq!(kit.snapshot.focused, Some(TestPanel::A));
+    }
+
+    #[test]
+    fn a_target_camera_that_is_not_a_window_camera_accepts_no_window() {
+        let (mut app, window) = app_with_kit();
+        app.insert_resource(PanelUiTargetCamera(Entity::PLACEHOLDER));
+        set_cursor(&mut app, window, Vec2::new(100.0, 50.0));
+        send_mouse(&mut app, window, ButtonState::Pressed);
+        app.update();
+        let kit = app.world().resource::<BevyPanelKit<TestPanel>>();
+        assert_eq!(kit.snapshot.focused, None);
+    }
+
+    #[test]
+    fn with_a_target_camera_only_its_window_drives_the_workspace() {
+        let (mut app, window) = app_with_kit();
+        let other = app
+            .world_mut()
+            .spawn(Window {
+                resolution: (1280.0, 800.0).into(),
+                ..default()
+            })
+            .id();
+        let camera = app
+            .world_mut()
+            .spawn(Camera {
+                target: RenderTarget::Window(WindowRef::Entity(window)),
+                ..default()
+            })
+            .id();
+        app.insert_resource(PanelUiTargetCamera(camera));
+
+        set_cursor(&mut app, other, Vec2::new(100.0, 50.0));
+        send_mouse(&mut app, other, ButtonState::Pressed);
+        app.update();
+        let kit = app.world().resource::<BevyPanelKit<TestPanel>>();
+        assert_eq!(
+            kit.snapshot.focused, None,
+            "a press in another window is ignored"
+        );
+
+        set_cursor(&mut app, window, Vec2::new(100.0, 50.0));
+        send_mouse(&mut app, window, ButtonState::Pressed);
+        app.update();
+        let kit = app.world().resource::<BevyPanelKit<TestPanel>>();
+        assert_eq!(kit.snapshot.focused, Some(TestPanel::A));
+    }
+
+    #[test]
+    fn with_a_target_camera_only_its_window_resizes_the_viewport() {
+        let (mut app, window) = app_with_kit();
+        let other = app.world_mut().spawn_empty().id();
+        let camera = app
+            .world_mut()
+            .spawn(Camera {
+                target: RenderTarget::Window(WindowRef::Entity(window)),
+                ..default()
+            })
+            .id();
+        app.insert_resource(PanelUiTargetCamera(camera));
+        let resize = |window, width, height| WindowResized {
+            window,
+            width,
+            height,
+        };
+
+        app.world_mut()
+            .resource_mut::<Events<WindowResized>>()
+            .send(resize(other, 300.0, 200.0));
+        app.update();
+        let viewport = app
+            .world()
+            .resource::<BevyPanelKit<TestPanel>>()
+            .snapshot
+            .viewport;
+        assert_eq!((viewport.width, viewport.height), (1280.0, 800.0));
+
+        app.world_mut()
+            .resource_mut::<Events<WindowResized>>()
+            .send(resize(window, 640.0, 360.0));
+        app.update();
+        let viewport = app
+            .world()
+            .resource::<BevyPanelKit<TestPanel>>()
+            .snapshot
+            .viewport;
+        assert_eq!((viewport.width, viewport.height), (640.0, 360.0));
     }
 
     #[test]
