@@ -25,7 +25,10 @@
 //! stable set of `bevy_ui` entities — panel nodes ([`PanelFrame`]), chrome
 //! headers ([`PanelChrome`]), body slots ([`PanelBody`]), and the minimized
 //! dock ([`MinimizedDock`], [`DockChip`]). Register it with
-//! [`PanelUiPlugin`] or add the system directly.
+//! [`PanelUiPlugin`] or add the system directly. A host with several windows
+//! inserts [`PanelUiTargetCamera`] naming the camera of the workspace's
+//! window; the UI renders through that camera and the input systems accept
+//! that window's events only.
 //!
 //! Construct it once per Bevy app:
 //!
@@ -80,6 +83,7 @@ pub use input::{
 pub use persist::{restore_layout, save_layout, FileLayoutStore};
 pub use render::{
     render_workspace, DockChip, PanelBackdrop, PanelBodyHandles, PanelFrame, PanelUiPlugin,
+    PanelUiTargetCamera,
 };
 pub use theme::BevyTheme;
 

@@ -33,6 +33,7 @@ use bevy::ecs::world::FromWorld;
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::ui::UiTargetCamera;
 
 use panel_kit_core::frame::{
     project_into, ChromeProjectionInput, PanelProjection, ProjectionBuffer, ProjectionInput,
@@ -91,6 +92,18 @@ impl Default for PanelBackdrop {
         Self(Some(BevyTheme::default().background))
     }
 }
+
+/// The camera the workspace UI renders through.
+///
+/// Without it the root node follows Bevy's default UI camera, which is right
+/// for a single-window app. A host with several windows names the camera of
+/// the window the workspace belongs to; the renderer attaches
+/// [`UiTargetCamera`] to the workspace root (descendants inherit it) and the
+/// input systems accept events from that camera's window only. Naming an
+/// entity that is not a window camera yet (`Entity::PLACEHOLDER` until the
+/// camera spawns) draws the workspace nowhere and accepts no input.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PanelUiTargetCamera(pub Entity);
 
 /// Stable access to each panel's [`PanelBody`] entity.
 ///
@@ -363,6 +376,7 @@ pub fn render_workspace<K: BevyPanelKey>(
     kit: Res<BevyPanelKit<K>>,
     theme: Res<BevyTheme>,
     backdrop: Option<Res<PanelBackdrop>>,
+    target: Option<Res<PanelUiTargetCamera>>,
     mut scratch: Local<ProjectionScratch<K>>,
     mut commands: Commands,
     mut shell: Query<
@@ -452,7 +466,8 @@ pub fn render_workspace<K: BevyPanelKey>(
         ),
     >,
 ) {
-    if !kit.is_changed() && !theme.is_changed() {
+    let target_changed = target.as_ref().is_some_and(|target| target.is_changed());
+    if !kit.is_changed() && !theme.is_changed() && !target_changed {
         return;
     }
 
@@ -527,6 +542,11 @@ pub fn render_workspace<K: BevyPanelKey>(
                     background.0 = color;
                 }
             }
+            if target_changed {
+                if let Some(target) = target.as_ref() {
+                    commands.entity(root).insert(UiTargetCamera(target.0));
+                }
+            }
             (root, workspace_entity, dock_entity)
         }
         None => {
@@ -540,6 +560,9 @@ pub fn render_workspace<K: BevyPanelKey>(
                     },
                 ))
                 .id();
+            if let Some(target) = target.as_ref() {
+                commands.entity(root).insert(UiTargetCamera(target.0));
+            }
             let workspace = commands
                 .spawn((
                     WorkspaceNode,
@@ -1017,6 +1040,36 @@ mod tests {
         assert_eq!(chips.iter(&world).count(), 0);
         let mut docks = world.query_filtered::<Entity, With<MinimizedDock>>();
         assert_eq!(docks.iter(&world).count(), 1);
+    }
+
+    #[test]
+    fn root_renders_through_the_named_camera_and_follows_a_change() {
+        let (kit, _) = two_floating();
+        let (mut world, mut schedule) = seeded_world(kit);
+        let first = world.spawn_empty().id();
+        let second = world.spawn_empty().id();
+        world.insert_resource(PanelUiTargetCamera(first));
+        schedule.run(&mut world);
+
+        let mut roots = world.query_filtered::<&UiTargetCamera, With<WorkspaceRoot>>();
+        assert_eq!(roots.single(&world).map(|t| t.0).ok(), Some(first));
+        // Only the root carries the target; descendants inherit it.
+        let mut targeted = world.query_filtered::<Entity, With<UiTargetCamera>>();
+        assert_eq!(targeted.iter(&world).count(), 1);
+
+        world.insert_resource(PanelUiTargetCamera(second));
+        schedule.run(&mut world);
+        let mut roots = world.query_filtered::<&UiTargetCamera, With<WorkspaceRoot>>();
+        assert_eq!(roots.single(&world).map(|t| t.0).ok(), Some(second));
+    }
+
+    #[test]
+    fn root_without_a_target_follows_the_default_ui_camera() {
+        let (kit, _) = two_floating();
+        let (mut world, mut schedule) = seeded_world(kit);
+        schedule.run(&mut world);
+        let mut targeted = world.query_filtered::<Entity, With<UiTargetCamera>>();
+        assert_eq!(targeted.iter(&world).count(), 0);
     }
 
     #[test]
