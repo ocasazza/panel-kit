@@ -1,0 +1,58 @@
+# Visual parity gate (web ↔ Bevy) on a hosted macOS arm64 runner: the
+# dev shell supplies the toolchain, the wasm canary build, and the canary
+# spec; Chrome and the GPU come from the runner image.
+name: parity
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      - uses: DeterminateSystems/flakehub-cache-action@f00fba8dc0949d63cbbb7d33da7912417d588d75 # v3.24.2
+
+      - name: Cache cargo target and registries
+        uses: actions/cache@0c907a75c2c80ebcb7f088228285e798b750cf8f # v4.2.1
+        with:
+          path: |
+            target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'flake.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Test the workspace
+        run: nix develop -c cargo test --workspace --no-fail-fast
+
+      # The dev shell sets PANEL_KIT_WORKSPACE_SPEC and wasm-bindgen; Chrome is
+      # found at the hosted image's /Applications path (PANEL_KIT_CHROME to
+      # override).
+      - name: Visual parity check
+        run: nix develop -c cargo run -p visual-parity -- check target/visual-parity
+
+      - name: Upload the parity report and images
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        with:
+          name: visual-parity
+          if-no-files-found: warn
+          path: |
+            target/visual-parity/report.md
+            target/visual-parity/web.png
+            target/visual-parity/bevy.png
+            target/visual-parity/*-side.png

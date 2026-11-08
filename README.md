@@ -357,6 +357,11 @@ The comparator's own tests run with the workspace suite. The capture needs a
 GPU and a local Chrome (`PANEL_KIT_CHROME` overrides the lookup), so it is
 not a Nix sandbox check: run it before merging Bevy or web chrome changes.
 
+CI runs the workspace tests and this check on every pull request and push to
+main, on a hosted macOS arm64 runner (`.github/workflows/parity.yml`); the
+`visual-parity` artifact carries `report.md`, `web.png`, `bevy.png` and the
+`*-side.png` images, including when the run fails.
+
 ### Topos demos (web, terminal, browser terminal)
 
 The same physics base, two regimes, and two grammars drive all three hosts.
