@@ -7,7 +7,7 @@
 mod workspace_canary;
 
 use bevy::prelude::*;
-use panel_kit_bevy::widgets::graph::GraphNodeDot;
+use panel_kit_bevy::widgets::graph::{GraphNodeDot, GraphSelectionRing};
 use panel_kit_bevy::BevyTheme;
 use panel_kit_core::badge::display_label;
 use panel_kit_core::spec::{BackendKind, ResolvedWorkspace, WorkspaceSpec};
@@ -29,6 +29,15 @@ fn resolved() -> ResolvedWorkspace {
 /// Paint one body into a fresh world; return every text it spawned and the
 /// world for further queries.
 fn paint(theme: &BevyTheme, binding: &str, content: &ContentSpec) -> (Vec<String>, App) {
+    paint_with(theme, binding, content, CanaryData::default())
+}
+
+fn paint_with(
+    theme: &BevyTheme,
+    binding: &str,
+    content: &ContentSpec,
+    data: CanaryData,
+) -> (Vec<String>, App) {
     let mut app = App::new();
     app.add_event::<bevy::input::keyboard::KeyboardInput>()
         .add_event::<bevy::input::mouse::MouseWheel>()
@@ -38,13 +47,13 @@ fn paint(theme: &BevyTheme, binding: &str, content: &ContentSpec) -> (Vec<String
     let root = app.world_mut().spawn(Node::default()).id();
     let (theme, binding, content) = (theme.clone(), binding.to_owned(), content.clone());
     app.add_systems(Startup, move |mut commands: Commands| {
-        let data = CanaryData::default();
+        let data = &data;
         let facts = WorkspaceFacts {
             title: "Workspace",
             maximized: false,
         };
         commands.entity(root).with_children(|parent| {
-            workspace_canary::paint(parent, &theme, &data, facts, &binding, &content);
+            workspace_canary::paint(parent, &theme, data, facts, &binding, &content);
         });
     });
     app.update();
@@ -167,4 +176,26 @@ fn theme_swatches_follow_the_active_theme() {
             .collect();
         assert_eq!(painted, expected);
     }
+}
+
+#[test]
+fn the_canary_graph_rings_only_the_node_the_host_selected() {
+    let theme = BevyTheme::default();
+    let panel = resolved()
+        .panels
+        .into_iter()
+        .find(|panel| panel.content.binding_id() == Some("canary.graph"))
+        .expect("the canary has a graph panel");
+    let rings = |app: &mut App| app.world_mut().query::<&GraphSelectionRing>().iter(app.world()).count();
+
+    let (_, mut none) = paint(&theme, "canary.graph", &panel.content);
+    assert_eq!(rings(&mut none), 0, "nothing is selected until a node is pressed");
+
+    let first = workspace_canary::canary_graph().nodes[0].id.clone();
+    let data = CanaryData {
+        graph_selected: Some(first),
+        ..CanaryData::default()
+    };
+    let (_, mut selected) = paint_with(&theme, "canary.graph", &panel.content, data);
+    assert_eq!(rings(&mut selected), 1);
 }

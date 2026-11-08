@@ -32,7 +32,7 @@ use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{ExitCondition, PrimaryWindow, WindowPlugin};
 
 use panel_kit_bevy::fonts::{install_theme_font, BOLD_FONT};
-use panel_kit_bevy::widgets::graph::GraphPlugin;
+use panel_kit_bevy::widgets::graph::{GraphPlugin, GraphSelectEvent};
 use panel_kit_bevy::widgets::scroll::ScrollPlugin;
 use panel_kit_bevy::widgets::data_table::DataTableExport;
 use panel_kit_bevy::widgets::time_series::TimeSeriesPlugin;
@@ -164,6 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 fit_to_window,
                 tick_canary,
                 demo_keys,
+                select_graph_node,
                 save_on_change,
                 paint_dock_controls,
                 press_dock_controls.before(save_on_change),
@@ -317,6 +318,18 @@ fn tick_canary(
     if capture.is_none() && timer.0.tick(time.delta()).just_finished() {
         data.tick();
         bodies.repaint_live = true;
+    }
+}
+
+/// The host owns the graph selection: keep the pressed node and repaint.
+fn select_graph_node(
+    mut pressed: EventReader<GraphSelectEvent>,
+    mut data: ResMut<CanaryData>,
+    mut bodies: ResMut<CanaryBodies>,
+) {
+    if let Some(event) = pressed.read().last() {
+        data.graph_selected = Some(event.node.clone());
+        bodies.repaint_all = true;
     }
 }
 

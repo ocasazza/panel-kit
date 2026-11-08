@@ -34,6 +34,8 @@ pub struct CanaryData {
     pub badges: Vec<BadgeSpec>,
     pub paper: bool,
     pub tick: u64,
+    /// The graph node the host selected; none until one is pressed.
+    pub graph_selected: Option<String>,
 }
 
 impl Default for CanaryData {
@@ -43,6 +45,7 @@ impl Default for CanaryData {
             badges: demo_badges(),
             paper: false,
             tick: 0,
+            graph_selected: None,
         }
     }
 }
@@ -87,7 +90,13 @@ pub fn paint(
         "canary.flame" => flamegraph::spawn(parent, theme, &data.metrics.flame()),
         "canary.graph" => match content_spec {
             ContentSpec::External { layout, .. } => {
-                graph::spawn_solved(parent, theme, &canary_graph(), layout, None);
+                graph::spawn_solved(
+                    parent,
+                    theme,
+                    &canary_graph(),
+                    layout,
+                    data.graph_selected.as_deref(),
+                );
             }
             _ => content::spawn(parent, theme, content_spec),
         },

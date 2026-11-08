@@ -60,6 +60,24 @@ pub struct GraphSelectionRing;
 #[derive(Component)]
 pub struct GraphNodeLabel;
 
+/// Which graph and node a dot selects when pressed.
+#[derive(Component, Clone, Debug)]
+struct GraphNodeTarget {
+    graph: Entity,
+    id: String,
+}
+
+/// A node was pressed. The host owns the selection, as on the web and in the
+/// terminal: repaint the graph with `node` as `selected`. Pressing empty plot
+/// space emits nothing.
+#[derive(Event, Clone, Debug, PartialEq, Eq)]
+pub struct GraphSelectEvent {
+    /// The graph entity [`spawn`] returned.
+    pub graph: Entity,
+    /// The pressed node's id.
+    pub node: String,
+}
+
 /// Solve `model` under `layout` and paint it; the path a host takes when it
 /// owns no positions of its own.
 pub fn spawn_solved(
@@ -68,7 +86,7 @@ pub fn spawn_solved(
     model: &GraphModel,
     layout: &GraphLayout,
     selected: Option<&str>,
-) {
+) -> Option<Entity> {
     let positions = solve_2d(model, layout);
     spawn(
         parent,
@@ -79,11 +97,12 @@ pub fn spawn_solved(
         },
         &positions,
         selected,
-    );
+    )
 }
 
 /// Paint `view` over `positions` (unit square, one per node); `selected` gets
-/// a ring and its label.
+/// a ring and its label. Returns the graph entity [`GraphSelectEvent`] names,
+/// or `None` when there is nothing to draw.
 ///
 /// A node without a usable position is skipped, and an edge needs both ends
 /// placed. A view with no nodes paints the [`notice`] instead of an empty plot.
@@ -93,10 +112,10 @@ pub fn spawn(
     view: GraphView<'_>,
     positions: &[[f32; 2]],
     selected: Option<&str>,
-) {
+) -> Option<Entity> {
     if view.nodes.is_empty() {
         notice(parent, theme, "Empty graph", "The graph has no nodes to draw.");
-        return;
+        return None;
     }
     let placed = placed_nodes(view.nodes, positions);
     let plot = GraphPlot {
@@ -106,78 +125,84 @@ pub fn spawn(
     };
     let selected = selected_node(view.nodes, selected);
 
-    parent
-        .spawn((
-            GraphHost,
+    let mut root = parent.spawn((
+        GraphHost,
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            min_height: Val::Px(theme.metrics.rem(MIN_HEIGHT_REM)),
+            // The SVG viewport clips a node centred on the plot edge.
+            overflow: Overflow::clip(),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(theme.background),
+    ));
+    let graph = root.id();
+    root.with_children(|host| {
+        host.spawn((
+            plot,
             Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                min_height: Val::Px(theme.metrics.rem(MIN_HEIGHT_REM)),
-                // The SVG viewport clips a node centred on the plot edge.
-                overflow: Overflow::clip(),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
+                width: Val::Px(0.0),
+                height: Val::Px(0.0),
+                flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(theme.background),
         ))
-        .with_children(|host| {
-            host.spawn((
-                plot,
+        .with_children(|plot| {
+            plot.spawn((GraphEdgeLayer, fill_plot()));
+            for &(index, at) in &placed {
+                let node = &view.nodes[index];
+                let radius = node_radius(node.size);
+                let (r, g, b) = node.color;
+                plot.spawn((
+                    GraphNodeDot { index },
+                    GraphNodeTarget {
+                        graph,
+                        id: node.id.clone(),
+                    },
+                    Button,
+                    disc(at, radius),
+                    BackgroundColor(Color::srgb_u8(r, g, b)),
+                    BorderRadius::MAX,
+                ));
+            }
+            let Some((index, node)) = selected else {
+                return;
+            };
+            let Some(&(_, at)) = placed.iter().find(|&&(placed, _)| placed == index) else {
+                return;
+            };
+            let radius = node_radius(node.size);
+            // Ring box: stroke centred on `radius + gap`, so its outer
+            // edge sits half a stroke further out.
+            let outer = radius + SELECTION_RING_GAP + RING_STROKE / 2.0;
+            plot.spawn((
+                GraphSelectionRing,
+                disc(at, outer),
+                BorderColor(theme.highlight),
+                BorderRadius::MAX,
+            ));
+            let style = TextStyle::rem(theme, 0.62).color(theme.text).line_height(1.0);
+            let line_box = style.line_box();
+            plot.spawn((
+                GraphNodeLabel,
                 Node {
-                    width: Val::Px(0.0),
-                    height: Val::Px(0.0),
-                    flex_shrink: 0.0,
+                    position_type: PositionType::Absolute,
+                    left: Val::Percent(at[0] as f32 + (outer as f32) + LABEL_GAP),
+                    top: Val::Percent(at[1] as f32),
+                    margin: UiRect::top(Val::Px(-line_box / 2.0)),
+                    height: Val::Px(line_box),
                     ..default()
                 },
             ))
-            .with_children(|plot| {
-                plot.spawn((GraphEdgeLayer, fill_plot()));
-                for &(index, at) in &placed {
-                    let node = &view.nodes[index];
-                    let radius = node_radius(node.size);
-                    let (r, g, b) = node.color;
-                    plot.spawn((
-                        GraphNodeDot { index },
-                        disc(at, radius),
-                        BackgroundColor(Color::srgb_u8(r, g, b)),
-                        BorderRadius::MAX,
-                    ));
-                }
-                let Some((index, node)) = selected else {
-                    return;
-                };
-                let Some(&(_, at)) = placed.iter().find(|&&(placed, _)| placed == index) else {
-                    return;
-                };
-                let radius = node_radius(node.size);
-                // Ring box: stroke centred on `radius + gap`, so its outer
-                // edge sits half a stroke further out.
-                let outer = radius + SELECTION_RING_GAP + RING_STROKE / 2.0;
-                plot.spawn((
-                    GraphSelectionRing,
-                    disc(at, outer),
-                    BorderColor(theme.highlight),
-                    BorderRadius::MAX,
-                ));
-                let style = TextStyle::rem(theme, 0.62).color(theme.text).line_height(1.0);
-                let line_box = style.line_box();
-                plot.spawn((
-                    GraphNodeLabel,
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: Val::Percent(at[0] as f32 + (outer as f32) + LABEL_GAP),
-                        top: Val::Percent(at[1] as f32),
-                        margin: UiRect::top(Val::Px(-line_box / 2.0)),
-                        height: Val::Px(line_box),
-                        ..default()
-                    },
-                ))
-                .with_children(|label| {
-                    styled_text(label, node.label.clone(), style);
-                });
+            .with_children(|label| {
+                styled_text(label, node.label.clone(), style);
             });
         });
+    });
+    Some(graph)
 }
 
 /// The honest body when a graph cannot be drawn: `.pk-graph-notice`, a muted
@@ -222,12 +247,27 @@ fn disc(at: [f64; 2], radius: f64) -> Node {
     }
 }
 
-/// Sizes each graph's plot and paints its edges.
+/// Sizes each graph's plot, paints its edges and emits [`GraphSelectEvent`].
 pub struct GraphPlugin;
 
 impl Plugin for GraphPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (fit_plots, paint_edges).chain());
+        app.add_event::<GraphSelectEvent>()
+            .add_systems(Update, (fit_plots, paint_edges, select_pressed).chain());
+    }
+}
+
+fn select_pressed(
+    dots: Query<(&Interaction, &GraphNodeTarget), Changed<Interaction>>,
+    mut selected: EventWriter<GraphSelectEvent>,
+) {
+    for (interaction, target) in &dots {
+        if *interaction == Interaction::Pressed {
+            selected.write(GraphSelectEvent {
+                graph: target.graph,
+                node: target.id.clone(),
+            });
+        }
     }
 }
 
@@ -372,7 +412,7 @@ mod tests {
                         },
                         positions,
                         selected,
-                    )
+                    );
                 });
             })
             .expect("the graph spawns");
@@ -522,7 +562,7 @@ mod tests {
         world
             .run_system_once(move |mut commands: Commands| {
                 commands.entity(root).with_children(|parent| {
-                    spawn_solved(parent, &theme, &model, &layout, None)
+                    spawn_solved(parent, &theme, &model, &layout, None);
                 });
             })
             .expect("the graph spawns");
@@ -547,5 +587,101 @@ mod tests {
         assert_eq!((plot.width, plot.height), (Val::Px(200.0), Val::Px(200.0)));
         let mut rings = world.query_filtered::<&Node, With<GraphSelectionRing>>();
         assert_eq!(rings.single(&world).expect("one ring").border, UiRect::all(Val::Px(3.0)));
+    }
+
+    /// An app with [`GraphPlugin`] and a spawned graph; returns the graph entity.
+    fn app_with_graph(model: GraphModel) -> (App, Entity) {
+        let theme = theme();
+        let mut app = App::new();
+        app.add_plugins(GraphPlugin);
+        let root = app.world_mut().spawn(Node::default()).id();
+        let graph = app
+            .world_mut()
+            .run_system_once(move |mut commands: Commands| {
+                let mut graph = None;
+                commands.entity(root).with_children(|parent| {
+                    graph = spawn(
+                        parent,
+                        &theme,
+                        GraphView {
+                            nodes: &model.nodes,
+                            edges: &model.edges,
+                        },
+                        &POSITIONS,
+                        None,
+                    );
+                });
+                graph
+            })
+            .expect("the graph spawns")
+            .expect("a graph with nodes returns its entity");
+        (app, graph)
+    }
+
+    fn dot_entity(app: &mut App, index: usize) -> Entity {
+        let world = app.world_mut();
+        let mut query = world.query::<(Entity, &GraphNodeDot)>();
+        query
+            .iter(world)
+            .find(|(_, dot)| dot.index == index)
+            .map(|(entity, _)| entity)
+            .expect("the dot exists")
+    }
+
+    fn set_interaction(app: &mut App, entity: Entity, state: Interaction) {
+        *app.world_mut().get_mut::<Interaction>(entity).expect("a dot carries Interaction") = state;
+        app.update();
+    }
+
+    fn selections(app: &mut App) -> Vec<GraphSelectEvent> {
+        app.world_mut().resource_mut::<Events<GraphSelectEvent>>().drain().collect()
+    }
+
+    #[test]
+    fn pressing_a_node_emits_its_id_for_the_graph() {
+        let (mut app, graph) = app_with_graph(model());
+        let b = dot_entity(&mut app, 1);
+
+        set_interaction(&mut app, b, Interaction::Pressed);
+        assert_eq!(selections(&mut app), vec![GraphSelectEvent { graph, node: "b".into() }]);
+
+        let a = dot_entity(&mut app, 0);
+        set_interaction(&mut app, a, Interaction::Pressed);
+        assert_eq!(selections(&mut app), vec![GraphSelectEvent { graph, node: "a".into() }]);
+    }
+
+    #[test]
+    fn hovering_a_node_or_pressing_it_again_without_release_selects_nothing_new() {
+        let (mut app, _) = app_with_graph(model());
+        let a = dot_entity(&mut app, 0);
+
+        set_interaction(&mut app, a, Interaction::Hovered);
+        assert!(selections(&mut app).is_empty());
+        set_interaction(&mut app, a, Interaction::Pressed);
+        assert_eq!(selections(&mut app).len(), 1);
+        // Unchanged Interaction is not a new press.
+        app.update();
+        assert!(selections(&mut app).is_empty());
+        // Release then press is a second selection of the same node.
+        set_interaction(&mut app, a, Interaction::Hovered);
+        set_interaction(&mut app, a, Interaction::Pressed);
+        assert_eq!(selections(&mut app).len(), 1);
+    }
+
+    #[test]
+    fn an_empty_graph_has_no_entity_to_select_on() {
+        let theme = theme();
+        let mut world = World::new();
+        let root = world.spawn(Node::default()).id();
+        let graph = world
+            .run_system_once(move |mut commands: Commands| {
+                let mut graph = Some(root);
+                commands.entity(root).with_children(|parent| {
+                    graph = spawn(parent, &theme, GraphView { nodes: &[], edges: &[] }, &[], None);
+                });
+                graph
+            })
+            .expect("the notice spawns");
+        assert_eq!(graph, None);
     }
 }
