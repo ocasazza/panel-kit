@@ -41,7 +41,7 @@ mod browser {
         use ratatui::text::{Line, Span};
         use ratatui::widgets::Paragraph;
 
-        use crate::workspace_canary::{capacity_items, node_rows, Metrics};
+        use crate::workspace_canary::{capacity_items, node_rows, node_table_state, Metrics};
 
         /// Borrowed drawing inputs shared by the browser-hosted panel body painters.
         pub(crate) struct BodyDrawContext<'a> {
@@ -180,7 +180,7 @@ mod browser {
                     columns: &table_model.columns,
                     rows: &table_model.rows.iter().collect::<Vec<_>>(),
                 },
-                &panel_kit_core::widgets::data_table::TableState::default(),
+                &node_table_state(),
             );
         }
 

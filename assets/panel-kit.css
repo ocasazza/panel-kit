@@ -1202,6 +1202,21 @@ button { font-family:var(--mono); }
   box-shadow: inset -1px 1px 0 var(--color-focus-ring), inset 0 -1px 0 var(--color-focus-ring);
 }
 
+/* The seeded keyboard mode paints the same ring without focus, from the
+   state's `ring` flag. */
+
+.pk-dt tbody tr[data-id][data-ring="true"] > .pk-dt-td {
+  box-shadow: inset 0 1px 0 var(--color-focus-ring), inset 0 -1px 0 var(--color-focus-ring);
+}
+
+.pk-dt tbody tr[data-id][data-ring="true"] > .pk-dt-td:first-child {
+  box-shadow: inset 1px 1px 0 var(--color-focus-ring), inset 0 -1px 0 var(--color-focus-ring);
+}
+
+.pk-dt tbody tr[data-id][data-ring="true"] > .pk-dt-td:last-child {
+  box-shadow: inset -1px 1px 0 var(--color-focus-ring), inset 0 -1px 0 var(--color-focus-ring);
+}
+
 /* A selected row is the raised surface with a 1px highlight outline: selection
    is live state. */
 

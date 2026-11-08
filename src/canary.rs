@@ -417,17 +417,15 @@ fn paint_badges(specs: &[BadgeSpec]) -> Element {
 }
 
 /// A table painted under `owner`: the panel or binding id it belongs to.
+/// Windowed: the canary's Nodes table is long enough to mount a window.
 fn paint_table(owner: &str, table: &TableModel) -> Element {
-    crate::widgets::content_view(
-        ContentView::Table {
-            binding: owner,
-            view: TableView {
-                columns: &table.columns,
-                rows: &table.rows.iter().collect::<Vec<_>>(),
-            },
+    crate::widgets::table::windowed_table(
+        owner,
+        TableView {
+            columns: &table.columns,
+            rows: &table.rows.iter().collect::<Vec<_>>(),
         },
-        0,
-        noop_badge_action(),
+        fixtures::NODES_CURSOR,
     )
 }
 

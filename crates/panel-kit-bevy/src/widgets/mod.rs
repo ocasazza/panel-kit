@@ -30,6 +30,7 @@ use panel_kit_core::widgets::badge::{perceived_brightness, tint_over};
 use panel_kit_core::theme::ThemeColor;
 use panel_kit_core::widgets::meter::MeterModel;
 use panel_kit_core::widgets::status::StatusModel;
+use panel_kit_core::widgets::data_table::TableDefaults;
 use panel_kit_core::widgets::table::TableModel;
 
 /// The badge stroke colour (`--badge-c`). A community tint strokes with its
@@ -232,6 +233,28 @@ pub fn status(parent: &mut ChildSpawnerCommands, theme: &BevyTheme, model: &Stat
 /// drives it; returns the table entity.
 pub fn table(parent: &mut ChildSpawnerCommands, model: &TableModel) -> Entity {
     data_table::spawn(parent, model)
+}
+
+/// Spawn a windowed table that starts keyboard-driven with its cursor on
+/// `cursor`: it mounts only the rows its scroller shows and paints the
+/// cursor ring from the first frame.
+pub fn windowed_table(
+    parent: &mut ChildSpawnerCommands,
+    model: &TableModel,
+    cursor: &str,
+) -> Entity {
+    data_table::spawn_table(
+        parent,
+        data_table::DataTable {
+            windowed: true,
+            defaults: TableDefaults {
+                cursor: Some(cursor.to_owned()),
+                ring: true,
+                ..TableDefaults::default()
+            },
+            ..data_table::DataTable::new(model.clone())
+        },
+    )
 }
 
 /// Spawn a section heading.

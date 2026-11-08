@@ -103,7 +103,7 @@ pub fn paint(
         "canary.notes" => notes(parent, theme),
         "canary.badges" => widgets::badges(parent, theme, &data.badges),
         "canary.nodes" => {
-            widgets::table(parent, &node_rows());
+            widgets::windowed_table(parent, &node_rows(), NODES_CURSOR);
         }
         "canary.capacity" => gauges::spawn(parent, theme, &capacity_items()),
         "canary.distribution" => boxplot::spawn(parent, theme, &data.metrics.boxes()),

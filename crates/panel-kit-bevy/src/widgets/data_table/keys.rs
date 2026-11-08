@@ -189,7 +189,6 @@ pub(super) fn navigate_rows(
         };
         let moves = matches!(event, TableEvent::Key { .. });
         instance.apply(event);
-        instance.ring = true;
         instance.reveal |= moves;
     }
 }
@@ -237,12 +236,14 @@ pub(super) fn row_bands(selected: bool, ring: bool, first: bool, last: bool, hig
 }
 
 impl Paint<'_> {
-    /// One cell's selection and cursor bands, over its content.
-    pub(super) fn bands(&self, cell: &mut ChildSpawnerCommands, selected: bool, ring: bool, first: bool, last: bool) {
-        let bands = row_bands(selected, ring, first, last, self.theme.highlight, self.theme.focus_ring);
+    /// The row's selection and cursor bands over its full width, spawned on
+    /// the row itself: the web paints them as inset box-shadows on every
+    /// cell, and a cell's clip would cut the edges off.
+    pub(super) fn bands(&self, row: &mut ChildSpawnerCommands, selected: bool, ring: bool) {
+        let bands = row_bands(selected, ring, true, true, self.theme.highlight, self.theme.focus_ring);
         let mut edge = |color: Option<Color>, node: Node| {
             if let Some(color) = color {
-                cell.spawn((
+                row.spawn((
                     Node {
                         position_type: PositionType::Absolute,
                         ..node
@@ -573,8 +574,8 @@ mod navigation {
         focus_row(&mut app, table, "r003");
         assert_eq!(ring_bands(&mut app), 0, "a click is not a keyboard cursor");
         key(&mut app, Key::ArrowDown);
-        // top and bottom on both cells, plus the row's left and right edges
-        assert_eq!(ring_bands(&mut app), 6);
+        // top and bottom across the row, plus its left and right edges
+        assert_eq!(ring_bands(&mut app), 4);
         focus_row(&mut app, table, "r007");
         assert_eq!(ring_bands(&mut app), 0, "a press hands the cursor back to the pointer");
     }
@@ -594,8 +595,8 @@ mod navigation {
                 .filter(|(node, c)| node.position_type == PositionType::Absolute && c.0 == color)
                 .count()
         };
-        assert_eq!(count(theme.highlight, &mut bands, world), 2, "one highlight top band per cell");
-        assert_eq!(count(theme.focus_ring, &mut bands, world), 2, "one ring bottom band per cell");
+        assert_eq!(count(theme.highlight, &mut bands, world), 1, "one highlight top band across the row");
+        assert_eq!(count(theme.focus_ring, &mut bands, world), 1, "one ring bottom band across the row");
     }
 
     #[test]

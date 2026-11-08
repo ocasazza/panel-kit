@@ -114,6 +114,13 @@ fn ModelTable(
     /// Receives a clicked row's id.
     #[props(default)]
     on_row: Option<EventHandler<String>>,
+    /// Mount only the window of rows the scroller shows.
+    #[props(default)]
+    windowed: bool,
+    /// Declared sort, density, grouping, selection mode, view, cursor and
+    /// ring seed.
+    #[props(default)]
+    defaults: TableDefaults,
 ) -> Element {
     #[cfg(test)]
     RENDERS.with(|count| count.set(count.get() + 1));
@@ -135,9 +142,32 @@ fn ModelTable(
                     .map(paint)
                     .unwrap_or_else(|| rsx! {})
             },
-            defaults: TableDefaults::default(),
+            defaults,
+            windowed,
             storage_key,
             on_row,
+        }
+    }
+}
+
+/// Paint a windowed table that starts keyboard-driven with its cursor on
+/// `cursor`: it mounts only the rows its scroller shows and paints the
+/// cursor ring from the first frame.
+pub fn windowed_table(name: &str, view: TableView<'_>, cursor: &str) -> Element {
+    let model = TableModel {
+        columns: view.columns.to_vec(),
+        rows: view.rows.iter().map(|row| (*row).clone()).collect(),
+    };
+    rsx! {
+        ModelTable {
+            id: dom_id(name),
+            model: Rc::new(model),
+            windowed: true,
+            defaults: TableDefaults {
+                cursor: Some(cursor.to_owned()),
+                ring: true,
+                ..TableDefaults::default()
+            },
         }
     }
 }

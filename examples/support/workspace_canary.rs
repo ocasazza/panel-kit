@@ -32,7 +32,7 @@ pub mod content {
 
     use panel_kit_graph_layout::solve_2d;
 
-    use crate::workspace_canary::{canary_graph, capacity_items, demo_badges, node_rows, Metrics};
+    use crate::workspace_canary::{canary_graph, capacity_items, demo_badges, node_rows, node_table_state, Metrics};
 
     /// Mutable demo-provider state used by the executable native canary.
     pub struct DemoData {
@@ -337,7 +337,7 @@ pub mod content {
                 columns: &model.columns,
                 rows: &model.rows.iter().collect::<Vec<_>>(),
             },
-            &panel_kit_core::widgets::data_table::TableState::default(),
+            &node_table_state(),
         );
     }
 

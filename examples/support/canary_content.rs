@@ -11,7 +11,7 @@ use panel_kit_core::spec::{BackendKind, BindingManifest, ContentKind, PanelProvi
 use panel_kit_core::theme::{ERROR, SUCCESS};
 use panel_kit_core::widgets::badge::hue_color;
 use panel_kit_core::widgets::charts::{five_num, BoxItemView, FlameSpanModel, GaugeModel, SeriesView};
-use panel_kit_core::widgets::data_table::ColumnKind;
+use panel_kit_core::widgets::data_table::{ColumnKind, TableDefaults, TableState};
 use panel_kit_core::widgets::graph::{GraphEdge, GraphModel, GraphNode};
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
@@ -87,6 +87,23 @@ pub fn canary_graph() -> GraphModel {
     }
 }
 
+/// The row every canary starts its Nodes table keyboard-driven on, so the
+/// cursor ring paints from the first frame on every backend.
+pub const NODES_CURSOR: &str = "pdx-01 *";
+
+/// The Nodes table's state, seeded identically on every host: keyboard-driven
+/// from the first frame with the cursor on [`NODES_CURSOR`].
+pub fn node_table_state() -> TableState {
+    TableState::new(
+        &[],
+        TableDefaults {
+            cursor: Some(NODES_CURSOR.to_owned()),
+            ring: true,
+            ..Default::default()
+        },
+    )
+}
+
 /// Rows for the Nodes table: status, load meter, and detail cells.
 pub fn node_rows() -> TableModel {
     TableModel {
@@ -113,33 +130,61 @@ pub fn node_rows() -> TableModel {
                 kind: ColumnKind::Text,
             },
         ],
-        rows: vec![
-            node_row("pdx-01 *", true, 0.42, "leader"),
-            node_row("pdx-02", true, 0.18, "ready"),
-            node_row("pdx-03", true, 0.71, "busy"),
-            node_row("pdx-04", true, 0.35, "ready"),
-            node_row("pdx-05", true, 0.58, "warm"),
-            node_row("pdx-06", true, 0.24, "ready"),
-            node_row("pdx-07", true, 0.83, "hot"),
-            node_row("pdx-08", true, 0.12, "draining"),
-            node_row("gfr-01", false, 0.0, "stale"),
-            node_row("gfr-02", true, 0.47, "ready"),
-            node_row("gfr-03", true, 0.66, "warm"),
-            node_row("gfr-04", true, 0.29, "ready"),
-            node_row("iad-01", true, 0.53, "ready"),
-            node_row("iad-02", false, 0.91, "evicting"),
-            node_row("iad-03", true, 0.38, "ready"),
-            node_row("syd-01", true, 0.61, "ready"),
-            node_row("syd-02", true, 0.27, "catching up"),
-        ],
+        rows: rows_with_fillers(),
     }
 }
 
-fn node_row(name: &str, healthy: bool, load: f64, detail: &str) -> TableRow {
+/// The named hosts plus enough deterministic filler rows that the windowed
+/// Nodes table mounts a window (100 rows against the 80-row default window);
+/// loads and health come from [`noise`].
+fn rows_with_fillers() -> Vec<TableRow> {
+    let mut rows = vec![
+        node_row("pdx-01 *", true, 0.42, "leader", &["canary", "leader", "postgres", "primary", "us-west", "write"]),
+        node_row("pdx-02", true, 0.18, "ready", &["postgres", "us-west"]),
+        node_row("pdx-03", true, 0.71, "busy", &["busy", "us-west"]),
+        node_row("pdx-04", true, 0.35, "ready", &["postgres", "us-west"]),
+        node_row("pdx-05", true, 0.58, "warm", &["us-west", "warm"]),
+        node_row("pdx-06", true, 0.24, "ready", &["postgres", "us-west"]),
+        node_row("pdx-07", true, 0.83, "hot", &["hot", "us-west"]),
+        node_row("pdx-08", true, 0.12, "draining", &["draining", "spot", "us-west"]),
+        node_row("gfr-01", false, 0.0, "stale", &["eu", "paged", "postgres", "stale", "unhealthy"]),
+        node_row("gfr-02", true, 0.47, "ready", &["eu", "postgres"]),
+        node_row("gfr-03", true, 0.66, "warm", &["eu", "warm"]),
+        node_row("gfr-04", true, 0.29, "ready", &["eu", "postgres"]),
+        node_row("iad-01", true, 0.53, "ready", &["postgres", "us-east"]),
+        node_row("iad-02", false, 0.91, "evicting", &["at-risk", "evicting", "postgres", "spot", "us-east"]),
+        node_row("iad-03", true, 0.38, "ready", &["redis", "us-east"]),
+        node_row("syd-01", true, 0.61, "ready", &["apac", "redis"]),
+        node_row("syd-02", true, 0.27, "catching up", &["apac", "lagging", "redis"]),
+    ];
+    // Filler tags cycle the regions; the last two sets overflow the four
+    // visible segments so more `+N` tails show.
+    const FILLER_TAGS: [&[&str]; 5] = [
+        &["canary", "us-west"],
+        &["eu", "postgres", "spot"],
+        &["apac", "redis", "hot", "noisy", "paged"],
+        &["us-east", "postgres", "canary"],
+        &["sao", "redis", "warm", "draining", "spot", "write"],
+    ];
+    for at in 0..83 {
+        let region = ["sfo", "fra", "sin", "sao"][at % 4];
+        let detail = ["ready", "warm", "busy"][at % 3];
+        rows.push(node_row(
+            &format!("{region}-{at:02}"),
+            noise(at as u64 + 41) > 0.1,
+            noise(at as u64 * 7 + 3),
+            detail,
+            FILLER_TAGS[at % FILLER_TAGS.len()],
+        ));
+    }
+    rows
+}
+
+fn node_row(name: &str, healthy: bool, load: f64, detail: &str, tags: &[&str]) -> TableRow {
     let color = if healthy { SUCCESS.rgb } else { ERROR.rgb };
     TableRow {
         id: name.to_string(),
-        tags: Vec::new(),
+        tags: tags.iter().map(|tag| (*tag).to_string()).collect(),
         cells: vec![
             TableCell::Status {
                 label: name.into(),

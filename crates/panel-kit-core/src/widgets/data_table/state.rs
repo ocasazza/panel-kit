@@ -237,6 +237,13 @@ pub struct TableDefaults {
     /// Column order; the declared order when empty.
     #[serde(default)]
     pub order: Vec<String>,
+    /// The row the keyboard's cursor starts on.
+    #[serde(default)]
+    pub cursor: Option<String>,
+    /// Start with the cursor ring showing: the grid is keyboard-driven from
+    /// the first frame.
+    #[serde(default)]
+    pub ring: bool,
 }
 
 /// Where a moved column lands.
@@ -397,6 +404,9 @@ pub struct TableState {
     pub anchor: Option<String>,
     /// The keyboard's row: the one tab stop.
     pub cursor: Option<String>,
+    /// Whether the cursor row shows its ring: the cursor was last moved by
+    /// the keyboard.
+    pub ring: bool,
     /// Where the cursor and anchor last rendered. Never trusted unchecked.
     pub pos: PositionHint,
     /// Whether the selection still holds the rows `select_all` selected.
@@ -465,7 +475,8 @@ impl TableState {
             selectable: defaults.selectable,
             selection: Rc::default(),
             anchor: None,
-            cursor: None,
+            cursor: defaults.cursor.clone(),
+            ring: defaults.ring,
             pos: PositionHint::default(),
             covered: Covered::default(),
             viewport: TableViewport::default(),
@@ -1270,8 +1281,14 @@ impl TableEvent {
             TableEvent::View(mode) => state.view = *mode,
             TableEvent::Select { id, mode } => state.select(id, *mode, view, data),
             TableEvent::SelectAll => state.select_all(view, data),
-            TableEvent::Cursor(id) => state.cursor = Some(id.clone()),
-            TableEvent::Key { key, shift, page } => state.key(*key, *shift, view, data, *page),
+            TableEvent::Cursor(id) => {
+                state.cursor = Some(id.clone());
+                state.ring = false;
+            }
+            TableEvent::Key { key, shift, page } => {
+                state.key(*key, *shift, view, data, *page);
+                state.ring = true;
+            }
             TableEvent::Window {
                 start,
                 count,
@@ -1281,7 +1298,10 @@ impl TableEvent {
             TableEvent::Tag { tag, all } => state.toggle_tag(tag, *all),
             TableEvent::TagMode(mode) => state.tag_mode = *mode,
             TableEvent::ClearTags => state.clear_tags(),
-            TableEvent::TagFocus(focus) => state.focus_tag(focus.clone()),
+            TableEvent::TagFocus(focus) => {
+                state.focus_tag(focus.clone());
+                state.ring = true;
+            }
             TableEvent::TagsExpand(on) => state.tags_expand = *on,
             TableEvent::Restore(payload) => state.restore(payload),
             TableEvent::Reset => state.reset(),

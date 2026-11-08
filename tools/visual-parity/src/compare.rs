@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use image::RgbImage;
 
-use crate::dump::{inside, overlaps, BevyNode, Rgba, WebNode};
+use crate::dump::{inside, overlaps, Rect, BevyNode, Rgba, WebNode};
 
 /// Geometry tolerance, logical px.
 pub const GEOMETRY_TOLERANCE: f64 = 1.0;
@@ -206,7 +206,10 @@ fn compare_panel(
 
     compare_text(out, web.nodes, tree, title, wp, bp);
     compare_toolbar(out, web.nodes, bevy.nodes, title, wp, bp);
-    compare_columns(out, web.nodes, bevy.nodes, tree, title, wp, bp);
+    compare_columns(out, web.nodes, bevy.nodes, title, wp, bp);
+    let ribbon = compare_ribbon(out, web, bevy, tree, title, wp, bp);
+    compare_window(out, web, bevy, tree, title, wp, bp, &ribbon);
+    compare_ring(out, web, bevy, tree, bp, &ribbon);
     compare_graph(out, web, bevy, title, wp, bp);
 }
 
@@ -325,6 +328,19 @@ impl<'a> BevyTree<'a> {
             by_id,
             children,
         }
+    }
+
+    /// Whether `node` is `root` or laid out inside its subtree. Clipped
+    /// content keeps its scene place, so ancestry, not the frame rect, decides.
+    fn descends_from(&self, node: &BevyNode, root: u64) -> bool {
+        let mut at = Some(node.id);
+        while let Some(id) = at {
+            if id == root {
+                return true;
+            }
+            at = self.by_id.get(&id).and_then(|n| n.parent);
+        }
+        false
     }
 
     /// Text runs inside `bp`. A row of single-glyph text children is one
@@ -647,7 +663,6 @@ fn compare_columns(
     out: &mut Rows,
     web: &[WebNode],
     bevy: &[BevyNode],
-    tree: &BevyTree<'_>,
     title: &str,
     wp: &WebNode,
     bp: &BevyNode,
@@ -671,6 +686,19 @@ fn compare_columns(
         .collect();
     zones.sort_by(|a, b| a.x.total_cmp(&b.x));
     let bevy_top = bp.y + (top - wp.y);
+    // Header cells: the filled boxes on the header row. The tags gutter's
+    // cell has no resize handle, so cells, not handles, pair with the `th`s.
+    let mut cells: Vec<&BevyNode> = bevy
+        .iter()
+        .filter(|n| {
+            n.bg.is_some_and(|bg| bg[3] > 0.5)
+                && (n.y - bevy_top).abs() < 0.5
+                && (20.0..32.0).contains(&n.h)
+                && bp.x <= n.x
+                && n.x + n.w <= bp.x + bp.w
+        })
+        .collect();
+    cells.sort_by(|a, b| a.x.total_cmp(&b.x));
     let mut handles: Vec<&BevyNode> = bevy
         .iter()
         .filter(|n| {
@@ -687,26 +715,391 @@ fn compare_columns(
         "header",
         "column count",
         &heads.len().to_string(),
+        &cells.len().to_string(),
+        heads.len() == cells.len(),
+    );
+    out.same(
+        "header",
+        "resize zone count",
+        &zones.len().to_string(),
         &handles.len().to_string(),
-        heads.len() == handles.len() && zones.len() == handles.len(),
+        zones.len() == handles.len(),
     );
     for (index, head) in heads.iter().enumerate() {
-        let handle = handles.get(index);
-        let cell = handle
-            .and_then(|h| h.parent)
-            .and_then(|parent| tree.by_id.get(&parent));
+        let cell = cells.get(index);
         let part = format!("header column {}", index + 1);
         out.geo(&part, "x", Some(head.x - wp.x), cell.map(|b| b.x - bp.x));
         out.geo(&part, "y", Some(head.y - wp.y), cell.map(|b| b.y - bp.y));
         out.geo(&part, "w", Some(head.w), cell.map(|b| b.w));
         out.geo(&part, "h", Some(head.h), cell.map(|b| b.h));
-        let zone = zones.get(index);
-        let part = format!("header resize zone {}", index + 1);
-        out.geo(&part, "x", zone.map(|z| z.x - wp.x), handle.map(|b| b.x - bp.x));
-        out.geo(&part, "y", zone.map(|z| z.y - wp.y), handle.map(|b| b.y - bp.y));
-        out.geo(&part, "w", zone.map(|z| z.w), handle.map(|b| b.w));
-        out.geo(&part, "h", zone.map(|z| z.h), handle.map(|b| b.h));
     }
+    for (index, zone) in zones.iter().enumerate() {
+        let handle = handles.get(index);
+        let part = format!("header resize zone {}", index + 1);
+        out.geo(&part, "x", Some(zone.x - wp.x), handle.map(|b| b.x - bp.x));
+        out.geo(&part, "y", Some(zone.y - wp.y), handle.map(|b| b.y - bp.y));
+        out.geo(&part, "w", Some(zone.w), handle.map(|b| b.w));
+        out.geo(&part, "h", Some(zone.h), handle.map(|b| b.h));
+    }
+}
+
+/// The `--tag-N` fills both backends paint ribbon segments with, `--tag-0`
+/// first.
+const TAG_FILLS: [[u8; 3]; 8] = [
+    [0x33, 0x6e, 0x09],
+    [0x82, 0x5d, 0xf2],
+    [0xc9, 0x50, 0xf1],
+    [0x36, 0xae, 0x0e],
+    [0xf4, 0x7d, 0xd7],
+    [0xf7, 0x9d, 0xca],
+    [0xc4, 0xc4, 0xfa],
+    [0xe6, 0xd0, 0xfb],
+];
+
+/// The row tag ribbon: every visible segment's rect and painted fill, and the
+/// `+N` tail. The web paints `.pk-dt-tag` buttons; Bevy paints 13px nodes in a
+/// tag fill. Returns the grouped segment rows for [`compare_window`]; `None`
+/// when the panel has no web table.
+fn compare_ribbon<'a>(
+    out: &mut Rows,
+    web: &Capture<'a, WebNode>,
+    bevy: &Capture<'a, BevyNode>,
+    tree: &BevyTree<'_>,
+    title: &str,
+    wp: &WebNode,
+    bp: &BevyNode,
+) -> Option<(
+    Vec<(usize, usize, &'a WebNode)>,
+    Vec<(usize, usize, &'a BevyNode)>,
+)> {
+    let has_table = web.nodes.iter().any(|n| {
+        n.panel.as_deref() == Some(title) && n.cls.split_whitespace().any(|c| c == "pk-dt")
+    });
+    if !has_table {
+        return None;
+    }
+    let in_panel = |n: &WebNode| n.panel.as_deref() == Some(title);
+    let web_segments: Vec<&WebNode> = web
+        .nodes
+        .iter()
+        .filter(|n| {
+            let classes: HashSet<&str> = n.cls.split_whitespace().collect();
+            in_panel(n) && classes.contains("pk-dt-tag") && !classes.contains("pk-dt-tag-tail")
+        })
+        .collect();
+    let web_tails: Vec<&WebNode> = web
+        .nodes
+        .iter()
+        .filter(|n| in_panel(n) && n.cls.split_whitespace().any(|c| c == "pk-dt-tag-tail"))
+        .collect();
+    let in_frame = |n: &BevyNode| tree.descends_from(n, bp.id);
+    let is_tag_fill = |bg: Rgba| TAG_FILLS.iter().any(|fill| near_fill(bg, fill));
+    let bevy_segments: Vec<&BevyNode> = bevy
+        .nodes
+        .iter()
+        .filter(|n| {
+            in_frame(n)
+                && (n.w - 13.0).abs() < 0.1
+                && n.bg.is_some_and(|bg| is_tag_fill(bg))
+        })
+        .collect();
+    let is_tail_text = |text: &str| {
+        text.len() > 1
+            && text.starts_with('+')
+            && text[1..].bytes().all(|digit| digit.is_ascii_digit())
+    };
+    // The Bevy tail is the button; its `+N` is a text-span child, not its own.
+    let tail_labels: HashMap<u64, String> = bevy
+        .nodes
+        .iter()
+        .filter(|n| in_frame(n))
+        .filter_map(|n| {
+            let label = tree
+                .children
+                .get(&n.id)?
+                .iter()
+                .map(|child| &child.text)
+                .find(|text| is_tail_text(text))?;
+            Some((n.id, label.clone()))
+        })
+        .collect();
+    let bevy_tails: Vec<&BevyNode> = bevy
+        .nodes
+        .iter()
+        .filter(|n| tail_labels.contains_key(&n.id))
+        .collect();
+    out.same(
+        "ribbon",
+        "segments",
+        &web_segments.len().to_string(),
+        &bevy_segments.len().to_string(),
+        web_segments.len() == bevy_segments.len(),
+    );
+    out.same(
+        "ribbon",
+        "tails",
+        &web_tails.len().to_string(),
+        &bevy_tails.len().to_string(),
+        web_tails.len() == bevy_tails.len(),
+    );
+    let web_rows = ribbon_rows(web_segments);
+    let bevy_rows = ribbon_rows(bevy_segments);
+    for ((row, at, w), (_, _, b)) in web_rows.iter().zip(bevy_rows.iter())
+    {
+        let part = format!("ribbon row {row} segment {at}");
+        out.geo(&part, "x", Some(w.x - wp.x), Some(b.x - bp.x));
+        out.geo(&part, "y", Some(w.y - wp.y), Some(b.y - bp.y));
+        out.geo(&part, "w", Some(w.w), Some(b.w));
+        out.geo(&part, "h", Some(w.h), Some(b.h));
+        // A row the scroller clips keeps its layout but paints nothing, so a
+        // fill sample only means something where the segment is on screen.
+        let web_at = (w.x + w.w / 2.0, w.y + 2.0);
+        let bevy_at = (b.x + b.w / 2.0, b.y + 2.0);
+        if inside(&(web_at.0, web_at.1, 0.0, 0.0), wp, 1.0)
+            && inside(&(bevy_at.0, bevy_at.1, 0.0, 0.0), bp, 1.0)
+        {
+            out.colour(
+                &part,
+                "fill",
+                Some(pixel(web.image, web_at.0, web_at.1)),
+                Some(pixel(bevy.image, bevy_at.0, bevy_at.1)),
+                true,
+            );
+        }
+    }
+    for ((row, _, w), (_, _, b)) in
+        ribbon_rows(web_tails).into_iter().zip(ribbon_rows(bevy_tails))
+    {
+        let part = format!("ribbon row {row} tail");
+        out.geo(&part, "x", Some(w.x - wp.x), Some(b.x - bp.x));
+        out.geo(&part, "y", Some(w.y - wp.y), Some(b.y - bp.y));
+        out.geo(&part, "w", Some(w.w), Some(b.w));
+        out.geo(&part, "h", Some(w.h), Some(b.h));
+        let label = tail_labels.get(&b.id).map(String::as_str).unwrap_or_default();
+        out.same(&part, "count", &w.text, label, w.text == label);
+    }
+    Some((web_rows, bevy_rows))
+}
+
+/// The windowed table's mount: how many ribbon rows each side keeps in its
+/// scene, the spacers standing in for the rest, and the first mounted row's
+/// y. Skipped when the panel has no web table.
+fn compare_window<'a>(
+    out: &mut Rows,
+    web: &Capture<'a, WebNode>,
+    bevy: &Capture<'a, BevyNode>,
+    tree: &BevyTree<'_>,
+    title: &str,
+    wp: &WebNode,
+    bp: &BevyNode,
+    ribbon: &Option<(
+        Vec<(usize, usize, &'a WebNode)>,
+        Vec<(usize, usize, &'a BevyNode)>,
+    )>,
+) {
+    let Some((web_rows, bevy_rows)) = ribbon else {
+        return;
+    };
+    let web_mounted = web_rows.last().map_or(0, |(row, _, _)| row + 1);
+    let bevy_mounted = bevy_rows.last().map_or(0, |(row, _, _)| row + 1);
+    out.same(
+        "window",
+        "mounted rows",
+        &web_mounted.to_string(),
+        &bevy_mounted.to_string(),
+        web_mounted == bevy_mounted,
+    );
+    match (web_rows.first(), bevy_rows.first()) {
+        (Some((_, _, w)), Some((_, _, b))) => {
+            out.geo("window", "first mounted row y", Some(w.y - wp.y), Some(b.y - bp.y));
+        }
+        (w, b) => {
+            let show = |present: bool| if present { "mounted" } else { "absent" };
+            out.same(
+                "window",
+                "first mounted row y",
+                show(w.is_some()),
+                show(b.is_some()),
+                w.is_some() == b.is_some(),
+            );
+        }
+    }
+    let in_panel = |n: &&WebNode| n.panel.as_deref() == Some(title);
+    let web_spacers: Vec<&WebNode> = web
+        .nodes
+        .iter()
+        .filter(|n| {
+            in_panel(n)
+                && n.tag == "tr"
+                && n.cls.split_whitespace().any(|c| c == "pk-dt-spacer")
+        })
+        .collect();
+    let in_frame = |n: &BevyNode| tree.descends_from(n, bp.id);
+    let bevy_spacers: Vec<&BevyNode> = bevy
+        .nodes
+        .iter()
+        .filter(|n| {
+            in_frame(n)
+                && !tree.children.contains_key(&n.id)
+                && n.text.is_empty()
+                // Bevy UI nodes carry transparent paint by default.
+                && n.bg.is_none_or(|bg| bg[3] == 0.0)
+                && n.border.is_none_or(|border| border[3] == 0.0)
+                && n.w > 200.0
+                && n.h > 0.0
+        })
+        .collect();
+    // A spacer above every mounted row tops the window; one below every row
+    // closes it.
+    let web_top = web_spacers.iter().find(|s| above_rows(s.y, s.h, &web_rows)).map(|n| n.h);
+    let bevy_top = bevy_spacers.iter().find(|s| above_rows(s.y, s.h, &bevy_rows)).map(|n| n.h);
+    let web_bottom = web_spacers.iter().find(|s| below_rows(s.y, &web_rows)).map(|n| (n.h, n.y - wp.y));
+    let bevy_bottom = bevy_spacers.iter().find(|s| below_rows(s.y, &bevy_rows)).map(|n| (n.h, n.y - bp.y));
+    optional_geo(out, "window", "top spacer height", web_top, bevy_top);
+    optional_geo(
+        out,
+        "window",
+        "bottom spacer height",
+        web_bottom.map(|(h, _)| h),
+        bevy_bottom.map(|(h, _)| h),
+    );
+    optional_geo(
+        out,
+        "window",
+        "bottom spacer y",
+        web_bottom.map(|(_, y)| y),
+        bevy_bottom.map(|(_, y)| y),
+    );
+}
+
+/// Whether a band of `height` at `y` lies entirely above every grouped row.
+fn above_rows<N: Rect>(y: f64, h: f64, rows: &[(usize, usize, &N)]) -> bool {
+    rows.iter().all(|(_, _, n)| y + h <= n.rect().1 + 0.5)
+}
+
+/// Whether a band at `y` lies entirely below every grouped row.
+fn below_rows<N: Rect>(y: f64, rows: &[(usize, usize, &N)]) -> bool {
+    rows.iter().all(|(_, _, n)| y >= n.rect().1 + n.rect().3 - 0.5)
+}
+
+/// The `--color-focus-ring` ink both backends paint the cursor ring with.
+const RING_INK: [u8; 3] = [0xed, 0xed, 0xed];
+
+/// The seeded cursor ring: the first mounted row is the keyboard's row, so
+/// both backends paint 1px focus-ring ink inset on its edges. The samples
+/// catch the ink inside the row and its absence just outside. Skipped when
+/// the panel has no web table.
+fn compare_ring<'a>(
+    out: &mut Rows,
+    web: &Capture<'a, WebNode>,
+    bevy: &Capture<'a, BevyNode>,
+    tree: &BevyTree<'_>,
+    bp: &BevyNode,
+    ribbon: &Option<(
+        Vec<(usize, usize, &'a WebNode)>,
+        Vec<(usize, usize, &'a BevyNode)>,
+    )>,
+) {
+    let Some((web_rows, bevy_rows)) = ribbon else {
+        return;
+    };
+    let (Some((_, _, wseg)), Some((_, _, bseg))) = (web_rows.first(), bevy_rows.first()) else {
+        return;
+    };
+    // The row height is the ribbon's plus the padding it hangs in; the widest
+    // such container of the segment is the row, not the narrower gutter.
+    let row_h = wseg.h + 6.0;
+    let Some(wr) = ring_row(web.nodes.iter().filter(|n| n.tag == "tr"), wseg, row_h) else {
+        return;
+    };
+    let Some(br) = ring_row(
+        bevy.nodes.iter().filter(|n| tree.descends_from(n, bp.id)),
+        bseg,
+        row_h,
+    ) else {
+        return;
+    };
+    let samples = [
+        ("top edge", (wr.x + 20.0, wr.y + 0.5), (br.x + 20.0, br.y + 0.5)),
+        ("bottom edge", (wr.x + 20.0, wr.y + wr.h - 0.5), (br.x + 20.0, br.y + br.h - 0.5)),
+        ("left edge", (wr.x + 0.5, wr.y + wr.h / 2.0), (br.x + 0.5, br.y + br.h / 2.0)),
+        ("right edge", (wr.x + wr.w - 0.5, wr.y + wr.h / 2.0), (br.x + br.w - 0.5, br.y + br.h / 2.0)),
+    ];
+    for (property, (wx, wy), (bx, by)) in samples {
+        // The backends snap a fractional row's 1px ink to different device
+        // columns, so the sample takes the closest ink-like pixel in reach
+        // and fails unless both sides actually paint the ring there.
+        let web_ink = closest_to(web.image, (wx, wy), RING_INK);
+        let bevy_ink = closest_to(bevy.image, (bx, by), RING_INK);
+        let ok = delta_e(web_ink, RING_INK) < DELTA_E_TOLERANCE
+            && delta_e(bevy_ink, RING_INK) < DELTA_E_TOLERANCE;
+        out.push(
+            "ring",
+            property,
+            hex(web_ink),
+            hex(bevy_ink),
+            format!("ΔE {:.2}", delta_e(web_ink, bevy_ink)),
+            ok,
+        );
+    }
+}
+
+/// The widest node about `row_h` tall that contains `segment`: the row the
+/// segment's ribbon sits on, not the narrower gutter cell beside it.
+fn ring_row<'a, N: Rect>(
+    nodes: impl Iterator<Item = &'a N>,
+    segment: &N,
+    row_h: f64,
+) -> Option<&'a N> {
+    nodes
+        .filter(|n| inside(segment, *n, 0.5) && (n.rect().3 - row_h).abs() < 1.0)
+        .max_by(|a, b| a.rect().2.total_cmp(&b.rect().2))
+}
+
+/// A height that may be absent on both sides: a spacer the window doesn't
+/// need. Absent on one side only fails.
+fn optional_geo(out: &mut Rows, part: &str, property: &str, web: Option<f64>, bevy: Option<f64>) {
+    match (web, bevy) {
+        (Some(w), Some(b)) => out.geo(part, property, Some(w), Some(b)),
+        (None, None) => out.same(part, property, "absent", "absent", true),
+        (w, b) => {
+            let show = |v: Option<f64>| v.map_or_else(|| "absent".to_owned(), number);
+            out.push(part, property, show(w), show(b), "absent".to_owned(), false);
+        }
+    }
+}
+
+/// Whether a dumped background is one of the tag fills, within half a unit.
+fn near_fill(bg: Rgba, fill: &[u8; 3]) -> bool {
+    bg[..3]
+        .iter()
+        .enumerate()
+        .all(|(at, channel)| (channel - f64::from(fill[at])).abs() < 0.5)
+}
+
+/// Nodes grouped into their ribbon rows: `(row, index within the row, node)`,
+/// rows top to bottom, segments left to right. A jump of more than half a row
+/// height starts a new row.
+fn ribbon_rows<'a, N: Rect>(mut nodes: Vec<&'a N>) -> Vec<(usize, usize, &'a N)> {
+    nodes.sort_by(|a, b| {
+        a.rect().1.total_cmp(&b.rect().1).then(a.rect().0.total_cmp(&b.rect().0))
+    });
+    let mut rows: Vec<Vec<&'a N>> = Vec::new();
+    for node in nodes {
+        match rows.last_mut() {
+            Some(row) if (node.rect().1 - row[0].rect().1).abs() <= 13.0 => row.push(node),
+            _ => rows.push(vec![node]),
+        }
+    }
+    rows.into_iter()
+        .enumerate()
+        .flat_map(|(row, segments)| {
+            segments
+                .into_iter()
+                .enumerate()
+                .map(move |(at, node)| (row, at, node))
+        })
+        .collect()
 }
 
 /// The sRGB sample at logical (`x`, `y`), clamped to the image.
@@ -985,6 +1378,109 @@ mod tests {
         assert!(rows.iter().any(|r| r.part == "header column 2" && r.property == "w"));
         assert!(rows.iter().any(|r| r.part == "header resize zone 1" && r.property == "x"));
         assert!(rows.iter().all(|r| r.ok), "{rows:#?}");
+    }
+
+    /// A Nodes-style ribbon row: two lettered segments and a `+2` tail on both
+    /// backends, painted into the canvases. `bevy_second_x` moves the Bevy
+    /// twin of the second segment; `drop_bevy_segment` removes it entirely.
+    fn ribbon(bevy_second_x: f64, drop_bevy_segment: bool) -> Vec<Row> {
+        let (y, h) = (50.0, 18.0);
+        let mut web_image = canvas(BORDER);
+        let mut bevy_image = canvas(BORDER);
+        let rects = [(30.0, TAG_FILLS[0]), (40.0, TAG_FILLS[1]), (56.0, SURFACE)];
+        for (x, color) in rects {
+            fill(&mut web_image, x, y, 13.0, h, color);
+        }
+        if !drop_bevy_segment {
+            fill(&mut bevy_image, bevy_second_x, y, 13.0, h, TAG_FILLS[1]);
+        }
+        for (x, color) in [(30.0, TAG_FILLS[0]), (56.0, SURFACE)] {
+            fill(&mut bevy_image, x, y, 13.0, h, color);
+        }
+        let button = |x: f64, cls: &str, text: &str, bg: [u8; 3]| {
+            format!(
+                r#"{{"x":{x},"y":{y},"w":13,"h":{h},"tag":"button","cls":"{cls}","text":"{text}","text_rect":null,"panel":"Notes","font":11,"weight":"400","tt":"none","lh":"normal","color":null,"bg":[{},{},{},1],"border":null,"border_w":0}}"#,
+                bg[0], bg[1], bg[2]
+            )
+        };
+        let mut web = web_nodes(40.0);
+        web.extend(
+            parse_lines::<WebNode>(
+                &[
+                    r#"{"x":10,"y":30,"w":160,"h":60,"tag":"div","cls":"pk-widget pk-dt","text":"","text_rect":null,"panel":"Notes","font":13,"weight":"400","tt":"none","lh":"normal","color":null,"bg":null,"border":null,"border_w":0}"#.to_owned(),
+                    button(30.0, "pk-dt-tag pk-dt-tag-0", "", TAG_FILLS[0]),
+                    button(40.0, "pk-dt-tag pk-dt-tag-1", "", TAG_FILLS[1]),
+                    button(56.0, "pk-dt-tag pk-dt-tag-tail", "+2", SURFACE),
+                ]
+                .join("\n"),
+            )
+            .expect("web ribbon fixture parses"),
+        );
+        let bevy_node = |id: u32, x: f64, text: &str, bg: [u8; 3]| {
+            format!(
+                r#"{{"id":{id},"parent":1,"x":{x},"y":{y},"w":13,"h":{h},"tw":null,"text":"{text}","font":11,"bold":false,"color":null,"bg":[{},{},{},1],"border":null,"border_w":0}}"#,
+                bg[0], bg[1], bg[2]
+            )
+        };
+        let mut bevy = bevy_nodes();
+        let mut bevy_lines = vec![
+            bevy_node(3, 30.0, "l", TAG_FILLS[0]),
+            bevy_node(5, 56.0, "", SURFACE),
+        ];
+        if !drop_bevy_segment {
+            bevy_lines.insert(1, bevy_node(4, bevy_second_x, "o", TAG_FILLS[1]));
+        }
+        // The `+N` label is a text child of the tail button, not its own.
+        bevy_lines.push(
+            r#"{"id":6,"parent":5,"x":59.0,"y":53.5,"w":13,"h":11,"tw":13.0,"text":"+2","font":11,"bold":false,"color":null,"bg":null,"border":null,"border_w":0}"#.to_owned(),
+        );
+        bevy.extend(
+            parse_lines::<BevyNode>(&bevy_lines.join("\n"))
+                .expect("bevy ribbon fixture parses"),
+        );
+        compare(
+            Capture { image: &web_image, nodes: &web },
+            Capture { image: &bevy_image, nodes: &bevy },
+        )
+        .0
+        .rows
+        .into_iter()
+        .filter(|row| row.part.starts_with("ribbon"))
+        .collect()
+    }
+
+    /// Paint a logical-px rect into a capture canvas.
+    fn fill(image: &mut RgbImage, x: f64, y: f64, w: f64, h: f64, color: [u8; 3]) {
+        for py in (y * SCALE) as u32..((y + h) * SCALE) as u32 {
+            for px in (x * SCALE) as u32..((x + w) * SCALE) as u32 {
+                image.put_pixel(px, py, image::Rgb(color));
+            }
+        }
+    }
+
+    #[test]
+    fn a_drifted_ribbon_segment_fails_its_own_row() {
+        let rows = ribbon(40.0, false);
+        assert!(rows.iter().all(|row| row.ok), "{rows:#?}");
+        let rows = ribbon(43.0, false);
+        let failing: Vec<_> = rows
+            .iter()
+            .filter(|row| !row.ok)
+            .map(|row| (row.part.as_str(), row.property.as_str()))
+            .collect();
+        assert_eq!(failing, [("ribbon row 0 segment 1", "x")]);
+    }
+
+    #[test]
+    fn a_missing_ribbon_segment_fails_the_count_row() {
+        let count = |rows: &[Row]| {
+            rows.iter()
+                .find(|row| (row.part.as_str(), row.property.as_str()) == ("ribbon", "segments"))
+                .expect("segment count row")
+                .ok
+        };
+        assert!(count(&ribbon(40.0, false)));
+        assert!(!count(&ribbon(40.0, true)));
     }
 
     #[test]

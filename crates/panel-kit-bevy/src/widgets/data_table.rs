@@ -254,8 +254,6 @@ struct Instance {
     live: Option<(String, f32)>,
     /// The header a dragged column would land beside, and whether before it.
     drop: Option<(String, bool)>,
-    /// Whether the cursor row shows its ring: the keyboard moved it last.
-    ring: bool,
     /// Whether the grid had keyboard focus when it was last painted.
     painted_focus: bool,
     /// The cursor row is to be scrolled into view once it is laid out.
@@ -286,7 +284,6 @@ impl Instance {
             drag: None,
             live: None,
             drop: None,
-            ring: false,
             painted_focus: false,
             reveal: false,
         };
@@ -507,9 +504,15 @@ fn chevron_image() -> Image {
 /// Spawn a data table over `model` with the default state. The painter
 /// fills it on the next update.
 pub fn spawn(parent: &mut ChildSpawnerCommands, model: &TableModel) -> Entity {
+    spawn_table(parent, DataTable::new(model.clone()))
+}
+
+/// Spawn a caller-built table (windowing, seeded state) over the same
+/// full-size node bundle [`spawn`] uses.
+pub fn spawn_table(parent: &mut ChildSpawnerCommands, table: DataTable) -> Entity {
     parent
         .spawn((
-            DataTable::new(model.clone()),
+            table,
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
@@ -577,7 +580,6 @@ fn press_controls(
                 instance.apply(TableEvent::TagsExpand(expand));
             }
             Action::Row(id) => {
-                instance.ring = false;
                 instance.apply(TableEvent::Cursor(id.clone()));
                 if instance.state.selectable != Selectable::None {
                     let mode = if shift {
@@ -1664,7 +1666,7 @@ impl Paint<'_> {
         let id = self.instance.data.id(row).to_owned();
         let selected = state.selection.contains(&id);
         let cursor = state.cursor.as_deref() == Some(id.as_str());
-        let ring = cursor && self.grid_focused && self.instance.ring;
+        let ring = cursor && self.instance.state.ring;
         let ground = if selected { theme.surface } else { theme.background };
         let cells = self.row_cells(row);
         grid.spawn((
@@ -1687,11 +1689,9 @@ impl Paint<'_> {
                 line.spawn(self.gutter_bundle(None, pad.1, ground))
                     .with_children(|gutter| {
                         self.ribbon(gutter, &id, &labels, cursor, ground);
-                        self.bands(gutter, selected, ring, true, false);
                     });
             }
-            let last = cells.len().saturating_sub(1);
-            for (at, ((column, cell, text), (_, basis))) in cells.iter().zip(widths).enumerate() {
+            for ((column, cell, text), (_, basis)) in cells.iter().zip(widths) {
                 line.spawn((
                     self.cell_node(*basis, pad, column.align),
                     BackgroundColor(ground),
@@ -1699,16 +1699,22 @@ impl Paint<'_> {
                 ))
                 .with_children(|slot| {
                     self.cell(slot, *cell, text);
-                    self.bands(slot, selected, ring, at == 0 && self.gutter().is_none(), at == last);
                 });
             }
+            self.bands(line, selected, ring);
         });
     }
 
     /// One cell's content: a model cell by kind, else its text.
     fn cell(&self, slot: &mut ChildSpawnerCommands, cell: Option<&TableCell>, text: &str) {
         let theme = self.theme;
-        let body = self.body();
+        // A virtual row's cells set the line height like the web's
+        // `[data-virtual]` rule does: `calc(var(--dt-row) - 1px)`.
+        let mut body = self.body();
+        if self.instance.windowed {
+            let row = self.instance.state.view.row_height(self.density()) as f32;
+            body.line_height = (row - 1.0) / body.size;
+        }
         match cell {
             Some(TableCell::Status { label, color }) => {
                 let tint = Color::srgb_u8(color.0, color.1, color.2);

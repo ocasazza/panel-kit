@@ -1155,6 +1155,7 @@ pub fn DataTable(
                                             "data-id": "{row_id}",
                                             "data-index": "{index}",
                                             "data-cursor": cursor.then_some("true"),
+                                            "data-ring": (current.ring && cursor).then_some("true"),
                                             aria_rowindex: "{header_rows + index + 1}",
                                             aria_selected: "{is_selected}",
                                             tabindex: tabindex,
