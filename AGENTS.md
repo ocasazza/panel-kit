@@ -22,6 +22,25 @@ Concretely:
   can represent the concept. Platform events should be translated at backend
   boundaries into core input types.
 
+## Bug Processing
+
+A bug reported against any engine (web, TUI, browser terminal, Bevy) is
+processed the same way:
+
+- **Fix it in core.** Encode the corrected behavior (scroll offsets, viewport
+  and resize policy, text measure, repaint/diff decisions, …) in
+  `crates/panel-kit-core` and make every backend adapt to it. A
+  backend-local patch is acceptable only for a purely platform defect (a
+  windowing flag, a font API call), and the reason goes in the commit body.
+- **Cover it with tests first.** Add a core test that fails on the reported
+  behavior before the fix and passes after; add a backend test wherever the
+  backend translates the core behavior (event adapter, render diff). Report
+  the coverage of the changed core code paths with the fix.
+- **Every engine passes.** The bug is fixed only when the full workspace
+  suite (`cargo test --workspace`, which includes `panel-kit-bevy`), the web
+  wasm build, and the terminal examples pass, and the visual parity check
+  holds for chrome or rendering changes.
+
 ## Loading / Hydration Convention
 
 Page hydration is generic and lives in `src/loading.rs` (web) over
