@@ -138,6 +138,13 @@ impl<K: BevyPanelKey> PanelBodyHandles<K> {
     }
 }
 
+/// Host systems that paint into panel body slots run in this [`PostUpdate`]
+/// set: after [`render_workspace`] refreshed [`PanelBodyHandles`] and before
+/// `bevy_ui` measures and lays out, so a repainted body is laid out in the
+/// frame it is spawned. A painter outside it shows one blank frame per repaint.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BodyPaint;
+
 /// Bevy plugin that renders the [`BevyPanelKit`] workspace into `bevy_ui`.
 ///
 /// Registers [`render_workspace`] in [`Update`]. The host inserts the
@@ -166,6 +173,7 @@ impl<K: BevyPanelKey> Plugin for PanelUiPlugin<K> {
             (insert_grip_image, crate::widgets::spinner::insert_ring_images),
         );
         app.add_systems(Update, render_workspace::<K>);
+        app.configure_sets(PostUpdate, BodyPaint.before(bevy::ui::UiSystem::Prepare));
         app.add_plugins(crate::input::PanelInputPlugin::<K>::default());
         // Table content panels paint through the data table painter.
         if !app.is_plugin_added::<crate::widgets::data_table::DataTablePlugin>() {

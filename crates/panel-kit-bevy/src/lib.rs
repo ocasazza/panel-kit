@@ -82,8 +82,8 @@ pub use input::{
 };
 pub use persist::{restore_layout, save_layout, FileLayoutStore};
 pub use render::{
-    render_workspace, DockChip, PanelBackdrop, PanelBodyHandles, PanelFrame, PanelUiPlugin,
-    PanelUiTargetCamera,
+    render_workspace, BodyPaint, DockChip, PanelBackdrop, PanelBodyHandles, PanelFrame,
+    PanelUiPlugin, PanelUiTargetCamera,
 };
 pub use theme::BevyTheme;
 

@@ -38,8 +38,8 @@ use panel_kit_bevy::widgets::data_table::DataTableExport;
 use panel_kit_bevy::widgets::time_series::TimeSeriesPlugin;
 use panel_kit_core::widgets::data_table::ExportFormat;
 use panel_kit_bevy::{
-    restore_layout, save_layout, BevyPanelKit, BevyTheme, FileLayoutStore, PanelBodyHandles,
-    PanelUiPlugin,
+    restore_layout, save_layout, BevyPanelKit, BevyTheme, BodyPaint, FileLayoutStore,
+    PanelBodyHandles, PanelUiPlugin,
 };
 use panel_kit_core::reducer::{ResizePolicy, Viewport, WorkspaceEvent};
 use panel_kit_core::spec::{BackendKind, ResolvedWorkspace, WorkspaceSpec};
@@ -86,6 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         spec_theme: theme.clone(),
         panels: HashMap::new(),
         painted: HashMap::new(),
+        workspace_facts: None,
         repaint_all: false,
         repaint_live: false,
         resize_policy: surface.resize_policy,
@@ -173,9 +174,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 dump_ui_nodes,
             ),
         )
-        // PostUpdate runs after the renderer's Update pass, so body handles
-        // are current for this frame.
-        .add_systems(PostUpdate, paint_bodies)
+        // Body handles are current after the renderer's Update pass; BodyPaint
+        // lays the repainted bodies out in the same frame.
+        .add_systems(PostUpdate, paint_bodies.in_set(BodyPaint))
         .run();
     Ok(())
 }
@@ -260,6 +261,8 @@ struct CanaryBodies {
     spec_theme: ThemeTokens,
     panels: HashMap<SpecPanelId, (String, ContentSpec)>,
     painted: HashMap<Entity, SpecPanelId>,
+    /// Title and maximized state the Workspace card last painted.
+    workspace_facts: Option<(String, bool)>,
     repaint_all: bool,
     repaint_live: bool,
     resize_policy: ResizePolicy,
@@ -367,17 +370,11 @@ fn paint_bodies(
         return;
     };
     let mut painted = Vec::new();
+    let mut workspace_facts = None;
     for (key, body) in handles.iter() {
         let Some((binding, content)) = bodies.panels.get(&key) else {
             continue;
         };
-        let fresh = bodies.painted.get(&body) != Some(&key);
-        let live = bodies.repaint_live && LIVE_BINDINGS.contains(&binding.as_str());
-        // The Workspace card reports its panel's window state.
-        let stateful = kit.is_changed() && binding == "canary.workspace";
-        if !(fresh || live || stateful || bodies.repaint_all) {
-            continue;
-        }
         let facts = WorkspaceFacts {
             title: kit.catalog.get(key).map_or("", |meta| meta.title.as_ref()),
             maximized: kit
@@ -386,6 +383,19 @@ fn paint_bodies(
                 .iter()
                 .any(|panel| panel.kind == key && panel.state == WinState::Maximized),
         };
+        let fresh = bodies.painted.get(&body) != Some(&key);
+        let live = bodies.repaint_live && LIVE_BINDINGS.contains(&binding.as_str());
+        // The Workspace card reports its panel's window state; it repaints
+        // when that state changes, not on every workspace change.
+        let stateful = binding == "canary.workspace" && {
+            let current = (facts.title.to_owned(), facts.maximized);
+            let changed = bodies.workspace_facts.as_ref() != Some(&current);
+            workspace_facts = Some(current);
+            changed
+        };
+        if !(fresh || live || stateful || bodies.repaint_all) {
+            continue;
+        }
         let mut body_commands = commands.entity(body);
         if !fresh {
             body_commands.despawn_related::<Children>();
@@ -394,6 +404,9 @@ fn paint_bodies(
             workspace_canary::paint(parent, &theme, &data, facts, binding, content);
         });
         painted.push((body, key));
+    }
+    if workspace_facts.is_some() {
+        bodies.workspace_facts = workspace_facts;
     }
     bodies.painted.extend(painted);
     bodies.repaint_all = false;
