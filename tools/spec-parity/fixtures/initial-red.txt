@@ -8,5 +8,6 @@ provider mismatch: panel manifest differs
 /panels/7/id: nix=<missing>, rust="Capacity"
 /panels/8/id: nix=<missing>, rust="Distribution"
 /panels/9/id: nix=<missing>, rust="Theme"
-/panels/length: nix=7, rust=10
-missing from Nix: Flame, Graph, Distribution
+/panels/10/id: nix=<missing>, rust="Inputs"
+/panels/length: nix=7, rust=11
+missing from Nix: Flame, Graph, Distribution, Inputs

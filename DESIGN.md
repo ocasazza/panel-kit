@@ -475,7 +475,9 @@ draws, so web and terminal chrome are the same shape.
 One shape breaks the rectangle: free-standing badges are full pills
 (`border-radius: 999px`, which at their height is exactly a stadium), inherited
 from the egui badge they port. Inside the data table they take the square chip
-style. The spinner's rotating ring stays circular because it moves.
+style. The spinner's rotating ring stays circular because it moves, and the
+radio mark is round because a round mark is how one-of-N reads apart from a
+checkbox's any-of-N; the terminal draws `( )` against `[ ]` for the same reason.
 Borders do the work that fills would do elsewhere: a badge's *kind* is carried
 by its border color with a near-black fill behind it, so ten badge kinds
 coexist without ten colored blocks fighting for attention. The resize grip is
@@ -515,6 +517,18 @@ edge grey, folded.
 - **Shape:** square, `1px` `--color-border` border, `--color-background` fill, `--color-text-muted` caps label at `11px` with `.06em` tracking.
 - **Hover:** inverts — `--color-text` fill, `--color-inverse-text` label.
 - **Pressed** (`aria-pressed="true"`): highlight border and label; a latched toggle is selection state. Disabled drops the border to `--color-divider`.
+
+### Form Controls
+
+- **Character:** instrument inputs on the same faceplate — a field is a cell you write into, not a card.
+- **Model:** `panel_kit_core::widgets::forms` owns the fields, values, focus, text editing, stepping, and the select popup (`FormModel`, `FormState`, `reduce`). Every renderer paints that model and translates its own events into `FormKey` / `FormHit`; none carries input behaviour of its own. Content kind `form`.
+- **Controls:** text (plain, password, search, e-mail, URL, telephone, date, time), text area, number, slider, checkbox, switch, radio group, select, button. Date and time are typed text (`YYYY-MM-DD`, `HH:MM`), not a native picker: an OS picker cannot be themed or drawn in cells.
+- **Shape:** square, `1px` `--color-border` edge, `--color-background` fill recessed below the panel surface, `1px 6px` padding, body type at `1.4`. Rows are a `88px` key column (the `11px` tracked-caps label in `--color-text-muted`) then the control, `--space-sm` apart. An optional muted note trails the control.
+- **States:** hover brightens the edge to `--color-text`; keyboard focus takes the shared `2px` ring; disabled drops the edge to `--color-divider` and the text to muted. A placeholder is `--color-text-muted`.
+- **Live state:** the highlight marks only what is on or chosen — the checkbox's `8px` lit cell, the switch thumb parked right, the radio dot, the open select's edge and chevron, the highlighted option's edge, the caret. The slider fills to its value in `--color-text`, not the highlight: a level is a reading, not an event.
+- **Select:** the popup is the system's own listbox under the trigger, never the OS menu, so it is the same list on web, terminal, and Bevy. A host that keeps a native `<select>` gives it `.pk-select` for the same closed face and drawn chevron.
+- **Primitives:** `.pk-input`, `.pk-select`, `.pk-check`, `.pk-radio`, `.pk-switch`, `.pk-range` style a host's own native elements; `panel_kit::widgets::Form` paints a whole `FormModel`.
+- **Cells:** a control is a bracketed run, the cell form of the `1px` edge — `[value   ]`, `[■]` / `[ ]`, `(•)` / `( )`, a four-cell switch track with `ON` / `OFF`, `━━■──` for the slider, `[choice ▾]`, `[ CAPTION ]`. The focused field carries `›` before its control and a bold edge; the caret is the character cell on the highlight. The ASCII glyph set draws `[x]`, `(*)`, `==#--`, `v`, `>`.
 
 ### Badges
 

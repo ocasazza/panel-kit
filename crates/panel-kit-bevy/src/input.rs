@@ -65,7 +65,7 @@ impl<K: BevyPanelKey> Plugin for PanelInputPlugin<K> {
                 (
                     (
                         pointer_input_system::<K>,
-                        keyboard_input_system::<K>,
+                        keyboard_input_system::<K>.in_set(WorkspaceKeys),
                         tile_drag_tick_system::<K>,
                     )
                         .chain(),
@@ -74,6 +74,17 @@ impl<K: BevyPanelKey> Plugin for PanelInputPlugin<K> {
             );
     }
 }
+
+/// The system set of [`keyboard_input_system`]. A widget that takes keys
+/// runs before it and records what it took in [`ClaimedKeys`].
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WorkspaceKeys;
+
+/// Keyboard events of the current frame a focused widget took, by their
+/// position in the frame's `KeyboardInput` events. The workspace keymap
+/// skips them, so typing into a field never fires a workspace command.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct ClaimedKeys(pub Vec<usize>);
 
 /// Advance tile-drag animation by Bevy's frame time. Runs only while
 /// [`TileDrag::animating`](panel_kit_core::tile_drag::TileDrag::animating)
@@ -102,7 +113,7 @@ pub struct ModifierState {
 }
 
 impl ModifierState {
-    fn observe(&mut self, event: &KeyboardInput) {
+    pub(crate) fn observe(&mut self, event: &KeyboardInput) {
         if event.repeat {
             return;
         }
@@ -141,6 +152,31 @@ fn translate_chord(event: &KeyboardInput, modifiers: ModifierState) -> Option<Ke
         return None;
     }
     let key = translate_key(&event.logical_key)?;
+    Some(KeyChord {
+        key,
+        shift: modifiers.shift,
+        alt: modifiers.alt,
+        ctrl: modifiers.ctrl,
+        meta: modifiers.meta,
+    })
+}
+
+/// Translate one Bevy keyboard event into a chord for text entry: characters
+/// keep their case, and the editing keys the workspace keymap has no use for
+/// are included.
+pub(crate) fn text_chord(event: &KeyboardInput, modifiers: ModifierState) -> Option<KeyChord> {
+    if event.state != ButtonState::Pressed {
+        return None;
+    }
+    let key = match &event.logical_key {
+        BevyKey::Character(text) => Key::Char(text.chars().next()?),
+        BevyKey::Space => Key::Char(' '),
+        BevyKey::Backspace => Key::Backspace,
+        BevyKey::Delete => Key::Delete,
+        BevyKey::Home => Key::Home,
+        BevyKey::End => Key::End,
+        other => translate_key(other)?,
+    };
     Some(KeyChord {
         key,
         shift: modifiers.shift,
@@ -424,16 +460,17 @@ pub fn keyboard_input_system<K: BevyPanelKey>(
     target: Option<Res<PanelUiTargetCamera>>,
     cameras: Query<&Camera>,
     primary: Query<Entity, With<PrimaryWindow>>,
+    claimed: Option<Res<ClaimedKeys>>,
     mut keys: EventReader<KeyboardInput>,
     mut modifiers: Local<ModifierState>,
 ) {
     let accepted = target_window(target.as_deref(), &cameras, &primary);
-    for event in keys.read() {
+    for (index, event) in keys.read().enumerate() {
         if !accepts(accepted, event.window) {
             continue;
         }
         modifiers.observe(event);
-        if event.repeat {
+        if event.repeat || claimed.as_ref().is_some_and(|claimed| claimed.0.contains(&index)) {
             continue;
         }
         let chord = translate_chord(event, *modifiers);

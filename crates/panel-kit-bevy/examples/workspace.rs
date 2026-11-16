@@ -12,7 +12,7 @@
 //! pixels, the same conversion the web host applies to the browser window.
 //! `p` switches between the spec theme and the paper preset; `q`
 //! quits. Set `PANEL_KIT_BEVY_SCREENSHOT=<path.png>` to render the workspace
-//! offscreen at 1440×900 logical pixels and scale factor 2 (independent of the
+//! offscreen at 1800×900 logical pixels and scale factor 2 (independent of the
 //! display the window lands on) with the initial metric samples, save it to
 //! that path plus every UI node's rect, text and paint to
 //! `<path.png>.nodes.jsonl`, and exit. Run inside the dev shell, which sets
@@ -32,6 +32,7 @@ use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{ExitCondition, PrimaryWindow, WindowPlugin};
 
 use panel_kit_bevy::fonts::{install_theme_font, BOLD_FONT};
+use panel_kit_bevy::widgets::forms::Form;
 use panel_kit_bevy::widgets::graph::{GraphPlugin, GraphSelectEvent};
 use panel_kit_bevy::widgets::scroll::ScrollPlugin;
 use panel_kit_bevy::widgets::data_table::DataTableExport;
@@ -56,7 +57,7 @@ use dock_controls::{paint_dock_controls, press_dock_controls, CanaryDefaults, Ca
 use workspace_canary::{CanaryData, WorkspaceFacts, LIVE_BINDINGS};
 
 /// Logical window size the cell-authored canary maps onto.
-const WINDOW_PX: (f64, f64) = (1440.0, 900.0);
+const WINDOW_PX: (f64, f64) = (1800.0, 900.0);
 
 /// Scale factor of the offscreen capture target.
 const CAPTURE_SCALE: f32 = 2.0;
@@ -164,6 +165,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (
                 fit_to_window,
                 tick_canary,
+                keep_inputs,
                 demo_keys,
                 select_graph_node,
                 save_on_change,
@@ -336,13 +338,28 @@ fn select_graph_node(
     }
 }
 
+/// The host owns the Inputs form: keep what the painted form holds, so a
+/// body repaint paints it back.
+fn keep_inputs(forms: Query<&Form, Changed<Form>>, mut data: ResMut<CanaryData>) {
+    for form in &forms {
+        if data.inputs != *form {
+            data.inputs = form.clone();
+        }
+    }
+}
+
 fn demo_keys(
     keys: Res<ButtonInput<KeyCode>>,
+    forms: Query<&Form>,
     mut data: ResMut<CanaryData>,
     mut bodies: ResMut<CanaryBodies>,
     mut theme: ResMut<BevyTheme>,
     mut exit: EventWriter<AppExit>,
 ) {
+    // A focused form field is typing, not a demo shortcut.
+    if forms.iter().any(|form| form.state.focus.is_some()) {
+        return;
+    }
     if keys.just_pressed(KeyCode::KeyP) {
         data.paper = !data.paper;
         *theme = if data.paper {

@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::badge::BadgeSpec;
 use charts::{BoxItemModel, BoxItemView, FlameSpanModel, GaugeModel, SeriesModel, SeriesView};
+use forms::{FormModel, FormState};
 use graph::{GraphLayout, GraphModel, GraphView};
 use meter::MeterModel;
 use status::StatusModel;
@@ -170,6 +171,11 @@ pub enum ContentSpec {
         /// Layout solver request for the component.
         layout: GraphLayout,
     },
+    /// Labeled input controls.
+    Form {
+        /// Authored or bound form model.
+        source: DataSource<FormModel>,
+    },
 }
 
 impl ContentSpec {
@@ -189,6 +195,7 @@ impl ContentSpec {
             Self::Status { .. } => "status",
             Self::Spinner { .. } => "spinner",
             Self::External { .. } => "external",
+            Self::Form { .. } => "form",
         }
     }
 }
@@ -255,6 +262,13 @@ pub enum ContentView<'a> {
         /// Borrowed graph body.
         graph: GraphView<'a>,
     },
+    /// Borrowed form and its interaction state.
+    Form {
+        /// Borrowed fields and values.
+        model: &'a FormModel,
+        /// Borrowed focus, caret, and popup state.
+        state: &'a FormState,
+    },
 }
 
 impl ContentView<'_> {
@@ -274,6 +288,7 @@ impl ContentView<'_> {
             Self::Status(_) => "status",
             Self::Spinner { .. } => "spinner",
             Self::External { .. } => "external",
+            Self::Form { .. } => "form",
         }
     }
 
@@ -287,6 +302,7 @@ impl ContentView<'_> {
             Self::Boxplot(items) => Some(items.len()),
             Self::Table { view, .. } => Some(view.rows.len()),
             Self::External { graph, .. } => Some(graph.nodes.len()),
+            Self::Form { model, .. } => Some(model.fields.len()),
             _ => None,
         }
     }

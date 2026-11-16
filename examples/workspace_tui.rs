@@ -23,8 +23,9 @@ use panel_kit_core::frame::{
     TileLayoutMetrics,
 };
 use panel_kit_core::persist::{apply_save_decision, restore_snapshot, LayoutError, RestoreContext};
-use panel_kit_core::reducer::{reduce, Snapshot, Viewport, WorkspaceEvent};
+use panel_kit_core::reducer::{reduce, HitTarget, PanelPart, Snapshot, Viewport, WorkspaceEvent};
 use panel_kit_core::spec::{BackendKind, Charset as SpecCharset, WorkspaceSpec};
+use panel_kit_core::widgets::forms::FormAction;
 use panel_kit_core::{FocusContext, SpecPanelId, SurfaceCapabilities, SurfaceProfile};
 use panel_kit_tui::input::{
     crossterm_key_chord, crossterm_workspace_event, route_wheel_to, workspace_event_from_key,
@@ -36,7 +37,7 @@ use panel_kit_tui::{rect_from_region, TerminalCharset, ResolvedTuiTheme};
 use ratatui::layout::{Position, Rect};
 use workspace_canary::content::{render_content, ContentRenderContext, DemoData};
 
-const CHECK_WIDTH: u16 = 128;
+const CHECK_WIDTH: u16 = 160;
 const CHECK_HEIGHT: u16 = 52;
 
 struct NativeCanary {
@@ -215,6 +216,17 @@ impl NativeCanary {
     }
 
     fn handle_key(&mut self, event: crossterm::event::KeyEvent) -> Result<bool, LayoutError> {
+        // A focused form takes every bare key before any shortcut below.
+        let chord = crossterm_key_chord(event);
+        if let Some(actions) = chord.and_then(|chord| self.demo.inputs.key(chord)) {
+            self.log_form_actions(actions);
+            return Ok(false);
+        }
+        if matches!(event.code, KeyCode::Char('i')) && self.inputs_panel_focused() {
+            let actions = self.demo.inputs.enter();
+            self.log_form_actions(actions);
+            return Ok(false);
+        }
         if matches!(event.code, KeyCode::Char('q')) {
             return Ok(true);
         }
@@ -234,15 +246,50 @@ impl NativeCanary {
             self.page_scroll(rows)?;
             return Ok(false);
         }
-        if let Some(chord) = crossterm_key_chord(event) {
+        if let Some(chord) = chord {
             self.apply_event(workspace_event_from_key(chord, FocusContext::Workspace))?;
         }
         Ok(false)
     }
 
+    /// The Inputs panel's key, when the spec declares one.
+    fn inputs_panel(&self) -> Option<SpecPanelId> {
+        self.workspace
+            .resolved
+            .catalog
+            .get_by_stable_id("Inputs")
+            .map(|meta| meta.key)
+    }
+
+    fn inputs_panel_focused(&self) -> bool {
+        self.inputs_panel().is_some() && self.workspace.snapshot.focused == self.inputs_panel()
+    }
+
+    /// Whether the topmost thing at `at` is the Inputs panel's painted form.
+    fn form_at(&self, at: Position) -> bool {
+        let top = self.hits.hit_test((f64::from(at.x), f64::from(at.y)));
+        let on_panel = matches!(
+            top,
+            Some(HitTarget::Panel { key, part: PanelPart::Surface }) if Some(key) == self.inputs_panel()
+        );
+        on_panel && self.demo.inputs.contains(at.x, at.y)
+    }
+
+    fn log_form_actions(&mut self, actions: Vec<FormAction>) {
+        self.demo
+            .actions
+            .extend(actions.iter().map(|action| format!("{action:?}")));
+    }
+
     fn handle_mouse(&mut self, event: crossterm::event::MouseEvent) -> Result<(), LayoutError> {
         let at = Position::new(event.column, event.row);
         if event.kind == MouseEventKind::Down(MouseButton::Left) {
+            let actions = if self.form_at(at) {
+                self.demo.inputs.press(at.x, at.y)
+            } else {
+                self.demo.inputs.press_outside()
+            };
+            self.log_form_actions(actions);
             if let Some((_, index)) = self
                 .demo
                 .badge_zones
@@ -421,6 +468,7 @@ fn render_job(
             resolved: &workspace.resolved,
             snapshot: &workspace.snapshot,
             theme: &workspace.theme,
+            charset: workspace.charset,
         },
         demo,
         content_kinds,
@@ -543,6 +591,7 @@ fn restore_key(
         KeyCode::Char('7') => "Capacity",
         KeyCode::Char('8') => "Distribution",
         KeyCode::Char('9') => "Theme",
+        KeyCode::Char('0') => "Inputs",
         _ => return None,
     };
     catalog.get_by_stable_id(id).map(|meta| meta.key)
@@ -599,7 +648,7 @@ mod evidence {
             &mut diff,
             "root",
             app.evidence.root,
-            Rect::new(0, 0, 128, 52),
+            Rect::new(0, 0, 160, 52),
         );
         expect_rect(
             &mut diff,
@@ -611,7 +660,7 @@ mod evidence {
             &mut diff,
             "badges body",
             body_rect(&app.evidence, catalog, "Badges"),
-            Rect::new(65, 2, 61, 9),
+            Rect::new(67, 2, 61, 9),
         );
         let graph = body_rect(&app.evidence, catalog, "Graph");
         expect_rect(&mut diff, "graph body", graph, Rect::new(3, 35, 60, 8));
@@ -620,9 +669,15 @@ mod evidence {
         }
         expect_rect(
             &mut diff,
+            "inputs body",
+            body_rect(&app.evidence, catalog, "Inputs"),
+            Rect::new(131, 2, 27, 32),
+        );
+        expect_rect(
+            &mut diff,
             "dock",
             app.evidence.dock,
-            Rect::new(1, 48, 126, 3),
+            Rect::new(1, 48, 158, 3),
         );
 
         let expected_kinds = expected_content_kinds(&app.workspace.resolved.panels);
@@ -635,6 +690,12 @@ mod evidence {
         expect_text(&mut diff, &buffer, "HOST-OWNED COMPOSITION");
         expect_text(&mut diff, &buffer, "dock:");
         expect_text(&mut diff, &buffer, "browser-tui");
+        // The Inputs form: a key label, the masked password, the unchosen
+        // select's placeholder, and the button caption.
+        expect_text(&mut diff, &buffer, "THRESHOLD");
+        expect_text(&mut diff, &buffer, "•••••••");
+        expect_text(&mut diff, &buffer, "choose region");
+        expect_text(&mut diff, &buffer, "[ APPLY ]");
 
         if diff.is_empty() {
             return Ok(());

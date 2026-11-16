@@ -94,3 +94,113 @@ node div.pk-widget pk-badge-strip > span.pk-badge-item > span.badge badge-wikili
 node div.pk-widget pk-badge-strip > span.pk-badge-item > span.badge badge-wikilink > button.badge-main > span.badge-label class="badge-label"
 text div.pk-widget pk-badge-strip > span.pk-badge-item > span.badge badge-wikilink > button.badge-main > span.badge-label => ⟶ Panel Kit
 "#;
+
+pub(super) const FORM: &str = r#"
+node div.pk-widget pk-form class="pk-widget pk-form" role="group"
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="text" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-host-label" for="probe-host"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => host
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > input.pk-input class="pk-input" id="probe-host" type="text" inputmode="text" value="pdx-01" placeholder="hostname"
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="text" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-token-label" for="probe-token"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => token
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > input.pk-input class="pk-input" id="probe-token" type="password" inputmode="text" value="hunter2"
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="text" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-filter-label" for="probe-filter"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => filter
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > input.pk-input class="pk-input" id="probe-filter" type="search" inputmode="search" value="" placeholder="label or tag"
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="text" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-since-label" for="probe-since"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => since
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > input.pk-input class="pk-input" id="probe-since" type="text" inputmode="numeric" maxlength="10" value="2026-11-01" placeholder="yyyy-mm-dd"
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="text_area" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-notes-label" for="probe-notes"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => notes
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > textarea.pk-input class="pk-input" id="probe-notes" rows="2" value="drain before
+the upgrade" placeholder="why"
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="number" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-replicas-label" for="probe-replicas"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => replicas
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-number class="pk-number"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-number > input.pk-input class="pk-input" id="probe-replicas" type="number" min="1" max="8" step="1" value="3" aria-describedby="probe-replicas-note"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-number > button.pk-step class="pk-step" type="button" tabindex="-1" aria-label="decrease replicas"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-number > button.pk-step => −
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-number > button.pk-step class="pk-step" type="button" tabindex="-1" aria-label="increase replicas"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-number > button.pk-step => +
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-field-note class="pk-field-note" id="probe-replicas-note"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-field-note => pods
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="slider" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-threshold-label" for="probe-threshold"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => threshold
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-slider class="pk-slider"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-slider > input.pk-range class="pk-range" id="probe-threshold" type="range" min="0" max="100" step="5" value="60" style="--pk-fill:60%" aria-describedby="probe-threshold-note"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-slider > output.pk-slider-value class="pk-slider-value" for="probe-threshold"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-slider > output.pk-slider-value => 60
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-field-note class="pk-field-note" id="probe-threshold-note"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-field-note => %
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="checkbox" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-drain-label" for="probe-drain"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => drain
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > input.pk-check class="pk-check" id="probe-drain" type="checkbox"
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="switch" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-alerts-label" for="probe-alerts"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => alerts
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > button.pk-switch class="pk-switch" id="probe-alerts" type="button" role="switch" aria-checked="false"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-switch-state class="pk-switch-state" aria-hidden="true"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-switch-state => off
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="radio" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > span.pk-field-key class="pk-field-key" id="probe-tier-label"
+text div.pk-widget pk-form > div.pk-field > span.pk-field-key => tier
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group class="pk-radio-group" id="probe-tier" role="radiogroup" aria-labelledby="probe-tier-label"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice class="pk-choice"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice > input.pk-radio class="pk-radio" type="radio" name="probe-tier" value="hot"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice > span
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice > span => hot
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice class="pk-choice"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice > input.pk-radio class="pk-radio" type="radio" name="probe-tier" value="warm"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice > span
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice > span => warm
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice class="pk-choice"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice > input.pk-radio class="pk-radio" type="radio" name="probe-tier" value="cold"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice > span
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-radio-group > label.pk-choice > span => cold
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="select" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-region-label" for="probe-region"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => region
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap class="pk-select-wrap"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > button.pk-select class="pk-select" id="probe-region" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="true" aria-controls="probe-region-list" aria-activedescendant="probe-region-opt-1" data-empty="true"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > button.pk-select => choose region
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup class="pk-dropdown-popup" id="probe-region-list" role="listbox" aria-labelledby="probe-region-label"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup > div.pk-dropdown-list class="pk-dropdown-list"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup > div.pk-dropdown-list > div.pk-dropdown-item class="pk-dropdown-item" id="probe-region-opt-0" role="option" aria-selected="false"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup > div.pk-dropdown-list > div.pk-dropdown-item => Portland
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup > div.pk-dropdown-list > div.pk-dropdown-item highlighted class="pk-dropdown-item highlighted" id="probe-region-opt-1" role="option" aria-selected="false"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup > div.pk-dropdown-list > div.pk-dropdown-item highlighted => Ashburn
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup > div.pk-dropdown-list > div.pk-dropdown-item class="pk-dropdown-item" id="probe-region-opt-2" role="option" aria-selected="false"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup > div.pk-dropdown-list > div.pk-dropdown-item => Frankfurt
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup > div.pk-dropdown-list > div.pk-dropdown-item class="pk-dropdown-item" id="probe-region-opt-3" role="option" aria-selected="false"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > div.pk-select-wrap > div.pk-dropdown-popup > div.pk-dropdown-list > div.pk-dropdown-item => Tokyo
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="text" data-disabled="true"
+node div.pk-widget pk-form > div.pk-field > label.pk-field-key class="pk-field-key" id="probe-owner-label" for="probe-owner"
+text div.pk-widget pk-form > div.pk-field > label.pk-field-key => owner
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > input.pk-input class="pk-input" id="probe-owner" type="text" inputmode="text" value="platform"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-field-note class="pk-field-note" id="probe-owner-note"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > span.pk-field-note => locked
+node div.pk-widget pk-form > div.pk-field class="pk-field" data-control="button" data-disabled="false"
+node div.pk-widget pk-form > div.pk-field > span.pk-field-key class="pk-field-key" id="probe-apply-label"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control class="pk-field-control"
+node div.pk-widget pk-form > div.pk-field > div.pk-field-control > button.pk-btn class="pk-btn" id="probe-apply" type="button"
+text div.pk-widget pk-form > div.pk-field > div.pk-field-control > button.pk-btn => apply
+"#;

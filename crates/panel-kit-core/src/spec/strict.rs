@@ -365,6 +365,12 @@ fn walk_content(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink
                 walk_data_source(source, &join(pointer, "source"), errors, walk_status_model);
             }
         }
+        "form" => {
+            check_fields(object, pointer, CONTENT_SOURCE_FIELDS, errors);
+            if let Some(source) = object.get("source") {
+                walk_data_source(source, &join(pointer, "source"), errors, walk_form_model);
+            }
+        }
         "spinner" => {
             check_fields(object, pointer, CONTENT_SPINNER_FIELDS, errors);
             if let Some(label) = object.get("label") {
@@ -777,6 +783,65 @@ fn walk_status_model(value: &serde_json::Value, pointer: &str, errors: &mut Erro
     check_fields(object, pointer, STATUS_MODEL_FIELDS, errors);
 }
 
+fn walk_form_model(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(object) = object_at(value, pointer, errors) else {
+        return;
+    };
+    check_fields(object, pointer, FORM_MODEL_FIELDS, errors);
+    if let Some(fields) = object.get("fields") {
+        walk_array_items(fields, &join(pointer, "fields"), errors, walk_form_field);
+    }
+}
+
+fn walk_form_field(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(object) = object_at(value, pointer, errors) else {
+        return;
+    };
+    check_fields(object, pointer, FORM_FIELD_FIELDS, errors);
+    if let Some(control) = object.get("control") {
+        walk_form_control(control, &join(pointer, "control"), errors);
+    }
+}
+
+fn walk_form_control(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
+    let Some(object) = object_at(value, pointer, errors) else {
+        return;
+    };
+    let Some(control) = string_value(object, "type") else {
+        errors.push(format!("{pointer}/type"), "missing required field");
+        return;
+    };
+    let fields = match control {
+        "text" => FORM_TEXT_FIELDS,
+        "text_area" => FORM_TEXT_AREA_FIELDS,
+        "number" | "slider" => FORM_RANGE_FIELDS,
+        "checkbox" => FORM_CHECKBOX_FIELDS,
+        "switch" => FORM_SWITCH_FIELDS,
+        "radio" => FORM_RADIO_FIELDS,
+        "select" => FORM_SELECT_FIELDS,
+        "button" => FORM_BUTTON_FIELDS,
+        _ => {
+            errors.push(
+                format!("{pointer}/type"),
+                format!("unsupported form control {control}"),
+            );
+            return;
+        }
+    };
+    check_fields(object, pointer, fields, errors);
+    check_enum_field(object, pointer, "entry", FORM_TEXT_ENTRIES, errors);
+    if let Some(options) = object.get("options") {
+        walk_array_items(
+            options,
+            &join(pointer, "options"),
+            errors,
+            |option, option_pointer, errors| {
+                walk_object_fields(option, option_pointer, FORM_CHOICE_FIELDS, errors);
+            },
+        );
+    }
+}
+
 fn walk_string_value(value: &serde_json::Value, pointer: &str, errors: &mut ErrorSink) {
     if !value.is_string() {
         errors.push(pointer, "expected string");
@@ -1077,3 +1142,17 @@ const FLAME_SPAN_MODEL_FIELDS: &[&str] = &["label", "depth", "value", "color"];
 const BOX_ITEM_MODEL_FIELDS: &[&str] = &["label", "samples", "color"];
 const METER_MODEL_FIELDS: &[&str] = &["label", "ratio", "text", "color"];
 const STATUS_MODEL_FIELDS: &[&str] = &["label", "state", "color"];
+const FORM_MODEL_FIELDS: &[&str] = &["fields"];
+const FORM_FIELD_FIELDS: &[&str] = &["id", "label", "control", "disabled", "note"];
+const FORM_TEXT_FIELDS: &[&str] = &["type", "value", "placeholder", "entry"];
+const FORM_TEXT_AREA_FIELDS: &[&str] = &["type", "value", "placeholder", "rows"];
+const FORM_RANGE_FIELDS: &[&str] = &["type", "value", "min", "max", "step"];
+const FORM_CHECKBOX_FIELDS: &[&str] = &["type", "checked"];
+const FORM_SWITCH_FIELDS: &[&str] = &["type", "on"];
+const FORM_RADIO_FIELDS: &[&str] = &["type", "value", "options"];
+const FORM_SELECT_FIELDS: &[&str] = &["type", "value", "placeholder", "options"];
+const FORM_BUTTON_FIELDS: &[&str] = &["type", "text"];
+const FORM_CHOICE_FIELDS: &[&str] = &["value", "label"];
+const FORM_TEXT_ENTRIES: &[&str] = &[
+    "plain", "password", "search", "email", "url", "tel", "date", "time",
+];

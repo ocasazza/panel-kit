@@ -28,9 +28,12 @@ pub fn write(
 
     let mut md = String::new();
     let _ = writeln!(md, "# Bevy vs web parity report\n");
+    let (width, height) = crate::capture::VIEWPORT;
+    let scale = crate::capture::DEVICE_SCALE;
     let _ = writeln!(
         md,
-        "Web: Chromium, 1440×900 CSS px, DPR 2. Bevy: offscreen 1440×900 logical, scale 2.\n\
+        "Web: Chromium, {width}×{height} CSS px, DPR {scale}. \
+         Bevy: offscreen {width}×{height} logical, scale {scale}.\n\
          Tolerances: geometry ±{GEOMETRY_TOLERANCE} px; colour exact sRGB \
          (anti-aliased samples: ΔE76 < {DELTA_E_TOLERANCE}).\n"
     );

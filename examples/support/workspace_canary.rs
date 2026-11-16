@@ -21,10 +21,11 @@ pub mod content {
     use panel_kit_core::widgets::{ContentSpec, DataSource, ScrollPolicy, TextModel};
     use panel_kit_core::{ResolvedWorkspace, SpecPanelId};
     use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
+    use panel_kit_tui::forms::{form, FormHost};
     use panel_kit_tui::graph::graph;
     use panel_kit_tui::scroll::PanelScroll;
     use panel_kit_tui::spinner::spinner;
-    use panel_kit_tui::ResolvedTuiTheme;
+    use panel_kit_tui::{ResolvedTuiTheme, TerminalCharset};
     use ratatui::layout::Rect;
     use ratatui::style::Style;
     use ratatui::text::{Line, Span};
@@ -32,7 +33,10 @@ pub mod content {
 
     use panel_kit_graph_layout::solve_2d;
 
-    use crate::workspace_canary::{canary_graph, capacity_items, demo_badges, node_rows, node_table_state, Metrics};
+    use crate::workspace_canary::{
+        canary_graph, canary_inputs, capacity_items, demo_badges, node_rows, node_table_state,
+        Metrics,
+    };
 
     /// Mutable demo-provider state used by the executable native canary.
     pub struct DemoData {
@@ -43,6 +47,8 @@ pub mod content {
         pub panels: PanelScroll<SpecPanelId>,
         pub paper: bool,
         pub tick: u64,
+        /// The Inputs panel's form, its focus state, and where it painted.
+        pub inputs: FormHost,
         metrics: Metrics,
         /// The Graph panel's model and its solved unit-square positions.
         graph: Option<(GraphModel, Vec<[f32; 2]>)>,
@@ -54,6 +60,7 @@ pub mod content {
         pub resolved: &'a ResolvedWorkspace,
         pub snapshot: &'a Snapshot<SpecPanelId>,
         pub theme: &'a ResolvedTuiTheme,
+        pub charset: TerminalCharset,
     }
 
     impl DemoData {
@@ -64,18 +71,21 @@ pub mod content {
                 badge_zones: Vec::new(),
                 theme_zone: Rect::default(),
                 actions: Vec::new(),
-                panels: PanelScroll::with_capacity(10),
+                panels: PanelScroll::with_capacity(11),
                 paper: false,
                 tick: 0,
+                inputs: FormHost::new(canary_inputs()),
                 metrics: Metrics::new(),
                 graph: None,
             }
         }
 
-        /// Advance deterministic animated data by one frame.
+        /// Advance deterministic animated data by one frame. The frame
+        /// repaints the Inputs form if its panel is on screen.
         pub fn tick(&mut self) {
             self.tick = self.tick.wrapping_add(1);
             self.metrics.tick();
+            self.inputs.clear();
         }
     }
 
@@ -142,6 +152,18 @@ pub mod content {
                 context.theme,
                 source.binding_id().unwrap_or(component.as_str()),
             ),
+            ContentSpec::Form { source } => match source {
+                DataSource::Inline { value } => {
+                    let state = Default::default();
+                    form(frame, area, context.theme, context.charset, value, &state);
+                }
+                DataSource::Binding { id } if id == "canary.inputs" => {
+                    demo.inputs.draw(frame, area, context.theme, context.charset)
+                }
+                DataSource::Binding { id } => {
+                    render_binding_placeholder(frame, area, context.theme, id)
+                }
+            },
         }
     }
 

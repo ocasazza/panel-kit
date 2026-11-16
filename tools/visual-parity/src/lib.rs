@@ -1,6 +1,6 @@
 //! Visual parity gate between the web (Dioxus) and Bevy workspace canaries.
 //!
-//! `visual-parity check` captures both backends at 1440×900 logical px,
+//! `visual-parity check` captures both backends at 1800×900 logical px,
 //! scale 2, pairs every web panel with its Bevy frame, compares geometry,
 //! sampled pixels, traffic lights, text runs and the data-table toolbar, and
 //! fails on any difference outside tolerance. See the

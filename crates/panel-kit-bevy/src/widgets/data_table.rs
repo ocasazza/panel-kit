@@ -427,19 +427,20 @@ impl Plugin for DataTablePlugin {
 
 /// The group select's chevron (`.pk-dt-select::after`), tinted with the
 /// text colour.
-const CHEVRON_IMAGE: Handle<Image> = bevy::asset::weak_handle!("2d6f0b8e-93c4-4a1d-b7e5-6c0a9f3e1d24");
+pub(super) const CHEVRON_IMAGE: Handle<Image> =
+    bevy::asset::weak_handle!("2d6f0b8e-93c4-4a1d-b7e5-6c0a9f3e1d24");
 /// Chevron box, in CSS px.
-const CHEVRON_BOX: (f32, f32) = (10.0, 7.0);
+pub(super) const CHEVRON_BOX: (f32, f32) = (10.0, 7.0);
 /// The CSS `clip-path` polygon inside [`CHEVRON_BOX`].
 const CHEVRON_POLYGON: [(f32, f32); 6] =
     [(0.0, 1.5), (1.5, 0.0), (5.0, 3.5), (8.5, 0.0), (10.0, 1.5), (5.0, 6.5)];
 /// `right: 9px` from the select's border box.
-const CHEVRON_RIGHT: f32 = 9.0;
+pub(super) const CHEVRON_RIGHT: f32 = 9.0;
 const CHEVRON_TEXELS: u32 = 4;
 /// `.pk-dt-select select { padding-right: 22px }`: room for the chevron.
 const SELECT_PAD_RIGHT: f32 = 22.0;
 
-fn insert_chevron_image(images: Option<ResMut<Assets<Image>>>) {
+pub(super) fn insert_chevron_image(images: Option<ResMut<Assets<Image>>>) {
     if let Some(mut images) = images {
         images.insert(&CHEVRON_IMAGE, chevron_image());
         images.insert(&ribbon::RAKE_IMAGE, ribbon::rake_image());

@@ -69,6 +69,19 @@ mkWorkspaceSpec {
       source = { source = "binding"; id = "reference.graph"; };
       layout = { algorithm = "dagre"; group_by = "sort"; params = { rank_sep = 2.0; }; };
     })
+    (panel 13 "form" "Form" {
+      kind = "form";
+      source = {
+        source = "inline";
+        value = {
+          fields = [
+            { id = "host"; label = "host"; disabled = false; note = ""; control = { type = "text"; value = "pdx-01"; placeholder = "hostname"; entry = "plain"; }; }
+            { id = "replicas"; label = "replicas"; disabled = false; note = "pods"; control = { type = "number"; value = 3.0; min = 1.0; max = 8.0; step = 1.0; }; }
+            { id = "region"; label = "region"; disabled = false; note = ""; control = { type = "select"; value = "pdx"; placeholder = "choose"; options = [ { value = "pdx"; label = "Portland"; } ]; }; }
+          ];
+        };
+      };
+    })
   ];
   components = [
     {

@@ -3,12 +3,17 @@ use panel_kit_core::badge::{BadgeAction, BadgeKind, BadgeSpec};
 use panel_kit_core::widgets::charts::{
     BoxItemView, FiveNum, FlameSpanModel, GaugeModel, SeriesView,
 };
+use panel_kit_core::widgets::forms::{FormInput, FormState};
 use panel_kit_core::widgets::spinner::SpinnerModel;
 use panel_kit_core::widgets::{ContentView, ScrollPolicy};
 
 use super::content_view;
 use super::snapshot_expectations;
 use super::snapshot_semantics::assert_widget_snapshot;
+
+#[allow(dead_code)]
+#[path = "../../examples/support/canary_content.rs"]
+mod canary_content;
 
 fn noop_action() -> EventHandler<BadgeAction> {
     EventHandler::new(|_: BadgeAction| {})
@@ -144,4 +149,57 @@ fn badge_strip_renders_badges_from_core_specs_without_model_duplication() {
     let html = dioxus_ssr::render_element(rsx! { BadgeStripProbe {} });
 
     assert_widget_snapshot(&html, snapshot_expectations::BADGE_STRIP);
+}
+
+/// The canary form with its select open on the second option.
+#[component]
+fn FormProbe() -> Element {
+    let model = canary_content::canary_inputs();
+    let region = model.fields.iter().position(|field| field.id == "region");
+    let state = FormState {
+        focus: region,
+        open: true,
+        highlighted: Some(1),
+        ..FormState::default()
+    };
+    super::forms::form(
+        "probe",
+        &model,
+        &state,
+        Some(EventHandler::new(|_: FormInput| {})),
+    )
+}
+
+#[test]
+fn form_paints_every_control_kind_with_its_semantics() {
+    let html = dioxus_ssr::render_element(rsx! { FormProbe {} });
+
+    assert_widget_snapshot(&html, snapshot_expectations::FORM);
+    assert!(!html.contains("inert"), "an operable form is not inert: {html}");
+    // Boolean attributes render unquoted, outside the snapshot's reach.
+    let tag = |id: &str| {
+        let start = html.find(id).unwrap_or_else(|| panic!("{id} not painted: {html}"));
+        &html[start..start + html[start..].find('>').unwrap()]
+    };
+    assert!(tag(r#"id="probe-drain""#).contains("checked=true"), "the checked box");
+    assert!(tag(r#"value="warm""#).contains("checked=true"), "the chosen radio");
+    assert!(!tag(r#"value="hot""#).contains("checked=true"), "an unchosen radio");
+    assert!(tag(r#"id="probe-owner""#).contains("disabled=true"), "the disabled field");
+    assert!(!tag(r#"id="probe-host""#).contains("disabled=true"), "an enabled field");
+}
+
+#[component]
+fn InertFormProbe() -> Element {
+    let model = canary_content::canary_inputs();
+    let state = FormState::default();
+    content_view(ContentView::Form { model: &model, state: &state }, 0, noop_action())
+}
+
+#[test]
+fn a_form_painted_without_a_handler_is_inert_and_closed() {
+    let html = dioxus_ssr::render_element(rsx! { InertFormProbe {} });
+
+    assert!(html.contains(r#"inert="true""#), "{html}");
+    assert!(!html.contains("pk-dropdown-popup"), "a closed select paints no list: {html}");
+    assert!(html.contains(r#"aria-expanded="false""#), "{html}");
 }

@@ -1,9 +1,21 @@
-//! Form value parsing, clamping, and slider mapping for the shared form rows.
+//! Form controls: the renderer-neutral model and interaction state machine
+//! ([`FormModel`], [`reduce`]), plus the value parsing, clamping, and slider
+//! mapping the web form rows share.
 //!
-//! Ported from jump-cannon's layout-panel form rows (`panels/layout.rs`):
-//! every numeric entry is parsed then clamped into its declared range, and
-//! logarithmic sliders map onto a 0–1000 position so a range input can cover
-//! orders of magnitude.
+//! The parsing helpers are ported from jump-cannon's layout-panel form rows
+//! (`panels/layout.rs`): every numeric entry is parsed then clamped into its
+//! declared range, and logarithmic sliders map onto a 0–1000 position so a
+//! range input can cover orders of magnitude.
+
+mod model;
+mod state;
+#[cfg(test)]
+mod reduce_tests;
+
+pub use model::{ChoiceModel, ControlModel, FieldModel, FieldValue, FormModel, TextEntry, MASK};
+pub use state::{
+    key_input, reduce, route_chord, FormAction, FormHit, FormInput, FormKey, FormState, KeyRoute,
+};
 
 /// Parse a text entry as `f64`, clamped into `[min, max]`.
 pub fn parse_clamped_f64(raw: &str, min: f64, max: f64) -> Option<f64> {
