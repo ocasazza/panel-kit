@@ -1102,6 +1102,7 @@ const COMPONENT_EVENT_KINDS: &[&str] = &["select", "hover"];
 const COMPONENT_FALLBACKS: &[&str] = &["cells", "notice"];
 const LAYOUT_ALGORITHMS: &[&str] = &[
     "force",
+    "amphiphile",
     "circle",
     "grid",
     "concentric",

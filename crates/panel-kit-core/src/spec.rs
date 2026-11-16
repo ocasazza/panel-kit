@@ -1419,6 +1419,43 @@ mod tests {
     }
 
     #[test]
+    fn every_layout_algorithm_decodes_under_its_serde_name() {
+        use crate::widgets::graph::LayoutAlgorithm as A;
+
+        let all = [
+            A::Force,
+            A::Amphiphile,
+            A::Circle,
+            A::Grid,
+            A::Concentric,
+            A::Spectral,
+            A::Dagre,
+            A::Fcose,
+            A::Sphere,
+        ];
+        for algorithm in all {
+            // Exhaustive, so a new solver fails to compile until it joins `all`.
+            match algorithm {
+                A::Force
+                | A::Amphiphile
+                | A::Circle
+                | A::Grid
+                | A::Concentric
+                | A::Spectral
+                | A::Dagre
+                | A::Fcose
+                | A::Sphere => {}
+            }
+            let mut doc = spec_with_external_panel();
+            doc["panels"][0]["content"]["layout"]["algorithm"] =
+                serde_json::to_value(algorithm).expect("algorithm serializes");
+            if let Err(errors) = WorkspaceSpec::from_json_value(doc) {
+                panic!("{algorithm:?} is rejected: {errors:?}");
+            }
+        }
+    }
+
+    #[test]
     fn non_finite_layout_parameter_is_rejected_by_pointer() {
         let mut doc = spec_with_external_panel();
         doc["panels"][0]["content"]["layout"]["params"] = json!({ "rank_sep": "NaN" });
