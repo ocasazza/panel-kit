@@ -23,7 +23,7 @@ mkWorkspaceSpec {
 
   layout = {
     units = "Cells";
-    viewport = [ 128.0 52.0 ];
+    viewport = [ 160.0 52.0 ];
     preferred_mode = "Floating";
     clamp = {
       outer_w = 0.0;
@@ -135,6 +135,10 @@ mkWorkspaceSpec {
     (panel "Theme" "Theme" "theme"
       (window 65.0 43.0 63.0 9.0 9 2 2)
       { kind = "custom"; binding = "canary.theme"; })
+
+    (panel "Inputs" "Inputs" "inputs"
+      (window 129.0 0.0 29.0 34.0 11 1 3)
+      { kind = "form"; source = bindingSource "canary.inputs"; })
   ];
 
   # Satisfied on every backend: it requires no capability, so each paints the

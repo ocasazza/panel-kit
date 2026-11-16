@@ -305,6 +305,8 @@ pub enum ContentKind {
     Spinner,
     /// Host-mounted component declared by `WorkspaceSpec::components`.
     External,
+    /// Labeled input controls.
+    Form,
 }
 
 /// Provider-side declaration for one panel.
@@ -557,6 +559,7 @@ impl ContentSpec {
             Self::Status { source } => source.binding_id(),
             Self::Spinner { label } => label.binding_id(),
             Self::External { source, .. } => source.binding_id(),
+            Self::Form { source } => source.binding_id(),
         }
     }
 }
@@ -594,6 +597,7 @@ impl ContentKind {
             ContentSpec::Status { .. } => Self::Status,
             ContentSpec::Spinner { .. } => Self::Spinner,
             ContentSpec::External { .. } => Self::External,
+            ContentSpec::Form { .. } => Self::Form,
         }
     }
 }

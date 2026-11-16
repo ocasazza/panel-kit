@@ -11,6 +11,7 @@ pub use canary_content::*;
 use std::time::Duration;
 
 use bevy::prelude::*;
+use panel_kit_bevy::widgets::forms::{self, Form};
 use panel_kit_bevy::widgets::{
     self, boxplot, content, flamegraph, gauges, graph, scroll, spinner, styled_text, time_series,
     TextStyle,
@@ -36,6 +37,8 @@ pub struct CanaryData {
     pub tick: u64,
     /// The graph node the host selected; none until one is pressed.
     pub graph_selected: Option<String>,
+    /// The Inputs panel's form: the host's copy of its values and focus.
+    pub inputs: Form,
 }
 
 impl Default for CanaryData {
@@ -46,6 +49,7 @@ impl Default for CanaryData {
             paper: false,
             tick: 0,
             graph_selected: None,
+            inputs: Form::new(canary_inputs()),
         }
     }
 }
@@ -108,6 +112,9 @@ pub fn paint(
         "canary.capacity" => gauges::spawn(parent, theme, &capacity_items()),
         "canary.distribution" => boxplot::spawn(parent, theme, &data.metrics.boxes()),
         "canary.theme" => theme_panel(parent, theme, data),
+        "canary.inputs" => {
+            forms::spawn(parent, theme, data.inputs.clone());
+        }
         _ => content::spawn(parent, theme, content_spec),
     }
 }

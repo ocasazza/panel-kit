@@ -30,7 +30,10 @@ pub mod trace;
 
 pub use button::Button;
 pub use build_progress::PanelHydrating;
-pub use forms::{CheckRow, IntRow, Slider, TextRow};
+pub use forms::{
+    CheckRow, ChoiceModel, ControlModel, FieldModel, FieldValue, Form, FormAction, FormInput,
+    FormModel, FormState, IntRow, Slider, TextEntry, TextRow,
+};
 pub use selection::SelectableCard;
 pub use cascade::{CascadeAction, CascadeItem, CascadeState, CascadingDropdown};
 pub use data_table::{
@@ -75,6 +78,7 @@ pub fn content_view(
         ContentView::Meter(model) => meter::meter(model),
         ContentView::Status(model) => status::status(model),
         ContentView::Spinner { label } => spinner::spinner(label, spinner_tick),
+        ContentView::Form { model, state } => forms::form("pk-form", model, state, None),
     }
 }
 

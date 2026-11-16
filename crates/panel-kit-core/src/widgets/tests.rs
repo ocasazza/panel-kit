@@ -12,7 +12,7 @@ fn content_spec_kind_names_are_derived_from_variants() {
         })
         .collect();
 
-    assert_eq!(observed.len(), 13);
+    assert_eq!(observed.len(), 14);
     assert_eq!(
         observed,
         [
@@ -29,6 +29,7 @@ fn content_spec_kind_names_are_derived_from_variants() {
             "status",
             "spinner",
             "external",
+            "form",
         ]
     );
     assert!(!observed.contains(&"unsupported"));
@@ -60,7 +61,7 @@ fn data_source_preserves_inline_and_binding_sources() {
     assert_eq!(binding.binding_id(), Some("notes.body"));
 }
 
-fn all_content_spec_variants() -> [ContentSpec; 13] {
+fn all_content_spec_variants() -> [ContentSpec; 14] {
     [
         ContentSpec::Custom {
             binding: "native.panel".into(),
@@ -172,6 +173,11 @@ fn all_content_spec_variants() -> [ContentSpec; 13] {
                 id: "app.graph".into(),
             },
             layout: graph::GraphLayout::default(),
+        },
+        ContentSpec::Form {
+            source: DataSource::Binding {
+                id: "app.settings".into(),
+            },
         },
     ]
 }

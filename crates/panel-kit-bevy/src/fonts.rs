@@ -77,9 +77,10 @@ pub fn fallback_font(glyph: char) -> Option<Handle<Font>> {
 }
 
 /// Non-ASCII glyphs panel-kit painters draw: chrome separators and arrows,
-/// badge link arrows, list markers, plus core's spinner frames.
+/// badge link arrows, list markers, the number stepper's minus, plus core's
+/// spinner frames.
 pub fn painted_glyphs() -> impl Iterator<Item = char> {
-    "·→×—…⟶•●★"
+    "·→×—…⟶•●★−"
         .chars()
         .chain(panel_kit_core::widgets::spinner::FRAMES.iter().flat_map(|frame| frame.chars()))
 }

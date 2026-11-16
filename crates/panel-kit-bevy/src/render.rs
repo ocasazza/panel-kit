@@ -179,6 +179,9 @@ impl<K: BevyPanelKey> Plugin for PanelUiPlugin<K> {
         if !app.is_plugin_added::<crate::widgets::data_table::DataTablePlugin>() {
             app.add_plugins(crate::widgets::data_table::DataTablePlugin);
         }
+        if !app.is_plugin_added::<crate::widgets::forms::FormPlugin>() {
+            app.add_plugins(crate::widgets::forms::FormPlugin);
+        }
     }
 }
 

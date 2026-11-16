@@ -186,6 +186,9 @@ let
         component = require pointer content "component";
         source = normalizeDataSource (join pointer "source") normalizeGraph (require pointer content "source");
         layout = normalizeGraphLayout (join pointer "layout") (require pointer content "layout"); }
+    else if kind == "form" then
+      let content = allowed pointer [ "kind" "source" ] input; in
+      { inherit kind; source = normalizeDataSource (join pointer "source") normalizeForm (require pointer content "source"); }
     else die (join pointer "kind") "unsupported content kind ${toString kind}";
 
   normalizeDataSource = pointer: normalizeValue: value:
@@ -286,6 +289,7 @@ let
   normalizeBoxList = _pointer: value: value;
   normalizeMeter = _pointer: value: value;
   normalizeStatus = _pointer: value: value;
+  normalizeForm = _pointer: value: value;
 
   normalizeByFields = pointer: names: normalize: value:
     let input = allowed pointer names value; in lib.genAttrs names (name: normalize (require pointer input name));

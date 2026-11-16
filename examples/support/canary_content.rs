@@ -13,6 +13,7 @@ use panel_kit_core::widgets::badge::hue_color;
 use panel_kit_core::widgets::charts::{five_num, BoxItemView, FlameSpanModel, GaugeModel, SeriesView};
 use panel_kit_core::widgets::data_table::{ColumnKind, TableDefaults, TableState};
 use panel_kit_core::widgets::graph::{GraphEdge, GraphModel, GraphNode};
+use panel_kit_core::widgets::forms::{ChoiceModel, ControlModel, FieldModel, FormModel, TextEntry};
 use panel_kit_core::widgets::table::{
     ColumnWidth, TableCell, TableColumn, TableModel, TableRow, TextAlign,
 };
@@ -40,7 +41,7 @@ fn provider_declaration(
 }
 
 /// `(panel id, content kind, binding id)` for every canary panel.
-pub const CANARY_PROVIDERS: [(&str, ContentKind, &str); 10] = [
+pub const CANARY_PROVIDERS: [(&str, ContentKind, &str); 11] = [
     ("Workspace", ContentKind::Custom, "canary.workspace"),
     ("Activity", ContentKind::TimeSeries, "canary.activity"),
     ("Flame", ContentKind::Flamegraph, "canary.flame"),
@@ -51,7 +52,93 @@ pub const CANARY_PROVIDERS: [(&str, ContentKind, &str); 10] = [
     ("Capacity", ContentKind::Gauges, "canary.capacity"),
     ("Distribution", ContentKind::Boxplot, "canary.distribution"),
     ("Theme", ContentKind::Custom, "canary.theme"),
+    ("Inputs", ContentKind::Form, "canary.inputs"),
 ];
+
+/// The Inputs panel's form: one field per control kind, a disabled field,
+/// and a select with nothing chosen. Every host seeds its form from this.
+pub fn canary_inputs() -> FormModel {
+    let field = |id: &str, note: &str, control: ControlModel| FieldModel {
+        id: id.into(),
+        label: id.into(),
+        control,
+        disabled: false,
+        note: note.into(),
+    };
+    let text = |value: &str, placeholder: &str, entry: TextEntry| ControlModel::Text {
+        value: value.into(),
+        placeholder: placeholder.into(),
+        entry,
+    };
+    let choices = |items: &[(&str, &str)]| -> Vec<ChoiceModel> {
+        items
+            .iter()
+            .map(|(value, label)| ChoiceModel {
+                value: (*value).into(),
+                label: (*label).into(),
+            })
+            .collect()
+    };
+    FormModel {
+        fields: vec![
+            field("host", "", text("pdx-01", "hostname", TextEntry::Plain)),
+            field("token", "", text("hunter2", "", TextEntry::Password)),
+            field("filter", "", text("", "label or tag", TextEntry::Search)),
+            field("since", "", text("2026-11-01", "yyyy-mm-dd", TextEntry::Date)),
+            field(
+                "notes",
+                "",
+                ControlModel::TextArea {
+                    value: "drain before\nthe upgrade".into(),
+                    placeholder: "why".into(),
+                    rows: 2,
+                },
+            ),
+            field(
+                "replicas",
+                "pods",
+                ControlModel::Number { value: 3.0, min: 1.0, max: 8.0, step: 1.0 },
+            ),
+            field(
+                "threshold",
+                "%",
+                ControlModel::Slider { value: 60.0, min: 0.0, max: 100.0, step: 5.0 },
+            ),
+            field("drain", "", ControlModel::Checkbox { checked: true }),
+            field("alerts", "", ControlModel::Switch { on: false }),
+            field(
+                "tier",
+                "",
+                ControlModel::Radio {
+                    value: "warm".into(),
+                    options: choices(&[("hot", "hot"), ("warm", "warm"), ("cold", "cold")]),
+                },
+            ),
+            field(
+                "region",
+                "",
+                ControlModel::Select {
+                    value: String::new(),
+                    placeholder: "choose region".into(),
+                    options: choices(&[
+                        ("pdx", "Portland"),
+                        ("iad", "Ashburn"),
+                        ("fra", "Frankfurt"),
+                        ("nrt", "Tokyo"),
+                    ]),
+                },
+            ),
+            FieldModel {
+                disabled: true,
+                ..field("owner", "locked", text("platform", "", TextEntry::Plain))
+            },
+            FieldModel {
+                label: String::new(),
+                ..field("apply", "", ControlModel::Button { text: "apply".into() })
+            },
+        ],
+    }
+}
 
 /// The Graph panel's model: six services with one oversized node (past the
 /// radius clamp) and a chord across the ring. The spec's layout (`circle`)

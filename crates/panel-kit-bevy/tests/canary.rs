@@ -43,7 +43,10 @@ fn paint_with(
         .add_event::<bevy::input::mouse::MouseWheel>()
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(theme.clone())
-        .add_plugins(panel_kit_bevy::widgets::data_table::DataTablePlugin);
+        .add_plugins((
+            panel_kit_bevy::widgets::data_table::DataTablePlugin,
+            panel_kit_bevy::widgets::forms::FormPlugin,
+        ));
     let root = app.world_mut().spawn(Node::default()).id();
     let (theme, binding, content) = (theme.clone(), binding.to_owned(), content.clone());
     app.add_systems(Startup, move |mut commands: Commands| {
@@ -107,6 +110,12 @@ fn expected_marker(binding: &str) -> String {
         "canary.capacity" => workspace_canary::capacity_items()[0].label.clone(),
         "canary.distribution" => workspace_canary::STAGES[0].to_owned(),
         "canary.theme" => workspace_canary::theme_preset_label(false).to_owned(),
+        "canary.inputs" => workspace_canary::canary_inputs()
+            .field("region")
+            .expect("the canary form has a region select")
+            .control
+            .placeholder()
+            .to_owned(),
         other => panic!("unexpected canary binding {other}"),
     }
 }
@@ -198,4 +207,41 @@ fn the_canary_graph_rings_only_the_node_the_host_selected() {
     };
     let (_, mut selected) = paint_with(&theme, "canary.graph", &panel.content, data);
     assert_eq!(rings(&mut selected), 1);
+}
+
+#[test]
+fn the_inputs_panel_paints_every_control_of_the_shared_form() {
+    let theme = BevyTheme::default();
+    let panel = resolved()
+        .panels
+        .into_iter()
+        .find(|panel| panel.content.binding_id() == Some("canary.inputs"))
+        .expect("the canary has an Inputs panel");
+    let (texts, _app) = paint(&theme, "canary.inputs", &panel.content);
+    let painted = |needle: &str| texts.iter().any(|text| text == needle);
+
+    let form = workspace_canary::canary_inputs();
+    for field in form.fields.iter().filter(|field| !field.label.is_empty()) {
+        assert!(painted(&field.label.to_uppercase()), "key label {:?}: {texts:?}", field.label);
+    }
+    for (what, text) in [
+        ("the text value", "pdx-01"),
+        ("the masked password", "•••••••"),
+        ("the empty search's placeholder", "label or tag"),
+        ("the first text-area line", "drain before"),
+        ("the number", "3"),
+        ("the stepper minus", "\u{2212}"),
+        ("the stepper plus", "+"),
+        ("a note", "pods"),
+        ("the slider value", "60"),
+        ("the switch caption", "OFF"),
+        ("a radio option", "warm"),
+        ("the unchosen select's placeholder", "choose region"),
+        ("the disabled value", "platform"),
+        ("the button caption", "APPLY"),
+    ] {
+        assert!(painted(text), "{what} {text:?} is not painted: {texts:?}");
+    }
+    assert!(!painted("hunter2"), "the password is never painted in the clear");
+    assert!(!painted("Portland"), "a closed select paints no options");
 }

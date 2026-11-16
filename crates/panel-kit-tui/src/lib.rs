@@ -45,6 +45,7 @@
 
 pub mod badge;
 pub mod charts;
+pub mod forms;
 pub mod input;
 pub mod meter;
 pub mod scroll;

@@ -3038,14 +3038,134 @@ span.pk-tr-warn {
    progress tracks, chips take --badge-radius, cards --panel-radius. */
 .pk-form-row { display:flex; align-items:center; gap:.5rem; min-width:0; }
 .pk-form-key { color:var(--color-text-muted); font-size:.72rem; white-space:nowrap; }
-.pk-form-range { flex:1; min-width:0; accent-color:var(--color-primary); }
-.pk-form-num, .pk-form-text { background:var(--color-background); color:var(--color-text);
-  border:1px solid var(--color-border); border-radius:0; padding:.1rem .3rem; font:inherit; }
+.pk-form-range { flex:1; min-width:0; }
 .pk-form-num { width:5.5rem; flex:0 0 auto; }
 .pk-form-text { flex:1; min-width:0; }
-.pk-form-check { display:flex; align-items:center; gap:.35rem;
-  accent-color:var(--color-primary); cursor:pointer; }
+.pk-form-check { display:flex; align-items:center; gap:.35rem; cursor:pointer; }
 .pk-form-note { color:var(--color-text-muted); font-size:.68rem; }
+
+/* === form controls (src/widgets/forms.rs) === */
+/* Control primitives. A square 1px object edge on the recessed background;
+   hover brightens the edge, keyboard focus takes the shared ring, and live
+   state (checked, on, chosen, open) takes the highlight. A host's own native
+   element takes the same class. The Bevy painter mirrors these metrics
+   (crates/panel-kit-bevy/src/widgets/forms.rs). */
+.pk-input, .pk-select {
+  margin:0; padding:1px 6px; min-width:0;
+  border:1px solid var(--color-border); border-radius:0;
+  background-color:var(--color-background); color:var(--color-text);
+  font:inherit; line-height:1.4; caret-color:var(--color-highlight); }
+.pk-input::placeholder { color:var(--color-text-muted); opacity:1; }
+.pk-input:hover, .pk-select:hover, .pk-check:hover, .pk-radio:hover, .pk-switch:hover {
+  border-color:var(--color-text); }
+.pk-input:focus-visible, .pk-select:focus-visible, .pk-check:focus-visible,
+.pk-radio:focus-visible, .pk-switch:focus-visible, .pk-range:focus-visible, .pk-step:focus-visible {
+  outline:2px solid var(--color-focus-ring); outline-offset:2px; }
+.pk-input:disabled, .pk-select:disabled, .pk-check:disabled, .pk-radio:disabled,
+.pk-switch:disabled, .pk-step:disabled {
+  border-color:var(--color-divider); color:var(--color-text-muted); cursor:default; }
+textarea.pk-input { display:block; width:100%; resize:none; }
+.pk-input[type="search"]::-webkit-search-decoration,
+.pk-input[type="search"]::-webkit-search-cancel-button { -webkit-appearance:none; }
+.pk-input[type="number"] { appearance:textfield; -moz-appearance:textfield;
+  text-align:right; font-variant-numeric:tabular-nums; }
+.pk-input[type="number"]::-webkit-inner-spin-button,
+.pk-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+
+/* One-of-N behind a popup. The chevron is two gradient bands, the strokes of
+   the data table's group-select polygon, so a native <select> (which takes
+   no pseudo-element) and the listbox trigger draw the same mark. */
+.pk-select { --pk-chevron:var(--color-text-muted);
+  appearance:none; -webkit-appearance:none; padding-right:26px; text-align:left; cursor:pointer;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  background-image:
+    linear-gradient(45deg, transparent 3.54px, var(--pk-chevron) 3.54px, var(--pk-chevron) 5.66px, transparent 5.66px),
+    linear-gradient(135deg, transparent 2.47px, var(--pk-chevron) 2.47px, var(--pk-chevron) 4.6px, transparent 4.6px);
+  background-position:right 14px top calc(50% - .25px), right 9px top calc(50% - .25px);
+  background-size:5px 6.5px; background-repeat:no-repeat; }
+.pk-select:hover { --pk-chevron:var(--color-text); }
+.pk-select[aria-expanded="true"] { --pk-chevron:var(--color-highlight);
+  border-color:var(--color-highlight); }
+.pk-select[data-empty="true"] { color:var(--color-text-muted); }
+.pk-select:disabled { --pk-chevron:var(--color-divider); }
+.pk-select option { background:var(--color-background); color:var(--color-text); }
+.pk-select-wrap { position:relative; display:flex; flex:1; min-width:0; }
+.pk-select-wrap > .pk-select { flex:1; }
+.pk-select-wrap > .pk-dropdown-popup { top:calc(100% + 2px); max-width:none; right:0; }
+
+/* Checkbox: a lit square cell. Radio: the one round control, because a
+   round mark is how one-of-N reads apart from any-of-N. */
+.pk-check, .pk-radio { appearance:none; -webkit-appearance:none; flex:0 0 auto;
+  display:inline-grid; place-content:center; width:14px; height:14px; margin:0; padding:0;
+  border:1px solid var(--color-border); border-radius:0;
+  background:var(--color-background); cursor:pointer; }
+.pk-radio { border-radius:50%; }
+.pk-check:checked::before, .pk-radio:checked::before { content:""; width:8px; height:8px;
+  background:var(--color-highlight); }
+.pk-radio:checked::before { width:6px; height:6px; border-radius:50%; }
+.pk-check:disabled::before, .pk-radio:disabled::before { background:var(--color-text-muted); }
+
+/* Switch: a two-cell track; the thumb parks left in the muted grey and
+   lights at the right. Paints a role=switch button or a native checkbox. */
+.pk-switch { appearance:none; -webkit-appearance:none; flex:0 0 auto; position:relative;
+  width:28px; height:14px; margin:0; padding:0;
+  border:1px solid var(--color-border); border-radius:0;
+  background:var(--color-background); cursor:pointer; }
+.pk-switch::before { content:""; position:absolute; top:1px; left:1px; width:10px; height:10px;
+  background:var(--color-text-muted); }
+.pk-switch:checked::before, .pk-switch[aria-checked="true"]::before { left:15px;
+  background:var(--color-highlight); }
+.pk-switch:disabled::before { background:var(--color-divider); }
+
+/* Slider: a hairline track filled to the value (--pk-fill, set by the
+   painter) and a square thumb. */
+.pk-range { appearance:none; -webkit-appearance:none; flex:1; min-width:0; height:14px; margin:0;
+  padding:0; background:transparent; cursor:pointer; }
+.pk-range::-webkit-slider-runnable-track { height:2px;
+  background:linear-gradient(to right, var(--color-text) var(--pk-fill, 0%), var(--color-border) var(--pk-fill, 0%)); }
+.pk-range::-moz-range-track { height:2px; background:var(--color-border); }
+.pk-range::-moz-range-progress { height:2px; background:var(--color-text); }
+.pk-range::-webkit-slider-thumb { -webkit-appearance:none; width:8px; height:14px; margin-top:-6px;
+  border:0; border-radius:0; background:var(--color-text); }
+.pk-range::-moz-range-thumb { width:8px; height:14px; border:0; border-radius:0;
+  background:var(--color-text); }
+.pk-range:disabled { cursor:default; }
+.pk-range:disabled::-webkit-slider-thumb { background:var(--color-text-muted); }
+.pk-range:disabled::-moz-range-thumb { background:var(--color-text-muted); }
+.pk-range:disabled::-webkit-slider-runnable-track {
+  background:linear-gradient(to right, var(--color-text-muted) var(--pk-fill, 0%), var(--color-divider) var(--pk-fill, 0%)); }
+.pk-range:disabled::-moz-range-progress { background:var(--color-text-muted); }
+
+/* Form: one row per field, key column then control. */
+.pk-form { display:flex; flex-direction:column; gap:var(--space-sm); min-width:0; }
+.pk-field { display:grid; grid-template-columns:88px minmax(0, 1fr);
+  column-gap:var(--space-md); align-items:start; min-width:0; }
+.pk-field-key { overflow:hidden; color:var(--color-text-muted); font-size:11px;
+  line-height:var(--hit-min); letter-spacing:.06em; text-transform:uppercase;
+  text-overflow:ellipsis; white-space:nowrap; }
+.pk-field-control { display:flex; align-items:center; gap:var(--space-md);
+  min-width:0; min-height:var(--hit-min); }
+.pk-field-control > .pk-input { flex:1; }
+.pk-field-note { flex:0 0 auto; color:var(--color-text-muted); font-size:11px; line-height:1.4;
+  white-space:nowrap; }
+.pk-number { display:flex; flex:0 0 auto; }
+.pk-number > .pk-input { width:72px; }
+.pk-step { width:20px; margin:0 0 0 -1px; padding:1px 0;
+  border:1px solid var(--color-border); border-radius:0;
+  background:var(--color-background); color:var(--color-text-muted);
+  font:inherit; line-height:1.4; cursor:pointer; }
+.pk-step:hover:not(:disabled) { position:relative; background:var(--color-text);
+  border-color:var(--color-text); color:var(--color-inverse-text); }
+.pk-slider { display:flex; flex:1; align-items:center; gap:var(--space-md); min-width:0; }
+.pk-slider-value { flex:0 0 auto; min-width:4ch; line-height:1.4; text-align:right;
+  font-variant-numeric:tabular-nums; }
+.pk-switch-state { color:var(--color-text-muted); font-size:11px; line-height:1.4;
+  letter-spacing:.06em; text-transform:uppercase; }
+.pk-switch[aria-checked="true"] + .pk-switch-state { color:var(--color-text); }
+.pk-radio-group { display:flex; flex-direction:column; min-width:0; }
+.pk-choice { display:flex; align-items:center; gap:var(--space-sm);
+  min-height:var(--hit-min); line-height:1.4; cursor:pointer; }
+.pk-field[data-disabled="true"] .pk-choice { color:var(--color-text-muted); cursor:default; }
 
 /* Selectable cards: one-of-N pickers. The state classes are host-composed
    (the card's `class` chain arrives complete); these rules paint them. */

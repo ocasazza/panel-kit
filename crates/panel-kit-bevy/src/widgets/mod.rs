@@ -13,6 +13,7 @@ pub mod content;
 pub mod data_table;
 pub mod dropdown;
 pub mod flamegraph;
+pub mod forms;
 pub mod gauges;
 pub mod graph;
 mod raster;

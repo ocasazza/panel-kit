@@ -32,10 +32,11 @@ mod browser {
         use panel_kit_core::{Mode, SpecPanelId, SurfaceProfile};
         use panel_kit_core::widgets::graph::{GraphModel, GraphView};
         use panel_kit_tui::charts::{boxplot, flame, gauges, time_series};
+        use panel_kit_tui::forms::FormHost;
         use panel_kit_tui::graph::graph;
         use panel_kit_tui::scroll::{self, PanelScroll};
         use panel_kit_tui::spinner::spinner;
-        use panel_kit_tui::{badge, ResolvedTuiTheme};
+        use panel_kit_tui::{badge, ResolvedTuiTheme, TerminalCharset};
         use ratatui::layout::Rect;
         use ratatui::style::Style;
         use ratatui::text::{Line, Span};
@@ -58,6 +59,9 @@ mod browser {
             pub(crate) theme_zone: &'a mut Rect,
             /// The Graph panel's model and its solved unit-square positions.
             pub(crate) graph: &'a (GraphModel, Vec<[f32; 2]>),
+            pub(crate) charset: TerminalCharset,
+            /// The Inputs panel's form, its focus state, and where it painted.
+            pub(crate) inputs: &'a mut FormHost,
         }
 
         /// Draws the body content for a resolved canary panel id.
@@ -85,6 +89,7 @@ mod browser {
                 "Nodes" => draw_nodes_body(frame, rect, key, context),
                 "Notes" => draw_notes_body(frame, rect, key, context),
                 "Theme" => draw_theme_body(frame, rect, context),
+                "Inputs" => context.inputs.draw(frame, rect, &context.theme, context.charset),
                 _ => {}
             }
         }
@@ -341,8 +346,10 @@ mod browser {
         apply_save_decision, restore_snapshot, LayoutError, RestoreContext, SavePolicy,
     };
     use panel_kit_core::reducer::{
-        reduce, HitTarget, Snapshot, Viewport, WheelDisposition, WorkspaceEvent,
+        reduce, HitTarget, PanelPart, Snapshot, Viewport, WheelDisposition, WorkspaceEvent,
     };
+    use panel_kit_core::widgets::forms::FormAction;
+    use panel_kit_tui::forms::FormHost;
     use panel_kit_core::theme::ThemeTokens;
     use panel_kit_core::{
         BackendKind, ChromeSpec, FocusContext, InputSpec, LayoutSpec, PanelCatalog,
@@ -377,13 +384,14 @@ mod browser {
 
     use self::body::{draw_panel_body, BodyDrawContext};
     use self::storage::BrowserLocalStorage;
-    use crate::workspace_canary::{canary_graph, demo_badges, Metrics};
+    use crate::workspace_canary::{canary_graph, canary_inputs, demo_badges, Metrics};
     use panel_kit_core::widgets::graph::{GraphLayout, GraphModel};
     use panel_kit_core::widgets::ContentSpec;
     use panel_kit_graph_layout::solve_2d;
 
     const WORKSPACE_SPEC_JSON: &str = include_str!(env!("PANEL_KIT_WORKSPACE_SPEC"));
-    const RESTORE_IDS: [&str; 9] = [
+    /// Panels restored by the digit keys: `1`–`9`, then `0`.
+    const RESTORE_IDS: [&str; 10] = [
         "Workspace",
         "Badges",
         "Activity",
@@ -393,6 +401,7 @@ mod browser {
         "Nodes",
         "Flame",
         "Distribution",
+        "Inputs",
     ];
 
     struct App {
@@ -414,6 +423,7 @@ mod browser {
         badge_zones: Vec<(Rect, usize)>,
         theme_zone: Rect,
         actions: Vec<String>,
+        inputs: FormHost,
         panels: PanelScroll<SpecPanelId>,
         grid: (f64, f64),
         paper: bool,
@@ -469,6 +479,7 @@ mod browser {
                 badge_zones: Vec::new(),
                 theme_zone: Rect::default(),
                 actions: Vec::new(),
+                inputs: FormHost::new(canary_inputs()),
                 panels: PanelScroll::with_capacity(panel_count),
                 grid: (1.0, 1.0),
                 paper: false,
@@ -482,15 +493,26 @@ mod browser {
         }
 
         fn handle_key(&mut self, event: KeyEvent) {
-            match event.code.clone() {
+            let code = event.code.clone();
+            // A focused form takes every bare key before any shortcut below.
+            let chord = ratzilla_key_chord(event);
+            if let Some(actions) = chord.and_then(|chord| self.inputs.key(chord)) {
+                self.log_form_actions(actions);
+                return;
+            }
+            match code {
+                KeyCode::Char('i') if self.inputs_panel_focused() => {
+                    let actions = self.inputs.enter();
+                    self.log_form_actions(actions);
+                }
                 KeyCode::Char('p') => self.toggle_theme(),
-                KeyCode::Char(ch) if ('1'..='9').contains(&ch) => {
+                KeyCode::Char(ch) if ch.is_ascii_digit() => {
                     self.restore_panel_by_number(ch);
                 }
                 KeyCode::PageUp => self.page_scroll(-4.0),
                 KeyCode::PageDown => self.page_scroll(4.0),
                 _ => {
-                    if let Some(chord) = ratzilla_key_chord(event) {
+                    if let Some(chord) = chord {
                         self.reduce_workspace_event(workspace_event_from_key(
                             chord,
                             FocusContext::Workspace,
@@ -498,6 +520,31 @@ mod browser {
                     }
                 }
             }
+        }
+
+        /// The Inputs panel's key, when the spec declares one.
+        fn inputs_panel(&self) -> Option<SpecPanelId> {
+            self.catalog.get_by_stable_id("Inputs").map(|meta| meta.key)
+        }
+
+        fn inputs_panel_focused(&self) -> bool {
+            self.inputs_panel().is_some() && self.snapshot.focused == self.inputs_panel()
+        }
+
+        /// Whether the topmost thing at `at` is the Inputs panel's painted form.
+        fn form_at(&self, at: Position) -> bool {
+            let top = self.hits.hit_test((f64::from(at.x), f64::from(at.y)));
+            let on_panel = matches!(
+                top,
+                Some(HitTarget::Panel { key, part: PanelPart::Surface })
+                    if Some(key) == self.inputs_panel()
+            );
+            on_panel && self.inputs.contains(at.x, at.y)
+        }
+
+        fn log_form_actions(&mut self, actions: Vec<FormAction>) {
+            self.actions
+                .extend(actions.iter().map(|action| format!("{action:?}")));
         }
 
         fn handle_mouse(&mut self, event: WebMouseEvent) {
@@ -572,6 +619,7 @@ mod browser {
             }
             self.tick_tile_drag();
             self.badge_zones.clear();
+            self.inputs.clear();
             self.hits.clear();
             self.grid = (f64::from(frame.area().width), f64::from(frame.area().height));
             self.sync_viewport(frame.area());
@@ -616,6 +664,8 @@ mod browser {
                 panels: &mut self.panels,
                 theme_zone: &mut self.theme_zone,
                 graph: &self.graph,
+                charset: self.charset,
+                inputs: &mut self.inputs,
             };
 
             for panel in projected.panels.iter().copied() {
@@ -676,6 +726,12 @@ mod browser {
             ) {
                 return false;
             }
+            let actions = if self.form_at(at) {
+                self.inputs.press(at.x, at.y)
+            } else {
+                self.inputs.press_outside()
+            };
+            self.log_form_actions(actions);
             if let Some((_, i)) = self.badge_zones.iter().find(|(r, _)| r.contains(at)) {
                 let action = self.badges[*i].primary_action();
                 self.actions.push(format!("{action:?}"));
@@ -689,7 +745,8 @@ mod browser {
         }
 
         fn restore_panel_by_number(&mut self, ch: char) {
-            let Some(index) = ch.to_digit(10).and_then(|digit| digit.checked_sub(1)) else {
+            // `1`–`9` index the first nine entries; `0` is the tenth.
+            let Some(index) = ch.to_digit(10).map(|digit| (digit + 9) % 10) else {
                 return;
             };
             let Some(stable_id) = RESTORE_IDS.get(index as usize) else {

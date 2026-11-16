@@ -124,13 +124,13 @@ mod tests {
     }
 
     #[test]
-    fn spec_parity_rejects_live_seven_vs_ten_canary() {
+    fn spec_parity_rejects_the_historical_seven_panel_canary() {
         let nix = panel_ids_from_saved_layout(include_str!("../fixtures/live-seven-layout.json"))
             .expect("captured mkLayout canary decodes");
         let rust = live_rust_provider_ids();
 
         let report = compare_panel_ids("workspace-canary", &nix, &rust)
-            .expect_err("historical seven-vs-ten drift must be rejected");
+            .expect_err("historical seven-panel drift must be rejected");
 
         assert_eq!(
             report.to_string(),
@@ -148,8 +148,8 @@ mod tests {
     }
 
     #[test]
-    fn hand_fixed_ten_panel_layout_matches_provider_manifest() {
-        let nix = panel_ids_from_saved_layout(include_str!("../fixtures/fixed-ten-layout.json"))
+    fn hand_fixed_canary_layout_matches_provider_manifest() {
+        let nix = panel_ids_from_saved_layout(include_str!("../fixtures/fixed-canary-layout.json"))
             .expect("hand-fixed mkLayout canary decodes");
         let rust = live_rust_provider_ids();
 

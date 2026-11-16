@@ -72,6 +72,12 @@ pub fn spawn(parent: &mut ChildSpawnerCommands, theme: &BevyTheme, content: &Con
         ContentSpec::External { component, .. } => {
             super::label_text(parent, format!("external: {component}"), 11.0, theme.text_muted);
         }
+        ContentSpec::Form { source } => match source {
+            DataSource::Inline { value } => {
+                super::forms::spawn(parent, theme, super::forms::Form::new(value.clone()));
+            }
+            DataSource::Binding { id } => binding_placeholder(parent, theme, id),
+        },
     }
 }
 

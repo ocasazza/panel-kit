@@ -23,6 +23,7 @@ use panel_kit_core::widgets::charts::{
     five_num, BoxItemModel, BoxItemView, FlameSpanModel, GaugeModel, SeriesModel, SeriesView,
 };
 use panel_kit_core::widgets::data_table::ColumnKind;
+use panel_kit_core::widgets::forms::{FormModel, FormState};
 use panel_kit_core::widgets::graph::{GraphLayout, GraphModel, GraphView};
 use panel_kit_core::widgets::meter::MeterModel;
 use panel_kit_core::widgets::status::{StatusModel, StatusState};
@@ -303,6 +304,12 @@ fn render_content(
             DataSource::Inline { value } => paint_external(component, "", layout, value),
             DataSource::Binding { id } => binding(id, content),
         },
+        ContentSpec::Form { source } => match source {
+            DataSource::Inline { value } => rsx! {
+                InlineForm { id: format!("pk-form-{}", spec.id), seed: value.clone() }
+            },
+            DataSource::Binding { id } => binding(id, content),
+        },
     }
 }
 
@@ -331,6 +338,8 @@ pub fn canary_content(id: &str, content: &ContentSpec) -> Element {
         ContentSpec::External { component, layout, .. } => {
             paint_external(component, id, layout, &GraphModel::default())
         }
+        ContentSpec::Form { .. } if id == "canary.inputs" => rsx! { CanaryInputs {} },
+        ContentSpec::Form { .. } => paint_custom(id),
     }
 }
 
@@ -369,6 +378,23 @@ fn render_custom(
         }),
         _ => None,
     }
+}
+
+/// The Inputs panel: the shared canary form, driven through core's reducer.
+#[component]
+fn CanaryInputs() -> Element {
+    let model = use_signal(fixtures::canary_inputs);
+    let state = use_signal(FormState::default);
+    rsx! { crate::widgets::Form { model, state, id: "canary-inputs" } }
+}
+
+/// A spec-authored inline form. The panel owns the values from mount on;
+/// `seed` is only their starting point.
+#[component]
+fn InlineForm(id: String, seed: FormModel) -> Element {
+    let model = use_signal(|| seed);
+    let state = use_signal(FormState::default);
+    rsx! { crate::widgets::Form { model, state, id } }
 }
 
 fn paint_text(text: &str, scroll: ScrollPolicy) -> Element {

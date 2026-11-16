@@ -5,7 +5,7 @@ move/resize/minimize/maximize, with floating (free placement) and tiling
 (auto grid) workspace modes, printer-CMY operation lights, pointer and
 keyboard window management, tiling drag-to-swap (lift, follow, settle), a minimized-panel dock,
 and versioned layout persistence. Includes reusable badge, spinner, dropdown,
-cascade, and interactive-table widgets; panel-header actions and
+cascade, form-control, and interactive-table widgets; panel-header actions and
 loading-workspace primitives; Grafana and lightweight IDE panels; retained-DOM
 keepalive composition; an optional Bevy canvas bridge; and a Monaco-based code
 editor (`editor::MonacoEditor`) with `nix`, `.pest`, and `toml` languages, a
@@ -284,7 +284,7 @@ dx serve --example workspace --platform web
 
 | example | shows |
 | --- | --- |
-| `workspace` | host-owned `Snapshot` + `ProjectionBuffer` + composable web parts; floating pointer and keyboard move/resize/raise; host-owned move/resize snap toggles in the dock trailing slot; layout reset via store clear plus snapshot replacement; tiling lift-and-swap drag and span resize; viewport clamping; wheel chaining; live surface state; and versioned localStorage persistence |
+| `workspace` | host-owned `Snapshot` + `ProjectionBuffer` + composable web parts; floating pointer and keyboard move/resize/raise; host-owned move/resize snap toggles in the dock trailing slot; layout reset via store clear plus snapshot replacement; tiling lift-and-swap drag and span resize; viewport clamping; wheel chaining; live surface state; versioned localStorage persistence; and the Inputs panel, one core `FormModel` with every control kind (text, password, search, date, text area, number, slider, checkbox, switch, radio, select, button) that the terminal, browser-terminal, and Bevy canaries paint and drive through the same `forms::reduce` |
 | `views` | host-owned named views over one workspace: core `SavedViews`, per-view `LocalStorageLayoutStore` records (`panel_kit_example_views:view:<name>` + the `:views` registry), explicit `SavePolicy`, a composable parts loop, a switcher bar with create/rename/delete, per-view reset, and the legacy single-layout migration copy |
 | `badge` | all ten `BadgeKind`s, every prop (`active`, `with_x`, `with_plus`, `small`, `override_color`, `accent_color`, both `BadgeClickKind`s, `emit_hover`) behind live toggles, an event log proving every `BadgeAction` variant fires, and a `tag_hue` FNV hue-spread row |
 | `dropdown` | grouped searchable single-select with host-owned popup and selected value |
@@ -326,8 +326,8 @@ trunk serve examples/workspace_browser_tui.html \
 
 This example is intentionally comprehensive: workspace chrome, floating and
 tiling interactions, dock restore, badges, action log, spinner, theming,
-scrollable content, time-series chart, and gauges. It is executable
-documentation for the shared core interface.
+scrollable content, time-series chart, gauges, and form inputs. It is
+executable documentation for the shared core interface.
 
 ### Visual parity check (web ↔ Bevy)
 
@@ -339,7 +339,7 @@ explain:
 nix develop -c cargo run -p visual-parity -- check   # exit 0 = parity holds
 ```
 
-It renders the Bevy workspace example offscreen (1440×900 logical, scale 2,
+It renders the Bevy workspace example offscreen (1800×900 logical, scale 2,
 authored layout, no saved layout read or written), builds the Dioxus
 workspace example to wasm, serves it on a loopback port, and captures it in
 headless Chrome at the same size with `prefers-reduced-motion: reduce`, so

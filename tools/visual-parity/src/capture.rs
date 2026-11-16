@@ -16,8 +16,9 @@ use serde_json::{json, Value};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
-/// Logical capture size and device scale, shared by both backends.
-pub const VIEWPORT: (u32, u32) = (1440, 900);
+/// Logical capture size and device scale, shared by both backends. The
+/// canary's 160x52-cell viewport maps onto it at 11.25 px per column.
+pub const VIEWPORT: (u32, u32) = (1800, 900);
 pub const DEVICE_SCALE: u32 = 2;
 
 const DUMP_JS: &str = include_str!("dump.js");
