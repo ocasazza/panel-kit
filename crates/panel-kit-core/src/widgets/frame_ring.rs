@@ -107,7 +107,8 @@ impl FrameRing {
         }
         self.components = Some(positions.len());
 
-        let is_keyframe = self.frames.is_empty() || self.push_count % self.keyframe_interval == 0;
+        let is_keyframe =
+            self.frames.is_empty() || self.push_count.is_multiple_of(self.keyframe_interval);
         let frame = if is_keyframe {
             Frame::Key(positions.to_vec())
         } else {

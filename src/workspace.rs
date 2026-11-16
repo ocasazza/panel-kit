@@ -118,7 +118,7 @@ impl<K: PanelKind> Clone for PanelWorkspace<K> {
             catalog: self.catalog.clone(),
             scratch: self.scratch.clone(),
             store: self.store.clone(),
-            save_policy: self.save_policy.clone(),
+            save_policy: self.save_policy,
             fill_order: self.fill_order,
             snap: self.snap,
             defaults: self.defaults,

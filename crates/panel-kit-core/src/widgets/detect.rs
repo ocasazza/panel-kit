@@ -57,9 +57,7 @@ pub fn host_from_url(s: &str) -> Option<String> {
     let rest = s
         .strip_prefix("https://")
         .or_else(|| s.strip_prefix("http://"))?;
-    let host = rest
-        .split(|c: char| c == '/' || c == ':' || c == '?')
-        .next()?;
+    let host = rest.split(['/', ':', '?']).next()?;
     Some(host.to_string())
 }
 

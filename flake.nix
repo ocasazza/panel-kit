@@ -601,6 +601,9 @@
           core-unit-tests = hostCraneLib.cargoTest (hostArgs // {
             cargoArtifacts = hostCargoArtifacts;
             cargoTestExtraArgs = "-p panel-kit-core --features spec-json,spec-schema";
+            # Wall-clock budgets are calibrated on a laptop; a sandboxed
+            # builder of unknown speed reports the timings without failing.
+            PANEL_KIT_BUDGETS = "report";
           });
           spec-parity = pkgs.runCommand "panel-kit-spec-parity" {
             nativeBuildInputs = [ specParityTool ];

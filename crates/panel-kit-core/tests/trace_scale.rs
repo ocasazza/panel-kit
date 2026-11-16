@@ -18,6 +18,10 @@ use panel_kit_core::widgets::trace::sample::{self, Activity};
 use panel_kit_core::widgets::trace::swimlane::{view, Graph, Options, Range};
 use panel_kit_core::widgets::trace::{Event, EventKind};
 
+#[path = "support/budget.rs"]
+mod budget;
+use budget::within;
+
 /// Counts live and peak heap bytes of the whole test binary.
 struct Counting;
 
@@ -91,14 +95,6 @@ fn measured<T>(run: impl FnOnce() -> T) -> (T, Duration, usize, usize) {
     let took = started.elapsed();
     let held = LIVE.load(Relaxed).saturating_sub(before);
     (out, took, PEAK.load(Relaxed).saturating_sub(before), held)
-}
-
-fn within(what: &str, took: Duration, budget: Duration) {
-    eprintln!("{what}: {took:?} (budget {budget:?})");
-    assert!(
-        took <= budget,
-        "{what} took {took:?}, over its {budget:?} budget"
-    );
 }
 
 fn distinct_items(events: &[Event]) -> usize {

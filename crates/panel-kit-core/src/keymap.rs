@@ -669,10 +669,7 @@ fn parse_token(token: &str) -> Result<Token, String> {
         .ok_or_else(|| token.to_owned())?;
     let mut chord = bare(Key::Escape);
     let mut rest = inner;
-    loop {
-        let Some((modifier, tail)) = rest.split_once('-') else {
-            break;
-        };
+    while let Some((modifier, tail)) = rest.split_once('-') {
         match modifier {
             "c" => chord.ctrl = true,
             "a" => chord.alt = true,
