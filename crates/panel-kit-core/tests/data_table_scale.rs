@@ -14,6 +14,9 @@ use panel_kit_core::widgets::data_table::{
 
 #[path = "support/demo_table.rs"]
 mod demo;
+#[path = "support/budget.rs"]
+mod budget;
+use budget::within;
 
 const ROWS: usize = 1_000_000;
 const STATES: [&str; 6] = [
@@ -84,11 +87,7 @@ fn timed<T>(budget: Duration, what: &str, run: impl FnOnce() -> T) -> T {
     let started = Instant::now();
     let out = run();
     let took = started.elapsed();
-    eprintln!("{what}: {took:?} (budget {budget:?})");
-    assert!(
-        took <= budget,
-        "{what} took {took:?}, over its {budget:?} budget"
-    );
+    within(what, took, budget);
     out
 }
 

@@ -12,17 +12,17 @@ use panel_kit_core::widgets::trace::swimlane::{
     pair_table, thread_table, view, SeqRow, LANE_CAP,
 };
 
+#[path = "support/budget.rs"]
+mod budget;
+use budget::within;
+
 const EVENTS: usize = 1_000_000;
 
 fn timed<T>(budget: Duration, what: &str, run: impl FnOnce() -> T) -> T {
     let started = Instant::now();
     let out = run();
     let took = started.elapsed();
-    eprintln!("{what}: {took:?} (budget {budget:?})");
-    assert!(
-        took <= budget,
-        "{what} took {took:?}, over its {budget:?} budget"
-    );
+    within(what, took, budget);
     out
 }
 
