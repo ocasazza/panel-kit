@@ -12,7 +12,7 @@ categories = ["gui", "game-development"]
 autoexamples = false
 
 [dependencies]
-panel-kit-core = { version = "1.1.1", path = "../panel-kit-core", features = ["spec-json"] }
+panel-kit-core = { version = "2.0.0", path = "../panel-kit-core", features = ["spec-json"] }
 # Solves positions for inline graph bodies (`widgets::graph`).
 panel-kit-graph-layout = { version = "0.1.0", path = "../panel-kit-graph-layout" }
 # Lean Bevy surface: the ECS/app core plus the UI rendering stack. Rendering

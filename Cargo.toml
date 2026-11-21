@@ -87,7 +87,7 @@ jump-cannon-graph-view = { path = "vendor/jump-cannon/graph-view" }
 # Static + GPU layout solvers behind the `graph` component contract
 # (crates/panel-kit-graph-layout): vendor/jump-cannon/VENDORED.md.
 graph-layouts = { path = "vendor/jump-cannon/graph-layouts" }
-panel-kit-graph-layout = { version = "2.0.0", path = "crates/panel-kit-graph-layout" }
+panel-kit-graph-layout = { version = "0.1.0", path = "crates/panel-kit-graph-layout" }
 # The ratatui parts the TUI examples draw. Crossterm and the WGPU shim are
 # target-scoped: the native loops drive a real terminal, the browser loops a
 # WebGL2 canvas.
