@@ -7,7 +7,7 @@ exclude = ["crates/beamterm-renderer", "vendor"]
 
 [package]
 name = "panel-kit"
-version = "1.2.0"
+version = "2.0.0"
 edition = "2021"
 license = "MIT"
 description = "Generic Dioxus panel-workspace library: floating/tiling panels, traffic lights, drag/resize, tiling drag-to-swap, minimize-to-dock, layout persistence"
@@ -26,7 +26,7 @@ default-target = "wasm32-unknown-unknown"
 # build.rs generates the pre-WASM boot stylesheet from the canonical token
 # source, so the palette cannot be hand-copied out of sync again.
 [build-dependencies]
-panel-kit-core = { version = "1.2.0", path = "crates/panel-kit-core" }
+panel-kit-core = { version = "2.0.0", path = "crates/panel-kit-core" }
 
 
 [features]
@@ -47,10 +47,10 @@ bevy = ["web-runtime"]
 spec-plan = ["dep:serde", "dep:serde_json", "panel-kit-core/spec-json", "panel-kit-tui/spec-plan"]
 
 [dependencies]
-panel-kit-core = { version = "1.2.0", path = "crates/panel-kit-core" }
+panel-kit-core = { version = "2.0.0", path = "crates/panel-kit-core" }
 # Host glue for topos/grammar regimes (section_view, autoloop_host) paints
 # sections and edits from panel-kit-grammar's compiled site layer.
-panel-kit-grammar = { version = "1.2.0", path = "crates/panel-kit-grammar", optional = true }
+panel-kit-grammar = { version = "2.0.0", path = "crates/panel-kit-grammar", optional = true }
 dioxus = { version = "0.6", features = ["web"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
@@ -75,10 +75,10 @@ rstest = "0.25"
 parking_lot = "0.12"
 # Fake-async delays in the loading example's hydration arc demo.
 gloo-timers = { version = "0.3", features = ["futures"] }
-panel-kit-tui = { version = "1.2.0", path = "crates/panel-kit-tui" }
+panel-kit-tui = { version = "2.0.0", path = "crates/panel-kit-tui" }
 # The grammar/topos host façades (examples/support/{topos_demo,trio_host}.rs)
 # and their tests, plus the panel-kit-tui trio host.
-panel-kit-grammar = { version = "1.2.0", path = "crates/panel-kit-grammar" }
+panel-kit-grammar = { version = "2.0.0", path = "crates/panel-kit-grammar" }
 # Fetch for the auto-loop host example (examples/autoloop.rs).
 web-sys = { version = "0.3", features = ["Headers", "Request", "RequestInit", "Response"] }
 # jump-cannon's graph view (renderer + canvas) for the graph hosts' graph
@@ -87,7 +87,7 @@ jump-cannon-graph-view = { path = "vendor/jump-cannon/graph-view" }
 # Static + GPU layout solvers behind the `graph` component contract
 # (crates/panel-kit-graph-layout): vendor/jump-cannon/VENDORED.md.
 graph-layouts = { path = "vendor/jump-cannon/graph-layouts" }
-panel-kit-graph-layout = { version = "0.1.0", path = "crates/panel-kit-graph-layout" }
+panel-kit-graph-layout = { version = "2.0.0", path = "crates/panel-kit-graph-layout" }
 # The ratatui parts the TUI examples draw. Crossterm and the WGPU shim are
 # target-scoped: the native loops drive a real terminal, the browser loops a
 # WebGL2 canvas.
