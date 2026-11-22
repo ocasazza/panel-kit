@@ -1787,6 +1787,7 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
 
 .pk-tr-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -1850,12 +1851,13 @@ button.pk-tr-rail-hit:focus-visible .pk-tr-rail-caret,
   flex: none;
 }
 
+/* Chips and legend share the compact bar; the query wraps to its own row before it shrinks below a usable field. */
 .pk-tr-query {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 24ch;
   align-items: center;
   gap: 8px;
-  min-width: 0;
+  min-width: min(24ch, 100%);
   margin: 0;
 }
 
