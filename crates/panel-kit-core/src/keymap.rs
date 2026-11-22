@@ -90,6 +90,20 @@ pub struct Candidate {
     pub label: String,
 }
 
+/// One group of a mode's key reference, ready for a help panel.
+///
+/// [`Keymap::key_reference`] is the single source for help surfaces: groups
+/// appear in first-authored order, the ungrouped rules form the last group,
+/// and rows keep authoring order within a group. Hosts render this instead of
+/// hand-rolling their own listing so a popup and the help panel cannot drift.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyReferenceGroup<'a> {
+    /// Group name; `None` is the ungrouped tail.
+    pub group: Option<&'a str>,
+    /// Rules in the group: display sequence and label.
+    pub rows: Vec<(&'a str, &'a str)>,
+}
+
 /// Who owns the keyboard right now, for a mode line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Posture<K> {
@@ -411,6 +425,28 @@ impl<I: IntentVocabulary> Keymap<I> {
             label: &r.label,
             group: r.group.as_deref(),
         })
+    }
+
+    /// Grouped key reference for `mode`: the one listing a help panel renders.
+    ///
+    /// Rules are stored highest-precedence first, so this walks them in
+    /// reverse to return authoring order; hosts must not re-order it.
+    pub fn key_reference(&self, mode: usize) -> Vec<KeyReferenceGroup<'_>> {
+        let mut groups: Vec<KeyReferenceGroup<'_>> = Vec::new();
+        for rule in self.rules[mode].iter().rev() {
+            let group = rule.group.as_deref();
+            let row = (rule.display.as_str(), rule.label.as_str());
+            match groups.iter_mut().find(|g| g.group == group) {
+                Some(existing) => existing.rows.push(row),
+                None => groups.push(KeyReferenceGroup {
+                    group,
+                    rows: vec![row],
+                }),
+            }
+        }
+        // Stable: named groups keep first-authored order, the tail goes last.
+        groups.sort_by_key(|g| g.group.is_none());
+        groups
     }
 
     /// Rules in `mode` whose sequence starts with `pending`, as candidates.

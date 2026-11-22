@@ -387,3 +387,92 @@ fn router_bypasses_keymap_for_bare_keys_in_text_input_and_falls_through_unbound(
     );
     assert!(router.state().pending.is_empty());
 }
+
+fn labelled(keys: &str, intent: &str, group: Option<&str>, label: &str) -> RuleSpec {
+    RuleSpec {
+        label: Some(label.into()),
+        group: group.map(Into::into),
+        ..rule(keys, intent)
+    }
+}
+
+#[test]
+fn key_reference_groups_in_authoring_order_with_ungrouped_last() {
+    let keymap: Keymap<String> = Keymap::compile(&[layer(
+        "ref",
+        &["normal"],
+        vec![
+            labelled("x", "cut", None, "cut"),
+            labelled("j", "down", Some("Move"), "next"),
+            labelled("m {a-z}", "mark $1", Some("Marks"), "set mark"),
+            labelled("k", "up", Some("Move"), "prev"),
+            labelled("G", "last", Some("Move"), "last"),
+        ],
+    )])
+    .unwrap();
+
+    assert_eq!(
+        keymap.key_reference(0),
+        vec![
+            KeyReferenceGroup {
+                group: Some("Move"),
+                rows: vec![("j", "next"), ("k", "prev"), ("G", "last")],
+            },
+            KeyReferenceGroup {
+                group: Some("Marks"),
+                rows: vec![("m {a-z}", "set mark")]
+            },
+            KeyReferenceGroup {
+                group: None,
+                rows: vec![("x", "cut")]
+            },
+        ]
+    );
+}
+
+#[test]
+fn key_reference_lists_the_winning_rule_once_and_only_for_its_modes() {
+    let keymap: Keymap<String> = Keymap::compile(&[
+        layer(
+            "base",
+            &["normal", "visual"],
+            vec![
+                labelled("j", "down", Some("Move"), "base down"),
+                labelled("k", "up", Some("Move"), "up"),
+            ],
+        ),
+        layer(
+            "over",
+            &["normal", "visual"],
+            vec![
+                labelled("j", "down", Some("Move"), "override down"),
+                RuleSpec {
+                    modes: Some(vec!["normal".into()]),
+                    ..labelled("p", "paste", Some("Edit"), "paste")
+                },
+            ],
+        ),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        keymap.key_reference(0),
+        vec![
+            KeyReferenceGroup {
+                group: Some("Move"),
+                rows: vec![("k", "up"), ("j", "override down")],
+            },
+            KeyReferenceGroup {
+                group: Some("Edit"),
+                rows: vec![("p", "paste")]
+            },
+        ]
+    );
+    assert_eq!(
+        keymap.key_reference(1),
+        vec![KeyReferenceGroup {
+            group: Some("Move"),
+            rows: vec![("k", "up"), ("j", "override down")],
+        }]
+    );
+}
