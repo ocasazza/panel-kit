@@ -2496,6 +2496,135 @@ circle.pk-tr-glyph:hover,
   white-space: nowrap;
 }
 
+/* LANES as a dense timeline: a lane is a line of text separated from the
+   next by a 1px rule, its label beside the first of its events; the dot is
+   the only thing that carries colour. */
+.pk-tl {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px;
+}
+
+.pk-tl-empty {
+  margin: 8px 0;
+  color: var(--color-text-muted);
+  font: var(--text-label) var(--mono);
+}
+
+.pk-tl-lanes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pk-tl-lane {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 28px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.pk-tl-label {
+  flex: 0 0 160px;
+  width: 160px;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font: var(--text-label) var(--mono);
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* `min-width: 0` lets the row shrink so the nodes wrap instead of pushing
+   the last one off the panel. */
+.pk-tl-nodes {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  row-gap: 4px;
+  min-width: 0;
+}
+
+.pk-tl-node {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--panel-radius);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: var(--text-label) var(--mono);
+  cursor: pointer;
+}
+
+/* The connector: a 1px rule between dots. */
+.pk-tl-node + .pk-tl-node::before {
+  content: "";
+  align-self: center;
+  width: 12px;
+  height: 1px;
+  margin: 0 4px;
+  background: var(--color-divider);
+}
+
+.pk-tl-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--panel-radius);
+  background: var(--color-text-muted);
+}
+
+.pk-tl-node[data-inferred="true"] .pk-tl-dot {
+  border: 1px solid var(--color-text-muted);
+  background: transparent;
+}
+
+.pk-tl-node[data-tone="ok"] .pk-tl-dot { background: var(--color-success); }
+.pk-tl-node[data-tone="err"] .pk-tl-dot { background: var(--color-error); }
+.pk-tl-node[data-tone="warn"] .pk-tl-dot { background: var(--color-warning); }
+.pk-tl-node[data-tone="info"] .pk-tl-dot { background: var(--color-primary); }
+.pk-tl-node[data-tone="err"] .pk-tl-caption { color: var(--color-error); }
+
+.pk-tl-caption {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pk-tl-node:hover .pk-tl-dot,
+.pk-tl-node:focus-visible .pk-tl-dot,
+.pk-tl-current .pk-tl-dot {
+  outline: 1px solid var(--color-primary);
+}
+
+.pk-tl-node:hover .pk-tl-caption,
+.pk-tl-node:focus-visible .pk-tl-caption,
+.pk-tl-current .pk-tl-caption {
+  color: var(--color-text);
+}
+
+/* The folded tail a limited lane does not draw. */
+.pk-tl-earlier {
+  color: var(--color-text-muted);
+  font: var(--text-label) var(--mono);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
 /* The folded `+N` lane is a plain label, not a button. */
 .pk-tr .pk-tr-seq-fold,
 .pk-tr .pk-tr-seq-fold:hover {
