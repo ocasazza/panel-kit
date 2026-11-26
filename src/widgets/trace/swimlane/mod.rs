@@ -49,6 +49,7 @@ mod inspector;
 mod legend;
 mod sequence;
 mod shared;
+mod timeline;
 mod toolbar;
 mod window;
 
@@ -69,7 +70,18 @@ use inspector::Inspector;
 use legend::legend;
 use sequence::SequenceBody;
 use shared::{Shared, Slot};
+use timeline::TimelineBody;
 use toolbar::{modes, tokens, QueryLine};
+
+/// How LANES mode draws the window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LaneStyle {
+    /// A sequence diagram: one lifeline per agent, time flowing down.
+    #[default]
+    Sequence,
+    /// A dense timeline: one row per agent, its events as wrapping nodes.
+    Timeline,
+}
 
 const MICROS_PER_SEC: i64 = 1_000_000;
 /// Datalist options one query key offers; a longer list is left to typing.
@@ -306,6 +318,9 @@ pub fn Trace(
     /// The inspector opened a node (`Some`) or was closed (`None`).
     #[props(default)]
     on_open: EventHandler<Option<Node>>,
+    /// How LANES mode draws: a sequence diagram or a dense timeline.
+    #[props(default)]
+    lane_style: LaneStyle,
 ) -> Element {
     // Handles that outlive the host's closures keep memoised children from
     // re-rendering when only a closure was rebuilt.
@@ -379,6 +394,17 @@ pub fn Trace(
                     selected: highlighted.clone(),
                     on_action: act,
                     on_select: pick,
+                    on_open: reveal,
+                }
+            }
+        }
+        Mode::Lanes if lane_style == LaneStyle::Timeline => {
+            let lanes = Shared::new(view::timeline_lanes(&events, &state, now));
+            rsx! {
+                TimelineBody {
+                    id: id.clone(),
+                    lanes,
+                    picked: picked_event,
                     on_open: reveal,
                 }
             }

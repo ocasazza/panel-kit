@@ -422,3 +422,52 @@ fn the_items_of_the_index_are_what_the_collaboration_is_judged_against() {
 
     assert_eq!(items["imp-26"].status, Supplied::Present(None));
 }
+
+// -- timeline lanes -----------------------------------------------------------
+
+#[test]
+fn timeline_lanes_are_one_per_agent_in_name_order_and_skip_unattributed_events() {
+    let events = [
+        ev("imp-2", 3.0).agent("worker"),
+        ev("imp-1", 1.0).agent("worker"),
+        ev("imp-3", 2.0).agent("librarian"),
+        ev("imp-4", 2.5).agent("  "),
+        Event { agent: None, ..ev("imp-5", 2.5) },
+    ];
+    let lanes = view::timeline_lanes(&events, &state_with("7d"), clock());
+
+    let labels: Vec<&str> = lanes.iter().map(|lane| lane.label.as_str()).collect();
+    assert_eq!(labels, ["librarian", "worker"]);
+    let worker: Vec<&str> = lanes[1].nodes.iter().map(|node| node.label.as_str()).collect();
+    assert_eq!(worker, ["imp-1", "imp-2"], "oldest first");
+}
+
+#[test]
+fn timeline_lanes_obey_the_query_filters() {
+    let events = [ev("imp-1", 1.0), ev("imp-2", 2.0)];
+    let lanes = view::timeline_lanes(
+        &events,
+        &filtered(Filters {
+            item: Some("imp-2".into()),
+            ..Filters::default()
+        }),
+        clock(),
+    );
+    assert_eq!(lanes.len(), 1);
+    assert_eq!(lanes[0].nodes.len(), 1);
+    assert_eq!(lanes[0].nodes[0].label, "imp-2");
+}
+
+#[test]
+fn a_branch_head_node_reads_as_its_branch_and_short_sha() {
+    let head = Event {
+        kind: EventKind::BranchHead,
+        item_id: None,
+        branch: Some("fix/x".into()),
+        commit: Some("0123456789abcdef".into()),
+        ..ev("imp-1", 1.0)
+    };
+    let lanes = view::timeline_lanes(&[head], &state_with("7d"), clock());
+    assert_eq!(lanes[0].nodes[0].label, "branch fix/x @ 01234567");
+    assert!(lanes[0].nodes[0].detail.as_deref().unwrap().starts_with("branch_head · worker"));
+}

@@ -5,9 +5,11 @@
 //! built from every event of the window, since a filtered table is a table
 //! about nothing.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use super::super::model::{kinds_of, Event, SessionTree};
+use super::super::model::{kinds_of, Event, EventKind, SessionTree};
+use super::super::rails::timeline::{FlatLane, TlNode};
+use super::super::time;
 use super::super::query::{GraphState, Interval, Window, DEFAULT_WINDOW, ROW_CAP};
 use super::collab::{current_items, Collaboration, ItemInfo};
 use super::layout::{Graph, Options, Range};
@@ -91,6 +93,83 @@ pub fn sequence(
         |event| in_window(&window, event) && state.filters.keep(event),
         &SequenceOptions::default().activity(activity),
     )
+}
+
+/// The LANES mode drawn as a dense timeline: one lane per agent, in name
+/// order, each the window's filtered events of that agent oldest first. An
+/// event with a blank agent is unattributed and belongs to no lane.
+pub fn timeline_lanes(events: &[Event], state: &GraphState, now: i64) -> Vec<FlatLane> {
+    let window = interval(state, now);
+    let mut by_agent: BTreeMap<&str, Vec<&Event>> = BTreeMap::new();
+    for event in events {
+        let Some(agent) = event.agent.as_deref().filter(|agent| !agent.trim().is_empty()) else {
+            continue;
+        };
+        if in_window(&window, event) && state.filters.keep(event) {
+            by_agent.entry(agent).or_default().push(event);
+        }
+    }
+    by_agent
+        .into_iter()
+        .map(|(agent, mut lane)| {
+            lane.sort_by_key(|event| event.order_key());
+            FlatLane {
+                id: agent.to_owned(),
+                label: agent.to_owned(),
+                nodes: lane.into_iter().map(timeline_node).collect(),
+            }
+        })
+        .collect()
+}
+
+/// One event as a timeline node: the caption names where it points and its
+/// first summary line; the tooltip carries kind, agent, item, branch and time.
+fn timeline_node(event: &Event) -> TlNode {
+    let kind = event.kind.as_str();
+    let label = match (&event.kind, &event.branch) {
+        (EventKind::BranchHead, Some(branch)) => {
+            let sha = event.commit.as_deref().unwrap_or("");
+            format!("branch {branch} @ {}", &sha[..sha.len().min(8)])
+        }
+        _ => {
+            let link = match (&event.pr, &event.commit, &event.item_id) {
+                (Some(pr), _, _) => Some(format!("#{pr}")),
+                (None, Some(sha), _) => Some(sha[..sha.len().min(12)].to_owned()),
+                (None, None, Some(item)) => Some(item.clone()),
+                (None, None, None) => None,
+            };
+            let first = event
+                .summary
+                .as_deref()
+                .and_then(|text| text.lines().find(|line| !line.trim().is_empty()))
+                .map(str::trim);
+            [link.as_deref(), first]
+                .into_iter()
+                .flatten()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+    };
+    let detail = [
+        Some(kind.to_owned()),
+        event.agent.clone(),
+        event.item_id.clone(),
+        event.branch.clone(),
+        Some(time::format_iso8601(event.at)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ");
+    TlNode {
+        id: event.id.clone(),
+        kind: kind.to_owned(),
+        at: Some(event.at),
+        label: if label.is_empty() { kind.replace('_', " ") } else { label },
+        detail: Some(detail),
+        ..TlNode::default()
+    }
 }
 
 /// The COLLAB mode: pairs and threads over every event of the window, the

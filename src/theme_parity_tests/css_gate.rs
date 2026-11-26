@@ -17,38 +17,55 @@ static COLOUR_SET: LazyLock<HashSet<&'static str>> =
 /// `CSS_THEME_REGION_END` from `panel_kit_core::theme`) is exempt.
 pub fn css_colour_violations(css: &str) -> Vec<String> {
     let clean = strip_comments(css);
+    let generated = match (
+        css.find(panel_kit_core::theme::CSS_THEME_REGION_BEGIN),
+        css.find(panel_kit_core::theme::CSS_THEME_REGION_END),
+    ) {
+        (Some(lo), Some(hi)) => Some((lo, hi + 1)),
+        _ => None,
+    };
 
-    // Locate the generated region.
-    let gen_lo = css.find(panel_kit_core::theme::CSS_THEME_REGION_BEGIN);
-    let gen_hi = css.find(panel_kit_core::theme::CSS_THEME_REGION_END);
-
+    // Declarations, not lines: a rule written on one line still carries its
+    // property after the selector's brace, and a permitted declaration is
+    // exempt wherever it sits.
+    let bytes = clean.as_bytes();
     let mut results = Vec::new();
-
-    for (lineno, raw_line) in css.lines().enumerate() {
-        let line_no = lineno + 1; // 1-based
-
-        // Byte range of this line in the original.
-        let line_start = raw_line.as_ptr() as usize - css.as_ptr() as usize;
-        let line_end = line_start + raw_line.len();
-
-        // Skip lines inside the generated region.
-        if let (Some(lo), Some(hi)) = (gen_lo, gen_hi) {
-            if line_start >= lo && line_end <= hi + "\n".len() {
-                continue;
+    let mut line_no = 1_usize;
+    let mut decl_start = 0_usize;
+    let mut i = 0_usize;
+    while i <= bytes.len() {
+        let at_end = i == bytes.len();
+        let separator = !at_end && matches!(bytes[i], b';' | b'{' | b'}');
+        if !separator && !at_end {
+            if bytes[i] == b'\n' {
+                line_no += 1;
             }
-        }
-
-        let clean_line = slice_at(&clean, line_start, line_end);
-
-        // Exemptions: permitted literal-value declarations.
-        if is_permitted_declaration(clean_line) {
+            i += 1;
             continue;
         }
 
-        check_hex_literal(raw_line, line_no, &mut results);
-        check_colour_fns(raw_line, line_no, &mut results);
-        check_named_colour(raw_line, line_no, &mut results);
-        check_retired_vars(clean_line, raw_line, line_no, &mut results);
+        let raw = &clean[decl_start..i];
+        let decl_line = line_no - raw.bytes().filter(|byte| *byte == b'\n').count();
+        let spans_generated = generated
+            .is_some_and(|(lo, hi)| decl_start >= lo && i + 1 <= hi);
+        let decl = raw.trim();
+        decl_start = i + 1;
+        i += 1;
+
+        if at_end || decl.is_empty() || spans_generated || is_permitted_declaration(decl) {
+            continue;
+        }
+        let Some(colon) = decl.find(':') else { continue };
+        let prop = decl[..colon].trim();
+        if prop.is_empty() || prop.starts_with('@') {
+            continue;
+        }
+        let value = decl[colon + 1..].trim();
+
+        check_hex_literal(value, decl, decl_line, &mut results);
+        check_colour_fns(value, decl, decl_line, &mut results);
+        check_named_colour(value, decl, decl_line, &mut results);
+        check_retired_vars(value, decl, decl_line, &mut results);
     }
 
     results
@@ -120,8 +137,8 @@ fn is_ident_byte(b: u8) -> bool {
 // Violation checks
 // ---------------------------------------------------------------------------
 
-fn check_hex_literal(raw_line: &str, line_no: usize, out: &mut Vec<String>) {
-    let bytes = raw_line.as_bytes();
+fn check_hex_literal(value: &str, decl: &str, line_no: usize, out: &mut Vec<String>) {
+    let bytes = value.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'#' {
@@ -137,9 +154,9 @@ fn check_hex_literal(raw_line: &str, line_no: usize, out: &mut Vec<String>) {
                 let before_ok = start == 0 || !is_ident_byte(bytes[start - 1]);
                 let after_ok = i >= bytes.len() || !is_ident_byte(bytes[i]);
                 if before_ok && after_ok {
-                    let snippet = &raw_line[start..(start + 1 + digits).min(raw_line.len())];
+                    let snippet = &value[start..(start + 1 + digits).min(value.len())];
                     let snippet = snippet.trim();
-                    out.push(violation(line_no, &format!("hex colour literal {snippet}"), raw_line));
+                    out.push(violation(line_no, &format!("hex colour literal {snippet}"), decl));
                     return;
                 }
             }
@@ -149,68 +166,45 @@ fn check_hex_literal(raw_line: &str, line_no: usize, out: &mut Vec<String>) {
     }
 }
 
-fn check_colour_fns(raw_line: &str, line_no: usize, out: &mut Vec<String>) {
+fn check_colour_fns(value: &str, decl: &str, line_no: usize, out: &mut Vec<String>) {
     for pat in [
         "rgb(", "rgba(", "hsl(", "hsla(", "hwb(", "lab(", "lch(", "oklab(", "oklch(",
     ] {
-        if raw_line.contains(pat) {
-            out.push(violation(line_no, &format!("colour function {pat}"), raw_line));
+        if value.contains(pat) {
+            out.push(violation(line_no, &format!("colour function {pat}"), decl));
             return;
         }
     }
     // `color(` — but not `color-mix(`, `color-scheme`, etc.
-    if let Some(pos) = raw_line.find("color(") {
-        let preceded_by_ident = pos > 0 && is_ident_byte(raw_line.as_bytes()[pos - 1]);
+    if let Some(pos) = value.find("color(") {
+        let preceded_by_ident = pos > 0 && is_ident_byte(value.as_bytes()[pos - 1]);
         if !preceded_by_ident {
-            out.push(violation(line_no, "colour function color(", raw_line));
+            out.push(violation(line_no, "colour function color(", decl));
         }
     }
 }
 
-fn check_named_colour(raw_line: &str, line_no: usize, out: &mut Vec<String>) {
-    let trimmed = raw_line.trim();
-    if !is_colour_bearing_decl(trimmed) {
-        return;
-    }
-    let Some(colon) = trimmed.find(':') else { return };
-    let value_part = &trimmed[colon + 1..];
-    let value = value_part.split(';').next().unwrap_or(value_part).trim();
-
-    let bytes = value.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        // Skip non-identifier characters.
-        while i < bytes.len() && !is_ident_byte(bytes[i]) {
-            i += 1;
+/// A named colour (CSS keyword) in a declaration value.
+fn check_named_colour(value: &str, decl: &str, line_no: usize, out: &mut Vec<String>) {
+    for token in value.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_')) {
+        if token.is_empty() || token.starts_with("--") || token.starts_with('#') {
+            continue;
         }
-        if i >= bytes.len() {
-            break;
-        }
-        let start = i;
-        if bytes[i] == b'-' {
-            i += 1;
-        }
-        while i < bytes.len() && is_ident_byte(bytes[i]) {
-            i += 1;
-        }
-        let token = &value[start..i];
-        // Ignore custom-property references (`--name`).
-        if !token.starts_with("--") && COLOUR_SET.contains(token) {
+        if COLOUR_SET.contains(&token) {
             out.push(violation(
                 line_no,
-                &format!("CSS named colour `{token}`"),
-                raw_line,
+                &format!("named colour `{token}`"),
+                decl,
             ));
-            return;
         }
     }
 }
 
-fn check_retired_vars(clean_line: &str, raw_line: &str, line_no: usize, out: &mut Vec<String>) {
+fn check_retired_vars(value: &str, decl: &str, line_no: usize, out: &mut Vec<String>) {
     let mut search_from = 0;
-    while let Some(pos) = clean_line[search_from..].find("var(") {
+    while let Some(pos) = value[search_from..].find("var(") {
         let abs = search_from + pos + 4; // after "var("
-        let rest = &clean_line[abs..];
+        let rest = &value[abs..];
 
         let Some(name_part) = rest.strip_prefix("--") else {
             search_from = abs;
@@ -227,7 +221,7 @@ fn check_retired_vars(clean_line: &str, raw_line: &str, line_no: usize, out: &mu
             out.push(violation(
                 line_no,
                 &format!("retired var(--{name})"),
-                raw_line,
+                decl,
             ));
             return;
         }
@@ -488,7 +482,7 @@ mod tests {
         let css = "/* gen region */\n/* BEGIN GENERATED THEME TOKENS */\n\na{}\n/* END GENERATED THEME TOKENS */\n.x { color: #fff; }\n";
         let v = css_colour_violations(css);
         assert_eq!(v.len(), 1, "{v:?}");
-        assert!(v[0].starts_with("assets/panel-kit.css:5: hex"), "{v:?}");
+        assert!(v[0].starts_with("assets/panel-kit.css:6: hex"), "{v:?}");
     }
 
     #[test]
@@ -496,7 +490,7 @@ mod tests {
         let css = "/* BEGIN GENERATED THEME TOKENS */\n\n/* END GENERATED THEME TOKENS */\n.x { color: rgb(0,0,0); }\n";
         let v = css_colour_violations(css);
         assert_eq!(v.len(), 1, "{v:?}");
-        assert!(v[0].starts_with("assets/panel-kit.css:3: colour function rgb("), "{v:?}");
+        assert!(v[0].starts_with("assets/panel-kit.css:4: colour function rgb("), "{v:?}");
     }
 
     #[test]
@@ -504,7 +498,7 @@ mod tests {
         let css = "/* BEGIN GENERATED THEME TOKENS */\n\n/* END GENERATED THEME TOKENS */\n.x { color: hsl(0,0%,0%); }\n";
         let v = css_colour_violations(css);
         assert_eq!(v.len(), 1, "{v:?}");
-        assert!(v[0].starts_with("assets/panel-kit.css:3: colour function hsl("), "{v:?}");
+        assert!(v[0].starts_with("assets/panel-kit.css:4: colour function hsl("), "{v:?}");
     }
 
     #[test]
@@ -520,7 +514,7 @@ mod tests {
         let css = "/* BEGIN GENERATED THEME TOKENS */\n\n/* END GENERATED THEME TOKENS */\n.x { color: var(--bg); }\n";
         let v = css_colour_violations(css);
         assert_eq!(v.len(), 1, "{v:?}");
-        assert!(v[0].starts_with("assets/panel-kit.css:3"), "{v:?}");
+        assert!(v[0].starts_with("assets/panel-kit.css:4"), "{v:?}");
         assert!(v[0].contains("retired var(--bg)"), "{v:?}");
     }
 
@@ -528,10 +522,11 @@ mod tests {
     fn retired_var_fallback_is_flagged() {
         let css = "/* BEGIN GENERATED THEME TOKENS */\n\n/* END GENERATED THEME TOKENS */\n.x { outline: 1px solid var(--border, #2a2a2a); }\n";
         let v = css_colour_violations(css);
-        // The retired var is caught; the hex fallback is also caught on the same line
-        // but check_retired_vars stops at the first, so we see one violation.
-        assert_eq!(v.len(), 1, "{v:?}");
-        assert!(v[0].contains("retired var(--border)"), "{v:?}");
+        // Both are violations of the same declaration: the retired name and
+        // the literal fallback it carries.
+        assert_eq!(v.len(), 2, "{v:?}");
+        assert!(v.iter().any(|m| m.contains("retired var(--border)")), "{v:?}");
+        assert!(v.iter().any(|m| m.contains("hex colour literal #2a2a2a")), "{v:?}");
     }
 
     #[test]
@@ -564,10 +559,10 @@ mod tests {
 
     #[test]
     fn planted_literal_on_real_css_fails() {
-        let planted = format!("{}\n.x{{color:#fff}}", crate::CSS);
+        let planted = format!("{}.x {{ color: #fff; }}\n", crate::CSS);
         let v = css_colour_violations(&planted);
         assert_eq!(v.len(), 1, "{v:?}");
-        // Planted line number = CSS.lines().count() + 1.
+        // The stylesheet ends with a newline, so the planted rule is the next line.
         let expected_line = crate::CSS.lines().count() + 1;
         assert!(
             v[0].starts_with(&format!("assets/panel-kit.css:{expected_line}:")),
